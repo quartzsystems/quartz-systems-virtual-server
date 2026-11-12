@@ -43,7 +43,8 @@ impl TryFrom<String> for Device {
         // A kernel interface name: 15 bytes, no slash, no white space.
         let ok = !s.is_empty()
             && s.len() <= 15
-            && s.bytes().all(|b| b.is_ascii_graphic() && b != b'/' && b != b':');
+            && s.bytes()
+                .all(|b| b.is_ascii_graphic() && b != b'/' && b != b':');
         if ok {
             Ok(Device::Name(s))
         } else {
@@ -116,7 +117,9 @@ impl fmt::Display for Cidr {
 impl Cidr {
     /// Whether `other` is on this address's subnet.
     pub fn contains(&self, other: Ipv4Addr) -> bool {
-        let mask = u32::MAX.checked_shl(32 - u32::from(self.prefix)).unwrap_or(0);
+        let mask = u32::MAX
+            .checked_shl(32 - u32::from(self.prefix))
+            .unwrap_or(0);
         u32::from(self.addr) & mask == u32::from(other) & mask
     }
 }

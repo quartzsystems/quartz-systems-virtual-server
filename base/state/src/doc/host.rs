@@ -59,8 +59,7 @@ pub fn split_server(server: &str) -> Option<(&str, u16)> {
     let (host, port) = match server.rsplit_once(':') {
         // A bare IPv6 address has colons and no port.
         Some((h, p)) if !h.contains(':') => (h, p.parse().ok()?),
-        Some(_) => (server, 123),
-        None => (server, 123),
+        _ => (server, 123),
     };
     let ok = !host.is_empty() && !host.contains(|c: char| c.is_whitespace() || c == '/');
     ok.then_some((host, port))

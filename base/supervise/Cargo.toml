@@ -1,0 +1,16 @@
+[package]
+name = "supervise"
+description = "Appliance supervision: a fixed service table, readiness, restart with back-off, orderly stop, and PID 1's control protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ipc.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix.workspace = true
+
+[lints]
+workspace = true

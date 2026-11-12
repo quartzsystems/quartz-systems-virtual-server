@@ -14,6 +14,7 @@ members = [
     # these from this repository.
     "base/appliance",
     "base/state",
+    "base/supervise",
 ]
 
 [workspace.package]

@@ -169,7 +169,15 @@ mod tests {
         assert_eq!(west.to_string(), "UTC-11:00");
         assert_eq!(west.display(s), "2026-11-11 23:22 UTC-11:00");
         assert_eq!("UTC".parse::<Zone>().unwrap(), Zone::UTC);
-        for bad in ["", "utc", "Europe/Berlin", "UTC+1", "UTC+15:00", "UTC+01:60", "UTC01"] {
+        for bad in [
+            "",
+            "utc",
+            "Europe/Berlin",
+            "UTC+1",
+            "UTC+15:00",
+            "UTC+01:60",
+            "UTC01",
+        ] {
             assert!(bad.parse::<Zone>().is_err(), "{bad}");
         }
     }

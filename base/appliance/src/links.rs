@@ -28,7 +28,11 @@ pub fn parse_mac(text: &str) -> Option<[u8; 6]> {
     let parts: Vec<u8> = text
         .trim()
         .split(':')
-        .map(|p| (p.len() == 2).then(|| u8::from_str_radix(p, 16).ok()).flatten())
+        .map(|p| {
+            (p.len() == 2)
+                .then(|| u8::from_str_radix(p, 16).ok())
+                .flatten()
+        })
         .collect::<Option<_>>()?;
     parts.try_into().ok()
 }
@@ -87,7 +91,13 @@ mod tests {
         assert_eq!(mac, [0x52, 0x54, 0, 0xab, 0xcd, 0x0f]);
         assert_eq!(format_mac(mac), "52:54:00:ab:cd:0f");
         assert_eq!(mac_tail(mac), "ABCD0F");
-        for bad in ["", "52:54:00:ab:cd", "52:54:00:ab:cd:0f:11", "5:54:00:ab:cd:0f", "eth0"] {
+        for bad in [
+            "",
+            "52:54:00:ab:cd",
+            "52:54:00:ab:cd:0f:11",
+            "5:54:00:ab:cd:0f",
+            "eth0",
+        ] {
             assert_eq!(parse_mac(bad), None, "{bad}");
         }
     }

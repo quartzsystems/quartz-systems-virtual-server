@@ -69,6 +69,8 @@ pub enum StateError {
     },
 }
 
+// By value, so it is what `map_err` takes.
+#[allow(clippy::needless_pass_by_value)]
 fn invalid<D: Document>(reason: impl ToString) -> StateError {
     StateError::Invalid {
         file: D::FILE.to_string(),
