@@ -1,0 +1,27 @@
+[package]
+name = "build"
+description = "QS/VS build orchestrator: a clap enum over QS/400's buildkit and the QS/VS product description"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "qsvs-build"
+path = "src/main.rs"
+
+[dependencies]
+buildkit.workspace = true
+diskimg.workspace = true
+release = { path = "../../lic/release", version = "0.1.0" }
+hostdisk = { path = "../../lic/hostdisk", version = "0.1.0" }
+conformance = { path = "../conformance", version = "0.1.0" }
+anyhow.workspace = true
+clap.workspace = true
+hex.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true
