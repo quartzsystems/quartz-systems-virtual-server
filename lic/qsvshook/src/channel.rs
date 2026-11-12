@@ -48,6 +48,10 @@ fn status() -> Vec<String> {
 }
 
 fn kill(service: &str) -> Vec<String> {
+    // PID 1 itself is asked to shut down, as an operator's `kill` asks.
+    if service == command::INIT {
+        return done(kill_process(Pid::INIT, Signal::TERM));
+    }
     let status = match parse_status(&status()) {
         Ok(status) => status,
         Err(e) => return error(e),

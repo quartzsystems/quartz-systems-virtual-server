@@ -8,6 +8,7 @@
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use qsvshook::churn::{check_host, check_network};
+use qsvshook::proto::command;
 use state::{Host, Inventory, Network};
 
 use super::{Run, STATE_DIR, booted, channel, posted};
@@ -124,7 +125,8 @@ pub fn power_pull(run: &Run<'_>) -> Result<String, String> {
 
 /// Suite 9: orderly shutdown. QEMU's power button event produces the
 /// `D2` code, a clean unmount (no xfs log recovery on the next mount)
-/// and power off within 30 s.
+/// and power off within 30 s. The other two triggers follow: the
+/// control socket (a restart) and `SIGTERM` to PID 1.
 pub fn shutdown(run: &Run<'_>) -> Result<String, String> {
     let disk = run.file("disk.img");
     sparse_copy(run.disk, &disk)?;
@@ -165,11 +167,59 @@ pub fn shutdown(run: &Run<'_>) -> Result<String, String> {
     if !history.contains(refcode::SHUTDOWN_STARTED.code) {
         return Err("the reference code history lacks the shutdown".into());
     }
+
+    // The control socket's restart: the same order, the other end.
+    channel.tell(command::RESTART)?;
+    let limit = Instant::now() + SHUTDOWN_WITHIN;
+    guest.expect(
+        &posted(&refcode::SHUTDOWN_STARTED, "restart, by the control socket"),
+        limit,
+    )?;
+    guest.expect(&posted(&refcode::RESTART, ""), limit)?;
+    // QEMU was told not to restart the machine, so the reset ends it.
+    guest.wait_exit(limit)?;
+    drop(guest);
+
+    // SIGTERM to PID 1. By now there are three boots in the logs.
+    let mut guest = booted(run, &launch)?;
+    let channel = super::channel(&mut guest)?;
+    let logs = channel.ls("/data/log")?;
+    for file in ["system.ndjson", "refcodes.ndjson", "kernel"] {
+        if !logs.iter().any(|name| name == file) {
+            return Err(format!("no {file} among the logs {logs:?}"));
+        }
+    }
+    // This boot's file is there once the log service has read the
+    // kernel's buffer, a moment after it is ready.
+    let give_up = Instant::now() + Duration::from_secs(10);
+    loop {
+        let kernel = channel.ls("/data/log/kernel")?;
+        if kernel.len() == 3 {
+            break;
+        }
+        if Instant::now() >= give_up {
+            return Err(format!("the kernel logs of three boots are {kernel:?}"));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    channel.tell(&format!("{} {}", command::KILL, command::INIT))?;
+    let limit = Instant::now() + SHUTDOWN_WITHIN;
+    guest.expect(
+        &posted(&refcode::SHUTDOWN_STARTED, "power off, by SIGTERM"),
+        limit,
+    )?;
+    guest.expect(&posted(&refcode::POWER_OFF, ""), limit)?;
+    guest.wait_exit(limit)?;
+    if guest.said("was killed") || guest.said("not unmounted") {
+        return Err("a later shutdown was not clean".into());
+    }
     Ok(format!(
         "`{started}`, `{}`, powered off {:.1} s after the button; the next mount is clean; \
-         the history has {} codes",
+         the history had {} codes; then a restart by the control socket (`{}`) and a power \
+         off by SIGTERM; a kernel log for each of the three boots",
         refcode::POWER_OFF.tag(),
         took.as_secs_f64(),
-        history.lines().count()
+        history.lines().count(),
+        refcode::RESTART.tag()
     ))
 }

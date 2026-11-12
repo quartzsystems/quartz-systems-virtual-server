@@ -21,8 +21,11 @@ pub mod command {
     pub const PING: &str = "ping";
     /// `status`: the control socket's status, a `fact` or `service` a line.
     pub const STATUS: &str = "status";
-    /// `kill <service>`: `SIGKILL` to the service's process.
+    /// `kill <service>`: `SIGKILL` to the service's process;
+    /// `kill init`: `SIGTERM` to PID 1.
     pub const KILL: &str = "kill";
+    /// The name PID 1 goes by in `kill`.
+    pub const INIT: &str = "init";
     /// `cat <path>`: the file, as `hex`.
     pub const CAT: &str = "cat";
     /// `put <path> <hex>`: write a file atomically.
