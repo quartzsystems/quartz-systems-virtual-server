@@ -9,7 +9,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use qsvshook::churn::{check_host, check_network};
 use qsvshook::proto::command;
-use state::{Host, Inventory, Network};
+use state::{Host, Identity, Inventory, Network};
 
 use super::{Run, STATE_DIR, booted, channel, posted};
 use crate::qemu::Launch;
@@ -20,6 +20,8 @@ use crate::qemu::image::sparse_copy;
 const CUTS: u32 = 50;
 /// The longest the host runs on after it was checked, in milliseconds.
 const RUN_ON_MS: u64 = 1500;
+/// What PID 1 says of Ctrl-Alt-Del.
+const CAD_IGNORED: &str = "Ctrl-Alt-Del ignored";
 /// What the shutdown is given, from the button to QEMU's end.
 const SHUTDOWN_WITHIN: Duration = Duration::from_secs(30);
 
@@ -54,6 +56,10 @@ fn verify(channel: &mut Channel) -> Result<Option<u64>, String> {
     if let Some(network) = state_file(channel, "network.toml")? {
         let network: Network = state::store::parse(&network).map_err(parsed)?;
         check_network(&network)?;
+    }
+    // Only a host with a NIC and no DMI serial keeps one.
+    if let Some(identity) = state_file(channel, "identity.toml")? {
+        let _: Identity = state::store::parse(&identity).map_err(parsed)?;
     }
     let inventory = state_file(channel, "inventory.toml")?.ok_or("inventory.toml is gone")?;
     let inventory: Inventory = state::store::parse(&inventory).map_err(parsed)?;
@@ -123,7 +129,8 @@ pub fn power_pull(run: &Run<'_>) -> Result<String, String> {
     ))
 }
 
-/// Suite 9: orderly shutdown. QEMU's power button event produces the
+/// Suite 9: orderly shutdown. Ctrl-Alt-Del is ignored. QEMU's power
+/// button event produces the
 /// `D2` code, a clean unmount (no xfs log recovery on the next mount)
 /// and power off within 30 s. The other two triggers follow: the
 /// control socket (a restart) and `SIGTERM` to PID 1.
@@ -137,6 +144,12 @@ pub fn shutdown(run: &Run<'_>) -> Result<String, String> {
         ..run.launch()
     };
     let mut guest = booted(run, &launch)?;
+    // The three keys do nothing but a line on the console.
+    guest.monitor("sendkey ctrl-alt-delete")?;
+    guest.seen(CAD_IGNORED, run.deadline())?;
+    if guest.said(&refcode::SHUTDOWN_STARTED.tag()) {
+        return Err("Ctrl-Alt-Del started a shutdown".into());
+    }
     guest.monitor("system_powerdown")?;
     let pressed = Instant::now();
     let limit = pressed + SHUTDOWN_WITHIN;

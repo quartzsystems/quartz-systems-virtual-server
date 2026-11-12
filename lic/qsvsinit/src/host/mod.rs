@@ -356,8 +356,9 @@ impl Host {
                     }
                 }
                 TERM => self.begin_shutdown(Kind::PowerOff, "SIGTERM"),
-                // Ctrl-Alt-Del, which the kernel hands to PID 1.
-                INT => self.begin_shutdown(Kind::Restart, "Ctrl-Alt-Del"),
+                // Ctrl-Alt-Del, which the kernel hands to PID 1: a key
+                // too easily pressed on a host that runs partitions.
+                INT => self.line("Ctrl-Alt-Del ignored"),
                 _ => {}
             }
         }

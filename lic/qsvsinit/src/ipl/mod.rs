@@ -155,7 +155,8 @@ mod on_host {
         // shutdown is asked for through these.
         let signals = Signals::take(&[CHLD, TERM, INT])
             .unwrap_or_else(|e| panic!("the signal descriptor: {e}"));
-        // Ctrl-Alt-Del asks PID 1 instead of resetting the machine.
+        // Ctrl-Alt-Del comes to PID 1, which ignores it, instead of
+        // resetting the machine.
         let _ = reboot(RebootCommand::CadOff);
         let failed = mounts::kernel();
         let mut host = Host::new(Console::open(), signals, &APPLIANCE.log_socket());
