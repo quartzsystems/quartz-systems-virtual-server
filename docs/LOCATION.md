@@ -1,6 +1,7 @@
 # Location codes
 
-**NEEDS-CODY: the format is Claude's proposal and needs sign-off.**
+The format was accepted on 2026-11-12 (`docs/OPEN_QUESTIONS.md`
+item 8). What real hardware has still to show is at the end.
 
 Every disk, network interface and PCI device in the host inventory
 (`inventory.toml`) has a location code: one string that says where the
@@ -43,7 +44,9 @@ A slot that names the device itself comes first; otherwise the bridges
 above the function are tried from the nearest up, so a slot on a riser
 wins over the riser's own. A slot whose function is not present, whose
 address is all ones, or whose designation has no letter or digit, is not
-used.
+used. Neither are slots that share a designation once it is spelled as a
+code: their devices take the address form, so no two devices have one
+code.
 
 **From the address.** A function no slot covers is
 `P<segment>-B<bus>-D<device>-F<function>`: the segment in four hex digits
@@ -69,13 +72,17 @@ A device with no PCI function in its sysfs path is
 `NOPCI-<kernel name>`, the name spelled as a designation is:
 `NOPCI-MMCBLK0`. This code is only as stable as the kernel's name.
 
-## What is not settled
+## What a code depends on
 
-- NEEDS-CODY: the format as a whole, and the letters `S`, `P`, `B`, `D`,
-  `F`, `T`, `N`, `E`.
-- NEEDS-CODY: firmware that gives two slots the same designation gives
-  two devices the same code. Whether the inventory should tell them apart
-  needs real hardware to look at.
-- NEEDS-CODY: the bus in a `P` code is the one the firmware assigned. It
-  holds on unchanged hardware; adding a card with a bridge can renumber
-  the buses behind it.
+- An `S` code is the firmware's designation text. A firmware update that
+  renames a slot changes the code.
+- The bus in a `P` code is the one the firmware assigned. It holds on
+  unchanged hardware; adding a card with a bridge can renumber the buses
+  behind it.
+- A `NOPCI` code is the kernel's name for the device.
+
+## Not seen on hardware
+
+- NEEDS-CODY: QEMU's machine has no SMBIOS slot records, so every code a
+  suite has seen is of the address form. The slot form, and what real
+  firmware writes as designations, are unit-tested only.

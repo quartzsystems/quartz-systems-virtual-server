@@ -32,11 +32,11 @@ A seed is applied once. The volume can stay attached: step 1 stops the
 search from then on. To seed a host again, `host.toml` has to go, which
 nothing in Phase 1 does.
 
-A host whose firmware gives no serial number writes `host.toml` on its
-first IPL, to keep the serial it derives from the first NIC
-(`docs/PHASE1.md`). Such a host is seeded on its first IPL or not at
-all. That is every QEMU guest, so a test attaches the seed volume to the
-first boot.
+Nothing but a seed writes `host.toml` in Phase 1, so a host that came up
+without a seed volume can be given one later: the next IPL reads it.
+What the host keeps for itself is in other files (`identity.toml`, the
+serial number it derives when the firmware gives none, and
+`inventory.toml`), and they do not make it configured.
 
 When `/data` could not be mounted the state directory is in memory, and
 a seed is applied to that: the host is configured until it powers off.
@@ -77,8 +77,8 @@ mistake must not half apply.
 | `time_zone` | `UTC`, or a fixed offset `UTC+hh:mm` or `UTC-hh:mm`. It changes what is displayed; the system clock is UTC | `UTC` |
 | `ntp_servers` | time servers, each `host` or `host:port`, tried in order | none: the clock is the RTC's |
 
-`serial` is a key of `host.toml` (the serial number the host derives for
-itself) and is not accepted in a seed.
+The serial number is the host's own (`identity.toml`) and no seed sets
+it.
 
 ### `[network]`, which becomes `network.toml`
 

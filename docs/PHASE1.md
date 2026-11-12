@@ -30,10 +30,10 @@ from its caller; none names QS/VS or depends on `lic/`.
   code knows and takes an older one through its registered migration
   steps. A write is atomic: a temporary file in the same directory,
   `fsync`, rename over the target, `fsync` of the directory. The files:
-  `host.toml` (host name, time zone, NTP servers, the derived serial),
-  `network.toml` (the device by name or MAC, DHCP or a static address
-  with prefix and gateway, the VLAN ID, DNS servers) and
-  `inventory.toml`. An absent file is its defaults: the host name is
+  `host.toml` (host name, time zone, NTP servers), `network.toml` (the
+  device by name or MAC, DHCP or a static address with prefix and
+  gateway, the VLAN ID, DNS servers), `identity.toml` (the serial number
+  the host derived for itself) and `inventory.toml`. An absent file is its defaults: the host name is
   `QSVS` and the last six hex digits of the first NIC's MAC, UTC, no NTP
   servers, DHCP on the first interface with carrier.
 - `base/supervise`: the fixed service table (a binary, an order, the
@@ -97,8 +97,9 @@ from its caller; none names QS/VS or depends on `lic/`.
   has not ended after 5 s is killed, and the console says so), sync,
   `/data` unmounted, `D2001090` or `D2001091`, then power off or
   restart. The log service is the last to end. It is started by the control
-  socket, by `SIGTERM` to PID 1, by the ACPI power button, and by
-  Ctrl-Alt-Del (a restart; `docs/OPEN_QUESTIONS.md` item 15).
+  socket, by `SIGTERM` to PID 1 and by the ACPI power button.
+  Ctrl-Alt-Del comes to PID 1 and is ignored, with a line on the console
+  (`docs/OPEN_QUESTIONS.md` item 15).
 - The slot rule (`lic/qsvsinit/src/slot/`, `docs/ARCHITECTURE.md`):
   the A/B record version 2 read at IPL; a pending slot confirmed at
   "Base ready", in the record and, through efivarfs, in `BootOrder`
@@ -118,10 +119,11 @@ from its caller; none names QS/VS or depends on `lic/`.
   pages), disks (name, model, serial, size, rotational, transport),
   network interfaces (name, MAC, driver, speed, carrier) and PCI
   devices (address, vendor and device IDs, class, driver), each with a
-  location code (`docs/LOCATION.md`, **NEEDS-CODY**). The system serial
+  location code (`docs/LOCATION.md`). The system serial
   number is DMI's when it has a real one; otherwise it is derived once
   from the first NIC's MAC (`M` and the twelve hex digits) and kept in
-  `host.toml`. A link has no carrier or speed until it is up, which is
+  `identity.toml`, not in `host.toml`, which only a seed or an operator
+  writes. A link has no carrier or speed until it is up, which is
   the network service's doing after the IPL has taken the inventory, so
   PID 1 reads and writes the inventory again whenever the management
   line changes.
@@ -222,13 +224,13 @@ of the base system. Each can run alone with `--suite`. On WSL set both
 |---|---|
 | `status` | every IPL step's code in order; "Base ready" within 10 s of the kernel starting under KVM; the status screen; the control socket's status |
 | `dhcp` | on QEMU's user network, `10.0.2.15/24` and gateway `10.0.2.2` on the status screen and in the status; the name server in `/etc/resolv.conf` |
-| `static-vlan` | a seed with a static address and VLAN 100: the address is on `eth0.100`, which exists. Then `network.toml` is changed to DHCP and `netd` told to reload: the address changes and `eth0.100` goes, in the same process |
+| `static-vlan` | the host IPLs once with no seed volume and has no `host.toml`; on the next IPL a seed with a static address and VLAN 100 is applied: the address is on `eth0.100`, which exists. Then `network.toml` is changed to DHCP and `netd` told to reload: the address changes and `eth0.100` goes, in the same process |
 | `time` | an SNTP responder in the harness, three days ahead, moves the guest's clock |
 | `inventory` | QEMU with 2 sockets of 2 cores, 2048 MiB, two disks with serials and one NIC with a fixed MAC: `inventory.toml` matches, the NIC's carrier included once it has its address |
 | `supervision` | `netd` killed through the channel is started again and ready; with `flaky-fails`, `flaky` is stopped after five failures with `A2001080` and the host runs on |
-| `power-pull` | with the churn running, QEMU is killed at 50 random moments; after each the host IPLs and `host.toml`, `network.toml` and `inventory.toml` parse and are a complete old or new version |
+| `power-pull` | with the churn running, QEMU is killed at 50 random moments; after each the host IPLs and `host.toml`, `network.toml`, `identity.toml` and `inventory.toml` parse and are a complete old or new version |
 | `slot-confirm` | slot B booted as pending confirms: default B in the record on the disk and `BootOrder` 0001,0000 in the firmware's store. With `refuse-confirm` it does not, and the next IPL is on slot A with `A2001035` |
-| `shutdown` | QEMU's power button: `D2001000`, `D2001090`, QEMU ends within 30 s and no service had to be killed; the next mount of `/data` needs no xfs log recovery; the history has the shutdown. Then the other triggers: a restart through the control socket (`D2001091`) and `SIGTERM` to PID 1; and the logs hold a kernel log for each of the three boots |
+| `shutdown` | Ctrl-Alt-Del from QEMU's keyboard is ignored. QEMU's power button: `D2001000`, `D2001090`, QEMU ends within 30 s and no service had to be killed; the next mount of `/data` needs no xfs log recovery; the history has the shutdown. Then the other triggers: a restart through the control socket (`D2001091`) and `SIGTERM` to PID 1; and the logs hold a kernel log for each of the three boots |
 | `sockets` | no TCP socket listens; no TCP or UDP socket is bound off loopback but the DHCP client's |
 
 ## Acceptance evidence
@@ -351,8 +353,6 @@ the evidence above:
 
 ## Not done
 
-- **NEEDS-CODY: the location code format** is a proposal
-  (`docs/LOCATION.md`, `docs/OPEN_QUESTIONS.md` item 8).
 - **NEEDS-CODY: the QEMU job in CI** has still not run on GitHub:
   nothing is pushed. It now builds both images and runs every suite
   (`docs/OPEN_QUESTIONS.md` item 6).
@@ -362,8 +362,8 @@ the evidence above:
   carrier, and the DMI slot records the location codes are derived from
   (QEMU's machine has none, so every code seen was of the PCI address
   form; the slot form is unit-tested only).
-- `BLOCKED(phase1)`: time zones are fixed offsets, not named zones
-  (`docs/OPEN_QUESTIONS.md` item 9).
+- `BLOCKED(phase1)`: named time zones wait for the Service Tools console of Phase 2; fixed offsets until then (`docs/OPEN_QUESTIONS.md` item 9).
+- `BLOCKED(phase1)`: QS/400's `netlink` still carries its own route protocol number and table name; to change there, then move the pin (`docs/OPEN_QUESTIONS.md` item 13).
 - `BLOCKED(phase1)`: nothing writes the other slot, sets a pending slot
   or `BootNext`; the suite does that from the host side. That is the
   update phase.

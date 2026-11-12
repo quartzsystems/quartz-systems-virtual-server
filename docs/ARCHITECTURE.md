@@ -86,7 +86,8 @@ pending slot and the base services have all reported ready, it confirms:
 the record's default becomes that slot and `BootOrder` is rewritten
 through efivarfs to match. A pending slot that does not confirm was only
 ever `BootNext`, so the next IPL comes up on the old default; that IPL
-clears the pending field and posts an attention code. Writing the other
+clears the pending field and posts an attention code. A pending slot
+gets that one trial: the attempts left are 1 when it is set and 0 after. Writing the other
 slot is the update phase's.
 
 **The A/B record, version 2.** The payload is sixteen bytes
