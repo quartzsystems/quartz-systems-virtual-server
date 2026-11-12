@@ -1,0 +1,18 @@
+[package]
+name = "conformance"
+description = "QS/VS conformance harness: boots the images under QEMU with OVMF and checks the serial console"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+release = { path = "../../lic/release", version = "0.1.0" }
+refcode = { path = "../../lic/refcode", version = "0.1.0" }
+hostdisk = { path = "../../lic/hostdisk", version = "0.1.0" }
+diskimg.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true
