@@ -9,6 +9,11 @@ members = [
     "lic/release",
     "lic/refcode",
     "lic/hostdisk",
+    "lic/hostinv",
+    # Base: what every Quartz appliance needs, product-neutral. QS/MC pins
+    # these from this repository.
+    "base/appliance",
+    "base/state",
 ]
 
 [workspace.package]
@@ -25,6 +30,10 @@ buildkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = 
 vrm = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
 diskimg = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
 abrec = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
+ipc = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
+netlink = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
+dhcp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
+ntp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
 
 anyhow = "1.0.104"
 thiserror = "2.0.21"
@@ -34,7 +43,10 @@ clap = { version = "4.6.7", features = ["derive"] }
 hex = "0.4.3"
 uuid = "1.28.0"
 libc = "0.2.190"
-rustix = { version = "1.1.6", features = ["fs", "mount"] }
+rustix = { version = "1.1.6", features = ["fs", "mount", "event", "process", "system", "time", "pipe"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+toml = "1.1.8"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

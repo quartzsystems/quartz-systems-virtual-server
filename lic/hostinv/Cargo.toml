@@ -1,0 +1,14 @@
+[package]
+name = "hostinv"
+description = "QS/VS host inventory: processors, memory, disks, network interfaces and PCI devices from sysfs, procfs and DMI, each with a location code"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+state = { path = "../../base/state", version = "0.1.0" }
+appliance = { path = "../../base/appliance", version = "0.1.0" }
+
+[lints]
+workspace = true

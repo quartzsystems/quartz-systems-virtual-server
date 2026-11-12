@@ -1,0 +1,10 @@
+[package]
+name = "appliance"
+description = "What a Quartz appliance tells the base crates about itself: names, directories, how it posts events; civil time; the Ethernet links of sysfs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
