@@ -5,3 +5,5 @@
 //! What QS/VS adds to the images `buildkit` writes.
 
 pub mod disk;
+pub mod manifest;
+pub mod userland;

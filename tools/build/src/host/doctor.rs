@@ -105,11 +105,31 @@ fn headers(ctx: &Ctx) -> Row {
     }
 }
 
+fn neutral(ctx: &Ctx) -> Row {
+    let name = "base/ is product-neutral";
+    match super::neutral::check(&ctx.paths.repo, ctx.product.id) {
+        Ok((count, problems)) if problems.is_empty() => row(
+            name,
+            true,
+            format!("{count} crates name no product and depend on nothing of lic/"),
+            true,
+        ),
+        Ok((_, problems)) => row(name, false, problems.join("; "), true),
+        Err(e) => row(name, false, format!("{e:#}"), true),
+    }
+}
+
 /// QS/VS's rows. KVM and nested virtualization are required unless
 /// `QSVS_ALLOW_NO_KVM=1` says the host has neither.
 pub fn rows(ctx: &Ctx) -> Vec<Row> {
     let required = !std::env::var(ALLOW_NO_KVM_ENV).is_ok_and(|v| v == "1");
-    vec![kvm(required), nested(required), ovmf(), headers(ctx)]
+    vec![
+        kvm(required),
+        nested(required),
+        ovmf(),
+        headers(ctx),
+        neutral(ctx),
+    ]
 }
 
 #[cfg(test)]

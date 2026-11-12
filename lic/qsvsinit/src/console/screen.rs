@@ -7,20 +7,18 @@
 //! control socket's status says and nothing else.
 
 use release::fact as key;
+use release::screen as text;
 use supervise::control::HostStatus;
 
-/// The line before a status screen on the serial port.
-pub const BEGIN: &str = "---- status ----";
-/// The line after it.
-pub const END: &str = "---- end ----";
+pub use release::screen::{BEGIN, END};
 
 /// The rows of the screen: the label and the fact it shows.
 const ROWS: [(&str, &str); 5] = [
-    ("Slot", key::SLOT),
-    ("Host name", key::HOST),
-    ("Management", key::MANAGEMENT),
-    ("Date and time", key::DATE),
-    ("Reference", key::REFERENCE),
+    (text::SLOT, key::SLOT),
+    (text::HOST, key::HOST),
+    (text::MANAGEMENT, key::MANAGEMENT),
+    (text::DATE, key::DATE),
+    (text::REFERENCE, key::REFERENCE),
 ];
 
 /// The screen for `status`, under `banner`.
@@ -33,7 +31,7 @@ pub fn lines(banner: &str, status: &HostStatus) -> Vec<String> {
         {
             value = format!("{value} ({record})");
         }
-        out.push(format!("{label:<14} {value}"));
+        out.push(text::row(label, &value));
     }
     for service in &status.services {
         let failures = match service.failures {
@@ -41,9 +39,9 @@ pub fn lines(banner: &str, status: &HostStatus) -> Vec<String> {
             1 => ", 1 failure".to_string(),
             n => format!(", {n} failures"),
         };
-        out.push(format!(
-            "{:<14} {:<10} {}{failures}",
-            "Service", service.name, service.state
+        out.push(text::service(
+            &service.name,
+            &format!("{}{failures}", service.state),
         ));
     }
     out

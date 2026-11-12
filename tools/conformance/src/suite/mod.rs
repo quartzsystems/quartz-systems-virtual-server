@@ -2,12 +2,17 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The Phase 0 suite: boot, and check what PID 1 says on the serial
-//! console. The disk suite boots slot A and then slot B (by a firmware
-//! boot entry); the ISO suite boots the installation media.
+//! The suites. Phase 0's are unchanged: `ipl` boots the release disk
+//! image from slot A and then from slot B (by a firmware boot entry),
+//! and the ISO suite boots the installation media; each checks what
+//! PID 1 says on the serial console. Phase 1's ten ([`base`]) boot the
+//! test image and check the serial console and the control socket's
+//! status.
 
+pub mod base;
 mod slotb;
 
+use std::cell::RefCell;
 use std::env;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -30,10 +35,13 @@ pub const ALLOW_NO_KVM_ENV: &str = "QSVS_ALLOW_NO_KVM";
 const KVM_USABLE: &str = "KVM usable";
 const KVM_NOT_AVAILABLE: &str = "KVM not available";
 
+/// Phase 0's disk suite.
+pub const IPL: &str = "ipl";
+
 /// What to boot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Media {
-    /// The disk image: slot A, then slot B.
+    /// The disk images: Phase 0's suite, then the base system's.
     Disk,
     /// The installation ISO, as a CD-ROM.
     Iso,
@@ -73,14 +81,26 @@ pub struct Report {
     pub warning: Option<String>,
 }
 
-/// The suite for one media.
+/// The built images.
+#[derive(Debug, Clone, Default)]
+pub struct Images {
+    /// The release disk image.
+    pub release_disk: Option<PathBuf>,
+    /// The release installation ISO.
+    pub iso: Option<PathBuf>,
+    /// The test disk image: the release image with the test hooks.
+    pub test_disk: Option<PathBuf>,
+}
+
+/// The suites over the built images.
 pub struct Suite {
-    media: Media,
-    image: PathBuf,
+    images: Images,
     work: PathBuf,
     base: Launch,
     timeout: Duration,
     allow_no_kvm: bool,
+    /// The serial logs of the suite that is running.
+    log: RefCell<String>,
 }
 
 /// The line the banner starts with: the product and this repository's
@@ -89,31 +109,29 @@ pub fn banner_prefix() -> String {
     format!("{} {} ", release::NAME, release::RELEASE)
 }
 
+/// Every disk suite, in the order `test` runs them.
+pub fn names() -> Vec<&'static str> {
+    let mut names = vec![IPL];
+    names.extend(base::SUITES.iter().map(|s| s.0));
+    names
+}
+
+fn image<'a>(path: Option<&'a PathBuf>, what: &'static str) -> Result<&'a Path, HarnessError> {
+    path.filter(|p| p.is_file())
+        .map(PathBuf::as_path)
+        .ok_or(HarnessError::ImageMissing { what })
+}
+
 impl Suite {
-    /// A suite over `disk` or `iso`, whichever `media` asks for, with
-    /// scratch files under `work`.
-    pub fn new(
-        disk: Option<&Path>,
-        iso: Option<&Path>,
-        media: Media,
-        work: PathBuf,
-    ) -> Result<Self, HarnessError> {
-        let (image, what) = match media {
-            Media::Disk => (disk, "disk image"),
-            Media::Iso => (iso, "ISO"),
-        };
-        let image = image
-            .filter(|p| p.is_file())
-            .ok_or(HarnessError::ImageMissing { what })?
-            .to_path_buf();
+    /// The suites over `images`, with scratch files under `work`.
+    pub fn new(images: Images, work: PathBuf) -> Result<Self, HarnessError> {
         std::fs::create_dir_all(&work)?;
         let timeout = env::var(TIMEOUT_ENV)
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(BOOT_SECS);
         Ok(Self {
-            media,
-            image,
+            images,
             work,
             base: Launch {
                 qemu: qemu::locate()?,
@@ -124,9 +142,17 @@ impl Suite {
                 cdrom: None,
                 memory_mb: 1024,
                 cpus: 2,
+                topology: None,
+                extra: Vec::new(),
+                snapshot: true,
+                nic: None,
+                hook: None,
+                monitor: None,
+                oem: Vec::new(),
             },
             timeout: Duration::from_secs(timeout),
             allow_no_kvm: env::var(ALLOW_NO_KVM_ENV).is_ok_and(|v| v == "1"),
+            log: RefCell::new(String::new()),
         })
     }
 
@@ -135,41 +161,103 @@ impl Suite {
         &self.base
     }
 
-    /// Run every step of the media's suite.
-    pub fn run_all(&self) -> Result<Vec<Report>, HarnessError> {
-        match self.media {
-            Media::Disk => {
-                let a = self.ipl(
-                    "IPL slot A",
-                    &Launch {
-                        disk: Some(self.image.clone()),
-                        ..self.base.clone()
-                    },
-                    "IPL slot A (qsvs.slot=A)",
-                    true,
-                )?;
-                let vars = slotb::vars(&self.image, &self.base.firmware, &self.work)?;
-                let b = self.ipl(
-                    "IPL slot B",
-                    &Launch {
-                        disk: Some(self.image.clone()),
-                        vars: Some(vars),
-                        ..self.base.clone()
-                    },
-                    "IPL slot B (qsvs.slot=B)",
-                    false,
-                )?;
-                Ok(vec![a, b])
-            }
-            Media::Iso => Ok(vec![self.ipl(
+    /// Run the suites of `media`: all of them, or the one named `only`.
+    /// `each` is told of every step as it passes.
+    pub fn run(
+        &self,
+        media: Media,
+        only: Option<&str>,
+        mut each: impl FnMut(&Report),
+    ) -> Result<Vec<Report>, HarnessError> {
+        let mut reports = Vec::new();
+        let mut done = |more: Vec<Report>| {
+            more.iter().for_each(&mut each);
+            reports.extend(more);
+        };
+        if media == Media::Iso {
+            let iso = image(self.images.iso.as_ref(), "ISO")?;
+            done(vec![self.ipl(
                 "IPL from media",
                 &Launch {
-                    cdrom: Some(self.image.clone()),
+                    cdrom: Some(iso.to_path_buf()),
                     ..self.base.clone()
                 },
                 "IPL from installation media (qsvs.install=1)",
                 true,
-            )?]),
+            )?]);
+            return Ok(reports);
+        }
+        if let Some(name) = only
+            && !names().contains(&name)
+        {
+            return Err(HarnessError::Setup {
+                step: "test",
+                reason: format!("no suite `{name}`; the suites are {}", names().join(", ")),
+            });
+        }
+        let wanted = |name: &str| only.is_none_or(|o| o == name);
+        if wanted(IPL) {
+            done(self.phase0()?);
+        }
+        for (name, suite) in base::SUITES {
+            if wanted(name) {
+                done(vec![self.base_suite(name, *suite)?]);
+            }
+        }
+        Ok(reports)
+    }
+
+    /// Phase 0's disk suite, on the release image: slot A, then slot B.
+    fn phase0(&self) -> Result<Vec<Report>, HarnessError> {
+        let disk = image(self.images.release_disk.as_ref(), "disk image")?;
+        let a = self.ipl(
+            "IPL slot A",
+            &Launch {
+                disk: Some(disk.to_path_buf()),
+                ..self.base.clone()
+            },
+            "IPL slot A (qsvs.slot=A)",
+            true,
+        )?;
+        let vars = slotb::vars(disk, &self.base.firmware, &self.work)?;
+        let b = self.ipl(
+            "IPL slot B",
+            &Launch {
+                disk: Some(disk.to_path_buf()),
+                vars: Some(vars),
+                ..self.base.clone()
+            },
+            "IPL slot B (qsvs.slot=B)",
+            false,
+        )?;
+        Ok(vec![a, b])
+    }
+
+    /// One of the base system's suites, on the test image.
+    fn base_suite(&self, name: &'static str, suite: base::SuiteFn) -> Result<Report, HarnessError> {
+        let disk = image(self.images.test_disk.as_ref(), "test disk image")?;
+        self.log.borrow_mut().clear();
+        let started = Instant::now();
+        let run = base::Run {
+            name,
+            disk,
+            work: &self.work,
+            base: &self.base,
+            timeout: self.timeout,
+            log: &self.log,
+        };
+        match suite(&run) {
+            Ok(detail) => Ok(Report {
+                name,
+                elapsed: started.elapsed(),
+                detail,
+                warning: None,
+            }),
+            Err(reason) => Err(HarnessError::Failed {
+                step: name,
+                reason,
+                log: self.log.take(),
+            }),
         }
     }
 
@@ -265,5 +353,25 @@ mod tests {
     #[test]
     fn the_banner_prefix_is_this_release() {
         assert!(release::banner().starts_with(&banner_prefix()));
+    }
+
+    #[test]
+    fn there_are_phase_0_s_suite_and_the_ten_of_the_base_system() {
+        assert_eq!(
+            names(),
+            [
+                "ipl",
+                "status",
+                "dhcp",
+                "static-vlan",
+                "time",
+                "inventory",
+                "supervision",
+                "power-pull",
+                "slot-confirm",
+                "shutdown",
+                "sockets"
+            ]
+        );
     }
 }

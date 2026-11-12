@@ -2,23 +2,39 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! `build test`: run the conformance suite against the built images.
+//! `build test`: run the conformance suites against the built images.
+//! Phase 0's suites boot the release image; the base system's boot the
+//! test image, which has the hooks they need.
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use buildkit::Ctx;
 use buildkit::host::paths;
+use conformance::suite::Images;
 use tracing::{error, info, warn};
 
-/// Run the suite for `media`. The serial log is printed on failure.
-pub fn test(ctx: &Ctx, media: conformance::Media) -> Result<()> {
-    let disk = paths::read_pointer(&ctx.paths.disk_pointer()).ok();
-    let iso = paths::read_pointer(&ctx.paths.iso_pointer()).ok();
-    let suite = conformance::Suite::new(
-        disk.as_deref(),
-        iso.as_deref(),
-        media,
-        ctx.paths.target.join("conformance"),
-    )?;
+/// Run the suites of `media`, or the one named `only`. The serial log
+/// is printed on failure.
+pub fn test(
+    release: &Ctx,
+    test: &Ctx,
+    media: conformance::Media,
+    only: Option<&str>,
+) -> Result<()> {
+    if only == Some("list") {
+        for name in conformance::suite::names() {
+            println!("{name}");
+        }
+        return Ok(());
+    }
+    let images = Images {
+        release_disk: paths::read_pointer(&release.paths.disk_pointer()).ok(),
+        iso: paths::read_pointer(&release.paths.iso_pointer()).ok(),
+        test_disk: paths::read_pointer(&test.paths.disk_pointer()).ok(),
+    };
+    if media == conformance::Media::Disk && images.test_disk.is_none() && only != Some("ipl") {
+        bail!("the test image is not built; run `all --test-image` first");
+    }
+    let suite = conformance::Suite::new(images, release.paths.target.join("conformance"))?;
     let l = suite.launch();
     info!(
         "test: {} with {} ({})",
@@ -26,19 +42,19 @@ pub fn test(ctx: &Ctx, media: conformance::Media) -> Result<()> {
         l.firmware.display(),
         if l.kvm { "kvm, -cpu host" } else { "tcg" }
     );
-    match suite.run_all() {
+    let passed = |r: &conformance::Report| {
+        info!(
+            "test: PASS {:<14} {:6.1}s  {}",
+            r.name,
+            r.elapsed.as_secs_f64(),
+            r.detail
+        );
+        if let Some(w) = &r.warning {
+            warn!("test: {}: {w}", r.name);
+        }
+    };
+    match suite.run(media, only, passed) {
         Ok(reports) => {
-            for r in &reports {
-                info!(
-                    "test: PASS {:<16} {:5.1}s  {}",
-                    r.name,
-                    r.elapsed.as_secs_f64(),
-                    r.detail
-                );
-                if let Some(w) = &r.warning {
-                    warn!("test: {}: {w}", r.name);
-                }
-            }
             info!("test: PASS, {} step(s), media {media}", reports.len());
             Ok(())
         }

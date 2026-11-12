@@ -136,6 +136,7 @@ dependencies = [
  "hex",
  "hostdisk",
  "release",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -255,10 +256,19 @@ dependencies = [
 name = "conformance"
 version = "0.1.0"
 dependencies = [
+ "abrec",
+ "appliance",
  "diskimg",
+ "hex",
  "hostdisk",
+ "netlink",
+ "ntp",
+ "qsvshook",
  "refcode",
  "release",
+ "seed",
+ "state",
+ "supervise",
  "thiserror",
  "uuid",
 ]

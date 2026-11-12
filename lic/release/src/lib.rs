@@ -110,6 +110,37 @@ pub mod fact {
     pub const KVM: &str = "kvm";
 }
 
+/// The status screen's text: PID 1 draws it, the conformance harness
+/// reads it.
+pub mod screen {
+    /// The line before a status screen on the serial port.
+    pub const BEGIN: &str = "---- status ----";
+    /// The line after it.
+    pub const END: &str = "---- end ----";
+    /// The slot row's label.
+    pub const SLOT: &str = "Slot";
+    /// The host name row's label.
+    pub const HOST: &str = "Host name";
+    /// The management address row's label.
+    pub const MANAGEMENT: &str = "Management";
+    /// The date and time row's label.
+    pub const DATE: &str = "Date and time";
+    /// The reference code row's label.
+    pub const REFERENCE: &str = "Reference";
+    /// The label of a service's row.
+    pub const SERVICE: &str = "Service";
+
+    /// One row: the label in its column, then the value.
+    pub fn row(label: &str, value: &str) -> String {
+        format!("{label:<14} {value}")
+    }
+
+    /// A service's row: its name in its column, then its state.
+    pub fn service(name: &str, state: &str) -> String {
+        row(SERVICE, &format!("{name:<10} {state}"))
+    }
+}
+
 /// The banner for a release and a build ID: `QS/VS V1R0M0 a1b2c3d`.
 pub fn banner_of(release: Release, build_id: &str) -> String {
     format!("{NAME} {release} {build_id}")

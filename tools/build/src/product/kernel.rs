@@ -109,6 +109,15 @@ pub const REQUIRED_Y: &[&str] = &[
     "KEYBOARD_ATKBD",
     "HID",
     "USB_HID",
+    // The base system: the RTC, the power button, DMI, signalfd.
+    "RTC_CLASS",
+    "RTC_DRV_CMOS",
+    "RTC_INTF_SYSFS",
+    "RTC_INTF_DEV",
+    "ACPI_BUTTON",
+    "DMI",
+    "DMIID",
+    "SIGNALFD",
 ];
 
 /// Symbols QS/VS must not have `=y`, past the baseline.
@@ -127,6 +136,8 @@ pub const REQUIRED_N: &[&str] = &[
     "SOUND",
     "SND",
     "MEDIA_SUPPORT",
+    // PID 1 sets the clock from the RTC; the kernel does not.
+    "RTC_HCTOSYS",
 ];
 
 #[cfg(test)]
@@ -193,6 +204,34 @@ mod tests {
         "HW_RANDOM_VIRTIO",
     ];
 
+    /// What Phase 1 needs and its handoff names (docs/PHASE1.md has the
+    /// reason for each). `INPUT_EVDEV`, `VLAN_8021Q`, `XFS_FS`, `VFAT_FS`
+    /// and `EFIVAR_FS` were Phase 0's already.
+    const PHASE1: &[&str] = &[
+        "RTC_CLASS",
+        "RTC_DRV_CMOS",
+        "RTC_INTF_SYSFS",
+        "RTC_INTF_DEV",
+        "ACPI_BUTTON",
+        "INPUT_EVDEV",
+        "DMI",
+        "DMIID",
+        "SIGNALFD",
+        "VLAN_8021Q",
+        "XFS_FS",
+        "VFAT_FS",
+        "EFIVAR_FS",
+        "UNIX",
+    ];
+
+    #[test]
+    fn every_phase_1_symbol_is_checked() {
+        for sym in PHASE1 {
+            assert!(REQUIRED_Y.contains(sym), "{sym} is not in REQUIRED_Y");
+        }
+        assert!(REQUIRED_N.contains(&"RTC_HCTOSYS"));
+    }
+
     #[test]
     fn every_phase_0_symbol_is_checked() {
         for sym in PHASE0 {
@@ -222,7 +261,13 @@ mod tests {
             let set = text.lines().any(|l| l == format!("CONFIG_{sym}=y"));
             assert!(set || selected.contains(sym), "{sym} is not in {FRAGMENT}");
         }
-        for sym in ["SCSI_SCAN_ASYNC", "IKCONFIG", "NETFILTER", "EXT4_FS"] {
+        for sym in [
+            "SCSI_SCAN_ASYNC",
+            "IKCONFIG",
+            "NETFILTER",
+            "EXT4_FS",
+            "RTC_HCTOSYS",
+        ] {
             let unset = format!("# CONFIG_{sym} is not set");
             assert!(text.lines().any(|l| l == unset), "{sym}");
         }

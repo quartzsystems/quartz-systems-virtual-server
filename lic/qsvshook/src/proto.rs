@@ -16,7 +16,8 @@ pub const PORT: &str = "/dev/ttyS1";
 
 /// The commands.
 pub mod command {
-    /// `ping`: answers `pong`.
+    /// `ping <text>`: answers `pong <text>`, so an answer is known to
+    /// be to this ping and not to an earlier one.
     pub const PING: &str = "ping";
     /// `status`: the control socket's status, a `fact` or `service` a line.
     pub const STATUS: &str = "status";

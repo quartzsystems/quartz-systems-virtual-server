@@ -1,6 +1,6 @@
 [package]
 name = "conformance"
-description = "QS/VS conformance harness: boots the images under QEMU with OVMF and checks the serial console"
+description = "QS/VS conformance harness: boots the images under QEMU with OVMF and checks the serial console and the control socket's status"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,16 @@ publish.workspace = true
 release = { path = "../../lic/release", version = "0.1.0" }
 refcode = { path = "../../lic/refcode", version = "0.1.0" }
 hostdisk = { path = "../../lic/hostdisk", version = "0.1.0" }
+qsvshook = { path = "../../lic/qsvshook", version = "0.1.0" }
+appliance = { path = "../../base/appliance", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+seed = { path = "../../base/seed", version = "0.1.0" }
 diskimg.workspace = true
+abrec.workspace = true
+netlink.workspace = true
+ntp.workspace = true
+hex.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 

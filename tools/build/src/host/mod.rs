@@ -3,8 +3,9 @@
 // root directory of this project.
 
 //! Host-side steps that are QS/VS's own: the doctor rows, the license
-//! header check and the QEMU suite.
+//! header check, the neutrality check of `base/` and the QEMU suites.
 
 pub mod doctor;
 pub mod header;
+pub mod neutral;
 pub mod testrun;

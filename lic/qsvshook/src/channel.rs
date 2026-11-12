@@ -133,7 +133,7 @@ fn kmsg(text: &str) -> Vec<String> {
 fn answer(line: &str) -> Vec<String> {
     let (name, rest) = line.split_once(' ').unwrap_or((line, ""));
     match name {
-        command::PING => vec!["pong".to_string()],
+        command::PING => vec![format!("pong {rest}").trim_end().to_string()],
         command::STATUS => status(),
         command::KILL => kill(rest),
         command::CAT => cat(rest),

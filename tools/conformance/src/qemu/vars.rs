@@ -166,9 +166,106 @@ pub fn variables(store: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
     Ok(out)
 }
 
+/// The global variables of `store` as the firmware left them: each
+/// name's valid copy. A variable the firmware changed or deleted is
+/// still in the store, marked; those copies are passed over.
+pub fn live(store: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let (start, end) = area(store)?;
+    let stop = free(store, start, end)?;
+    let mut out: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut at = start;
+    while at < stop {
+        let name_len = u32_at(store, at + 36).ok_or("short variable header")?;
+        let data_len = u32_at(store, at + 40).ok_or("short variable header")?;
+        let name_at = at + VAR_HEADER;
+        let data_at = name_at + name_len;
+        let next = align4(data_at + data_len);
+        let global = store.get(at + 44..at + 60) == Some(&GLOBAL.to_bytes_le()[..]);
+        if store.get(at + 2) == Some(&VAR_ADDED) && global && next <= stop {
+            let units: Vec<u16> = store[name_at..data_at]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| u16::from_le_bytes(*c))
+                .take_while(|u| *u != 0)
+                .collect();
+            let name = String::from_utf16_lossy(&units);
+            out.retain(|(n, _)| *n != name);
+            out.push((name, store[data_at..data_at + data_len].to_vec()));
+        }
+        at = next;
+    }
+    Ok(out)
+}
+
+/// The boot numbers in the live variable `name` (`BootOrder`,
+/// `BootNext`); `None` when the firmware has no such variable.
+pub fn numbers(store: &[u8], name: &str) -> Result<Option<Vec<u16>>, String> {
+    Ok(live(store)?.into_iter().find(|(n, _)| n == name).map(|v| {
+        v.1.as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect()
+    }))
+}
+
+/// `store` as an installed host's: `Boot0000` for slot A's load option
+/// and `Boot0001` for slot B's, `BootOrder` as given and, for a slot
+/// on trial, `BootNext`.
+pub fn with_slots(
+    store: &[u8],
+    slot_a: &[u8],
+    slot_b: &[u8],
+    order: &[u16],
+    next: Option<u16>,
+) -> Result<Vec<u8>, String> {
+    let order: Vec<u8> = order.iter().flat_map(|n| n.to_le_bytes()).collect();
+    let next = next.map(u16::to_le_bytes);
+    let mut vars: Vec<(&str, &[u8])> = vec![
+        ("Boot0000", slot_a),
+        ("Boot0001", slot_b),
+        ("BootOrder", &order),
+    ];
+    if let Some(next) = &next {
+        vars.push(("BootNext", next));
+    }
+    with_variables(store, &vars)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_live_variables_are_the_valid_copies() {
+        let first = with_slots(&empty(), b"a", b"b", &[0], Some(1)).unwrap();
+        assert_eq!(numbers(&first, "BootOrder"), Ok(Some(vec![0])));
+        assert_eq!(numbers(&first, "BootNext"), Ok(Some(vec![1])));
+        // The firmware deletes BootNext and the host writes a new
+        // BootOrder: the old copies stay in the store, marked.
+        let mut after = first.clone();
+        let (start, end) = area(&after).unwrap();
+        let mut at = start;
+        while at < free(&after, start, end).unwrap() {
+            let name = u32_at(&after, at + 36).unwrap();
+            let data = u32_at(&after, at + 40).unwrap();
+            let is = |n: &str| {
+                let units: Vec<u8> = n.encode_utf16().flat_map(u16::to_le_bytes).collect();
+                after[at + VAR_HEADER..].starts_with(&units)
+            };
+            if is("BootOrder") || is("BootNext") {
+                after[at + 2] = 0x3C;
+            }
+            at = align4(at + VAR_HEADER + name + data);
+        }
+        let order: Vec<u8> = [1u16, 0].iter().flat_map(|n| n.to_le_bytes()).collect();
+        let after = with_variables(&after, &[("BootOrder", &order)]).unwrap();
+        assert_eq!(numbers(&after, "BootOrder"), Ok(Some(vec![1, 0])));
+        assert_eq!(numbers(&after, "BootNext"), Ok(None));
+        let names: Vec<String> = live(&after).unwrap().into_iter().map(|v| v.0).collect();
+        assert_eq!(names, ["Boot0000", "Boot0001", "BootOrder"]);
+    }
 
     /// An empty store as OVMF ships it: a 0x48-byte volume header, the
     /// store header, erased flash.
