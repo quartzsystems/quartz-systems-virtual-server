@@ -22,7 +22,8 @@ pub struct System {
     /// The serial number: DMI's, or the one kept in `host.toml`.
     #[serde(default)]
     pub serial: String,
-    /// Where the serial number came from: `dmi` or `derived`.
+    /// Where the serial number came from: `dmi`, `derived` (from the
+    /// first NIC, kept in `host.toml`) or `none`.
     #[serde(default)]
     pub serial_source: String,
 }
@@ -180,7 +181,7 @@ mod tests {
                 bytes: 1 << 30,
                 rotational: false,
                 transport: "virtio".into(),
-                location: "P0-B00-D03-F0".into(),
+                location: "P0000-B00-D03-F0".into(),
             }],
             interfaces: vec![Interface {
                 name: "eth0".into(),
@@ -188,7 +189,7 @@ mod tests {
                 driver: "virtio_net".into(),
                 speed_mbps: None,
                 carrier: true,
-                location: "P0-B00-D02-F0".into(),
+                location: "P0000-B00-D02-F0-E0".into(),
             }],
             pci: vec![Pci {
                 address: "0000:00:02.0".into(),
@@ -196,7 +197,7 @@ mod tests {
                 device: "1000".into(),
                 class: "020000".into(),
                 driver: Some("virtio-pci".into()),
-                location: "P0-B00-D02-F0".into(),
+                location: "P0000-B00-D02-F0".into(),
             }],
         };
         let text = render(&inv).unwrap();

@@ -1,0 +1,23 @@
+[package]
+name = "netd"
+description = "Appliance management network and time: one interface by DHCP or a static address, an optional VLAN, carrier changes, reload, and the clock kept in step with NTP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+appliance = { path = "../appliance", version = "0.1.0" }
+state = { path = "../state", version = "0.1.0" }
+supervise = { path = "../supervise", version = "0.1.0" }
+ipc.workspace = true
+dhcp.workspace = true
+ntp.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+netlink.workspace = true
+rustix.workspace = true
+libc.workspace = true
+
+[lints]
+workspace = true

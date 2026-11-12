@@ -37,23 +37,38 @@ impl Client {
     }
 }
 
+/// One request and its answer, over a connection of their own to the
+/// socket at `path`. Other services' sockets are served the same way.
+pub fn exchange(path: &Path, request: &[u8]) -> Result<Vec<u8>, WireError> {
+    let mut stream = UnixStream::connect(path)?;
+    stream.set_read_timeout(Some(WAIT))?;
+    stream.set_write_timeout(Some(WAIT))?;
+    write_frame(&mut stream, request)?;
+    read_frame_max(&mut stream, MAX_FRAME)
+}
+
+/// Read the one request of an accepted connection and send back what
+/// `answer` makes of it.
+pub fn answer(
+    mut stream: UnixStream,
+    answer: impl FnOnce(&[u8]) -> Result<Vec<u8>, WireError>,
+) -> Result<(), WireError> {
+    stream.set_nonblocking(false)?;
+    stream.set_read_timeout(Some(WAIT))?;
+    stream.set_write_timeout(Some(WAIT))?;
+    let request = read_frame_max(&mut stream, MAX_FRAME)?;
+    write_frame(&mut stream, &answer(&request)?)
+}
+
 impl Calls for Client {
     fn call(&mut self, req: &Request) -> Result<Vec<u8>, WireError> {
-        let mut stream = UnixStream::connect(&self.path)?;
-        stream.set_read_timeout(Some(WAIT))?;
-        stream.set_write_timeout(Some(WAIT))?;
-        write_frame(&mut stream, &ipc::encode(req))?;
-        read_frame_max(&mut stream, MAX_FRAME)
+        exchange(&self.path, &ipc::encode(req))
     }
 }
 
 /// Serve the one request of an accepted connection.
-pub fn serve(mut stream: UnixStream, service: &mut impl Control) -> Result<(), WireError> {
-    stream.set_nonblocking(false)?;
-    stream.set_read_timeout(Some(WAIT))?;
-    stream.set_write_timeout(Some(WAIT))?;
-    let request: Request = decode(&read_frame_max(&mut stream, MAX_FRAME)?)?;
-    write_frame(&mut stream, &dispatch(service, request))
+pub fn serve(stream: UnixStream, service: &mut impl Control) -> Result<(), WireError> {
+    answer(stream, |request| Ok(dispatch(service, decode(request)?)))
 }
 
 #[cfg(test)]

@@ -17,6 +17,7 @@ members = [
     "base/supervise",
     "base/logd",
     "base/seed",
+    "base/netd",
 ]
 
 [workspace.package]

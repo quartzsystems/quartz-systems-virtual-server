@@ -9,7 +9,7 @@
 mod socket;
 
 #[cfg(unix)]
-pub use socket::{Client, serve};
+pub use socket::{Client, answer, exchange, serve};
 
 /// One service, as status shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]

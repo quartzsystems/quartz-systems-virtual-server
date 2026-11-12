@@ -1,0 +1,66 @@
+// Copyright (C), 2026 Quartz Systems. Some rights reserved. This work is
+// licensed under the terms of the MIT license which can be found in the
+// root directory of this project.
+
+//! The network service's socket: one request and one answer per
+//! connection, each an `ipc` frame, as PID 1's control socket.
+
+#[cfg(unix)]
+use std::path::{Path, PathBuf};
+
+/// The management interface, as status shows it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NetStatus {
+    /// The interface, empty when there is none.
+    pub interface: String,
+    /// Whether it has carrier.
+    pub carrier: bool,
+    /// `address/prefix`, empty when it has none.
+    pub address: String,
+    /// The default gateway, empty when there is none.
+    pub gateway: String,
+    /// The status screen's management line.
+    pub line: String,
+}
+ipc::wire_struct!(NetStatus {
+    interface,
+    carrier,
+    address,
+    gateway,
+    line
+});
+
+ipc::rpc! {
+    request Request, service Net, client Calls, dispatch dispatch;
+    /// Read the state files again and apply what changed.
+    0 => fn reload / Reload () -> Result<(), String>;
+    /// The management interface.
+    1 => fn status / Status () -> NetStatus;
+}
+
+/// A client of the service's socket.
+#[cfg(unix)]
+#[derive(Clone, Debug)]
+pub struct Client {
+    path: PathBuf,
+}
+
+#[cfg(unix)]
+impl Client {
+    /// A client of the socket at `path`.
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    /// The socket's path.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+#[cfg(unix)]
+impl Calls for Client {
+    fn call(&mut self, req: &Request) -> Result<Vec<u8>, ipc::WireError> {
+        supervise::control::exchange(&self.path, &ipc::encode(req))
+    }
+}
