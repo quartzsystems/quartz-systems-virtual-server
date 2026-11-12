@@ -1,0 +1,21 @@
+[package]
+name = "qsvsinit"
+description = "QS/VS PID 1: mounts, the banner, the host reference codes, the KVM probe, reaping"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+release = { path = "../release", version = "0.1.0" }
+refcode = { path = "../refcode", version = "0.1.0" }
+
+# PID 1 is a Linux program; other hosts build a stub so the workspace checks.
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix.workspace = true
+libc.workspace = true
+kvm-ioctls = "0.25.1"
+kvm-bindings = "0.14.2"
+
+[lints]
+workspace = true
