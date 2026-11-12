@@ -43,7 +43,10 @@ from its caller; none names QS/VS or depends on `lic/`.
   socket's protocol over QS/400's `ipc` (status, power off, restart,
   and a service's `post` and `note`); the readiness signal (a service
   writes one byte to a pipe it inherits as its standard input, so no
-  descriptor number crosses `exec`); signals read from a descriptor.
+  descriptor number crosses `exec`); signals read from a descriptor. A
+  service is started with no signal blocked: a child inherits its
+  parent's mask, and PID 1 blocks the signals it reads from its
+  descriptor, so without that `SIGTERM` could not end a service.
 - `base/logd`: the log service. One NDJSON system log,
   `<data>/log/system.ndjson`, rotated at 4 MiB with all its files held
   under 64 MiB; each record has the time, the boot ID, the source, the
@@ -54,7 +57,9 @@ from its caller; none names QS/VS or depends on `lic/`.
   client queues them until the service takes them, so what PID 1 said
   before `/data` was mounted and the service was up arrives first and
   in order. Lines that cannot be written are held in memory and written
-  when they can be.
+  when they can be. The records that arrive together are brought to the
+  disk with one sync, at once when a code or an error is among them. On
+  `SIGTERM` the service writes what its socket still holds and ends.
 - `base/netd`: the management interface and time, over QS/400's
   `netlink`, `dhcp` and `ntp`. Link up, an optional 802.1Q
   sub-interface, DHCPv4 with renewal or a static address, the default
@@ -87,9 +92,11 @@ from its caller; none names QS/VS or depends on `lic/`.
   the record, the host name, the management address or the reason
   there is none, the date and time, the current reference code and a
   line a service. It is a placeholder for the Service Tools console.
-- The orderly shutdown: `D2001000`, the services ended in reverse order
-  (5 s each, then killed), sync, `/data` unmounted, `D2001090` or
-  `D2001091`, then power off or restart. It is started by the control
+- The orderly shutdown: `D2001000`, what PID 1 has queued for the log
+  handed over, the services ended in reverse order (`SIGTERM`; one that
+  has not ended after 5 s is killed, and the console says so), sync,
+  `/data` unmounted, `D2001090` or `D2001091`, then power off or
+  restart. The log service is the last to end. It is started by the control
   socket, by `SIGTERM` to PID 1, by the ACPI power button, and by
   Ctrl-Alt-Del (a restart; `docs/OPEN_QUESTIONS.md` item 15).
 - The slot rule (`lic/qsvsinit/src/slot/`, `docs/ARCHITECTURE.md`):
@@ -114,7 +121,10 @@ from its caller; none names QS/VS or depends on `lic/`.
   location code (`docs/LOCATION.md`, **NEEDS-CODY**). The system serial
   number is DMI's when it has a real one; otherwise it is derived once
   from the first NIC's MAC (`M` and the twelve hex digits) and kept in
-  `host.toml`.
+  `host.toml`. A link has no carrier or speed until it is up, which is
+  the network service's doing after the IPL has taken the inventory, so
+  PID 1 reads and writes the inventory again whenever the management
+  line changes.
 - `lic/qsvshook`: the test hooks. In a test image only.
 
 ### The two images and the test hooks
@@ -127,7 +137,7 @@ The hooks are:
 
 | Hook | Where | Switched on |
 |---|---|---|
-| the channel: the harness's way to the control socket's status and to files of the running host, on the second serial port | `qsvshook channel`, a service of the test image's table | always, in a test image |
+| the channel: the harness's way to the control socket's status and to files of the running host, on the second serial port. It can also kill a service, send PID 1 `SIGTERM`, write a file and ask `netd` to reload | `qsvshook channel`, a service of the test image's table | always, in a test image |
 | a service that fails on demand | `qsvshook flaky`, a service of the test image's table | `qsvs.hook=flaky-fails` |
 | the state churn: `host.toml` and `network.toml` written over and over | a thread of the channel | `qsvs.hook=churn` |
 | a slot that refuses to confirm | PID 1, under `cfg(test_hooks)` | `qsvs.hook=refuse-confirm` |
@@ -166,9 +176,10 @@ check now covers 119 symbols):
 | `DMI`, `DMIID` | the inventory: `/sys/class/dmi/id` and the raw SMBIOS table (slot designations, the system serial) |
 | `SIGNALFD` | PID 1 and the log service take their signals from a descriptor |
 
-All of these but the `RTC_HCTOSYS` line were already `=y` through
-`x86_64_defconfig`; naming them makes the build fail if a kernel bump
-drops one. Nothing `netd` or the xfs mount needed was missing:
+Every one of these already had this value in Phase 0's `.config`,
+through `x86_64_defconfig` and what it selects, so the kernel is
+configured as it was; naming them makes the build fail if a kernel bump
+changes one. Nothing `netd` or the xfs mount needed was missing:
 `VLAN_8021Q`, `XFS_FS`, `VFAT_FS` (the seed volume), `EFIVAR_FS` and
 `UNIX` were in Phase 0's fragment.
 
@@ -213,9 +224,166 @@ of the base system. Each can run alone with `--suite`. On WSL set both
 | `dhcp` | on QEMU's user network, `10.0.2.15/24` and gateway `10.0.2.2` on the status screen and in the status; the name server in `/etc/resolv.conf` |
 | `static-vlan` | a seed with a static address and VLAN 100: the address is on `eth0.100`, which exists. Then `network.toml` is changed to DHCP and `netd` told to reload: the address changes and `eth0.100` goes, in the same process |
 | `time` | an SNTP responder in the harness, three days ahead, moves the guest's clock |
-| `inventory` | QEMU with 2 sockets of 2 cores, 2048 MiB, two disks with serials and one NIC with a fixed MAC: `inventory.toml` matches |
+| `inventory` | QEMU with 2 sockets of 2 cores, 2048 MiB, two disks with serials and one NIC with a fixed MAC: `inventory.toml` matches, the NIC's carrier included once it has its address |
 | `supervision` | `netd` killed through the channel is started again and ready; with `flaky-fails`, `flaky` is stopped after five failures with `A2001080` and the host runs on |
 | `power-pull` | with the churn running, QEMU is killed at 50 random moments; after each the host IPLs and `host.toml`, `network.toml` and `inventory.toml` parse and are a complete old or new version |
 | `slot-confirm` | slot B booted as pending confirms: default B in the record on the disk and `BootOrder` 0001,0000 in the firmware's store. With `refuse-confirm` it does not, and the next IPL is on slot A with `A2001035` |
-| `shutdown` | QEMU's power button: `D2001000`, `D2001090`, QEMU ends within 30 s; the next mount of `/data` needs no xfs log recovery; the history has the shutdown |
+| `shutdown` | QEMU's power button: `D2001000`, `D2001090`, QEMU ends within 30 s and no service had to be killed; the next mount of `/data` needs no xfs log recovery; the history has the shutdown. Then the other triggers: a restart through the control socket (`D2001091`) and `SIGTERM` to PID 1; and the logs hold a kernel log for each of the three boots |
 | `sockets` | no TCP socket listens; no TCP or UDP socket is bound off loopback but the DHCP client's |
+
+## Acceptance evidence
+
+Measured on 2026-11-12 in WSL Ubuntu (kernel 6.18.33, 12 threads, Intel,
+`kvm_intel` nested = Y), Rust 1.98.0, Ubuntu clang 21.1.8, QEMU 10.2.1,
+cargo-deny 0.20.2, in a fresh `git clone` of this repository at commit
+`f41a1df` on ext4. One script ran everything below in order
+(two release builds, the test image, then the checks and the suites).
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Suites 1 to 10 pass under `build test` | pass: `test` ran 12 steps in 4 m 27 s, Phase 0's two and the ten below |
+| 2 | Two clean builds of the release image are byte-identical; test hooks are absent from it | pass: 13 files with the same SHA-256 in both builds (below); the hooks' marker, the `qsvshook` name and the `qsvs.hook=` switch occur nowhere in the release initramfs |
+| 3 | `build deny` and `build doctor` pass, including the license-header check | pass: `cargo deny check`, then 176 crates compiled for the host and for musl with no `links` key and no C build helper; `doctor` all rows ok, 129 `.rs` files start with the header |
+| 4 | The `base/` neutrality test passes | pass: `host::neutral::tests::base_is_product_neutral`, and the `doctor` row: 6 crates name no product and depend on nothing of `lic/` |
+| 5 | Every QS/400 crate, including any networking crate reused, is pinned at one commit | pass: eight `rev =` values in `Cargo.toml`, all `6d5532fa`; `deny.toml` allows that one git source |
+| 6 | Phase 0's suites still pass unchanged | pass: `IPL slot A`, `IPL slot B` and `IPL from media` on the release image, the same checks as in Phase 0 |
+
+Also clean: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings`; the same for the four image binaries on
+the musl target, and for PID 1 with `QSVS_TEST_HOOKS=1`; `cargo test
+--workspace` (216 tests); `build notices --check`.
+
+### The suites
+
+| Suite | Time | What was seen |
+|---|---|---|
+| `IPL slot A` (Phase 0) | 12.2 s | `REF C2001000` after 2.2 s, `QS/VS V1R0M0 phase1`, `IPL slot A (qsvs.slot=A)`, `KVM usable: VMX, API version 12, 1024 vCPUs at most`, two heartbeats |
+| `IPL slot B` (Phase 0) | 2.5 s | the same with `IPL slot B (qsvs.slot=B)`, by a firmware boot entry |
+| `IPL from media` (Phase 0) | 12.1 s | the same with `IPL from installation media (qsvs.install=1)` |
+| 1 `status` | 2.3 s | base ready 0.71 s after the kernel started, under KVM; four services ready (the two base services and the test image's two) |
+| 2 `dhcp` | 2.3 s | `10.0.2.15/24 on eth0, gateway 10.0.2.2`; name server `10.0.2.3` |
+| 3 `static-vlan` | 2.6 s | seeded: `192.0.2.10/24 on eth0.100, gateway 192.0.2.1`, `eth0.100` exists; reloaded: `10.0.2.15/24 on eth0`, `eth0.100` gone, the same `netd` process |
+| 4 `time` | 3.4 s | a responder 259 200 s ahead moved the guest's clock 259 202 s |
+| 5 `inventory` | 2.6 s | 2 sockets, 4 cores, 4 threads, VMX; 1962 MiB; disks `QSVSHD0` and `QSVSHD1`; `eth0 52:54:00:12:34:56` at `P0000-B00-D04-F0-E0`; 8 PCI devices; serial `M525400123456` (derived) |
+| 6 `supervision` | 30.3 s | `netd` killed (process 88) and ready again (process 94); `flaky` stopped after 5 failures with `REF A2001080 Service stopped: flaky`; the host runs on |
+| 7 `power-pull` | 183.5 s | 50 power cuts, 51 IPLs, every state file whole each time; `host.toml` went from generation 0 to 6655 |
+| 8 `slot-confirm` | 13.0 s | `REF C2001095 Slot confirmed: slot B is the default; BootOrder 0001,0000`, default B and V1R0M0 in the record on the disk; refused: the next IPL on slot A with `REF A2001035 Pending slot not confirmed: slot B; this IPL is on slot A` |
+| 9 `shutdown` | 9.7 s | `REF D2001000 Host shutdown started: power off, by the power button`, `REF D2001090`, powered off 0.1 s after the button; the next mount clean; 21 codes in the history; then a restart by the control socket and a power off by `SIGTERM` |
+| 10 `sockets` | 2.3 s | no TCP socket at all; one UDP socket, the DHCP client's on port 68 |
+
+### Seen by hand
+
+Four paths the suites do not reach were booted once each under QEMU
+with the test image, and the serial console read:
+
+- `/data` that cannot be mounted (the partition's first MiB zeroed):
+  `REF A2001040 Data file system not mounted: /dev/vda3: Invalid
+  argument (os error 22); state is in memory only`, then the IPL goes on
+  to `REF C2001080 Services started`.
+- A seed volume whose `seed.toml` has `vlan = 0`: `REF A2001060 Seed
+  not valid: seed.toml: [network]: 0 is not a VLAN ID (1 to 4094)`, and
+  the host comes up on its defaults.
+- No NIC: `REF A2002005 No management interface: no Ethernet link with
+  carrier`, 30 s after the network service started.
+- The NIC's link taken away and given back (`set_link` in QEMU's
+  monitor): `Management none: no carrier on eth0`, `REF A2002010 No
+  carrier on the management interface: eth0` after 30 s, then on its
+  return `REF C2002010` and `REF C2002020 Management address acquired`
+  again, with `netd` not restarted.
+
+### Reproducibility
+
+Two builds, each from an empty target directory (nothing kept, the
+kernel tarball fetched again), in the same checkout, with:
+
+```
+QSVS_BUILD_ID=phase1 QSVS_SIGNING_KEY=<the same key file> cargo run -p build -- all
+```
+
+6 m 59 s and 7 m 47 s. Every file below had the same SHA-256 in both
+builds (`diff` of the two lists is empty). What the hashes depend on
+besides the sources is as in Phase 0: the signing key, the checkout
+path, and the commit (in `manifest.json` alone).
+
+```
+d543ac34777c900627760cc82599020e8fed461b775f29d448b2b279eef1100f  images/initramfs.cpio                  (2498500 bytes)
+d543ac34777c900627760cc82599020e8fed461b775f29d448b2b279eef1100f  images/initramfs-media.cpio            (2498500 bytes)
+919b63b54ee74f4921124799a4398c1e9880d912753cebf3a0d48e787a297f97  images/qsvs-V1R0M0-a-919b63b54ee7.efi  (12841984 bytes)
+a77cd9dcae215326af4420478fa95b0f735e13b95340e8ddd0e7eddb58bed804  images/qsvs-V1R0M0-b-a77cd9dcae21.efi  (12841984 bytes)
+574d5ff81d287c4c04d0c54e86fbbb0bd13c6f743d3b5fdfb818b28d41404233  images/qsvs-V1R0M0-d-574d5ff81d28.efi  (12841984 bytes)
+f03fe557f213a744730a1c439b783de207a8655f8e88d7cabb04557c2a14aacd  images/qsvs-V1R0M0-919b63b54ee7.img    (1073741824 bytes)
+5c9f9c389e001470d663cfc4ed1f4791d748e07984dc37c33f78cbf2877cfa26  images/QSVS-V1R0M0-574d5ff81d28.iso    (45430784 bytes)
+0add87e19e14f144dc8ecb367ec99abfbd9708c09a2c089e8edecb831c42eba0  x86_64-unknown-linux-musl/release/qsvsinit (1106904 bytes)
+5f09dd00e55707e9c987079dce0dca86ae0a9e034a4f481c3deb4573be80f6c4  x86_64-unknown-linux-musl/release/qsvslogd (445528 bytes)
+2fd089cfbae2db822ccede9dd8a86fc48d9ce34d80c331dca310859a3281ebb2  x86_64-unknown-linux-musl/release/qsvsnetd (944232 bytes)
+a6a7eebcfea08b40d3f03cb8a2be2e60683e3f3c1e42e1940c1d53a4d2051150  kernel/build/.config
+537c38546ca69ea9eb2be714262bfa2147e7e0f8356e5f62a3b14f66ff99790f  images/manifest.json
+7c21d7b5bbaeea6c74eb799a60ea0c469fe9fec6de51fc3ddb3383ac88eec419  images/manifest.sig
+```
+
+`file` says of each of the three binaries: static-pie linked, stripped.
+
+The test image was then built in the same clone (6 m 49 s). Its
+manifest has `"product": "QS/VS (test image)"` and 12 artifacts,
+`qsvshook` among them; the release manifest has `"product": "QS/VS"`
+and 11, without it. The test image was not built twice and its
+reproducibility was not measured.
+
+## Found while testing
+
+Three defects the suites found in this phase's own code, fixed before
+the evidence above:
+
+- **Services could not be ended by `SIGTERM`.** A child inherits its
+  parent's signal mask, and PID 1 blocks the signals it reads from a
+  descriptor, so every service but the log service ran its 5 s grace
+  out and was killed: a power off took 15 s. Services are now started
+  with an empty mask (`supervise::signal::unblocked`, with a unit
+  test), PID 1 says on the console when it has to kill one, and the
+  shutdown suite fails on that line.
+- **The last records before a shutdown could be lost.** With the log
+  service behind (it synced twice a record at an IPL), PID 1's newest
+  records were still in its own queue when it stopped the service. PID 1
+  now hands its queue over before it stops anything, and the log
+  service syncs once for the records that arrive together.
+- **A virtio disk's model was its vendor ID** (`0x1af4`). It is now
+  `virtio-blk`.
+
+## Not done
+
+- **NEEDS-CODY: the location code format** is a proposal
+  (`docs/LOCATION.md`, `docs/OPEN_QUESTIONS.md` item 8).
+- **NEEDS-CODY: the QEMU job in CI** has still not run on GitHub:
+  nothing is pushed. It now builds both images and runs every suite
+  (`docs/OPEN_QUESTIONS.md` item 6).
+- **NEEDS-CODY: real hardware.** Everything above ran under QEMU. Not
+  exercised on a machine: the RTC write, the ACPI power button of real
+  firmware, efivarfs on real firmware, a NIC that takes seconds to get
+  carrier, and the DMI slot records the location codes are derived from
+  (QEMU's machine has none, so every code seen was of the PCI address
+  form; the slot form is unit-tested only).
+- `BLOCKED(phase1)`: time zones are fixed offsets, not named zones
+  (`docs/OPEN_QUESTIONS.md` item 9).
+- `BLOCKED(phase1)`: nothing writes the other slot, sets a pending slot
+  or `BootNext`; the suite does that from the host side. That is the
+  update phase.
+- Attention codes not seen under QEMU, only in unit tests or by reading
+  the code: `A2001030` (no valid A/B record), `A2001050` (no RTC),
+  `A2001070` (a state file refused), `A2001095` (`BootOrder` not
+  written) and `A2002020` (carrier but no address; the machine that
+  posts it is unit-tested).
+- Log rotation, the total cap and the per-boot kernel log's pruning are
+  unit-tested; no suite fills the disk far enough to see them on a host.
+- A DHCP lease is not kept across IPLs: each IPL starts with a
+  `DISCOVER`. Within an IPL the client goes on from the lease it had
+  when carrier returns.
+- IPv6 is link-local only, as the handoff asks.
+- The host tools no longer compile on Windows: the conformance harness
+  uses Unix sockets. The pipeline needs Linux in any case, and Phase 0
+  had not tried Windows either.
+- Reproducibility across checkout paths was not measured, as in
+  Phase 0.
+
+Not in Phase 1, and not started: the installer and the Service Tools
+console (Phase 2); software RAID; any VMM, storage pool or virtual
+Ethernet code; any network listener.

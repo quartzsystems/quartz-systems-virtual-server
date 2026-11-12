@@ -22,7 +22,8 @@ and `kernel/SHA256` (their git blob hashes match). `Cargo.lock` was
 started from QS/400's lock file, so the crates the two share are at the
 versions QS/400 tests, and cargo cut it down to this workspace's graph.
 
-Moving the pin is one change to the four `rev =` values in `Cargo.toml`,
+Moving the pin is one change to the `rev =` values in `Cargo.toml` (four
+in Phase 0, eight since Phase 1 took `ipc`, `netlink`, `dhcp` and `ntp`),
 with the kernel pin if QS/400's moved.
 
 ## What exists
