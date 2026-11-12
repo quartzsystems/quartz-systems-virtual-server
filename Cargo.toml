@@ -23,6 +23,9 @@ members = [
     "base/logd",
     "base/seed",
     "base/netd",
+    "base/users",
+    "base/panels",
+    "base/install",
 ]
 
 [workspace.package]

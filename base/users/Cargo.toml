@@ -1,0 +1,13 @@
+[package]
+name = "users"
+description = "Service tools user IDs of an appliance: the password rules and the sign-on rule over QS/400's svcusers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+svcusers.workspace = true
+
+[lints]
+workspace = true

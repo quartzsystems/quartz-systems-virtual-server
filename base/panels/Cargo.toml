@@ -1,0 +1,20 @@
+[package]
+name = "panels"
+description = "What an appliance's installer and service console share: panels with help, the console on the display and a serial terminal, and the common forms and panels"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+appliance = { path = "../appliance", version = "0.1.0" }
+state = { path = "../state", version = "0.1.0" }
+users = { path = "../users", version = "0.1.0" }
+console.workspace = true
+scrkit.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix.workspace = true
+
+[lints]
+workspace = true
