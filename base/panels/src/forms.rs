@@ -74,7 +74,10 @@ impl NetworkEntry {
                 Mode::Static => "2",
             }
             .into(),
-            address: network.address.map(|a| a.addr.to_string()).unwrap_or_default(),
+            address: network
+                .address
+                .map(|a| a.addr.to_string())
+                .unwrap_or_default(),
             prefix: network
                 .address
                 .map(|a| a.prefix.to_string())
@@ -88,7 +91,12 @@ impl NetworkEntry {
     /// The entry the fields of [`NetworkEntry::screen`] hold.
     #[must_use]
     pub fn take(fields: &[String]) -> Self {
-        let field = |i: usize| fields.get(i).map(|f| f.trim().to_string()).unwrap_or_default();
+        let field = |i: usize| {
+            fields
+                .get(i)
+                .map(|f| f.trim().to_string())
+                .unwrap_or_default()
+        };
         Self {
             host: field(0),
             interface: field(1),
@@ -104,7 +112,7 @@ impl NetworkEntry {
     /// The form, the interfaces under it.
     #[must_use]
     pub fn screen(&self, title: &str, system: &str, links: &[LinkChoice], keys: &str) -> Screen {
-        let lines = [
+        let rows = [
             FormLine::new("Host name", 40, self.host.clone()),
             FormLine::new("Interface", 2, self.interface.clone()),
             FormLine::new("Address: 1=DHCP, 2=Static", 1, self.mode.clone()),
@@ -114,8 +122,8 @@ impl NetworkEntry {
             FormLine::new("VLAN ID", 4, self.vlan.clone()),
             FormLine::new("DNS servers", 46, self.dns.clone()),
         ];
-        let mut s = ui::form(title, system, &lines, keys);
-        let top = ui::BODY_ROW + lines.len() + 1;
+        let mut s = ui::form(title, system, &rows, keys);
+        let top = ui::BODY_ROW + rows.len() + 1;
         kit::put(
             &mut s,
             top,
@@ -123,7 +131,11 @@ impl NetworkEntry {
         );
         let room = ui::KEYS_ROW - top - 2;
         for (i, link) in links.iter().take(room).enumerate() {
-            let carrier = if link.carrier { "carrier" } else { "no carrier" };
+            let carrier = if link.carrier {
+                "carrier"
+            } else {
+                "no carrier"
+            };
             kit::put(
                 &mut s,
                 top + 1 + i,
@@ -169,8 +181,7 @@ impl NetworkEntry {
         };
         let (address, gateway) = match mode {
             Mode::Dhcp => {
-                if !(self.address.is_empty() && self.prefix.is_empty() && self.gateway.is_empty())
-                {
+                if !(self.address.is_empty() && self.prefix.is_empty() && self.gateway.is_empty()) {
                     return Err("With DHCP, leave address, prefix length and gateway blank.".into());
                 }
                 (None, None)
@@ -225,13 +236,13 @@ impl NetworkEntry {
             vlan,
             dns,
         };
-        network.validate().map_err(sentence)?;
+        network.validate().map_err(|e| sentence(&e))?;
         Ok((self.host.clone(), network))
     }
 }
 
 /// A reason as a message line words it.
-fn sentence(reason: String) -> String {
+fn sentence(reason: &str) -> String {
     let mut chars = reason.chars();
     let first = chars.next().map(|c| c.to_uppercase().collect::<String>());
     format!("{}{}.", first.unwrap_or_default(), chars.as_str())
@@ -299,7 +310,12 @@ impl TimeEntry {
     /// The entry the fields of [`TimeEntry::screen`] hold.
     #[must_use]
     pub fn take(fields: &[String]) -> Self {
-        let field = |i: usize| fields.get(i).map(|f| f.trim().to_string()).unwrap_or_default();
+        let field = |i: usize| {
+            fields
+                .get(i)
+                .map(|f| f.trim().to_string())
+                .unwrap_or_default()
+        };
         Self {
             offset: field(0),
             servers: field(1),
@@ -361,7 +377,7 @@ impl TimeEntry {
             time_zone: zone.to_string(),
             ntp_servers: servers.clone(),
         };
-        host.validate().map_err(sentence)?;
+        host.validate().map_err(|e| sentence(&e))?;
         let clock = match (self.date.is_empty(), self.time.is_empty()) {
             (true, true) => None,
             _ if !servers.is_empty() => {
@@ -588,7 +604,8 @@ mod tests {
 
     #[test]
     fn a_user_entry_keeps_the_rules_and_wants_the_password_twice() {
-        let entry = UserEntry::take(&[" admin ".into(), "pass word 1".into(), "pass word 1".into()]);
+        let entry =
+            UserEntry::take(&[" admin ".into(), "pass word 1".into(), "pass word 1".into()]);
         assert_eq!(entry.check(), Ok(("ADMIN".into(), "pass word 1".into())));
         let other = UserEntry {
             again: "pass word 2".into(),

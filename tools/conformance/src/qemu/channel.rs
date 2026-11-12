@@ -11,7 +11,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use qsvshook::proto::{END, command, parse_status, word};
+use qsvshook::proto::{END, command, parse_status, parse_storage, word};
 use supervise::control::HostStatus;
 
 /// How long an ordinary command may take.
@@ -129,6 +129,47 @@ impl Channel {
     /// The control socket's status.
     pub fn status(&mut self) -> Result<HostStatus, String> {
         parse_status(&self.ask(command::STATUS)?)
+    }
+
+    /// The storage service's status.
+    pub fn storage(&mut self) -> Result<qsvsstgd::Status, String> {
+        parse_storage(&self.ask(command::STORAGE)?)
+    }
+
+    /// Poll the storage service's status until `done`, by `deadline`.
+    pub fn storage_until(
+        &mut self,
+        what: &str,
+        deadline: Instant,
+        done: impl Fn(&qsvsstgd::Status) -> bool,
+    ) -> Result<qsvsstgd::Status, String> {
+        loop {
+            let status = self.storage();
+            if let Ok(status) = &status
+                && done(status)
+            {
+                return Ok(status.clone());
+            }
+            if Instant::now() >= deadline {
+                return Err(format!("{what}: not in time; storage is {status:?}"));
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+
+    /// A file's length and the sum of its bytes.
+    pub fn sum(&mut self, path: &str) -> Result<(u64, u64), String> {
+        let lines = self.ask(&format!("{} {path}", command::SUM))?;
+        let parts: Vec<&str> = lines.first().map_or(Vec::new(), |l| l.split(' ').collect());
+        match parts.as_slice() {
+            [word::OK, len, sum] => Ok((
+                len.parse()
+                    .map_err(|_| format!("`sum {path}`: {lines:?}"))?,
+                sum.parse()
+                    .map_err(|_| format!("`sum {path}`: {lines:?}"))?,
+            )),
+            _ => Err(format!("`sum {path}` answered {lines:?}")),
+        }
     }
 
     /// A file's bytes.

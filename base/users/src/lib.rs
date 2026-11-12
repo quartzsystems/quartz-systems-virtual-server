@@ -76,16 +76,19 @@ pub fn check_id(id: &str) -> Result<String, String> {
 pub fn check_password(id: &str, password: &str) -> Result<(), String> {
     let count = password.chars().count();
     if count < PASSWORD_MIN {
-        return Err(format!("Password must be at least {PASSWORD_MIN} characters."));
+        return Err(format!(
+            "Password must be at least {PASSWORD_MIN} characters."
+        ));
     }
     if password.len() > PASSWORD_MAX {
-        return Err(format!("Password must be at most {PASSWORD_MAX} characters."));
+        return Err(format!(
+            "Password must be at most {PASSWORD_MAX} characters."
+        ));
     }
     if password.chars().any(char::is_control) {
         return Err("Password must not have control characters.".into());
     }
-    if !password.chars().any(char::is_alphabetic) || !password.chars().any(|c| c.is_ascii_digit())
-    {
+    if !password.chars().any(char::is_alphabetic) || !password.chars().any(|c| c.is_ascii_digit()) {
         return Err("Password must have a letter and a digit.".into());
     }
     let id = svcusers::normalize_name(id);
@@ -294,7 +297,13 @@ mod tests {
         assert!(check_id("elevenchars").is_err());
         assert!(check_id("a b").is_err());
         assert_eq!(check_password("ADMIN", PASSWORD), Ok(()));
-        for bad in ["short1", "nodigitshere", "12345678", "xadmin123", "tab\there 1"] {
+        for bad in [
+            "short1",
+            "nodigitshere",
+            "12345678",
+            "xadmin123",
+            "tab\there 1",
+        ] {
             assert!(check_password("ADMIN", bad).is_err(), "{bad}");
         }
         assert!(check_password("ADMIN", &"a1".repeat(65)).is_err());
@@ -306,9 +315,15 @@ mod tests {
         let mut users = Users::load(&mut mem).unwrap();
         users.add("admin", PASSWORD, 100).unwrap();
         assert_eq!(users.sign_on("Admin", PASSWORD, 100), Ok("ADMIN".into()));
-        assert_eq!(users.sign_on("nobody", PASSWORD, 100), Err(Refused::NotCorrect));
+        assert_eq!(
+            users.sign_on("nobody", PASSWORD, 100),
+            Err(Refused::NotCorrect)
+        );
         for _ in 0..4 {
-            assert_eq!(users.sign_on("admin", "wrong", 100), Err(Refused::NotCorrect));
+            assert_eq!(
+                users.sign_on("admin", "wrong", 100),
+                Err(Refused::NotCorrect)
+            );
         }
         assert_eq!(
             users.sign_on("admin", "wrong", 100),
@@ -320,14 +335,20 @@ mod tests {
             Err(Refused::Disabled(LOCK_SECS - 60))
         );
         assert_eq!(users.disabled_for("admin", 160), Some(240));
-        assert_eq!(users.sign_on("admin", PASSWORD, 100 + LOCK_SECS), Ok("ADMIN".into()));
+        assert_eq!(
+            users.sign_on("admin", PASSWORD, 100 + LOCK_SECS),
+            Ok("ADMIN".into())
+        );
         // A good sign-on starts the count again.
         for _ in 0..4 {
             assert!(users.sign_on("admin", "wrong", 500).is_err());
         }
         assert!(users.sign_on("admin", PASSWORD, 500).is_ok());
         for _ in 0..4 {
-            assert_eq!(users.sign_on("admin", "wrong", 500), Err(Refused::NotCorrect));
+            assert_eq!(
+                users.sign_on("admin", "wrong", 500),
+                Err(Refused::NotCorrect)
+            );
         }
     }
 
@@ -336,7 +357,12 @@ mod tests {
         let mut mem = Mem::default();
         let mut users = Users::load(&mut mem).unwrap();
         users.add("admin", PASSWORD, 1).unwrap();
-        assert!(users.add("ADMIN", PASSWORD, 1).unwrap_err().contains("exists"));
+        assert!(
+            users
+                .add("ADMIN", PASSWORD, 1)
+                .unwrap_err()
+                .contains("exists")
+        );
         assert!(users.remove("admin").unwrap_err().contains("last"));
         users.add("second", "another pass 9", 2).unwrap();
         assert_eq!(users.ids(), ["ADMIN", "SECOND"]);

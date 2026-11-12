@@ -8,12 +8,13 @@
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 use crate::error::HarnessError;
 use crate::qemu::channel::Channel;
+use crate::qemu::term::Grid;
 use crate::qemu::{self, Launch};
 
 /// A guest under test. Killed when dropped.
@@ -28,6 +29,10 @@ pub struct Session {
     hook: Option<PathBuf>,
     monitor: Option<PathBuf>,
     channel: Option<Channel>,
+    /// The guest's serial input, when the launch asked for it.
+    keys: Option<ChildStdin>,
+    /// The serial port as a terminal shows it.
+    grid: Grid,
 }
 
 impl Session {
@@ -39,7 +44,11 @@ impl Session {
         }
         let mut child = Command::new(&launch.qemu)
             .args(qemu::args(launch))
-            .stdin(Stdio::null())
+            .stdin(if launch.keys {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -47,6 +56,7 @@ impl Session {
                 qemu: launch.qemu.clone(),
                 source,
             })?;
+        let keys = child.stdin.take();
         let rx = qemu::serial::stream(child.stdout.take(), child.stderr.take());
         Ok(Self {
             child,
@@ -57,7 +67,62 @@ impl Session {
             hook: launch.hook.clone(),
             monitor: launch.monitor.clone(),
             channel: None,
+            keys,
+            grid: Grid::default(),
         })
+    }
+
+    /// Take a chunk of what the guest said.
+    fn take(&mut self, chunk: &str) {
+        self.buf.push_str(chunk);
+        self.log.push_str(chunk);
+        self.grid.feed(chunk);
+    }
+
+    /// Type `text` at the guest's serial port.
+    pub fn type_keys(&mut self, text: &str) -> Result<(), String> {
+        let keys = self
+            .keys
+            .as_mut()
+            .ok_or("this guest was launched without serial input")?;
+        keys.write_all(text.as_bytes())
+            .and_then(|()| keys.flush())
+            .map_err(|e| format!("typing at the serial port: {e}"))
+    }
+
+    /// The serial port as a terminal shows it now.
+    pub fn grid(&mut self) -> &Grid {
+        self.drain();
+        &self.grid
+    }
+
+    /// Wait until the terminal's grid satisfies `found`, by `deadline`:
+    /// the grid's text then. The grid must also have stopped changing
+    /// for a moment, so a screen half drawn is not taken.
+    pub fn screen(
+        &mut self,
+        what: &str,
+        deadline: Instant,
+        found: impl Fn(&Grid) -> bool,
+    ) -> Result<String, String> {
+        let settle = Duration::from_millis(150);
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            let wait = if found(&self.grid) { settle } else { left };
+            match self.rx.recv_timeout(wait) {
+                Ok(chunk) => self.take(&chunk),
+                Err(_) if found(&self.grid) => return Ok(self.grid.text()),
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(format!(
+                        "{what} did not appear in time; the terminal shows:\n{}",
+                        self.grid.text()
+                    ));
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(format!("QEMU ended before {what} appeared"));
+                }
+            }
+        }
     }
 
     /// Time since launch.
@@ -84,10 +149,7 @@ impl Session {
                 return Err(format!("`{}` did not appear in time", wanted()));
             }
             match self.rx.recv_timeout(left) {
-                Ok(chunk) => {
-                    self.buf.push_str(&chunk);
-                    self.log.push_str(&chunk);
-                }
+                Ok(chunk) => self.take(&chunk),
                 Err(RecvTimeoutError::Timeout) => {
                     return Err(format!("`{}` did not appear in time", wanted()));
                 }
@@ -126,10 +188,7 @@ impl Session {
             }
             let left = deadline.saturating_duration_since(Instant::now());
             match self.rx.recv_timeout(left) {
-                Ok(chunk) => {
-                    self.buf.push_str(&chunk);
-                    self.log.push_str(&chunk);
-                }
+                Ok(chunk) => self.take(&chunk),
                 Err(RecvTimeoutError::Timeout) => {
                     return Err(format!("{what} did not appear in time"));
                 }
@@ -148,8 +207,7 @@ impl Session {
     /// Take what the serial port has said without waiting for more.
     pub fn drain(&mut self) {
         while let Ok(chunk) = self.rx.try_recv() {
-            self.buf.push_str(&chunk);
-            self.log.push_str(&chunk);
+            self.take(&chunk);
         }
     }
 
@@ -171,6 +229,25 @@ impl Session {
             self.channel = Some(channel);
         }
         self.channel.as_mut().ok_or_else(|| "no channel".into())
+    }
+
+    /// Type keys at the guest's keyboard, through QEMU's monitor: each
+    /// of `keys` is a `sendkey` name (`a`, `shift-a`, `ret`, `f10`).
+    pub fn send_keys(&mut self, keys: &[String]) -> Result<(), String> {
+        let socket = self
+            .monitor
+            .as_ref()
+            .ok_or("this guest was launched without a monitor")?;
+        let mut stream = UnixStream::connect(socket).map_err(|e| format!("the monitor: {e}"))?;
+        for key in keys {
+            stream
+                .write_all(format!("sendkey {key} 20\n").as_bytes())
+                .map_err(|e| format!("the monitor: {e}"))?;
+            // A key is down for 20 ms; the next follows its release.
+            std::thread::sleep(Duration::from_millis(60));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        Ok(())
     }
 
     /// Give QEMU's monitor one command.

@@ -136,6 +136,10 @@ pub struct Displays {
     pub serial: Option<File>,
 }
 
+/// The console is gone: its thread ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Gone;
+
 /// One console: screens go in, Enter and the function keys come out.
 pub struct Screens {
     show: Sender<Command>,
@@ -210,12 +214,11 @@ impl Screens {
     }
 
     /// Enter or a function key, when one comes within `within`.
-    /// `Err` when the console is gone.
-    pub fn input(&self, within: Duration) -> Result<Option<Input>, ()> {
+    pub fn input(&self, within: Duration) -> Result<Option<Input>, Gone> {
         match self.inputs.recv_timeout(within) {
             Ok(input) => Ok(Some(input)),
             Err(RecvTimeoutError::Timeout) => Ok(None),
-            Err(RecvTimeoutError::Disconnected) => Err(()),
+            Err(RecvTimeoutError::Disconnected) => Err(Gone),
         }
     }
 
@@ -250,7 +253,7 @@ pub fn run<E: Named + ?Sized, O>(
         // Wait until a key or a tick changes what is shown.
         let end = loop {
             match screens.input(TICK) {
-                Err(()) => return Ended::Left,
+                Err(Gone) => return Ended::Left,
                 Ok(Some(Input::Enter(fields))) => break runner.enter(&fields, env),
                 Ok(Some(Input::Function(key, fields))) => {
                     break runner.function(key, &fields, env);

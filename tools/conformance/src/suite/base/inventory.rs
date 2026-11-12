@@ -135,6 +135,7 @@ pub fn inventory(run: &Run<'_>) -> Result<String, String> {
         extra: vec![Drive {
             path: second,
             serial: SECOND_SERIAL.into(),
+            place: None,
         }],
         ..run.launch()
     };

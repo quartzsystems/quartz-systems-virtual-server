@@ -101,7 +101,10 @@ mod tests {
         let names: Vec<&str> = answers.disks.iter().map(|d| d.name.as_str()).collect();
         assert_eq!(names, ["vda", "vdb"]);
         assert!(answers.mirrored());
-        assert_eq!((answers.host.as_str(), answers.user_id.as_str()), ("vs-01", "ADMIN"));
+        assert_eq!(
+            (answers.host.as_str(), answers.user_id.as_str()),
+            ("vs-01", "ADMIN")
+        );
         assert_eq!(answers.time.zone, "UTC+01:00");
         assert_eq!(answers.password_hash, HASH);
         // No [install]: the installer asks.
@@ -122,9 +125,17 @@ mod tests {
         }
         let mut bad = seed("[\"SER-A\"]", "");
         bad.install.as_mut().unwrap().user_id = "not an id".into();
-        assert!(from_seed(&bad, &mut machine).unwrap_err().starts_with("user_id"));
+        assert!(
+            from_seed(&bad, &mut machine)
+                .unwrap_err()
+                .starts_with("user_id")
+        );
         let mut bad = seed("[\"SER-A\"]", "");
         bad.install.as_mut().unwrap().password_hash = "$argon2id$nothing".into();
-        assert!(from_seed(&bad, &mut machine).unwrap_err().contains("Argon2id"));
+        assert!(
+            from_seed(&bad, &mut machine)
+                .unwrap_err()
+                .contains("Argon2id")
+        );
     }
 }

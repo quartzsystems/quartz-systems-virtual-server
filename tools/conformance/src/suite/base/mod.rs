@@ -64,6 +64,10 @@ pub struct Run<'a> {
     pub work: &'a Path,
     /// How guests are launched.
     pub base: &'a Launch,
+    /// The built images.
+    pub images: &'a crate::suite::Images,
+    /// The release disk image, for the suites that boot it.
+    pub release_disk: Option<&'a Path>,
     /// How long a boot may take.
     pub timeout: Duration,
     /// The serial logs of the suite's guests, for a failure.

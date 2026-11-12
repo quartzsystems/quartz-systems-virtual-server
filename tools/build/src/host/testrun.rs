@@ -7,8 +7,8 @@
 //! test image, which has the hooks they need.
 
 use anyhow::{Result, bail};
-use buildkit::Ctx;
 use buildkit::host::paths;
+use buildkit::{Ctx, UkiKind};
 use conformance::suite::Images;
 use tracing::{error, info, warn};
 
@@ -30,6 +30,10 @@ pub fn test(
         release_disk: paths::read_pointer(&release.paths.disk_pointer()).ok(),
         iso: paths::read_pointer(&release.paths.iso_pointer()).ok(),
         test_disk: paths::read_pointer(&test.paths.disk_pointer()).ok(),
+        test_iso: paths::read_pointer(&test.paths.iso_pointer()).ok(),
+        test_ukis: paths::read_pointer(&test.paths.uki_pointer(UkiKind::SlotA))
+            .ok()
+            .zip(paths::read_pointer(&test.paths.uki_pointer(UkiKind::SlotB)).ok()),
     };
     if media == conformance::Media::Disk && images.test_disk.is_none() && only != Some("ipl") {
         bail!("the test image is not built; run `all --test-image` first");

@@ -16,6 +16,7 @@
 //! - [`gpt`], [`disks`]: finding the load-source disks of a running host.
 //! - [`boot`]: the firmware's boot entries.
 //! - [`prepare`]: writing a load-source disk.
+//! - [`payload`]: what the installation media carries to write it from.
 //!
 //! `unsafe` lives only in `sys` (one ioctl).
 
@@ -27,6 +28,7 @@ pub mod disks;
 pub mod gpt;
 pub mod layout;
 pub mod multi;
+pub mod payload;
 pub mod prepare;
 pub mod record;
 pub mod set;

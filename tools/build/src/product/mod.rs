@@ -26,6 +26,10 @@ pub const INIT: &str = "qsvsinit";
 /// The service packages, `/qsvs/bin/<name>` in every initramfs.
 pub const SERVICES: [&str; 3] = ["qsvsstgd", "qsvslogd", "qsvsnetd"];
 
+/// The installer's package, `/qsvs/bin/qsvsinstall` in the media
+/// UKI's initramfs only.
+pub const INSTALLER: &str = "qsvsinstall";
+
 /// The test hooks' package: in a test image only.
 pub const HOOK: &str = "qsvshook";
 
@@ -62,12 +66,14 @@ const RELEASE_PACKAGES: &[Package] = &[
     package(SERVICES[0]),
     package(SERVICES[1]),
     package(SERVICES[2]),
+    package(INSTALLER),
 ];
 const TEST_PACKAGES: &[Package] = &[
     package(INIT),
     package(SERVICES[0]),
     package(SERVICES[1]),
     package(SERVICES[2]),
+    package(INSTALLER),
     package(HOOK),
 ];
 
@@ -190,11 +196,24 @@ mod tests {
         };
         assert_eq!(
             names(Image::Release),
-            ["qsvsinit", "qsvsstgd", "qsvslogd", "qsvsnetd"]
+            [
+                "qsvsinit",
+                "qsvsstgd",
+                "qsvslogd",
+                "qsvsnetd",
+                "qsvsinstall"
+            ]
         );
         assert_eq!(
             names(Image::Test),
-            ["qsvsinit", "qsvsstgd", "qsvslogd", "qsvsnetd", "qsvshook"]
+            [
+                "qsvsinit",
+                "qsvsstgd",
+                "qsvslogd",
+                "qsvsnetd",
+                "qsvsinstall",
+                "qsvshook"
+            ]
         );
         assert_eq!(qsvs(Image::Release).unwrap().name, "QS/VS");
         assert_ne!(qsvs(Image::Test).unwrap().name, "QS/VS");

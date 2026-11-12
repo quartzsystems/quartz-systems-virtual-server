@@ -6,9 +6,11 @@
 
 pub mod channel;
 pub mod firmware;
+pub mod golden;
 pub mod image;
 pub mod serial;
 pub mod session;
+pub mod term;
 pub mod vars;
 
 use std::env;
@@ -34,9 +36,15 @@ pub struct Drive {
     pub path: PathBuf,
     /// Its serial number.
     pub serial: String,
+    /// Its place on the PCI bus, counted from the first the harness
+    /// gives out, when the launch pins places: the disk then has the
+    /// same location code whichever other disks are there.
+    pub place: Option<u8>,
 }
 
 /// How to launch the guest.
+// Each flag is a switch of its own on QEMU's command line.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone)]
 pub struct Launch {
     /// QEMU binary.
@@ -72,7 +80,20 @@ pub struct Launch {
     pub monitor: Option<PathBuf>,
     /// SMBIOS OEM strings (type 11): the test hooks' switches.
     pub oem: Vec<String>,
+    /// An image attached as a USB stick: the installation ISO as it is
+    /// when written to one.
+    pub usb: Option<PathBuf>,
+    /// The firmware starts the CD-ROM or the USB stick before any disk:
+    /// an installation, whatever the disks hold.
+    pub media_first: bool,
+    /// The guest's serial port takes what the harness types.
+    pub keys: bool,
+    /// Disks are at the places their [`Drive::place`] says.
+    pub pinned: bool,
 }
+
+/// The PCI device number of a pinned disk's place.
+const FIRST_PLACE: u8 = 0x10;
 
 /// Find the system emulator: the override variable, else `PATH`.
 pub fn locate() -> Result<PathBuf, HarnessError> {
@@ -114,11 +135,26 @@ fn join(prefix: &str, path: &Path, suffix: &str) -> OsString {
     s
 }
 
-fn drive(a: &mut Vec<OsString>, id: &str, path: &Path, serial: &str) {
+fn drive(
+    a: &mut Vec<OsString>,
+    id: &str,
+    path: &Path,
+    serial: &str,
+    boot: Option<usize>,
+    place: Option<u8>,
+) {
     a.push("-drive".into());
-    a.push(join(&format!("if=none,id={id},format=raw,file="), path, ""));
+    // A write of zeros leaves a hole in the image file: a mirrored
+    // set's first synchronization does not fill the host's disk.
+    a.push(join(
+        &format!("if=none,id={id},format=raw,discard=unmap,detect-zeroes=unmap,file="),
+        path,
+        "",
+    ));
     a.push("-device".into());
-    a.push(format!("virtio-blk-pci,drive={id},serial={serial}").into());
+    let index = boot.map_or_else(String::new, |i| format!(",bootindex={i}"));
+    let at = place.map_or_else(String::new, |p| format!(",addr={:#x}", FIRST_PLACE + p));
+    a.push(format!("virtio-blk-pci,drive={id},serial={serial}{index}{at}").into());
 }
 
 /// The QEMU argument list: `q35`, OVMF by pflash, the serial port on
@@ -147,11 +183,21 @@ pub fn args(l: &Launch) -> Vec<OsString> {
         a.push("-drive".into());
         a.push(join("if=pflash,format=raw,file=", vars, ""));
     }
+    // With the media first the disks follow it, in their order.
+    let after = |i: usize| l.media_first.then_some(i + 1);
+    let first = if l.media_first { ",bootindex=0" } else { "" };
     if let Some(disk) = &l.disk {
-        drive(&mut a, "hd", disk, DISK_SERIAL);
+        drive(&mut a, "hd", disk, DISK_SERIAL, after(0), None);
     }
     for (i, extra) in l.extra.iter().enumerate() {
-        drive(&mut a, &format!("hd{}", i + 1), &extra.path, &extra.serial);
+        drive(
+            &mut a,
+            &format!("hd{}", i + 1),
+            &extra.path,
+            &extra.serial,
+            after(i + 1),
+            extra.place.filter(|_| l.pinned),
+        );
     }
     if let Some(cdrom) = &l.cdrom {
         a.push("-drive".into());
@@ -161,7 +207,17 @@ pub fn args(l: &Launch) -> Vec<OsString> {
             "",
         ));
         a.push("-device".into());
-        a.push("ide-cd,drive=cd,bus=ide.0".into());
+        a.push(format!("ide-cd,drive=cd,bus=ide.0{first}").into());
+    }
+    if let Some(usb) = &l.usb {
+        a.push("-drive".into());
+        a.push(join(
+            "if=none,id=stick,format=raw,readonly=on,file=",
+            usb,
+            "",
+        ));
+        a.extend(["-device", "qemu-xhci,id=xhci", "-device"].map(OsString::from));
+        a.push(format!("usb-storage,bus=xhci.0,drive=stick,removable=on{first}").into());
     }
     if l.snapshot {
         a.push("-snapshot".into());
@@ -225,6 +281,10 @@ mod tests {
             hook: None,
             monitor: None,
             oem: Vec::new(),
+            usb: None,
+            media_first: false,
+            keys: false,
+            pinned: false,
         }
     }
 
@@ -257,7 +317,9 @@ mod tests {
     fn firmware_is_pflash_and_the_drives_are_what_was_asked() {
         let w = words(&launch());
         assert!(w.contains(&"if=pflash,format=raw,readonly=on,file=/fw/OVMF_CODE_4M.fd".into()));
-        assert!(w.contains(&"if=none,id=hd,format=raw,file=/t/disk.img".into()));
+        assert!(w.contains(
+            &"if=none,id=hd,format=raw,discard=unmap,detect-zeroes=unmap,file=/t/disk.img".into()
+        ));
         assert!(w.contains(&"virtio-blk-pci,drive=hd,serial=QSVSHD0".into()));
         assert!(!w.iter().any(|x| x.contains("media=cdrom")));
         assert!(w.contains(&"-snapshot".into()));
@@ -283,6 +345,7 @@ mod tests {
             extra: vec![Drive {
                 path: "/t/second.img".into(),
                 serial: "QSVSHD1".into(),
+                place: Some(1),
             }],
             snapshot: false,
             nic: Some("52:54:00:12:34:56".into()),
@@ -292,7 +355,12 @@ mod tests {
             ..launch()
         });
         assert!(has(&w, &["-smp", "4,sockets=2,cores=2,threads=1"]));
-        assert!(w.contains(&"if=none,id=hd1,format=raw,file=/t/second.img".into()));
+        assert!(
+            w.contains(
+                &"if=none,id=hd1,format=raw,discard=unmap,detect-zeroes=unmap,file=/t/second.img"
+                    .into()
+            )
+        );
         assert!(w.contains(&"virtio-blk-pci,drive=hd1,serial=QSVSHD1".into()));
         assert!(!w.contains(&"-snapshot".into()));
         assert!(has(

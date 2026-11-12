@@ -58,6 +58,7 @@ pub fn time(run: &Run<'_>) -> Result<String, String> {
         extra: vec![Drive {
             path: seed,
             serial: "QSVSSEED0".into(),
+            place: None,
         }],
         ..run.launch()
     };

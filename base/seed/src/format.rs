@@ -213,7 +213,7 @@ mod tests {
                 "[network]",
             ),
             ("schema_version = 1\n[network]\nvlan = 0\n", "[network]"),
-            ("schema_version = 1\n[install]\ndisk = \"sda\"\n", "install"),
+            ("schema_version = 2\n[install]\ndisk = \"sda\"\n", "disk"),
             (
                 "schema_version = 1\n[install]\ndisks = [\"A\"]\nuser_id = \"ADMIN\"\n\
                  password_hash = \"$argon2id$x\"\n",

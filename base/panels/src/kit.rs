@@ -148,7 +148,10 @@ mod tests {
         assert_eq!(window(&[], 0, 10).1, "(None)");
         assert_eq!(dotted("Protection", 23), "Protection . . . . . . :");
         assert_eq!(dotted("Host name", 23), "Host name  . . . . . . :");
-        assert_eq!(dotted("A label that is too long", 23), "A label that is too long :");
+        assert_eq!(
+            dotted("A label that is too long", 23),
+            "A label that is too long :"
+        );
         assert_eq!(fit("abcdef", 3), "abc");
         assert_eq!(fit("ab", 4), "ab  ");
         assert_eq!(number(Some(&" 7 ".to_string())), Some(7));

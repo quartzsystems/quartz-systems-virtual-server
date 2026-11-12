@@ -118,6 +118,11 @@ pub const REQUIRED_Y: &[&str] = &[
     "DMI",
     "DMIID",
     "SIGNALFD",
+    // The installer's media: ISO 9660 on a CD-ROM or a USB stick.
+    "ISO9660_FS",
+    "BLK_DEV_SR",
+    "USB_STORAGE",
+    "USB_UAS",
 ];
 
 /// Symbols QS/VS must not have `=y`, past the baseline.
@@ -223,6 +228,30 @@ mod tests {
         "EFIVAR_FS",
         "UNIX",
     ];
+
+    /// What Phase 2 needs (docs/PHASE2.md has the reason for each).
+    /// The framebuffer, evdev, ublk and `io_uring` were Phase 0's already.
+    const PHASE2: &[&str] = &[
+        "ISO9660_FS",
+        "BLK_DEV_SR",
+        "USB_STORAGE",
+        "USB_UAS",
+        "BLK_DEV_UBLK",
+        "IO_URING",
+        "FB",
+        "DRM_SIMPLEDRM",
+        "DRM_FBDEV_EMULATION",
+        "INPUT_EVDEV",
+        "KEYBOARD_ATKBD",
+        "USB_HID",
+    ];
+
+    #[test]
+    fn every_phase_2_symbol_is_checked() {
+        for sym in PHASE2 {
+            assert!(REQUIRED_Y.contains(sym), "{sym} is not in REQUIRED_Y");
+        }
+    }
 
     #[test]
     fn every_phase_1_symbol_is_checked() {

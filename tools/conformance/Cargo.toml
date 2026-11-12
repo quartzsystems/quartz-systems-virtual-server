@@ -11,6 +11,9 @@ release = { path = "../../lic/release", version = "0.1.0" }
 refcode = { path = "../../lic/refcode", version = "0.1.0" }
 hostdisk = { path = "../../lic/hostdisk", version = "0.1.0" }
 qsvshook = { path = "../../lic/qsvshook", version = "0.1.0" }
+qsvsstgd = { path = "../../lic/qsvsstgd", version = "0.1.0" }
+users = { path = "../../base/users", version = "0.1.0" }
+svcusers.workspace = true
 appliance = { path = "../../base/appliance", version = "0.1.0" }
 state = { path = "../../base/state", version = "0.1.0" }
 supervise = { path = "../../base/supervise", version = "0.1.0" }

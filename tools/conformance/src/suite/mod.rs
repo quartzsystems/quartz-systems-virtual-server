@@ -10,6 +10,7 @@
 //! status.
 
 pub mod base;
+pub mod install;
 mod slotb;
 
 use std::cell::RefCell;
@@ -90,6 +91,10 @@ pub struct Images {
     pub iso: Option<PathBuf>,
     /// The test disk image: the release image with the test hooks.
     pub test_disk: Option<PathBuf>,
+    /// The test image's installation ISO.
+    pub test_iso: Option<PathBuf>,
+    /// The test image's slot A and slot B UKIs.
+    pub test_ukis: Option<(PathBuf, PathBuf)>,
 }
 
 /// The suites over the built images.
@@ -113,6 +118,7 @@ pub fn banner_prefix() -> String {
 pub fn names() -> Vec<&'static str> {
     let mut names = vec![IPL];
     names.extend(base::SUITES.iter().map(|s| s.0));
+    names.extend(install::SUITES.iter().map(|s| s.0));
     names
 }
 
@@ -149,6 +155,10 @@ impl Suite {
                 hook: None,
                 monitor: None,
                 oem: Vec::new(),
+                usb: None,
+                media_first: false,
+                keys: false,
+                pinned: false,
             },
             timeout: Duration::from_secs(timeout),
             allow_no_kvm: env::var(ALLOW_NO_KVM_ENV).is_ok_and(|v| v == "1"),
@@ -199,7 +209,7 @@ impl Suite {
         if wanted(IPL) {
             done(self.phase0()?);
         }
-        for (name, suite) in base::SUITES {
+        for (name, suite) in base::SUITES.iter().chain(install::SUITES) {
             if wanted(name) {
                 done(vec![self.base_suite(name, *suite)?]);
             }
@@ -243,6 +253,8 @@ impl Suite {
             disk,
             work: &self.work,
             base: &self.base,
+            images: &self.images,
+            release_disk: self.images.release_disk.as_deref(),
             timeout: self.timeout,
             log: &self.log,
         };
@@ -356,9 +368,28 @@ mod tests {
     }
 
     #[test]
-    fn there_are_phase_0_s_suite_and_the_ten_of_the_base_system() {
+    fn there_are_phase_0_s_suite_the_ten_of_the_base_system_and_the_thirteen_of_phase_2() {
+        assert_eq!(names().len(), 1 + 10 + 13);
         assert_eq!(
-            names(),
+            names()[11..],
+            [
+                "install-serial",
+                "install-display",
+                "install-unattended",
+                "mirror-degraded",
+                "mirror-replace",
+                "install-power-pull",
+                "mirror-power-pull",
+                "storage-kill",
+                "tools-network",
+                "tools-sign-on",
+                "media-refused",
+                "answers-invalid",
+                "installed-base"
+            ]
+        );
+        assert_eq!(
+            names()[..11],
             [
                 "ipl",
                 "status",

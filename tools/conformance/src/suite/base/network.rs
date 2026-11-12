@@ -98,6 +98,7 @@ pub fn static_vlan(run: &Run<'_>) -> Result<String, String> {
         extra: vec![Drive {
             path: seed,
             serial: "QSVSSEED0".into(),
+            place: None,
         }],
         ..unseeded
     };

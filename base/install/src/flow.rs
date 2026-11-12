@@ -278,7 +278,11 @@ impl<'a> Panel<Env<'a>, Outcome> for Disks {
             );
         }
         if env.disks.len() == 2 && foot + 1 < ui::KEYS_ROW - 1 {
-            kit::put(&mut s, foot + 1, "Two disks are chosen: mirrored protection.");
+            kit::put(
+                &mut s,
+                foot + 1,
+                "Two disks are chosen: mirrored protection.",
+            );
         }
         s
     }
@@ -376,7 +380,12 @@ impl<'a> Panel<Env<'a>, Outcome> for Erase {
         );
         let label = kit::dotted(&format!("Type {ERASE} to confirm"), 29);
         s.put(ERASE_ROW, ui::BODY_COL, &label, Attr::GREEN);
-        s.field(ERASE_ROW, ui::BODY_COL + label.len() + 1, ERASE.len(), false);
+        s.field(
+            ERASE_ROW,
+            ui::BODY_COL + label.len() + 1,
+            ERASE.len(),
+            false,
+        );
         s
     }
 
@@ -563,8 +572,17 @@ fn summary(answers: &Answers) -> Vec<String> {
     let row = |label: &str, value: &str| format!("{} {value}", kit::dotted(label, 23));
     for (i, disk) in answers.disks.iter().enumerate() {
         lines.push(row(
-            if i == 0 { "Load-source disk" } else { "Mirrored with" },
-            &format!("{}  serial {}  {}", disk.location, disk.serial, kit::size(disk.bytes)),
+            if i == 0 {
+                "Load-source disk"
+            } else {
+                "Mirrored with"
+            },
+            &format!(
+                "{}  serial {}  {}",
+                disk.location,
+                disk.serial,
+                kit::size(disk.bytes)
+            ),
         ));
     }
     lines.push(row(
@@ -686,7 +704,10 @@ impl<'a> Panel<Env<'a>, Outcome> for Progress {
 
     fn render(&self, env: &mut Env<'a>) -> Screen {
         let steps = env.target.steps();
-        let mut lines = vec!["Installing. Do not power the machine off.".to_string(), String::new()];
+        let mut lines = vec![
+            "Installing. Do not power the machine off.".to_string(),
+            String::new(),
+        ];
         for (i, step) in steps.iter().enumerate() {
             let mark = match (i.cmp(&self.done), &self.failed) {
                 (std::cmp::Ordering::Less, _) => "X",
@@ -768,8 +789,10 @@ impl<'a> Panel<Env<'a>, Outcome> for Progress {
             }
             Err(reason) => {
                 let failed = env.target.failed();
-                env.target
-                    .log(&format!("{failed} Installation failed: {}: {reason}", step.name));
+                env.target.log(&format!(
+                    "{failed} Installation failed: {}: {reason}",
+                    step.name
+                ));
                 self.failed = Some(reason);
                 Flow::Error(format!("Installation failed at: {}.", step.name))
             }
@@ -980,7 +1003,7 @@ pub(crate) mod tests {
         }
         assert!(!summary.contains("pass word"));
         // Nothing was written before F10.
-        assert!(env.target.steps().len() == 2);
+        assert_eq!(env.target.steps().len(), 2);
         assert_eq!(r.function(10, &[], &mut env), None);
         assert_eq!(r.top(), "install-progress");
         assert!(text(&r, &mut env).contains("  >  C0000020  Partitioning the disks"));
@@ -991,14 +1014,20 @@ pub(crate) mod tests {
         assert_eq!(r.tick(&mut env), None);
         assert_eq!(r.top(), "install-complete");
         assert!(text(&r, &mut env).contains("Remove the installation media."));
-        assert_eq!(enter(&mut r, &mut env, &[""]), Some(End::Outcome(Outcome::Installed)));
+        assert_eq!(
+            enter(&mut r, &mut env, &[""]),
+            Some(End::Outcome(Outcome::Installed))
+        );
         drop(r);
         drop(env);
         assert_eq!(machine.steps_run, [0, 1]);
         let answers = machine.seen.unwrap();
         assert_eq!(answers.disks.len(), 2);
         assert!(users::valid_hash(&answers.password_hash));
-        assert_eq!(machine.log, ["C0000020 Partitioning the disks", "C0000080 Writing state"]);
+        assert_eq!(
+            machine.log,
+            ["C0000020 Partitioning the disks", "C0000080 Writing state"]
+        );
     }
 
     #[test]
@@ -1112,7 +1141,10 @@ pub(crate) mod tests {
         assert!(text(&r, &mut env).contains("Nothing was written."));
         assert_eq!(enter(&mut r, &mut env, &[""]), None);
         assert_eq!(r.top(), "install-media");
-        assert_eq!(r.function(3, &[], &mut env), Some(End::Outcome(Outcome::Left)));
+        assert_eq!(
+            r.function(3, &[], &mut env),
+            Some(End::Outcome(Outcome::Left))
+        );
         assert_eq!(wrap("one two three", 7), ["one two", "three"]);
     }
 }

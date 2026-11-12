@@ -9,6 +9,7 @@ members = [
     "lic/qsvslogd",
     "lic/qsvsnetd",
     "lic/qsvsstgd",
+    "lic/qsvsinstall",
     # The test hooks: built into a test image only.
     "lic/qsvshook",
     "lic/release",

@@ -20,7 +20,9 @@ use rustix::termios::{OptionalActions, tcgetattr, tcsetattr};
 use state::Store;
 use supervise::control::{Calls as _, Client};
 
-use crate::proto::{END, PORT, command, parse_status, status_lines, word};
+use qsvsstgd::Calls as _;
+
+use crate::proto::{END, PORT, command, parse_status, status_lines, storage_lines, word};
 
 /// The largest file `cat` sends.
 const CAT_MAX: u64 = 1 << 20;
@@ -133,6 +135,80 @@ fn kmsg(text: &str) -> Vec<String> {
     lines
 }
 
+fn storage() -> Vec<String> {
+    qsvsstgd::Client::default()
+        .status()
+        .map_or_else(error, |status| storage_lines(&status))
+}
+
+/// Megabytes the load writes each turn; 0 stops it.
+static LOAD: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Where the load writes.
+const LOAD_DIR: &str = "/data/load";
+
+/// Write files under `/data` for as long as [`LOAD`] says, each one
+/// whole and synced before the next: `file-<n>` holds the byte `n`
+/// over and over, so what a later read finds can be checked.
+fn load_writer() {
+    use std::sync::atomic::Ordering;
+    let _ = fs::create_dir_all(LOAD_DIR);
+    let mut n: u64 = 0;
+    loop {
+        let megabytes = LOAD.load(Ordering::Relaxed);
+        if megabytes == 0 {
+            return;
+        }
+        n += 1;
+        let path = format!("{LOAD_DIR}/file-{n}");
+        let chunk = vec![u8::try_from(n % 251).unwrap_or(0); 1 << 20];
+        let written = File::create(&path).and_then(|mut f| {
+            for _ in 0..megabytes {
+                f.write_all(&chunk)?;
+            }
+            f.sync_all()
+        });
+        // The name of each file that is whole goes to a list, synced too.
+        if written.is_ok() {
+            let _ = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(format!("{LOAD_DIR}/done"))
+                .and_then(|mut f| {
+                    writeln!(f, "{n} {megabytes}")?;
+                    f.sync_all()
+                });
+        }
+        // Old files go, so the disk does not fill.
+        if n > 4 {
+            let _ = fs::remove_file(format!("{LOAD_DIR}/file-{}", n - 4));
+        }
+    }
+}
+
+fn load(megabytes: &str) -> Vec<String> {
+    use std::sync::atomic::Ordering;
+    let Ok(megabytes) = megabytes.trim().parse::<u64>() else {
+        return error("load <megabytes>");
+    };
+    let before = LOAD.swap(megabytes, Ordering::Relaxed);
+    if before == 0 && megabytes > 0 {
+        std::thread::spawn(load_writer);
+    }
+    ok()
+}
+
+/// A file's length and the sum of its bytes.
+fn sum(path: &str) -> Vec<String> {
+    match fs::read(path) {
+        Ok(bytes) => {
+            let sum: u64 = bytes.iter().map(|b| u64::from(*b)).sum();
+            vec![format!("{} {} {sum}", word::OK, bytes.len())]
+        }
+        Err(e) => error(format!("{path}: {e}")),
+    }
+}
+
 /// The answer to one command line.
 fn answer(line: &str) -> Vec<String> {
     let (name, rest) = line.split_once(' ').unwrap_or((line, ""));
@@ -144,6 +220,9 @@ fn answer(line: &str) -> Vec<String> {
         command::PUT => put(rest),
         command::LS => ls(rest),
         command::KMSG => kmsg(rest),
+        command::STORAGE => storage(),
+        command::LOAD => load(rest),
+        command::SUM => sum(rest),
         command::POWER_OFF => done(control().power_off()),
         command::RESTART => done(control().restart()),
         command::NET_RELOAD => {

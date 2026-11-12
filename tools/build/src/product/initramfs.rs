@@ -2,9 +2,10 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The initramfs of every UKI: `/init` (qsvsinit), the services under
-//! `/qsvs/bin/`, the mount points, a console node, and the trusted
-//! signer keys under `/qsvs/keys/`. A test image has `qsvshook` too.
+//! The initramfs of every UKI: `/init` (qsvsinit), the mount points, a
+//! console node, and the trusted signer keys under `/qsvs/keys/`. A
+//! slot's has the services under `/qsvs/bin/`, and `qsvshook` in a
+//! test image; the media's has the installer there instead.
 
 use std::fs;
 use std::path::PathBuf;
@@ -22,12 +23,11 @@ const TRUSTED_ENV: &str = "QSVS_TRUSTED_KEYS";
 /// Bytes of an ed25519 public key.
 const KEY_LEN: usize = 32;
 
-/// The entries, the same for the slots and the media: the installer
-/// arrives in Phase 2. The kernel does not mount devtmpfs for an
-/// initramfs, so a static console node lets it open the first console.
-/// `/data` is where `QSVSDATA` is mounted, and holds the state in
-/// memory when it is not; `/etc` is for the resolver's file.
-fn all(ctx: &Ctx, hooks: bool) -> Result<Vec<Entry>> {
+/// The entries of a UKI of `kind`. The kernel does not mount devtmpfs
+/// for an initramfs, so a static console node lets it open the first
+/// console. `/data` is where `QSVSDATA` is mounted, and holds the state
+/// in memory when it is not; `/etc` is for the resolver's file.
+fn all(ctx: &Ctx, hooks: bool, kind: UkiKind) -> Result<Vec<Entry>> {
     let mut entries = vec![
         Entry::dir("data"),
         Entry::dir("dev"),
@@ -42,24 +42,27 @@ fn all(ctx: &Ctx, hooks: bool) -> Result<Vec<Entry>> {
         Entry::dir("run"),
         Entry::dir("sys"),
     ];
-    let hook = hooks.then_some(super::HOOK);
-    for service in super::SERVICES.into_iter().chain(hook) {
-        entries.push(Entry::file(
-            &format!("qsvs/bin/{service}"),
-            binary(ctx, service)?,
-        ));
+    // The media runs the installer and nothing else.
+    let binaries: Vec<&str> = if kind == UkiKind::Media {
+        vec![super::INSTALLER]
+    } else {
+        let hook = hooks.then_some(super::HOOK);
+        super::SERVICES.into_iter().chain(hook).collect()
+    };
+    for name in binaries {
+        entries.push(Entry::file(&format!("qsvs/bin/{name}"), binary(ctx, name)?));
     }
     Ok(entries)
 }
 
 /// The release image's entries.
-pub fn entries(ctx: &Ctx, _kind: UkiKind) -> Result<Vec<Entry>> {
-    all(ctx, false)
+pub fn entries(ctx: &Ctx, kind: UkiKind) -> Result<Vec<Entry>> {
+    all(ctx, false, kind)
 }
 
 /// The test image's entries: the release image's and the test hooks.
-pub fn test_entries(ctx: &Ctx, _kind: UkiKind) -> Result<Vec<Entry>> {
-    all(ctx, true)
+pub fn test_entries(ctx: &Ctx, kind: UkiKind) -> Result<Vec<Entry>> {
+    all(ctx, true, kind)
 }
 
 /// The keys in `text`, appended to `out` unless already there.
