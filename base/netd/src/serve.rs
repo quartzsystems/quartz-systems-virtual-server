@@ -108,6 +108,8 @@ fn manage(
     rx: &Receiver<Msg>,
     shared: &Mutex<Shared>,
 ) -> ! {
+    // The links are looked at once at the start, then on every event.
+    manager.refresh(Instant::now());
     loop {
         let msg = rx.recv_timeout(Duration::from_secs(1));
         let now = Instant::now();

@@ -235,9 +235,14 @@ QS/400's.
 
 ## Not done
 
-- **NEEDS-CODY: the host reference code range** (`C2`, `A2`, `B2`, `D2`,
-  the word `REF`) is a proposal. `docs/REFCODES.md`,
-  `docs/OPEN_QUESTIONS.md` item 1.
+This is the list as Phase 0 left it. Phase 1 closed four of its items:
+the reference code range is confirmed, PID 1 reads the A/B record and
+writes the firmware's boot order, the ISO's name is accepted, and Secure
+Boot is deferred to release engineering. What is open now is in
+`docs/PHASE1.md`.
+
+- The host reference code range (`C2`, `A2`, `B2`, `D2`, the word
+  `REF`) was a proposal. Confirmed with Phase 1. `docs/REFCODES.md`.
 - **NEEDS-CODY: the QEMU job in CI** (`.github/workflows/qemu.yml`) is
   written to run on a GitHub-hosted runner and to fail with a clear
   message where the runner has no KVM or no nested virtualization, in

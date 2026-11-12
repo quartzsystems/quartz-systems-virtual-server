@@ -3,7 +3,8 @@
 # root directory of this project.
 #
 # QS/VS CI: format, clippy with warnings denied, unit tests (the license
-# header check among them), build deny and build notices --check. Every
+# header check and the neutrality check of base/ among them), build deny
+# and build notices --check. Every
 # job runs on GitHub's Ubuntu runners with the toolchain
 # rust-toolchain.toml pins. The QEMU suite is qemu.yml.
 
@@ -53,8 +54,12 @@ jobs:
             target
           key: clippy-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      # PID 1's real code is cfg(target_os = "linux") and built for musl.
-      - run: cargo clippy -p qsvsinit --all-targets --locked --target x86_64-unknown-linux-musl -- -D warnings
+      # The image's binaries are cfg(target_os = "linux") and built for musl.
+      - run: cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvshook --all-targets --locked --target x86_64-unknown-linux-musl -- -D warnings
+      # PID 1 as a test image has it: the code under cfg(test_hooks).
+      - run: cargo clippy -p qsvsinit --locked --target x86_64-unknown-linux-musl -- -D warnings
+        env:
+          QSVS_TEST_HOOKS: "1"
 
   test:
     name: unit tests and the header check
@@ -77,6 +82,9 @@ jobs:
       # the license header.
       - name: License headers
         run: cargo test -p build --locked -- host::header
+      # And the other: base/ names no product and depends on nothing of lic/.
+      - name: base/ is product-neutral
+        run: cargo test -p build --locked -- host::neutral
 
   deny:
     name: build deny, notices

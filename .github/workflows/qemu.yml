@@ -2,8 +2,9 @@
 # licensed under the terms of the MIT license which can be found in the
 # root directory of this project.
 #
-# The QEMU suite: build everything, then boot the disk image (slot A and
-# slot B) and the installation ISO, and check PID 1's serial console.
+# The QEMU suites: build the release image and the test image, then run
+# Phase 0's suite on the release image (slot A and slot B, and the
+# installation ISO) and the base system's ten on the test image.
 #
 # NEEDS-CODY: the suite boots a hypervisor, so the guest itself must see
 # VMX or SVM. That takes a runner with /dev/kvm AND nested
@@ -33,9 +34,9 @@ env:
 
 jobs:
   qemu:
-    name: build all, test disk and iso
+    name: build both images, test disk and iso
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -95,10 +96,14 @@ jobs:
             target/kernel
             target/x86_64-unknown-linux-musl
             target/debug
+            target/test-image/src
+            target/test-image/kernel
+            target/test-image/x86_64-unknown-linux-musl
           key: qsvs-build-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'kernel/VERSION', 'kernel/config/**') }}
 
       - run: cargo run -q -p build -- doctor
       - run: cargo run -q -p build -- all
+      - run: cargo run -q -p build -- all --test-image
       - run: cargo run -q -p build -- test
       - run: cargo run -q -p build -- test --media iso
 
@@ -110,5 +115,7 @@ jobs:
           path: |
             target/images/manifest.json
             target/images/manifest.sig
+            target/test-image/images/manifest.json
             target/logs/
+            target/test-image/logs/
           if-no-files-found: ignore
