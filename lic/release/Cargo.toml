@@ -1,0 +1,17 @@
+[package]
+name = "release"
+description = "QS/VS release identity: VxRyMz from VERSION, the build ID, the product text and the banner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[dependencies]
+vrm.workspace = true
+
+[build-dependencies]
+vrm.workspace = true
+
+[lints]
+workspace = true

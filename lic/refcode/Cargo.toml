@@ -1,0 +1,10 @@
+[package]
+name = "refcode"
+description = "QS/VS host reference codes: one table, the line a code is posted as"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
