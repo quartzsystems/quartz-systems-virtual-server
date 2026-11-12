@@ -146,6 +146,9 @@ pub fn shutdown(run: &Run<'_>) -> Result<String, String> {
     if guest.said("not unmounted") {
         return Err("/data was not unmounted".into());
     }
+    if guest.said("was killed") {
+        return Err("a service did not end when asked to and had to be killed".into());
+    }
     drop(guest);
 
     // The next IPL mounts it clean, and the history has the shutdown.

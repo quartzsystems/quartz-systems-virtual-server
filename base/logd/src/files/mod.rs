@@ -116,7 +116,12 @@ pub struct Logs {
     boot: String,
     system: Sink,
     history: Sink,
+    /// The system log has lines not yet brought to the disk.
     dirty: bool,
+    /// So has the history.
+    history_dirty: bool,
+    /// One of them is a code or an error.
+    urgent: bool,
 }
 
 impl Logs {
@@ -127,19 +132,32 @@ impl Logs {
             system: Sink::rotating(dir, SYSTEM, limits.file_bytes, limits.total_bytes),
             history: Sink::append_only(dir.join(HISTORY)),
             dirty: false,
+            history_dirty: false,
+            urgent: false,
         }
     }
 
     /// Write one record: to the system log, and to the history when it
-    /// posts a code. A code and an error reach the disk at once.
+    /// posts a code. [`Logs::settle`] brings a code or an error to the
+    /// disk once the records that came together are all written.
     pub fn write(&mut self, record: &Record) {
         self.system.line(&system_line(record, &self.boot));
         self.dirty = true;
         if let Some(line) = history_line(record, &self.boot) {
             self.history.line(&line);
-            self.history.sync();
+            self.history_dirty = true;
         }
-        if record.code.is_some() || record.severity == Severity::Error {
+        self.urgent |= record.code.is_some() || record.severity == Severity::Error;
+    }
+
+    /// Bring what must not wait to the disk: the history, and the
+    /// system log when a code or an error was written to it.
+    pub fn settle(&mut self) {
+        if self.history_dirty {
+            self.history.sync();
+            self.history_dirty = false;
+        }
+        if self.urgent {
             self.sync();
         }
     }
@@ -150,6 +168,7 @@ impl Logs {
             self.system.sync();
             self.dirty = false;
         }
+        self.urgent = false;
     }
 
     /// Lines held in memory because the directory cannot be written.

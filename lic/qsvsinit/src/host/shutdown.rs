@@ -15,6 +15,10 @@ use rustix::system::{RebootCommand, reboot};
 use super::{Host, STOP_GRACE};
 use crate::ipl::mounts;
 
+/// How long the shutdown waits for the log service to take what PID 1
+/// has queued for it.
+const LOG_DRAIN: Duration = Duration::from_secs(2);
+
 /// How a shutdown ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -37,6 +41,12 @@ impl Host {
             Kind::Restart => "restart",
         };
         self.post(&refcode::SHUTDOWN_STARTED, &format!("{what}, by {by}"));
+        // The log service is the last to be stopped, but within a
+        // moment: what PID 1 still has for it goes first.
+        let give_up = Instant::now() + LOG_DRAIN;
+        while !self.log.flush() && Instant::now() < give_up {
+            std::thread::sleep(Duration::from_millis(5));
+        }
         if let Some(sup) = &mut self.sup {
             let occurrences = sup.begin_stop(STOP_GRACE, Instant::now());
             self.occurred(occurrences);

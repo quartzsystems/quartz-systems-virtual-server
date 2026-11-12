@@ -59,7 +59,7 @@ fn disk(sys: &Path, slots: &[Slot], dir: &Path, name: String) -> Option<Disk> {
         scsi_unit(&node)
     };
     Some(Disk {
-        model: model(dir),
+        model: model(dir, transport),
         serial: serial(dir),
         bytes: sectors.saturating_mul(SECTOR),
         rotational: flag("queue/rotational"),
@@ -115,9 +115,17 @@ fn transport(parts: &[String]) -> &'static str {
     }
 }
 
-/// The model, with the vendor before it unless that is only `ATA`.
-fn model(dir: &Path) -> String {
+/// What a virtio block device is called: it has no model of its own.
+const VIRTIO_BLOCK: &str = "virtio-blk";
+
+/// The model, with the vendor before it unless that is only `ATA`. A
+/// virtio block device has no model, and its `vendor` is the virtio
+/// device's vendor ID, not a name.
+fn model(dir: &Path, transport: &str) -> String {
     let model = text(dir.join("device/model")).unwrap_or_default();
+    if model.is_empty() && transport == "virtio" {
+        return VIRTIO_BLOCK.to_string();
+    }
     match text(dir.join("device/vendor")) {
         Some(vendor) if !vendor.is_empty() && vendor != "ATA" => {
             format!("{vendor} {model}").trim().to_string()
@@ -257,6 +265,11 @@ mod tests {
             &format!("{vda}/device"),
             "sys/devices/pci0000:00/0000:00:03.0/virtio1",
         );
+        // The virtio device's vendor ID, which is no model.
+        tree.file(
+            "sys/devices/pci0000:00/0000:00:03.0/virtio1/vendor",
+            "0x1af4\n",
+        );
         // A partition of it is not a disk.
         let part = block(&tree, &format!("{path}/vda1"), 2048, false);
         tree.file(&format!("{part}/partition"), "1\n");
@@ -265,7 +278,7 @@ mod tests {
             found,
             [Disk {
                 name: "vda".into(),
-                model: String::new(),
+                model: "virtio-blk".into(),
                 serial: "DISK0".into(),
                 bytes: 1 << 30,
                 rotational: false,

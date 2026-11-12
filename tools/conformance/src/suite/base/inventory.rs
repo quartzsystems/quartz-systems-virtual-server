@@ -7,7 +7,9 @@
 
 use state::Inventory;
 
-use super::{MAC, Run, STATE_DIR, booted, channel};
+use release::fact;
+
+use super::{DHCP_ADDRESS, MAC, Run, STATE_DIR, booted, channel};
 use crate::qemu::image::blank;
 use crate::qemu::{DISK_SERIAL, Drive, Launch};
 
@@ -72,8 +74,10 @@ fn devices(inv: &Inventory, image_bytes: u64) -> Result<(), String> {
         &inv.disks,
     )?;
     check(
-        "the disks do not spin",
-        inv.disks.iter().all(|d| !d.rotational),
+        "the disks' model and location",
+        inv.disks
+            .iter()
+            .all(|d| d.model == "virtio-blk" && d.location.starts_with("P0000-B00-D")),
         &inv.disks,
     )?;
     let [nic] = inv.interfaces.as_slice() else {
@@ -135,7 +139,15 @@ pub fn inventory(run: &Run<'_>) -> Result<String, String> {
         ..run.launch()
     };
     let mut guest = booted(run, &launch)?;
-    let text = channel(&mut guest)?.text(&format!("{STATE_DIR}/inventory.toml"))?;
+    // The interface's carrier is in the inventory once it is up: PID 1
+    // writes the file again when the management line changes.
+    let deadline = run.deadline();
+    let channel = channel(&mut guest)?;
+    channel.until("the management address", deadline, |s| {
+        s.fact(fact::MANAGEMENT)
+            .is_some_and(|m| m.starts_with(DHCP_ADDRESS))
+    })?;
+    let text = channel.text(&format!("{STATE_DIR}/inventory.toml"))?;
     let inv: Inventory = state::store::parse(&text).map_err(|e| e.to_string())?;
     machine(&inv, launch.kvm)?;
     let image = std::fs::metadata(run.disk).map_err(|e| e.to_string())?;

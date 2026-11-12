@@ -79,6 +79,9 @@ impl Server {
                 self.logs.write(&record);
             }
         }
+        // One sync for all that came together: a sync a record would
+        // leave the service behind its senders at an IPL.
+        self.logs.settle();
     }
 
     fn kernel(&mut self) {

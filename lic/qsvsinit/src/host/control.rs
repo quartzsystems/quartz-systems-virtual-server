@@ -38,7 +38,10 @@ impl Control for Host {
 
     fn note(&mut self, key: String, value: String) {
         if key == fact::MANAGEMENT {
-            self.facts.management = value;
+            if self.facts.management != value {
+                self.facts.management = value;
+                self.refresh_inventory();
+            }
         } else {
             self.say(Severity::Info, &format!("noted {key}: {value}"));
         }

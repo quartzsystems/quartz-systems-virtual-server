@@ -92,6 +92,12 @@ impl Channel {
             .map_err(|e| format!("the channel: {e}"))
     }
 
+    /// Send a command without waiting for its answer: the shutdown
+    /// ends the guest's end of the channel before it can give one.
+    pub fn tell(&mut self, command: &str) -> Result<(), String> {
+        self.send(command)
+    }
+
     /// Wait until the guest's end answers, by `deadline`. Each ping
     /// carries a number, so an answer to an earlier one, or to what
     /// the port made of bytes sent before it was open, is passed over.

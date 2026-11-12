@@ -67,7 +67,7 @@ fn launch(run: &Run<'_>, disk: &Path, store: &Path, oem: Vec<String>) -> Launch 
 
 /// Power the guest off through the control socket and wait for QEMU.
 fn power_off(guest: &mut Session) -> Result<(), String> {
-    channel(guest)?.ask(command::POWER_OFF)?;
+    channel(guest)?.tell(command::POWER_OFF)?;
     guest
         .wait_exit(Instant::now() + Duration::from_secs(30))
         .map(|_| ())
@@ -148,7 +148,8 @@ fn falls_back(run: &Run<'_>) -> Result<String, String> {
     }
     power_off(&mut guest)?;
     drop(guest);
-    if order_of(&store)? != [ENTRY_A] {
+    // The firmware may list entries of its own after ours.
+    if order_of(&store)?.first() != Some(&ENTRY_A) {
         return Err(format!(
             "BootOrder changed without a confirmation: {:04X?}",
             order_of(&store)?

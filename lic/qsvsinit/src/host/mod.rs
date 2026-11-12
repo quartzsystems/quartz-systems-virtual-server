@@ -35,6 +35,8 @@ const HEARTBEAT: Duration = Duration::from_secs(5);
 /// The longest the loop sleeps: the log queue is flushed and the
 /// display's clock looked at this often.
 const TICK: Duration = Duration::from_secs(1);
+/// How soon records the log service could not take are offered again.
+const RETRY: Duration = Duration::from_millis(20);
 /// What each service is given to end before it is killed.
 const STOP_GRACE: Duration = Duration::from_secs(5);
 
@@ -194,6 +196,11 @@ impl Host {
                     };
                     self.log.send(Record::new(service, severity, &line));
                 }
+                Occurrence::Killed { service } => {
+                    self.line(&format!(
+                        "{service} did not end when asked to and was killed"
+                    ));
+                }
                 // The loop sees the end itself.
                 Occurrence::Ended => {}
             }
@@ -227,6 +234,20 @@ impl Host {
         // A button that appeared after the IPL looked.
         if self.buttons.is_empty() {
             self.buttons = button::open();
+        }
+    }
+
+    /// Read the inventory again and write it: the management link's
+    /// carrier and speed are known only once it is up.
+    pub(super) fn refresh_inventory(&mut self) {
+        let kept = Some(self.facts.serial.as_str()).filter(|s| !s.is_empty());
+        let inventory = hostinv::read(&hostinv::Roots::default(), kept);
+        let store = state::Store::at(std::path::Path::new(release::DATA_DIR).join("state"));
+        if let Err(e) = store.save(&inventory) {
+            self.say(
+                Severity::Warning,
+                &format!("the inventory was not written: {e}"),
+            );
         }
     }
 
@@ -344,7 +365,9 @@ impl Host {
 
     /// One turn of the loop.
     fn turn(&mut self) {
-        let mut deadline = Instant::now() + TICK;
+        // Records the log service has not taken yet are offered again soon.
+        let tick = if self.log.waiting() > 0 { RETRY } else { TICK };
+        let mut deadline = Instant::now() + tick;
         deadline = deadline.min(self.heartbeat_at);
         if let Some(at) = self.sup.as_ref().and_then(Supervisor::deadline) {
             deadline = deadline.min(at);

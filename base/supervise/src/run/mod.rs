@@ -75,6 +75,12 @@ pub enum Occurrence {
         /// The line, without its end.
         line: String,
     },
+    /// It did not end when asked to during the orderly stop, and was
+    /// killed.
+    Killed {
+        /// The service.
+        service: &'static str,
+    },
     /// The orderly stop is complete: no service is left.
     Ended,
 }
@@ -188,13 +194,16 @@ impl Supervisor {
         let spawned = (|| {
             let (ready_read, ready_write) = pipes::pipe()?;
             let entry = &self.entries[i];
-            let child = Command::new(service.binary)
+            let mut command = Command::new(service.binary);
+            command
                 .args(service.args)
                 .env_clear()
                 .stdin(Stdio::from(ready_write))
                 .stdout(Stdio::from(entry.out.writer()?))
-                .stderr(Stdio::from(entry.err.writer()?))
-                .spawn()?;
+                .stderr(Stdio::from(entry.err.writer()?));
+            // PID 1 blocks the signals it takes from a descriptor; a
+            // service must not inherit that, or SIGTERM cannot end it.
+            let child = crate::signal::unblocked(&mut command).spawn()?;
             // PID 1 reaps every child itself; the handle is not waited on.
             Ok::<_, io::Error>((child.id(), ready_read))
         })();
@@ -301,6 +310,9 @@ impl Supervisor {
                         e.state = State::Stopping {
                             kill_at: now + grace,
                         };
+                        out.push(Occurrence::Killed {
+                            service: self.table[i].name,
+                        });
                     }
                     State::Stopping { .. } => {}
                     _ => {
