@@ -17,6 +17,7 @@ use std::time::Duration;
 use appliance::Appliance;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fs::OFlags;
+use supervise::signal::{Signals, TERM};
 
 use crate::files::kernel::KernelLog;
 use crate::files::{Limits, Logs, boot_id};
@@ -36,6 +37,8 @@ pub struct Server {
     logs: Logs,
     kernel: KernelLog,
     buf: Vec<u8>,
+    /// `SIGTERM`, when the service takes it to end cleanly.
+    term: Option<Signals>,
 }
 
 impl Server {
@@ -66,6 +69,7 @@ impl Server {
             logs: Logs::open(dir, boot, limits),
             kernel: KernelLog::open(dir, boot, limits.kernel_bytes, limits.kernel_boots),
             buf: vec![0; DATAGRAM_MAX],
+            term: None,
         })
     }
 
@@ -92,40 +96,50 @@ impl Server {
     }
 
     /// Wait up to `wait` for something to write, and write it. Nothing
-    /// arriving brings what was written to the disk.
-    pub fn turn(&mut self, wait: Duration) {
+    /// arriving brings what was written to the disk. True when the
+    /// service was asked to end: everything sent before is written.
+    pub fn turn(&mut self, wait: Duration) -> bool {
         let timeout = Timespec {
             tv_sec: i64::try_from(wait.as_secs()).unwrap_or(i64::MAX),
             tv_nsec: i64::from(wait.subsec_nanos()),
         };
-        let (records, kernel) = {
+        let (records, kernel, term) = {
             let mut fds = vec![PollFd::new(&self.socket, PollFlags::IN)];
             if let Some(kmsg) = &self.kmsg {
                 fds.push(PollFd::from_borrowed_fd(kmsg.as_fd(), PollFlags::IN));
             }
-            if poll(&mut fds, Some(&timeout)).is_err() {
-                return;
+            if let Some(term) = &self.term {
+                fds.push(PollFd::from_borrowed_fd(term.fd(), PollFlags::IN));
             }
+            if poll(&mut fds, Some(&timeout)).is_err() {
+                return false;
+            }
+            let kmsg = usize::from(self.kmsg.is_some());
+            let ready = |i: usize| fds.get(i).is_some_and(|f| !f.revents().is_empty());
             (
-                !fds[0].revents().is_empty(),
-                fds.get(1).is_some_and(|f| !f.revents().is_empty()),
+                ready(0),
+                kmsg == 1 && ready(1),
+                self.term.is_some() && ready(1 + kmsg),
             )
         };
-        if records {
+        let ending = term && self.term.as_mut().is_some_and(|t| !t.read().is_empty());
+        if records || ending {
             self.records();
         }
-        if kernel {
+        if kernel || ending {
             self.kernel();
         }
-        if !records && !kernel {
+        if ending || (!records && !kernel) {
             self.logs.sync();
             self.kernel.sync();
         }
+        ending
     }
 }
 
 /// Run the log service of `appliance`. Says it is ready once its
-/// socket is bound, and returns only when it cannot start.
+/// socket is bound, ends when it is told to (`SIGTERM`) with
+/// everything written, and returns only when it cannot start.
 pub fn run(appliance: &Appliance, limits: Limits) -> io::Result<Infallible> {
     let mut server = Server::open(
         &appliance.log_socket(),
@@ -134,9 +148,12 @@ pub fn run(appliance: &Appliance, limits: Limits) -> io::Result<Infallible> {
         limits,
         Some(Path::new(KMSG)),
     )?;
+    server.term = Some(Signals::take(&[TERM])?);
     supervise::ready::signal()?;
     loop {
-        server.turn(SYNC_EVERY);
+        if server.turn(SYNC_EVERY) {
+            std::process::exit(0);
+        }
     }
 }
 

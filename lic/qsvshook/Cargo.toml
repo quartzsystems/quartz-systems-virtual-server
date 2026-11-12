@@ -1,0 +1,21 @@
+[package]
+name = "qsvshook"
+description = "QS/VS test hooks: the harness's channel to the control socket, a service that fails on demand and the state churn. In a test image only, never in a release"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+release = { path = "../release", version = "0.1.0" }
+hostinv = { path = "../hostinv", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+netd = { path = "../../base/netd", version = "0.1.0" }
+hex.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { workspace = true, features = ["termios"] }
+
+[lints]
+workspace = true

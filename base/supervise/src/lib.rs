@@ -12,13 +12,16 @@
 //!   takes each service's readiness byte and its output, restarts what
 //!   exits and stops everything in reverse (Linux).
 //! - [`ready`]: what a service calls to say it is ready.
+//! - [`signal`]: signals read from a descriptor (Linux).
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 pub mod control;
 pub mod ready;
 #[cfg(target_os = "linux")]
 pub mod run;
+#[cfg(target_os = "linux")]
+pub mod signal;
 pub mod table;
 
 pub use table::{Policy, Service, Verdict};

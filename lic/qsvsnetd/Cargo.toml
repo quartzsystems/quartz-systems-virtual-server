@@ -1,0 +1,15 @@
+[package]
+name = "qsvsnetd"
+description = "QS/VS's netd: the base crate's service, run as QS/VS"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+release = { path = "../release", version = "0.1.0" }
+refcode = { path = "../refcode", version = "0.1.0" }
+netd = { path = "../../base/netd", version = "0.1.0" }
+
+[lints]
+workspace = true

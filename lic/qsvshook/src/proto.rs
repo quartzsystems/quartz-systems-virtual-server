@@ -1,0 +1,142 @@
+// Copyright (C), 2026 Quartz Systems. Some rights reserved. This work is
+// licensed under the terms of the MIT license which can be found in the
+// root directory of this project.
+
+//! The channel's lines. The harness writes one command a line; the
+//! channel answers with any number of lines and then [`END`] alone.
+//! An answer's line is a word and its text; file contents travel as
+//! hex, so nothing in them can look like a line of the protocol.
+
+use supervise::control::{HostStatus, ServiceStatus};
+
+/// The line that ends an answer.
+pub const END: &str = ".";
+/// The serial port the channel is on.
+pub const PORT: &str = "/dev/ttyS1";
+
+/// The commands.
+pub mod command {
+    /// `ping`: answers `pong`.
+    pub const PING: &str = "ping";
+    /// `status`: the control socket's status, a `fact` or `service` a line.
+    pub const STATUS: &str = "status";
+    /// `kill <service>`: `SIGKILL` to the service's process.
+    pub const KILL: &str = "kill";
+    /// `cat <path>`: the file, as `hex`.
+    pub const CAT: &str = "cat";
+    /// `put <path> <hex>`: write a file atomically.
+    pub const PUT: &str = "put";
+    /// `ls <directory>`: a `name` a line.
+    pub const LS: &str = "ls";
+    /// `kmsg <text>`: the kernel log's lines that contain the text.
+    pub const KMSG: &str = "kmsg";
+    /// `poweroff`: the control socket's power off.
+    pub const POWER_OFF: &str = "poweroff";
+    /// `restart`: the control socket's restart.
+    pub const RESTART: &str = "restart";
+    /// `netreload`: the network service's reload.
+    pub const NET_RELOAD: &str = "netreload";
+}
+
+/// The first words of an answer's lines.
+pub mod word {
+    /// A fact of the status: `fact <key>=<value>`.
+    pub const FACT: &str = "fact";
+    /// A service of the status: `service <name> <state> <pid> <failures>`.
+    pub const SERVICE: &str = "service";
+    /// File contents in hex.
+    pub const HEX: &str = "hex";
+    /// A directory entry.
+    pub const NAME: &str = "name";
+    /// A line of the kernel log.
+    pub const LINE: &str = "line";
+    /// The command was done.
+    pub const OK: &str = "ok";
+    /// The command failed, and why.
+    pub const ERROR: &str = "error";
+}
+
+/// A status as the lines of an answer.
+pub fn status_lines(status: &HostStatus) -> Vec<String> {
+    let facts = status
+        .facts
+        .iter()
+        .map(|(k, v)| format!("{} {k}={v}", word::FACT));
+    let services = status.services.iter().map(|s| {
+        format!(
+            "{} {} {} {} {}",
+            word::SERVICE,
+            s.name,
+            s.state,
+            s.pid,
+            s.failures
+        )
+    });
+    facts.chain(services).collect()
+}
+
+/// The status in the lines of an answer.
+pub fn parse_status(lines: &[String]) -> Result<HostStatus, String> {
+    let mut status = HostStatus::default();
+    for line in lines {
+        let bad = || format!("not a line of a status: {line}");
+        match line.split_once(' ') {
+            Some((word::FACT, rest)) => {
+                let (key, value) = rest.split_once('=').ok_or_else(bad)?;
+                status.facts.push((key.to_string(), value.to_string()));
+            }
+            Some((word::SERVICE, rest)) => {
+                let fields: Vec<&str> = rest.split(' ').collect();
+                let [name, state, pid, failures] = fields.as_slice() else {
+                    return Err(bad());
+                };
+                status.services.push(ServiceStatus {
+                    name: (*name).to_string(),
+                    state: (*state).to_string(),
+                    pid: pid.parse().map_err(|_| bad())?,
+                    failures: failures.parse().map_err(|_| bad())?,
+                });
+            }
+            Some((word::ERROR, why)) => return Err(why.to_string()),
+            _ => return Err(bad()),
+        }
+    }
+    Ok(status)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_status_crosses_the_channel_whole() {
+        let status = HostStatus {
+            facts: vec![
+                ("slot".into(), "A".into()),
+                (
+                    "management".into(),
+                    "10.0.2.15/24 on eth0, gateway 10.0.2.2".into(),
+                ),
+                (
+                    "reference".into(),
+                    "C2001090 Base ready: 2.31 s = fast".into(),
+                ),
+            ],
+            services: vec![ServiceStatus {
+                name: "netd".into(),
+                state: "restarting".into(),
+                pid: 0,
+                failures: 3,
+            }],
+        };
+        let lines = status_lines(&status);
+        assert_eq!(lines[0], "fact slot=A");
+        assert_eq!(lines[3], "service netd restarting 0 3");
+        assert_eq!(parse_status(&lines), Ok(status));
+        assert_eq!(
+            parse_status(&["error no control socket".into()]),
+            Err("no control socket".into())
+        );
+        assert!(parse_status(&["service netd".into()]).is_err());
+    }
+}

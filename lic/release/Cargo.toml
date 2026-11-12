@@ -1,6 +1,6 @@
 [package]
 name = "release"
-description = "QS/VS release identity: VxRyMz from VERSION, the build ID, the product text and the banner"
+description = "QS/VS release identity: VxRyMz from VERSION, the build ID, the product text, the banner, and QS/VS as the base crates see it"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +9,7 @@ build = "build.rs"
 
 [dependencies]
 vrm.workspace = true
+appliance = { path = "../../base/appliance", version = "0.1.0" }
 
 [build-dependencies]
 vrm.workspace = true

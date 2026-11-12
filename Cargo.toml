@@ -6,6 +6,10 @@ members = [
     "tools/conformance",
     # Licensed Internal Code: PID 1, release identity, reference codes, the disk.
     "lic/qsvsinit",
+    "lic/qsvslogd",
+    "lic/qsvsnetd",
+    # The test hooks: built into a test image only.
+    "lic/qsvshook",
     "lic/release",
     "lic/refcode",
     "lic/hostdisk",

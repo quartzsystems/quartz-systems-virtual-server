@@ -589,6 +589,7 @@ dependencies = [
  "abrec",
  "diskimg",
  "uuid",
+ "vrm",
 ]
 
 [[package]]
@@ -1093,15 +1094,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "qsvshook"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "hostinv",
+ "netd",
+ "release",
+ "rustix",
+ "state",
+ "supervise",
+]
+
+[[package]]
 name = "qsvsinit"
 version = "0.1.0"
 dependencies = [
+ "abrec",
+ "appliance",
+ "diskimg",
+ "hostdisk",
+ "hostinv",
  "kvm-bindings",
  "kvm-ioctls",
- "libc",
+ "logd",
  "refcode",
  "release",
  "rustix",
+ "seed",
+ "state",
+ "supervise",
+]
+
+[[package]]
+name = "qsvslogd"
+version = "0.1.0"
+dependencies = [
+ "logd",
+ "refcode",
+ "release",
+]
+
+[[package]]
+name = "qsvsnetd"
+version = "0.1.0"
+dependencies = [
+ "netd",
+ "refcode",
+ "release",
 ]
 
 [[package]]
@@ -1128,6 +1168,12 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 [[package]]
 name = "refcode"
 version = "0.1.0"
+dependencies = [
+ "appliance",
+ "logd",
+ "release",
+ "supervise",
+]
 
 [[package]]
 name = "regex-automata"
@@ -1150,6 +1196,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "release"
 version = "0.1.0"
 dependencies = [
+ "appliance",
  "vrm",
 ]
 
@@ -1532,6 +1579,7 @@ name = "supervise"
 version = "0.1.0"
 dependencies = [
  "ipc",
+ "libc",
  "rustix",
 ]
 

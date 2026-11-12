@@ -43,6 +43,16 @@ pub fn parse(line: &str) -> Source {
 }
 
 impl Source {
+    /// The slot as status names it: `A`, `B`, `media` or `unknown`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Source::SlotA => "A",
+            Source::SlotB => "B",
+            Source::Install => "media",
+            Source::Unknown => "unknown",
+        }
+    }
+
     /// The line PID 1 prints.
     pub fn line(self) -> String {
         match self {

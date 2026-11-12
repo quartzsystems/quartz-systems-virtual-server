@@ -3,11 +3,13 @@
 // root directory of this project.
 
 //! QS/VS's identity over QS/400's `vrm` crate: the release, the build
-//! ID, the product text, the banner, and the prefixes everything named
-//! after the product starts with.
+//! ID, the product text, the banner, the prefixes everything named
+//! after the product starts with, and the [`Appliance`] description the
+//! product-neutral base crates take.
 
 #![forbid(unsafe_code)]
 
+pub use appliance::{Appliance, Event};
 pub use vrm::Release;
 
 /// The release `build.rs` captured: `VERSION` (`1.0.0` is `V1R0M0`), or
@@ -35,6 +37,79 @@ pub const ENV_PREFIX: &str = "QSVS_";
 /// Prefix of QS/VS's kernel command-line keys.
 pub const KEY_PREFIX: &str = "qsvs.";
 
+/// The lower-case identifier: PID 1 is `qsvsinit`.
+pub const ID: &str = "qsvs";
+
+/// Where `QSVSDATA` is mounted.
+pub const DATA_DIR: &str = "/data";
+
+/// The run directory.
+pub const RUN_DIR: &str = "/run";
+
+/// PID 1's control socket.
+pub const CONTROL_SOCKET: &str = "/run/qsvsinit.sock";
+
+/// Where the service binaries are in the initramfs.
+pub const BIN_DIR: &str = "/qsvs/bin";
+
+/// What a default host name starts with.
+pub const HOST_PREFIX: &str = "QSVS";
+
+/// The FAT volume label of a seed volume.
+pub const SEED_LABEL: &str = "QSVSSEED";
+
+/// QS/VS as the base crates see it. The caller says how an event is
+/// posted and a fact noted: PID 1 does both itself, a service asks
+/// PID 1.
+pub const fn appliance(post: fn(&Event<'_>), note: fn(&str, &str)) -> Appliance {
+    Appliance {
+        id: ID,
+        name: NAME,
+        banner,
+        data_dir: DATA_DIR,
+        run_dir: RUN_DIR,
+        host_prefix: HOST_PREFIX,
+        seed_label: SEED_LABEL,
+        post,
+        note,
+    }
+}
+
+/// The keys of the facts PID 1 keeps, as the control socket's status
+/// names them.
+pub mod fact {
+    /// The product's name.
+    pub const PRODUCT: &str = "product";
+    /// The release, `V1R0M0`.
+    pub const RELEASE: &str = "release";
+    /// The build ID.
+    pub const BUILD: &str = "build";
+    /// `release` or `test`: whether the test hooks are in the image.
+    pub const IMAGE: &str = "image";
+    /// The slot this IPL came from: `A`, `B`, `media` or `unknown`.
+    pub const SLOT: &str = "slot";
+    /// The A/B record, or why there is none.
+    pub const RECORD: &str = "record";
+    /// The host name.
+    pub const HOST: &str = "host";
+    /// The system serial number.
+    pub const SERIAL: &str = "serial";
+    /// The management address, or the reason there is none.
+    pub const MANAGEMENT: &str = appliance::NOTE_MANAGEMENT;
+    /// Seconds since the epoch.
+    pub const TIME: &str = "time";
+    /// The date and time as displayed.
+    pub const DATE: &str = "date";
+    /// The current reference code and its text.
+    pub const REFERENCE: &str = "reference";
+    /// `/data`: the device mounted there, or `memory`.
+    pub const DATA: &str = "data";
+    /// `yes` once every service has been ready.
+    pub const READY: &str = "ready";
+    /// What the KVM probe found.
+    pub const KVM: &str = "kvm";
+}
+
 /// The banner for a release and a build ID: `QS/VS V1R0M0 a1b2c3d`.
 pub fn banner_of(release: Release, build_id: &str) -> String {
     format!("{NAME} {release} {build_id}")
@@ -60,6 +135,17 @@ mod tests {
         assert_eq!(banner_of(r, "abc1234"), "QS/VS V1R0M0 abc1234");
         assert!(banner().starts_with("QS/VS V"));
         assert!(banner().ends_with(BUILD_ID));
+    }
+
+    #[test]
+    fn the_appliance_description_is_qsvs() {
+        let a = appliance(|_| {}, |_, _| {});
+        assert_eq!(a.control_socket().to_str(), Some(CONTROL_SOCKET));
+        assert_eq!(a.state_dir().to_str(), Some("/data/state"));
+        assert_eq!(a.log_socket().to_str(), Some("/run/logd.sock"));
+        assert_eq!((a.banner)(), banner());
+        // A FAT label is eleven characters at most.
+        assert!(a.seed_label.len() <= 11);
     }
 
     #[test]

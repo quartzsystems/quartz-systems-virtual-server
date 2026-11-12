@@ -1,6 +1,6 @@
 [package]
 name = "hostdisk"
-description = "QS/VS's own disk: the GPT layout (ESP, A/B record, QSVSDATA) and the A/B record over abrec"
+description = "QS/VS's own disk: the GPT layout (ESP, A/B record, QSVSDATA), the A/B record over abrec, and finding the partitions on a running host"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 abrec.workspace = true
+vrm.workspace = true
 diskimg.workspace = true
 uuid.workspace = true
 

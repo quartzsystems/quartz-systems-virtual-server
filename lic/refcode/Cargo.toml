@@ -1,10 +1,16 @@
 [package]
 name = "refcode"
-description = "QS/VS host reference codes: one table, the line a code is posted as"
+description = "QS/VS host reference codes: one table, the line a code is posted as, the code of each base event, and the poster"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+appliance = { path = "../../base/appliance", version = "0.1.0" }
+logd = { path = "../../base/logd", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+release = { path = "../release", version = "0.1.0" }
 
 [lints]
 workspace = true

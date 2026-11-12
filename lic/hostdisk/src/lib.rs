@@ -10,4 +10,6 @@
 #![forbid(unsafe_code)]
 
 pub mod layout;
+#[cfg(target_os = "linux")]
+pub mod locate;
 pub mod record;
