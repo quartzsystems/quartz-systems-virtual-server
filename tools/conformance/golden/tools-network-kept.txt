@@ -1,0 +1,24 @@
+                          Configure Management Network
+                                                               System:  vs-test
+
+ Management . . : 10.0.2.15/24 on eth0, gateway 10.0.2.2
+
+ The new configuration is kept. It is in use from every IPL on.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Enter=Continue
+

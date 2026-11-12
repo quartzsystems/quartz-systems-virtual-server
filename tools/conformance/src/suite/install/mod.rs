@@ -41,7 +41,7 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("mirror-power-pull", pull::mirror),
     ("storage-kill", mirror::storage_kill),
     ("tools-network", tools::network),
-    ("tools-sign-on", tools::sign_on),
+    ("tools-sign-on", tools::sign_on_rules),
     ("media-refused", refuse::media),
     ("answers-invalid", refuse::answers),
     ("installed-base", unattended::installed_base),
@@ -71,15 +71,40 @@ pub fn password_hash() -> String {
 }
 
 /// An answers file: the disks by serial number, the user, and the
-/// `[host]` and `[network]` tables given.
-pub fn answers(disks: &[&str], host: &str, network: &str) -> String {
+/// keys of the `[host]` and `[network]` tables given.
+pub fn answers_with(disks: &[&str], host: &str, network: &str) -> String {
     let disks: Vec<String> = disks.iter().map(|d| format!("\"{d}\"")).collect();
     format!(
         "schema_version = 2\n\n[install]\ndisks = [{}]\nuser_id = \"{USER}\"\n\
-         password_hash = \"{}\"\n\n[host]\nname = \"{HOST}\"\n{host}\n[network]\n{network}",
+         password_hash = \"{}\"\n\n[host]\n{host}\n[network]\n{network}",
         disks.join(", "),
         password_hash()
     )
+}
+
+/// An answers file for the host [`HOST`], with further keys of the
+/// `[host]` table and the keys of the `[network]` table.
+pub fn answers(disks: &[&str], host: &str, network: &str) -> String {
+    answers_with(disks, &format!("name = \"{HOST}\"\n{host}"), network)
+}
+
+/// Install on a blank `disk` with these keys of the `[host]` and
+/// `[network]` tables as answers: what a seed would have brought a
+/// host that was not installed.
+pub fn configured(run: &Run<'_>, disk: &Path, host: &str, network: &str) -> Result<(), String> {
+    image::blank(disk, DISK_BYTES)?;
+    let host = if host.contains("name =") {
+        host.to_string()
+    } else {
+        format!("name = \"{HOST}\"\n{host}")
+    };
+    install_unattended(
+        run,
+        &[disk],
+        &answers_with(&SERIALS[..1], &host, network),
+        false,
+    )
+    .map(|_| ())
 }
 
 /// The test image's ISO.
@@ -123,9 +148,15 @@ pub fn machine(run: &Run<'_>, disks: &[Option<&Path>]) -> Launch {
     launch
 }
 
-/// The same machine with the installation media in it, started first.
-pub fn with_media(run: &Run<'_>, mut launch: Launch, usb: bool) -> Result<Launch, String> {
-    let iso = iso(run)?.to_path_buf();
+/// The same machine with the test image's installation media in it,
+/// started first.
+pub fn with_media(run: &Run<'_>, launch: Launch, usb: bool) -> Result<Launch, String> {
+    Ok(with_media_of(launch, iso(run)?, usb))
+}
+
+/// The same machine with the media `iso` in it, started first.
+pub fn with_media_of(mut launch: Launch, iso: &Path, usb: bool) -> Launch {
+    let iso = iso.to_path_buf();
     if usb {
         launch.usb = Some(iso);
     } else {
@@ -133,7 +164,7 @@ pub fn with_media(run: &Run<'_>, mut launch: Launch, usb: bool) -> Result<Launch
     }
     launch.media_first = true;
     launch.hook = None;
-    Ok(launch)
+    launch
 }
 
 /// The same machine with a seed volume holding `seed_toml`.
@@ -156,8 +187,23 @@ pub fn install_unattended(
     seed_toml: &str,
     usb: bool,
 ) -> Result<String, String> {
+    install_from(run, iso(run)?, disks, seed_toml, usb)
+}
+
+/// [`install_unattended`] from the media `iso`.
+pub fn install_from(
+    run: &Run<'_>,
+    iso: &Path,
+    disks: &[&Path],
+    seed_toml: &str,
+    usb: bool,
+) -> Result<String, String> {
     let places: Vec<Option<&Path>> = disks.iter().map(|d| Some(*d)).collect();
-    let launch = with_seed(run, with_media(run, machine(run, &places), usb)?, seed_toml)?;
+    let launch = with_seed(
+        run,
+        with_media_of(machine(run, &places), iso, usb),
+        seed_toml,
+    )?;
     let mut guest = run.boot(&launch)?;
     let deadline = Instant::now() + INSTALL_WITHIN;
     guest
@@ -223,7 +269,17 @@ pub fn installed(run: &Run<'_>, kind: Kind) -> Result<Vec<PathBuf>, String> {
         .map(|i| run.work.join(format!("installed-{tag}-{i}.img")))
         .collect();
     let stamp = run.work.join(format!("installed-{tag}.iso"));
-    let built = iso(run)?.display().to_string();
+    // The ISO's name is its boot image's hash; the payload beside it
+    // can change without that, so its size and time are part of what
+    // an installation is kept for.
+    let media = iso(run)?;
+    let meta = fs::metadata(media).map_err(|e| e.to_string())?;
+    let built = format!(
+        "{} {} {:?}",
+        media.display(),
+        meta.len(),
+        meta.modified().map_err(|e| e.to_string())?
+    );
     let fresh =
         fs::read_to_string(&stamp).is_ok_and(|s| s == built) && kept.iter().all(|p| p.is_file());
     if !fresh {
@@ -316,6 +372,40 @@ pub fn titled(guest: &mut Guest<'_>, title: &str, deadline: Instant) -> Result<S
     })
 }
 
+/// Type the number of a menu option and Enter: the screen titled
+/// `title` that follows.
+pub fn option(
+    guest: &mut Guest<'_>,
+    number: u8,
+    title: &str,
+    deadline: Instant,
+) -> Result<String, String> {
+    use crate::qemu::term::key;
+    guest.type_keys(&format!("{number}{}", key::ENTER))?;
+    titled(guest, title, deadline)
+}
+
+/// The keys that fill a form's fields, of the lengths `lens`, from the
+/// first: `None` leaves a field as it is; a value shorter than its
+/// field clears the rest of it. A value that fills its field moves the
+/// cursor on by itself.
+pub fn fill(values: &[Option<&str>], lens: &[usize]) -> String {
+    use crate::qemu::term::key;
+    let mut keys = String::new();
+    for (value, len) in values.iter().zip(lens) {
+        match value {
+            None => keys.push_str(key::TAB),
+            Some(value) => {
+                keys.push_str(value);
+                if value.len() < *len {
+                    keys.push_str(key::FIELD_EXIT);
+                }
+            }
+        }
+    }
+    keys
+}
+
 /// Hold a screen against its golden file.
 pub fn golden(name: &str, screen: &str) -> Result<(), String> {
     crate::qemu::golden::check(name, screen, &release::RELEASE.to_string())
@@ -338,4 +428,46 @@ pub fn sign_on(
     titled(guest, SIGN_ON, deadline)?;
     guest.type_keys(&format!("{user}{}{password}{}", key::TAB, key::ENTER))?;
     titled(guest, MAIN_MENU, deadline)
+}
+
+/// Wait until the reference code history has `code` with `detail` in
+/// its text. A code posted while a session has the serial port is on
+/// the display and in the history, not on the port.
+pub fn in_history(
+    guest: &mut Guest<'_>,
+    code: &refcode::RefCode,
+    detail: &str,
+    deadline: Instant,
+) -> Result<(), String> {
+    loop {
+        let history = guest
+            .channel(deadline)?
+            .text("/data/log/refcodes.ndjson")
+            .unwrap_or_default();
+        if history
+            .lines()
+            .any(|line| line.contains(code.code) && line.contains(detail))
+        {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "the history has no `{}` with `{detail}`",
+                code.line()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+}
+
+/// `error` with the newest lines of the host's system log under it:
+/// what the services said, which the serial port does not show.
+pub fn with_log(guest: &mut Guest<'_>, error: String) -> String {
+    let log = guest
+        .channel(Instant::now() + Duration::from_secs(5))
+        .and_then(|c| c.text("/data/log/system.ndjson"))
+        .unwrap_or_default();
+    let lines: Vec<&str> = log.lines().collect();
+    let newest = lines[lines.len().saturating_sub(25)..].join("\n");
+    format!("{error}\n--- the system log's newest lines\n{newest}")
 }

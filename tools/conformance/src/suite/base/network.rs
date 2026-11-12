@@ -70,14 +70,22 @@ pub fn dhcp(run: &Run<'_>) -> Result<String, String> {
 /// VLAN interface exists. Then `network.toml` is changed to DHCP and
 /// the service told to reload: it follows without a restart.
 pub fn static_vlan(run: &Run<'_>) -> Result<String, String> {
+    let host = "name = \"vs-seeded\"\n";
+    let network = "mode = \"static\"\naddress = \"192.0.2.10/24\"\ngateway = \"192.0.2.1\"\nvlan = 100\n\
+                   dns = [\"192.0.2.53\"]\n";
     let disk = run.file("disk.img");
-    sparse_copy(run.disk, &disk)?;
+    if run.installed {
+        // The configuration a seed would bring is the installer's answers.
+        crate::suite::install::configured(run, &disk, host, network)?;
+    } else {
+        sparse_copy(run.disk, &disk)?;
+    }
     let unseeded = Launch {
         disk: Some(disk),
         snapshot: false,
         ..with_nic(run)
     };
-    {
+    if !run.installed {
         let mut first = booted(run, &unseeded)?;
         if !first.said(&posted(&refcode::SEED_CHECKED, "no seed volume")) {
             return Err("the first IPL did not look for a seed volume".into());
@@ -88,12 +96,7 @@ pub fn static_vlan(run: &Run<'_>) -> Result<String, String> {
         }
     }
     let seed = run.file("seed.img");
-    let toml = seed_toml(
-        "name = \"vs-seeded\"\n",
-        "mode = \"static\"\naddress = \"192.0.2.10/24\"\ngateway = \"192.0.2.1\"\nvlan = 100\n\
-         dns = [\"192.0.2.53\"]\n",
-    );
-    seed_volume(&seed, release::SEED_LABEL, &toml)?;
+    seed_volume(&seed, release::SEED_LABEL, &seed_toml(host, network))?;
     let launch = Launch {
         extra: vec![Drive {
             path: seed,
@@ -104,7 +107,13 @@ pub fn static_vlan(run: &Run<'_>) -> Result<String, String> {
     };
     let mut guest = run.boot(&launch)?;
     let deadline = run.deadline();
-    guest.seen(&posted(&refcode::SEED_APPLIED, ""), deadline)?;
+    // An installed host is configured: the volume is not read.
+    let seeded = if run.installed {
+        posted(&refcode::SEED_CHECKED, "the host is configured")
+    } else {
+        posted(&refcode::SEED_APPLIED, "")
+    };
+    guest.seen(&seeded, deadline)?;
     guest.seen(&posted(&refcode::STATE_LOADED, "host vs-seeded"), deadline)?;
     let wanted = line("192.0.2.10/24", "eth0.100", "192.0.2.1");
     guest.seen(&posted(&refcode::ADDRESS_ACQUIRED, &wanted), deadline)?;
@@ -140,7 +149,12 @@ pub fn static_vlan(run: &Run<'_>) -> Result<String, String> {
         return Err("eth0.100 is still there after the reload".into());
     }
     Ok(format!(
-        "seeded on the second IPL: {wanted}, eth0.100 exists; reloaded: {after}, eth0.100 gone, the same process"
+        "{}: {wanted}, eth0.100 exists; reloaded: {after}, eth0.100 gone, the same process",
+        if run.installed {
+            "installed with the answers"
+        } else {
+            "seeded on the second IPL"
+        }
     ))
 }
 

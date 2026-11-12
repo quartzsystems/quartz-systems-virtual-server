@@ -1,10 +1,10 @@
                                  Install QS/VS
                                                                System:  vs-test
 
- UTC offset . . . . . :
- Time servers . . . . :
- Date . . . . . . . . :
- Time . . . . . . . . :
+ UTC offset  . . . . :
+ Time servers  . . . :
+ Date  . . . . . . . :
+ Time  . . . . . . . :
 
  The clock now shows yyyy-mm-dd hh:mm UTC.
 

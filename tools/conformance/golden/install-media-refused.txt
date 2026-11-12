@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                                 System:  QS/VS
+
+ This installation media is refused. Nothing was written.
+
+ the manifest is not signed by a key this installer trusts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F3=Exit
+

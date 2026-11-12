@@ -51,9 +51,9 @@ pub fn time(run: &Run<'_>) -> Result<String, String> {
     let server = format!("{DHCP_GATEWAY}:{port}");
 
     let seed = run.file("seed.img");
-    let toml = seed_toml(&format!("ntp_servers = [\"{server}\"]\n"), "");
-    seed_volume(&seed, release::SEED_LABEL, &toml)?;
-    let launch = Launch {
+    let host = format!("ntp_servers = [\"{server}\"]\n");
+    seed_volume(&seed, release::SEED_LABEL, &seed_toml(&host, ""))?;
+    let mut launch = Launch {
         nic: Some(MAC.to_string()),
         extra: vec![Drive {
             path: seed,
@@ -62,6 +62,14 @@ pub fn time(run: &Run<'_>) -> Result<String, String> {
         }],
         ..run.launch()
     };
+    if run.installed {
+        // An installed host is configured and reads no seed: the time
+        // server is among the installer's answers.
+        let disk = run.file("disk.img");
+        crate::suite::install::configured(run, &disk, &host, "")?;
+        launch.disk = Some(disk);
+        launch.snapshot = false;
+    }
     let mut guest = booted(run, &launch)?;
     let deadline = run.deadline();
     let before: i64 = fact_of(&channel(&mut guest)?.status()?, fact::TIME)?

@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                            System:  QSVS000000
+
+ The answers of an unattended installation were found and cannot be used:
+
+ seed.toml: [install]: there is no disk NO-SUCH-DISK
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Enter=Install by hand   F3=Exit
+

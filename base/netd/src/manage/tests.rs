@@ -364,3 +364,32 @@ fn a_device_that_goes_away_takes_the_interface_with_it() {
         ["note none: no interface with address 52:54:00:00:00:02"]
     );
 }
+
+#[test]
+fn a_stopped_client_s_last_word_does_not_take_a_static_address_away() {
+    let (mut m, log, said, now) = machine(Network::default(), vec![eth(2, "eth0", true)]);
+    m.refresh(now);
+    m.bound(&lease([10, 0, 2, 15]));
+    take(&log);
+    take(&said);
+    // The same address, now static: the client is stopped, the address set.
+    let fixed = Network {
+        mode: Mode::Static,
+        address: Some("10.0.2.15/24".parse().unwrap()),
+        gateway: Some(Ipv4Addr::new(10, 0, 2, 2)),
+        ..Network::default()
+    };
+    m.reload(fixed, "HOST1".into(), now);
+    assert!(take(&log).contains(&"dhcp stop eth0 release".to_string()));
+    assert!(m.online());
+    // The stopped client's word that its lease is off arrives afterwards.
+    m.unbound(now);
+    assert!(m.online());
+    assert_eq!(m.line(), "10.0.2.15/24 on eth0, gateway 10.0.2.2");
+    // A client that is running and loses its lease is believed.
+    m.reload(Network::default(), "HOST1".into(), now);
+    m.bound(&lease([10, 0, 2, 15]));
+    assert!(m.online());
+    m.unbound(now);
+    assert!(!m.online());
+}

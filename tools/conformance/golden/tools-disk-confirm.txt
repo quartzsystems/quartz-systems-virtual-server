@@ -1,0 +1,24 @@
+                             Confirm Erase of Disk
+                                                               System:  vs-test
+
+ Everything on this disk will be erased:
+
+   P0000-B00-D12-F0  virtio-blk  serial QSVSNEW  671.0 MB
+
+ It takes the place of unit 2 and is rebuilt from the other unit
+ while the host runs.
+
+ Press F10 to confirm, or F12 to go back.
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F10=Confirm   F12=Cancel
+

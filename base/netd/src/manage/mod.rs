@@ -314,8 +314,13 @@ impl<K: Kernel> Manager<K> {
         self.note();
     }
 
-    /// The DHCP client has taken its lease off the interface.
+    /// The DHCP client has taken its lease off the interface. A client
+    /// that was stopped says so too, after the interface it served is
+    /// gone: that word is about no address in use now.
     pub fn unbound(&mut self, now: Instant) {
+        if self.active.as_ref().is_none_or(|a| a.dhcp.is_none()) {
+            return;
+        }
         if self.address.take().is_some() {
             self.since = now;
             self.warned = false;

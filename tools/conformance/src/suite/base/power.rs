@@ -26,14 +26,19 @@ const CAD_IGNORED: &str = "Ctrl-Alt-Del ignored";
 const SHUTDOWN_WITHIN: Duration = Duration::from_secs(30);
 
 /// A small generator: the moments need to vary, not to be secret.
-struct Moments(u64);
+pub struct Moments(pub u64);
 
 impl Moments {
-    fn next_ms(&mut self) -> u64 {
+    /// The next number.
+    pub fn number(&mut self) -> u64 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 7;
         self.0 ^= self.0 << 17;
-        self.0 % RUN_ON_MS
+        self.0
+    }
+
+    fn next_ms(&mut self) -> u64 {
+        self.number() % RUN_ON_MS
     }
 }
 
@@ -48,7 +53,7 @@ fn state_file(channel: &mut Channel, name: &str) -> Result<Option<String>, Strin
 
 /// Every state file parses and is a complete old or new version. The
 /// generation of `host.toml`, if the churn has written it.
-fn verify(channel: &mut Channel) -> Result<Option<u64>, String> {
+pub fn verify(channel: &mut Channel) -> Result<Option<u64>, String> {
     let parsed = |e: state::StateError| e.to_string();
     let host = state_file(channel, "host.toml")?.ok_or("host.toml is gone")?;
     let host: Host = state::store::parse(&host).map_err(parsed)?;

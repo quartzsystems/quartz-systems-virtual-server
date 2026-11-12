@@ -11,8 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use diskimg::efi::{self, EspLocation};
-use diskimg::layout::ESP_TYPE_GUID;
-use hostdisk::layout::{SLOT_B_PATH, fixed_guids};
+use hostdisk::layout::SLOT_B_PATH;
 
 use crate::error::HarnessError;
 use crate::qemu::{firmware, vars};
@@ -26,25 +25,10 @@ fn setup(reason: &dyn std::fmt::Display) -> HarnessError {
     }
 }
 
-/// Where the ESP is on the built image. Its partition GUID is the fixed
-/// one every build writes.
+/// Where the ESP is on the image, by its table: a built image has the
+/// fixed GUIDs, an installed disk its own.
 fn esp(image: &Path) -> Result<EspLocation, HarnessError> {
-    let mut file = fs::File::open(image)?;
-    let table = diskimg::read_table(&mut file).map_err(|e| setup(&e))?;
-    let (index, _, first, last) = table
-        .into_iter()
-        .find(|p| p.1 == ESP_TYPE_GUID)
-        .ok_or_else(|| setup(&"the image has no ESP"))?;
-    let guid = usize::try_from(index)
-        .ok()
-        .and_then(|i| fixed_guids().parts.get(i.checked_sub(1)?).copied())
-        .ok_or_else(|| setup(&"the ESP is not a partition of the layout"))?;
-    Ok(EspLocation {
-        index,
-        first_lba: first,
-        sectors: last - first + 1,
-        guid,
-    })
+    crate::qemu::image::esp(image).map_err(|e| setup(&e))
 }
 
 /// Write the variable store under `work` and return its path.

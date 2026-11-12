@@ -1,0 +1,24 @@
+                          Configure Management Network
+                                                               System:  vs-test
+
+ Management . . : none: waiting for DHCP on eth0.100
+
+ The new configuration is in use and is being tried.
+
+ It is kept as soon as the interface has carrier and an address.
+ If it has not, the configuration of before is restored in 29 s.
+
+ F10 keeps the new configuration now, whatever the interface says.
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F10=Keep
+

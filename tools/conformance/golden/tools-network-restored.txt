@@ -1,0 +1,24 @@
+                          Configure Management Network
+                                                               System:  vs-test
+
+ Management . . : none: waiting for DHCP on eth0
+
+ The new configuration was not kept.
+ It had: none: waiting for DHCP on eth0.100
+
+ The configuration of before is in use again.
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Enter=Continue
+

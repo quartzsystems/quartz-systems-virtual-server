@@ -12,7 +12,7 @@ use std::path::Path;
 use diskimg::efi::EspLocation;
 use diskimg::layout::ESP_TYPE_GUID;
 use diskimg::{SECTOR, fat};
-use hostdisk::layout::{RECORD_TYPE_GUID, fixed_guids};
+use hostdisk::layout::RECORD_TYPE_GUID;
 use hostdisk::record::{self, HostRecord};
 use uuid::Uuid;
 
@@ -60,20 +60,20 @@ fn partition(file: &mut File, ty: Uuid) -> Result<(u32, u64, u64), String> {
     Ok((index, first * SECTOR, (last - first + 1) * SECTOR))
 }
 
-/// Where the ESP is on a built image. Its partition GUID is the fixed
-/// one every build writes.
+/// Where the ESP is on an image, by its table: a built image has the
+/// fixed GUIDs, an installed disk its own.
 pub fn esp(image: &Path) -> Result<EspLocation, String> {
     let mut file = File::open(image).map_err(text)?;
-    let (index, start, len) = partition(&mut file, ESP_TYPE_GUID)?;
-    let guid = usize::try_from(index)
-        .ok()
-        .and_then(|i| fixed_guids().parts.get(i.checked_sub(1)?).copied())
-        .ok_or("the ESP is not a partition of the layout")?;
+    let entry = hostdisk::gpt::entries(&mut file)
+        .map_err(text)?
+        .into_iter()
+        .find(|e| e.type_guid == ESP_TYPE_GUID)
+        .ok_or("the image has no ESP")?;
     Ok(EspLocation {
-        index,
-        first_lba: start / SECTOR,
-        sectors: len / SECTOR,
-        guid,
+        index: entry.index,
+        first_lba: entry.first_lba,
+        sectors: entry.last_lba + 1 - entry.first_lba,
+        guid: entry.guid,
     })
 }
 

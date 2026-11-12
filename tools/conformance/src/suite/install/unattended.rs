@@ -15,9 +15,10 @@ use hostdisk::set::MemberState;
 use release::fact;
 
 use super::{
-    HOST, OnDisk, SERIALS, answers, blank_disks, boot, install_unattended, machine, on_disk,
-    power_off, protected,
+    HOST, Kind, OnDisk, SERIALS, answers, blank_disks, boot, install_unattended, installed,
+    machine, on_disk, power_off, protected,
 };
+use crate::qemu::Launch;
 use crate::suite::base::{Run, STATE_DIR, all_ready, channel, fact_of, posted};
 
 /// What the first synchronization of a pair is given.
@@ -130,7 +131,70 @@ pub fn mirrored(run: &Run<'_>) -> Result<String, String> {
     ))
 }
 
+/// The release image's ISO.
+fn release_iso<'a>(run: &Run<'a>) -> Result<&'a Path, String> {
+    run.images
+        .iso
+        .as_deref()
+        .filter(|p| p.is_file())
+        .ok_or_else(|| "the release ISO is not built; run `all`".into())
+}
+
+/// Phase 0's suite on a disk the release installer wrote: an IPL from
+/// slot A, then from slot B by a firmware boot entry.
+fn phase0(run: &Run<'_>) -> Result<String, String> {
+    let disk = run.file("release.img");
+    crate::qemu::image::blank(&disk, super::DISK_BYTES)?;
+    super::install_from(
+        run,
+        release_iso(run)?,
+        &[disk.as_path()],
+        &answers(&SERIALS[..1], "", ""),
+        false,
+    )?;
+    let allow = crate::suite::allow_no_kvm();
+    let mut seen = Vec::new();
+    // The release image has no test hooks: no channel, the console only.
+    let base = Launch {
+        disk: Some(disk.clone()),
+        snapshot: true,
+        ..run.base.clone()
+    };
+    let vars = crate::suite::slotb::vars(&disk, &run.base.firmware, run.work)
+        .map_err(|e| e.to_string())?;
+    for (source, vars, heartbeats) in [
+        ("IPL slot A (qsvs.slot=A)", None, true),
+        ("IPL slot B (qsvs.slot=B)", Some(vars), false),
+    ] {
+        let mut guest = run.boot(&Launch {
+            vars,
+            ..base.clone()
+        })?;
+        let (detail, _) =
+            crate::suite::ipl_check(&mut guest, source, heartbeats, run.deadline(), allow)?;
+        seen.push(detail);
+    }
+    Ok(seen.join("; "))
+}
+
 /// Suite 13.
-pub fn installed_base(_run: &Run<'_>) -> Result<String, String> {
-    Err("not written yet".into())
+pub fn installed_base(run: &Run<'_>) -> Result<String, String> {
+    let ipl = phase0(run)?;
+    // Phase 1's ten, on a disk the test image's installer wrote.
+    let disks = installed(run, Kind::Single)?;
+    let on_installed = Run {
+        disk: disks[0].as_path(),
+        installed: true,
+        ..*run
+    };
+    let mut passed = Vec::new();
+    for (name, suite) in crate::suite::base::SUITES {
+        suite(&on_installed).map_err(|e| format!("`{name}` on the installed system: {e}"))?;
+        passed.push(*name);
+    }
+    Ok(format!(
+        "on a disk the release installer wrote: {ipl}; on a disk the test image's installer          wrote, the {} suites of the base system pass: {}",
+        passed.len(),
+        passed.join(", ")
+    ))
 }

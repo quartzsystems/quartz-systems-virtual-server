@@ -1,0 +1,24 @@
+                        Work with Service Tools User IDs
+                                                               System:  vs-test
+
+ Type an option by a user ID, press Enter.  2=Change password  4=Remove
+
+ Opt User ID
+     ADMIN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F3=Exit   F6=Add   F12=Cancel
+

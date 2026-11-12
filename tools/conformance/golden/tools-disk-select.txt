@@ -1,0 +1,24 @@
+                              Work with Disk Units
+                                                               System:  vs-test
+
+ Type 1 by the disk to put in the place of unit 2.
+
+ Opt Location                Model               Serial                  Size
+     P0000-B00-D12-F0        virtio-blk          QSVSNEW             671.0 MB
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F3=Exit   F12=Cancel
+

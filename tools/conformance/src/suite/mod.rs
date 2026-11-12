@@ -11,7 +11,7 @@
 
 pub mod base;
 pub mod install;
-mod slotb;
+pub mod slotb;
 
 use std::cell::RefCell;
 use std::env;
@@ -161,7 +161,7 @@ impl Suite {
                 pinned: false,
             },
             timeout: Duration::from_secs(timeout),
-            allow_no_kvm: env::var(ALLOW_NO_KVM_ENV).is_ok_and(|v| v == "1"),
+            allow_no_kvm: allow_no_kvm(),
             log: RefCell::new(String::new()),
         })
     }
@@ -255,6 +255,7 @@ impl Suite {
             base: &self.base,
             images: &self.images,
             release_disk: self.images.release_disk.as_deref(),
+            installed: false,
             timeout: self.timeout,
             log: &self.log,
         };
@@ -310,44 +311,62 @@ impl Suite {
         heartbeats: bool,
         deadline: Instant,
     ) -> Result<(String, Option<String>), String> {
-        s.expect(&refcode::IPL_STARTED.tag(), deadline)?;
-        let ipl_at = s.elapsed();
-        s.expect(&banner_prefix(), deadline)?;
-        let build_id = s.rest_of_line(deadline)?;
-        s.expect(source, deadline)?;
-        let usable = s.expect_any(&[KVM_USABLE, KVM_NOT_AVAILABLE], deadline)? == 0;
-        let rest = s.rest_of_line(deadline)?;
-        let kvm = format!(
-            "{}{rest}",
-            if usable {
-                KVM_USABLE
-            } else {
-                KVM_NOT_AVAILABLE
-            }
-        );
-        let warning = match (usable, self.allow_no_kvm) {
-            (true, _) => None,
-            (false, true) => Some(format!("{ALLOW_NO_KVM_ENV}=1 accepted `{kvm}`")),
-            (false, false) => {
-                return Err(format!(
-                    "`{kvm}`; a host without nested virtualization may set {ALLOW_NO_KVM_ENV}=1"
-                ));
-            }
-        };
-        let mut detail = format!(
-            "{} after {:.1}s, {}{build_id}, {source}, {kvm}",
-            refcode::IPL_STARTED.tag(),
-            ipl_at.as_secs_f64(),
-            banner_prefix(),
-        );
-        if heartbeats {
-            let tag = refcode::HEARTBEAT.tag();
-            s.expect(&tag, deadline)?;
-            s.expect(&tag, deadline)?;
-            detail.push_str(", two heartbeats");
-        }
-        Ok((detail, warning))
+        ipl_check(s, source, heartbeats, deadline, self.allow_no_kvm)
     }
+}
+
+/// Whether a guest without KVM is accepted, by the environment.
+pub fn allow_no_kvm() -> bool {
+    env::var(ALLOW_NO_KVM_ENV).is_ok_and(|v| v == "1")
+}
+
+/// Phase 0's check of one IPL: the IPL reference code, the banner with
+/// this release, where the IPL came from, the KVM line and, when
+/// `heartbeats`, two heartbeats. What was seen, and a warning.
+pub fn ipl_check(
+    s: &mut Session,
+    source: &str,
+    heartbeats: bool,
+    deadline: Instant,
+    allow_no_kvm: bool,
+) -> Result<(String, Option<String>), String> {
+    s.expect(&refcode::IPL_STARTED.tag(), deadline)?;
+    let ipl_at = s.elapsed();
+    s.expect(&banner_prefix(), deadline)?;
+    let build_id = s.rest_of_line(deadline)?;
+    s.expect(source, deadline)?;
+    let usable = s.expect_any(&[KVM_USABLE, KVM_NOT_AVAILABLE], deadline)? == 0;
+    let rest = s.rest_of_line(deadline)?;
+    let kvm = format!(
+        "{}{rest}",
+        if usable {
+            KVM_USABLE
+        } else {
+            KVM_NOT_AVAILABLE
+        }
+    );
+    let warning = match (usable, allow_no_kvm) {
+        (true, _) => None,
+        (false, true) => Some(format!("{ALLOW_NO_KVM_ENV}=1 accepted `{kvm}`")),
+        (false, false) => {
+            return Err(format!(
+                "`{kvm}`; a host without nested virtualization may set {ALLOW_NO_KVM_ENV}=1"
+            ));
+        }
+    };
+    let mut detail = format!(
+        "{} after {:.1}s, {}{build_id}, {source}, {kvm}",
+        refcode::IPL_STARTED.tag(),
+        ipl_at.as_secs_f64(),
+        banner_prefix(),
+    );
+    if heartbeats {
+        let tag = refcode::HEARTBEAT.tag();
+        s.expect(&tag, deadline)?;
+        s.expect(&tag, deadline)?;
+        detail.push_str(", two heartbeats");
+    }
+    Ok((detail, warning))
 }
 
 #[cfg(test)]

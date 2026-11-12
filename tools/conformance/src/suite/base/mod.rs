@@ -8,7 +8,7 @@
 
 mod inventory;
 mod network;
-mod power;
+pub mod power;
 mod slot;
 mod status;
 mod supervision;
@@ -68,6 +68,9 @@ pub struct Run<'a> {
     pub images: &'a crate::suite::Images,
     /// The release disk image, for the suites that boot it.
     pub release_disk: Option<&'a Path>,
+    /// The disk was written by the installer: the host is configured,
+    /// so what a suite would seed it gives the installer as answers.
+    pub installed: bool,
     /// How long a boot may take.
     pub timeout: Duration,
     /// The serial logs of the suite's guests, for a failure.

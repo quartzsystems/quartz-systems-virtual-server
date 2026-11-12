@@ -1,0 +1,24 @@
+                           Confirm Remove of User ID
+                                                               System:  vs-test
+
+ Service tools user ID ADMIN will be removed.
+
+ It can no longer sign on. The last user ID cannot be removed.
+
+ Press F10 to confirm, or F12 to go back.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F10=Confirm   F12=Cancel
+

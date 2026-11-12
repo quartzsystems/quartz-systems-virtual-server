@@ -1,0 +1,24 @@
+                          Configure Management Network
+                                                               System:  vs-test
+
+ Host name . . . . . . . . . : vs-test
+ Interface . . . . . . . . . :
+ Address: 1=DHCP, 2=Static . : 1
+ IP address  . . . . . . . . :
+ Prefix length . . . . . . . :
+ Gateway . . . . . . . . . . :
+ VLAN ID . . . . . . . . . . :
+ DNS servers . . . . . . . . :
+
+ Interfaces (blank takes the first with carrier):
+    1  P0000-B00-D02-F0-E0       52:54:00:12:34:56  carrier
+
+
+
+
+
+
+
+
+ Enter=Apply   F1=Help   F3=Exit   F12=Cancel
+
