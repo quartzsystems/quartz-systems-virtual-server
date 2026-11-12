@@ -2,9 +2,9 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! Suites 2, 3 and 10: DHCP on QEMU's user network, a seeded static
-//! address on a VLAN (and a reload back to DHCP), and that nothing
-//! listens.
+//! Suites 2, 3 and 10: DHCP on QEMU's user network, a static address
+//! on a VLAN seeded on the second IPL (and a reload back to DHCP), and
+//! that nothing listens.
 
 use std::time::{Duration, Instant};
 
@@ -16,7 +16,7 @@ use super::{
     DHCP_ADDRESS, DHCP_DNS, DHCP_GATEWAY, MAC, Run, STATE_DIR, booted, channel, fact_of, posted,
     screen_with, seed_toml,
 };
-use crate::qemu::image::seed_volume;
+use crate::qemu::image::{seed_volume, sparse_copy};
 use crate::qemu::{Drive, Launch};
 
 /// `TCP_LISTEN`.
@@ -64,11 +64,29 @@ pub fn dhcp(run: &Run<'_>) -> Result<String, String> {
     Ok(format!("{wanted}; name server {DHCP_DNS}"))
 }
 
-/// Suite 3: a seeded static configuration with a VLAN ID. The address
-/// is applied and the VLAN interface exists. Then `network.toml` is
-/// changed to DHCP and the service told to reload: it follows without
-/// a restart.
+/// Suite 3: a seeded static configuration with a VLAN ID. The host
+/// has been through one IPL without the seed volume and is not configured by
+/// that; on the IPL with the volume the address is applied and the
+/// VLAN interface exists. Then `network.toml` is changed to DHCP and
+/// the service told to reload: it follows without a restart.
 pub fn static_vlan(run: &Run<'_>) -> Result<String, String> {
+    let disk = run.file("disk.img");
+    sparse_copy(run.disk, &disk)?;
+    let unseeded = Launch {
+        disk: Some(disk),
+        snapshot: false,
+        ..with_nic(run)
+    };
+    {
+        let mut first = booted(run, &unseeded)?;
+        if !first.said(&posted(&refcode::SEED_CHECKED, "no seed volume")) {
+            return Err("the first IPL did not look for a seed volume".into());
+        }
+        let files = channel(&mut first)?.ls(STATE_DIR)?;
+        if !files.iter().any(|f| f == "identity.toml") || files.iter().any(|f| f == "host.toml") {
+            return Err(format!("the state files of an unseeded host are {files:?}"));
+        }
+    }
     let seed = run.file("seed.img");
     let toml = seed_toml(
         "name = \"vs-seeded\"\n",
@@ -81,7 +99,7 @@ pub fn static_vlan(run: &Run<'_>) -> Result<String, String> {
             path: seed,
             serial: "QSVSSEED0".into(),
         }],
-        ..with_nic(run)
+        ..unseeded
     };
     let mut guest = run.boot(&launch)?;
     let deadline = run.deadline();
@@ -121,7 +139,7 @@ pub fn static_vlan(run: &Run<'_>) -> Result<String, String> {
         return Err("eth0.100 is still there after the reload".into());
     }
     Ok(format!(
-        "seeded: {wanted}, eth0.100 exists; reloaded: {after}, eth0.100 gone, the same process"
+        "seeded on the second IPL: {wanted}, eth0.100 exists; reloaded: {after}, eth0.100 gone, the same process"
     ))
 }
 

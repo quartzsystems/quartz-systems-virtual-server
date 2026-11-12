@@ -2,8 +2,8 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! `host.toml`: the host's name, its display time zone, its time
-//! servers, and a serial number kept when the firmware gives none.
+//! `host.toml`: the host's name, its display time zone and its time
+//! servers. The file is there once the host has been configured.
 
 use appliance::links::mac_tail;
 use appliance::time::Zone;
@@ -28,9 +28,6 @@ pub struct Host {
     /// Time servers, `host` or `host:port`, tried in order.
     #[serde(default)]
     pub ntp_servers: Vec<String>,
-    /// The system serial number derived when DMI has none.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub serial: Option<String>,
 }
 
 impl Default for Host {
@@ -39,7 +36,6 @@ impl Default for Host {
             name: None,
             time_zone: utc(),
             ntp_servers: Vec::new(),
-            serial: None,
         }
     }
 }
@@ -102,9 +98,6 @@ impl Document for Host {
                 return Err(format!("`{server}` is not a time server"));
             }
         }
-        if self.serial.as_deref().is_some_and(str::is_empty) {
-            return Err("the serial number is empty".into());
-        }
         Ok(())
     }
 }
@@ -130,7 +123,6 @@ mod tests {
             name: Some("vs-01".into()),
             time_zone: "UTC+01:00".into(),
             ntp_servers: vec!["time.example".into(), "10.0.2.2:12300".into()],
-            serial: Some("M525400123456".into()),
         };
         assert_eq!(parse::<Host>(&render(&host).unwrap()).unwrap(), host);
     }
@@ -145,7 +137,7 @@ mod tests {
             "ntp_servers = [\"\"]",
             "ntp_servers = [\"a:b\"]",
             "ntp_servers = [\"a b\"]",
-            "serial = \"\"",
+            "serial = \"M525400123456\"",
             "host_name = \"x\"",
         ] {
             let text = format!("schema_version = 1\n{text}\n");

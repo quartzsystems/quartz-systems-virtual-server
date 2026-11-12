@@ -19,7 +19,7 @@ pub struct System {
     /// The product name.
     #[serde(default)]
     pub product: String,
-    /// The serial number: DMI's, or the one kept in `host.toml`.
+    /// The serial number: DMI's, or the one kept in `identity.toml`.
     #[serde(default)]
     pub serial: String,
     /// Where the serial number came from: `dmi`, `derived` (from the

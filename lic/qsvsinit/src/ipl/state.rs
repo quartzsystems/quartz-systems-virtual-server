@@ -8,7 +8,7 @@
 use appliance::time::Zone;
 use hostinv::Roots;
 use rustix::system::sethostname;
-use state::{Host, Inventory, Network, Store};
+use state::{Host, Identity, Inventory, Network, Store};
 
 /// What the IPL learned from the state files.
 pub struct Loaded {
@@ -42,15 +42,17 @@ fn save<D: state::Document>(store: &Store, doc: &D, refused: &mut Vec<String>) {
 /// Read the state files, write the inventory, set the host name.
 pub fn load(store: &Store, host_prefix: &str) -> Loaded {
     let mut refused = Vec::new();
-    let mut host: Host = load_or_default(store, &mut refused);
+    let host: Host = load_or_default(store, &mut refused);
+    let mut identity: Identity = load_or_default(store, &mut refused);
     // The network service reads its own file; a bad one is said here.
     let _: Network = load_or_default(store, &mut refused);
 
-    let inventory: Inventory = hostinv::read(&Roots::default(), host.serial.as_deref());
-    // A serial derived from the first NIC is derived once and kept.
-    if host.serial.is_none() && inventory.system.serial_source == "derived" {
-        host.serial = Some(inventory.system.serial.clone());
-        save(store, &host, &mut refused);
+    let inventory: Inventory = hostinv::read(&Roots::default(), identity.serial.as_deref());
+    // A serial derived from the first NIC is derived once and kept, in
+    // a file of its own: `host.toml` is the operator's.
+    if identity.serial.is_none() && inventory.system.serial_source == "derived" {
+        identity.serial = Some(inventory.system.serial.clone());
+        save(store, &identity, &mut refused);
     }
     save(store, &inventory, &mut refused);
 

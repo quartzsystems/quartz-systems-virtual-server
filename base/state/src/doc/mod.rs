@@ -5,5 +5,6 @@
 //! The state files.
 
 pub mod host;
+pub mod identity;
 pub mod inventory;
 pub mod network;

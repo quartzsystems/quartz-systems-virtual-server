@@ -45,10 +45,6 @@ pub fn parse(text: &str) -> Result<Seed, String> {
             file.schema_version
         ));
     }
-    // A seed sets what an operator would; the serial number is the host's own.
-    if file.host.serial.is_some() {
-        return Err(format!("{FILE}: [host] takes no serial"));
-    }
     file.host
         .validate()
         .map_err(|e| format!("{FILE}: [host]: {e}"))?;

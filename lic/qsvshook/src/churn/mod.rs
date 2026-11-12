@@ -36,8 +36,7 @@ fn resolver(n: u64) -> IpAddr {
     IpAddr::V4(Ipv4Addr::new(10, a, b, 1))
 }
 
-/// Generation `n` of `host.toml`, made from what the file held: the
-/// serial number is the host's and stays.
+/// Generation `n` of `host.toml`, made from what the file held.
 pub fn host(before: &Host, n: u64) -> Host {
     Host {
         name: Some(format!("{NAME}{n}")),
@@ -125,13 +124,13 @@ mod tests {
     #[test]
     fn a_generation_checks_and_survives_the_file() {
         let before = Host {
-            serial: Some("M525400123456".into()),
+            time_zone: "UTC+01:00".into(),
             ..Host::default()
         };
         assert_eq!(check_host(&before), Ok(None));
         for n in [0, 1, 19, 20, 12_345] {
             let h = host(&before, n);
-            assert_eq!(h.serial, before.serial);
+            assert_eq!(h.time_zone, before.time_zone);
             let back: Host = parse(&render(&h).unwrap()).unwrap();
             assert_eq!(check_host(&back), Ok(Some(n)));
             let net: Network = parse(&render(&network(&Network::default(), n)).unwrap()).unwrap();
