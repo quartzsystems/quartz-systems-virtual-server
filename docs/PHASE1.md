@@ -238,14 +238,16 @@ of the base system. Each can run alone with `--suite`. On WSL set both
 Measured on 2026-11-12 in WSL Ubuntu (kernel 6.18.33, 12 threads, Intel,
 `kvm_intel` nested = Y), Rust 1.98.0, Ubuntu clang 21.1.8, QEMU 10.2.1,
 cargo-deny 0.20.2, in a fresh `git clone` of this repository at commit
-`f41a1df` on ext4. One script ran everything below in order
-(two release builds, the test image, then the checks and the suites).
+`023478c` on ext4, after open questions 7 to 15 were settled. One
+script ran everything below in order (two release builds, the test
+image, then the checks and the suites). The same run at `f41a1df`,
+before those changes, passed alike.
 
 | # | Check | Result |
 |---|---|---|
-| 1 | Suites 1 to 10 pass under `build test` | pass: `test` ran 12 steps in 4 m 27 s, Phase 0's two and the ten below |
+| 1 | Suites 1 to 10 pass under `build test` | pass: `test` ran 12 steps in 4 m 32 s, Phase 0's two and the ten below |
 | 2 | Two clean builds of the release image are byte-identical; test hooks are absent from it | pass: 13 files with the same SHA-256 in both builds (below); the hooks' marker, the `qsvshook` name and the `qsvs.hook=` switch occur nowhere in the release initramfs |
-| 3 | `build deny` and `build doctor` pass, including the license-header check | pass: `cargo deny check`, then 176 crates compiled for the host and for musl with no `links` key and no C build helper; `doctor` all rows ok, 129 `.rs` files start with the header |
+| 3 | `build deny` and `build doctor` pass, including the license-header check | pass: `cargo deny check`, then 176 crates compiled for the host and for musl with no `links` key and no C build helper; `doctor` all rows ok, 130 `.rs` files start with the header |
 | 4 | The `base/` neutrality test passes | pass: `host::neutral::tests::base_is_product_neutral`, and the `doctor` row: 6 crates name no product and depend on nothing of `lic/` |
 | 5 | Every QS/400 crate, including any networking crate reused, is pinned at one commit | pass: eight `rev =` values in `Cargo.toml`, all `6d5532fa`; `deny.toml` allows that one git source |
 | 6 | Phase 0's suites still pass unchanged | pass: `IPL slot A`, `IPL slot B` and `IPL from media` on the release image, the same checks as in Phase 0 |
@@ -253,7 +255,7 @@ cargo-deny 0.20.2, in a fresh `git clone` of this repository at commit
 Also clean: `cargo fmt --all --check`; `cargo clippy --workspace
 --all-targets -- -D warnings`; the same for the four image binaries on
 the musl target, and for PID 1 with `QSVS_TEST_HOOKS=1`; `cargo test
---workspace` (216 tests); `build notices --check`.
+--workspace` (190 tests); `build notices --check`.
 
 ### The suites
 
@@ -262,21 +264,22 @@ the musl target, and for PID 1 with `QSVS_TEST_HOOKS=1`; `cargo test
 | `IPL slot A` (Phase 0) | 12.2 s | `REF C2001000` after 2.2 s, `QS/VS V1R0M0 phase1`, `IPL slot A (qsvs.slot=A)`, `KVM usable: VMX, API version 12, 1024 vCPUs at most`, two heartbeats |
 | `IPL slot B` (Phase 0) | 2.5 s | the same with `IPL slot B (qsvs.slot=B)`, by a firmware boot entry |
 | `IPL from media` (Phase 0) | 12.1 s | the same with `IPL from installation media (qsvs.install=1)` |
-| 1 `status` | 2.3 s | base ready 0.71 s after the kernel started, under KVM; four services ready (the two base services and the test image's two) |
+| 1 `status` | 2.2 s | base ready 0.69 s after the kernel started, under KVM; four services ready (the two base services and the test image's two) |
 | 2 `dhcp` | 2.3 s | `10.0.2.15/24 on eth0, gateway 10.0.2.2`; name server `10.0.2.3` |
-| 3 `static-vlan` | 2.6 s | seeded: `192.0.2.10/24 on eth0.100, gateway 192.0.2.1`, `eth0.100` exists; reloaded: `10.0.2.15/24 on eth0`, `eth0.100` gone, the same `netd` process |
+| 3 `static-vlan` | 7.3 s | an IPL with no seed volume left no `host.toml`; seeded on the second IPL: `192.0.2.10/24 on eth0.100, gateway 192.0.2.1`, `eth0.100` exists; reloaded: `10.0.2.15/24 on eth0`, `eth0.100` gone, the same `netd` process |
 | 4 `time` | 3.4 s | a responder 259 200 s ahead moved the guest's clock 259 202 s |
-| 5 `inventory` | 2.6 s | 2 sockets, 4 cores, 4 threads, VMX; 1962 MiB; disks `QSVSHD0` and `QSVSHD1`; `eth0 52:54:00:12:34:56` at `P0000-B00-D04-F0-E0`; 8 PCI devices; serial `M525400123456` (derived) |
-| 6 `supervision` | 30.3 s | `netd` killed (process 88) and ready again (process 94); `flaky` stopped after 5 failures with `REF A2001080 Service stopped: flaky`; the host runs on |
-| 7 `power-pull` | 183.5 s | 50 power cuts, 51 IPLs, every state file whole each time; `host.toml` went from generation 0 to 6655 |
-| 8 `slot-confirm` | 13.0 s | `REF C2001095 Slot confirmed: slot B is the default; BootOrder 0001,0000`, default B and V1R0M0 in the record on the disk; refused: the next IPL on slot A with `REF A2001035 Pending slot not confirmed: slot B; this IPL is on slot A` |
-| 9 `shutdown` | 9.7 s | `REF D2001000 Host shutdown started: power off, by the power button`, `REF D2001090`, powered off 0.1 s after the button; the next mount clean; 21 codes in the history; then a restart by the control socket and a power off by `SIGTERM` |
-| 10 `sockets` | 2.3 s | no TCP socket at all; one UDP socket, the DHCP client's on port 68 |
+| 5 `inventory` | 2.5 s | 2 sockets, 4 cores, 4 threads, VMX; 1962 MiB; disks `QSVSHD0` and `QSVSHD1`; `eth0 52:54:00:12:34:56` at `P0000-B00-D04-F0-E0`; 8 PCI devices; serial `M525400123456` (derived) |
+| 6 `supervision` | 30.2 s | `netd` killed (process 87) and ready again (process 93); `flaky` stopped after 5 failures with `REF A2001080 Service stopped: flaky`; the host runs on |
+| 7 `power-pull` | 184.6 s | 50 power cuts, 51 IPLs, every state file whole each time; `host.toml` went from generation 0 to 8926 |
+| 8 `slot-confirm` | 12.7 s | `REF C2001095 Slot confirmed: slot B is the default; BootOrder 0001,0000`, default B and V1R0M0 in the record on the disk; refused: the next IPL on slot A with `REF A2001035 Pending slot not confirmed: slot B; this IPL is on slot A` |
+| 9 `shutdown` | 9.7 s | `Ctrl-Alt-Del ignored` and no shutdown; `REF D2001000 Host shutdown started: power off, by the power button`, `REF D2001090`, powered off 0.2 s after the button; the next mount clean; 21 codes in the history; then a restart by the control socket and a power off by `SIGTERM` |
+| 10 `sockets` | 2.2 s | no TCP socket at all; one UDP socket, the DHCP client's on port 68 |
 
 ### Seen by hand
 
 Four paths the suites do not reach were booted once each under QEMU
-with the test image, and the serial console read:
+with the test image (at `f41a1df`; not repeated since), and the serial
+console read:
 
 - `/data` that cannot be mounted (the partition's first MiB zeroed):
   `REF A2001040 Data file system not mounted: /dev/vda3: Invalid
@@ -302,30 +305,30 @@ kernel tarball fetched again), in the same checkout, with:
 QSVS_BUILD_ID=phase1 QSVS_SIGNING_KEY=<the same key file> cargo run -p build -- all
 ```
 
-6 m 59 s and 7 m 47 s. Every file below had the same SHA-256 in both
+7 m 4 s and 6 m 57 s. Every file below had the same SHA-256 in both
 builds (`diff` of the two lists is empty). What the hashes depend on
 besides the sources is as in Phase 0: the signing key, the checkout
 path, and the commit (in `manifest.json` alone).
 
 ```
-d543ac34777c900627760cc82599020e8fed461b775f29d448b2b279eef1100f  images/initramfs.cpio                  (2498500 bytes)
-d543ac34777c900627760cc82599020e8fed461b775f29d448b2b279eef1100f  images/initramfs-media.cpio            (2498500 bytes)
-919b63b54ee74f4921124799a4398c1e9880d912753cebf3a0d48e787a297f97  images/qsvs-V1R0M0-a-919b63b54ee7.efi  (12841984 bytes)
-a77cd9dcae215326af4420478fa95b0f735e13b95340e8ddd0e7eddb58bed804  images/qsvs-V1R0M0-b-a77cd9dcae21.efi  (12841984 bytes)
-574d5ff81d287c4c04d0c54e86fbbb0bd13c6f743d3b5fdfb818b28d41404233  images/qsvs-V1R0M0-d-574d5ff81d28.efi  (12841984 bytes)
-f03fe557f213a744730a1c439b783de207a8655f8e88d7cabb04557c2a14aacd  images/qsvs-V1R0M0-919b63b54ee7.img    (1073741824 bytes)
-5c9f9c389e001470d663cfc4ed1f4791d748e07984dc37c33f78cbf2877cfa26  images/QSVS-V1R0M0-574d5ff81d28.iso    (45430784 bytes)
-0add87e19e14f144dc8ecb367ec99abfbd9708c09a2c089e8edecb831c42eba0  x86_64-unknown-linux-musl/release/qsvsinit (1106904 bytes)
+65ee19703e9fe1e757ae70406d51be427e12072530aceeace96c4ccadb1059f9  images/initramfs.cpio                  (2498948 bytes)
+65ee19703e9fe1e757ae70406d51be427e12072530aceeace96c4ccadb1059f9  images/initramfs-media.cpio            (2498948 bytes)
+7824c4c3114cfc677182f05e95ca9c861863a7bbf1a556564ae8ed1e3d688e6e  images/qsvs-V1R0M0-a-7824c4c3114c.efi  (12837888 bytes)
+531a6a4ffc5639119f4ea7c9644a857424b2a01f23b85d099f38aac37035f8ad  images/qsvs-V1R0M0-b-531a6a4ffc56.efi  (12837888 bytes)
+269bd9f307e4c05f2658174b57cec1fc40292b6511bd9d823b20464f764cda4d  images/qsvs-V1R0M0-d-269bd9f307e4.efi  (12841984 bytes)
+3c4f9f1667de9c38f576a5960d369b4694a5337becac52a7203a3b3e6e478afe  images/qsvs-V1R0M0-7824c4c3114c.img    (1073741824 bytes)
+1c6a926b90ff2ac1c1dec79da73e54e1f26c18f7b060ab72f20b0eabcda96006  images/QSVS-V1R0M0-269bd9f307e4.iso    (45430784 bytes)
+8ad754d58644b600d98bddc2c3f2db8a12eb9b017a19e7a5a756a36c4f0499e2  x86_64-unknown-linux-musl/release/qsvsinit (1109720 bytes)
 5f09dd00e55707e9c987079dce0dca86ae0a9e034a4f481c3deb4573be80f6c4  x86_64-unknown-linux-musl/release/qsvslogd (445528 bytes)
-2fd089cfbae2db822ccede9dd8a86fc48d9ce34d80c331dca310859a3281ebb2  x86_64-unknown-linux-musl/release/qsvsnetd (944232 bytes)
+bdb26d153fd5244e971fccae172756b3c8dd7b98129007fc3866bc5c3a070ef4  x86_64-unknown-linux-musl/release/qsvsnetd (941864 bytes)
 a6a7eebcfea08b40d3f03cb8a2be2e60683e3f3c1e42e1940c1d53a4d2051150  kernel/build/.config
-537c38546ca69ea9eb2be714262bfa2147e7e0f8356e5f62a3b14f66ff99790f  images/manifest.json
-7c21d7b5bbaeea6c74eb799a60ea0c469fe9fec6de51fc3ddb3383ac88eec419  images/manifest.sig
+af9d91bb0eb9dfe29320834754a9c0e001e7d1e42334f57b920ab68f7072a9be  images/manifest.json
+c0cdfd378bfdcbfa3ffb44eb20bd434742a3240828078b1648b99bf438718a16  images/manifest.sig
 ```
 
 `file` says of each of the three binaries: static-pie linked, stripped.
 
-The test image was then built in the same clone (6 m 49 s). Its
+The test image was then built in the same clone (6 m 36 s). Its
 manifest has `"product": "QS/VS (test image)"` and 12 artifacts,
 `qsvshook` among them; the release manifest has `"product": "QS/VS"`
 and 11, without it. The test image was not built twice and its
