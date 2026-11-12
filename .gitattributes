@@ -1,0 +1,8 @@
+# Everything is checked out with LF: the kernel fragment and the pins are
+# read under Linux from a Windows checkout too.
+* text=auto eol=lf
+*.rs text eol=lf
+*.toml text eol=lf
+*.config text eol=lf
+# The notices file is compared byte for byte.
+lic/release/NOTICES.txt text eol=lf

@@ -1,0 +1,11 @@
+# The image target links with the toolchain's own rust-lld and musl CRT
+# objects. No host C compiler or linker is involved.
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-self-contained=yes"]
+
+# Host tools on Linux link through clang (already required for the kernel),
+# so no GNU toolchain is needed on the build host.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"

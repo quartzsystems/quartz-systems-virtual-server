@@ -1,0 +1,86 @@
+# cargo-deny configuration for QS/VS. The rules are QS/400's.
+# Rule one: nothing in the graph may compile or link C.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-musl",
+    "x86_64-unknown-linux-gnu",
+]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+confidence-threshold = 0.8
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "0BSD",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# QS/400's crates are git dependencies pinned by revision, with no version.
+allow-wildcard-paths = true
+highlight = "all"
+deny = [
+    # Build helpers that exist only to compile or bind C.
+    { crate = "cc", reason = "no C code may be compiled into any QS/VS artifact" },
+    { crate = "cmake", reason = "no C code may be compiled into any QS/VS artifact" },
+    { crate = "bindgen", reason = "no C bindings are generated in QS/VS" },
+    { crate = "pkg-config", reason = "no system C libraries are linked in QS/VS" },
+    { crate = "vcpkg", reason = "no system C libraries are linked in QS/VS" },
+    # Crypto and TLS with C or assembly built by cc/cmake.
+    { crate = "ring", reason = "contains C and assembly built with cc" },
+    { crate = "aws-lc-rs", reason = "builds C via cmake" },
+    { crate = "aws-lc-sys", reason = "builds C via cmake" },
+    { crate = "openssl", reason = "links OpenSSL" },
+    { crate = "openssl-sys", reason = "links OpenSSL" },
+    { crate = "native-tls", reason = "links a system TLS library" },
+    # Compression libraries wrapping C.
+    { crate = "libz-sys", reason = "links zlib" },
+    { crate = "lzma-sys", reason = "links liblzma" },
+    { crate = "xz2", reason = "links liblzma" },
+    { crate = "bzip2-sys", reason = "links libbz2" },
+    { crate = "zstd-sys", reason = "links libzstd" },
+    { crate = "libsqlite3-sys", reason = "links sqlite" },
+    { crate = "curl-sys", reason = "links libcurl" },
+    { crate = "libgit2-sys", reason = "links libgit2" },
+    # Existing shells and shell utilities: QS/VS has no shell at all.
+    { crate = "coreutils", reason = "uutils: QS/VS has no shell and carries no utilities" },
+    { crate = "uucore", reason = "uutils: QS/VS has no shell and carries no utilities" },
+    { crate = "uucore_procs", reason = "uutils: QS/VS has no shell and carries no utilities" },
+    { crate = "uutests", reason = "uutils: QS/VS has no shell and carries no utilities" },
+    { crate = "findutils", reason = "uutils: QS/VS has no shell and carries no utilities" },
+    { crate = "diffutils", reason = "uutils: QS/VS has no shell and carries no utilities" },
+    { crate = "procps", reason = "uutils: QS/VS has no shell and carries no utilities" },
+    { crate = "sed", reason = "uutils: QS/VS has no shell and carries no utilities" },
+    { crate = "busybox", reason = "busybox-style: QS/VS has no shell and carries no utilities" },
+    { crate = "rust-busybox", reason = "busybox-style: QS/VS has no shell and carries no utilities" },
+    { crate = "toybox", reason = "busybox-style: QS/VS has no shell and carries no utilities" },
+    { crate = "nu-command", reason = "a shell's utility set: QS/VS has no shell" },
+    { crate = "brush-builtins", reason = "a shell's utility set: QS/VS has no shell" },
+    { crate = "brush-core", reason = "an existing shell: QS/VS has no shell" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# The one git source: QS/400, whose build pipeline QS/VS uses as a library.
+allow-git = ["https://github.com/quartzsystems/quartz-systems-400"]

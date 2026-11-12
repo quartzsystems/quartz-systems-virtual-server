@@ -1,0 +1,6 @@
+/target/
+*.img
+*.iso
+*.efi
+*.log
+.claude/
