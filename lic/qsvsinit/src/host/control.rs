@@ -37,7 +37,9 @@ impl Control for Host {
     }
 
     fn note(&mut self, key: String, value: String) {
-        if key == fact::MANAGEMENT {
+        if key == fact::SERIAL_CONSOLE {
+            self.serial_session(value == fact::SERIAL_SESSION);
+        } else if key == fact::MANAGEMENT {
             if self.facts.management != value {
                 self.facts.management = value;
                 self.refresh_inventory();

@@ -12,6 +12,17 @@ use supervise::Service;
 /// What a base service is given to say it is ready.
 const READY_WITHIN: Duration = Duration::from_secs(10);
 
+/// The storage service: the load source, served before `/data` is
+/// mounted and until it is unmounted.
+pub const STGD: Service = Service {
+    name: qsvsstgd::NAME,
+    binary: "/qsvs/bin/qsvsstgd",
+    args: &[],
+    order: 5,
+    needs: &[],
+    ready_within: Duration::from_secs(30),
+};
+
 /// The log service.
 const LOGD: Service = Service {
     name: "logd",
@@ -34,21 +45,22 @@ const NETD: Service = Service {
 
 /// The base services.
 #[cfg(not(test_hooks))]
-pub static TABLE: &[Service] = &[LOGD, NETD];
+pub static TABLE: &[Service] = &[STGD, LOGD, NETD];
 
 /// The base services and, in a test image, the test hooks' two.
 #[cfg(test_hooks)]
-pub static TABLE: &[Service] = &[LOGD, NETD, crate::hooks::FLAKY, crate::hooks::CHANNEL];
+pub static TABLE: &[Service] = &[STGD, LOGD, NETD, crate::hooks::FLAKY, crate::hooks::CHANNEL];
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn the_table_is_one_and_the_log_service_starts_first() {
+    fn the_table_is_one_and_storage_then_the_log_service_start_first() {
         assert_eq!(supervise::table::check(TABLE), Ok(()));
         let order = supervise::table::start_order(TABLE);
-        assert_eq!(TABLE[order[0]].name, "logd");
+        assert_eq!(TABLE[order[0]].name, "stgd");
+        assert_eq!(TABLE[order[1]].name, "logd");
         for service in TABLE {
             assert!(service.binary.starts_with(release::BIN_DIR));
         }

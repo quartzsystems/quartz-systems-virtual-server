@@ -3,13 +3,17 @@
 // root directory of this project.
 
 //! The host IPL, in order. Each step posts its reference code: the
-//! kernel's file systems, cgroup2, the A/B record, `QSVSDATA` at
-//! `/data`, the clock from the RTC, the seed, the state, the services.
-//! "Base ready" is posted by the loop, when every service has said so.
+//! kernel's file systems, cgroup2, the A/B record, the storage service
+//! and `QSVSDATA` at `/data`, the clock from the RTC, the seed, the
+//! state, the services. "Base ready" is posted by the loop, when every
+//! service has said so. On installation media the installer runs in
+//! place of all that follows the clock.
 
 #[cfg(target_os = "linux")]
 mod clock;
 pub mod cmdline;
+#[cfg(target_os = "linux")]
+mod install;
 #[cfg(target_os = "linux")]
 pub mod mounts;
 #[cfg(target_os = "linux")]
@@ -21,19 +25,20 @@ pub use on_host::run;
 #[cfg(target_os = "linux")]
 mod on_host {
     use std::os::unix::net::UnixListener;
-    use std::path::Path;
-    use std::time::Instant;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, Instant};
 
     use abrec::Slot;
     use appliance::Appliance;
     use appliance::time::Zone;
+    use hostdisk::disks::{self, LoadSource};
     use rustix::system::{RebootCommand, reboot};
     use state::Store;
     use supervise::run::Supervisor;
     use supervise::signal::{CHLD, INT, Signals, TERM};
 
     use super::cmdline::{self, Source};
-    use super::{clock, mounts, state as state_step};
+    use super::{clock, install, mounts, state as state_step};
     use crate::console::Console;
     use crate::host::{Host, table};
     use crate::{kvm, slot, sys};
@@ -44,6 +49,11 @@ mod on_host {
 
     /// Where the seed volume is mounted while it is read.
     const SEED_MOUNT: &str = "/run/seed";
+    /// How long the load-source disks may take to appear: some
+    /// controllers are probed after PID 1 has started.
+    const DISK_WAIT: Duration = Duration::from_secs(10);
+    /// How long the storage service may take to settle.
+    const STORAGE_WAIT: Duration = Duration::from_secs(60);
 
     fn join(failed: &[(&'static str, String)]) -> String {
         let all: Vec<String> = failed
@@ -55,7 +65,7 @@ mod on_host {
 
     /// The record step. On installation media there is no slot and no
     /// record.
-    fn record(host: &mut Host, source: Source) {
+    fn record(host: &mut Host, source: Source, sources: &[LoadSource]) {
         let booted = match source {
             Source::SlotA => Slot::A,
             Source::SlotB => Slot::B,
@@ -65,7 +75,7 @@ mod on_host {
             }
         };
         let mut posted = Vec::new();
-        let slots = slot::at_ipl(booted, |code, detail| {
+        let slots = slot::at_ipl(booted, sources, |code, detail| {
             posted.push((code.code, detail.to_string()));
         });
         for (code, detail) in posted {
@@ -76,14 +86,52 @@ mod on_host {
         host.slots = Some(slots);
     }
 
+    /// The storage step: the control socket, then the service table
+    /// with everything after the storage service held back, and the
+    /// loop turned until that service is ready or will not be.
+    fn storage(host: &mut Host) {
+        let control = APPLIANCE.control_socket();
+        let _ = std::fs::remove_file(&control);
+        let listener = UnixListener::bind(&control)
+            .and_then(|l| l.set_nonblocking(true).map(|()| l))
+            .map_err(|e| host.line(&format!("{}: {e}", control.display())))
+            .ok();
+        // A table that is not one is a failure of PID 1 itself.
+        let mut sup = Supervisor::new(table::TABLE, Instant::now())
+            .unwrap_or_else(|e| panic!("the service table: {e}"));
+        sup.hold_after(table::STGD.order);
+        host.quiet = true;
+        host.start(sup, listener);
+        let give_up = Instant::now() + STORAGE_WAIT;
+        while !host.storage_settled() && Instant::now() < give_up {
+            host.pump();
+        }
+    }
+
+    /// What `/data` is mounted from: what the storage service named,
+    /// or, when it named nothing and the load source is not mirrored,
+    /// the data partition itself.
+    fn data_device(sources: &[LoadSource]) -> Result<PathBuf, String> {
+        let named = std::fs::read_to_string(qsvsstgd::DATA_DEVICE)
+            .ok()
+            .map(|d| d.trim().to_string())
+            .filter(|d| !d.is_empty());
+        if let Some(device) = named {
+            return Ok(PathBuf::from(device));
+        }
+        if disks::label(sources).is_some() {
+            return Err("the storage service does not serve the mirrored load source".into());
+        }
+        sources
+            .first()
+            .map(|s| s.data.clone())
+            .ok_or_else(|| "no load-source disk was found".into())
+    }
+
     /// The data step: `QSVSDATA` at `/data`, or state in memory. It is
     /// never reformatted.
-    fn data(host: &mut Host, source: Source) {
-        if source == Source::Install {
-            host.line("Data file system not mounted on installation media: state is in memory");
-            return;
-        }
-        let mounted = hostdisk::locate::data().and_then(|device| {
+    fn data(host: &mut Host, sources: &[LoadSource]) {
+        let mounted = data_device(sources).and_then(|device| {
             mounts::data(&device, release::DATA_DIR)
                 .map(|()| device.display().to_string())
                 .map_err(|e| format!("{}: {e}", device.display()))
@@ -91,6 +139,7 @@ mod on_host {
         match mounted {
             Ok(device) => {
                 host.post(&refcode::DATA_MOUNTED, &device);
+                host.served = device.starts_with("/dev/ublkb");
                 host.facts.data = device;
                 host.data_mounted = true;
             }
@@ -132,17 +181,10 @@ mod on_host {
         host.facts.serial = loaded.serial;
     }
 
+    /// The services step: what waited for `/data` is started.
     fn services(host: &mut Host) {
-        let control = APPLIANCE.control_socket();
-        let _ = std::fs::remove_file(&control);
-        let listener = UnixListener::bind(&control)
-            .and_then(|l| l.set_nonblocking(true).map(|()| l))
-            .map_err(|e| host.line(&format!("{}: {e}", control.display())))
-            .ok();
-        // A table that is not one is a failure of PID 1 itself.
-        let sup = Supervisor::new(table::TABLE, Instant::now())
-            .unwrap_or_else(|e| panic!("the service table: {e}"));
-        host.start(sup, listener);
+        host.release_services();
+        host.quiet = false;
         let names: Vec<&str> = table::TABLE.iter().map(|s| s.name).collect();
         host.post(&refcode::SERVICES_STARTED, &names.join(", "));
     }
@@ -175,8 +217,14 @@ mod on_host {
 
         host.post(&refcode::MOUNTED, &join(&failed));
         host.post(&refcode::CGROUPS, &join(&mounts::cgroups()));
-        record(&mut host, source);
-        data(&mut host, source);
+        if source == Source::Install {
+            clock(&mut host);
+            install::run(host);
+        }
+        let sources = disks::load_sources_within(DISK_WAIT);
+        record(&mut host, source, &sources);
+        storage(&mut host);
+        data(&mut host, &sources);
         clock(&mut host);
         let store = Store::at(APPLIANCE.state_dir());
         seed(&mut host, &store);

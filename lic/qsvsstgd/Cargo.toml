@@ -1,0 +1,27 @@
+[package]
+name = "qsvsstgd"
+description = "QS/VS's storage service: the mirrored load source assembled, served through ublk, resynchronized and rebuilt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+release = { path = "../release", version = "0.1.0" }
+refcode = { path = "../refcode", version = "0.1.0" }
+hostdisk = { path = "../hostdisk", version = "0.1.0" }
+hostinv = { path = "../hostinv", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+ipc.workspace = true
+abrec.workspace = true
+diskimg.workspace = true
+protect.workspace = true
+blockdev.workspace = true
+ublk.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix.workspace = true
+
+[lints]
+workspace = true

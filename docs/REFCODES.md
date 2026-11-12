@@ -30,7 +30,7 @@ there:
 |---|---|
 | `C2` | host IPL and progress |
 | `A2` | attention; the host continues |
-| `B2` | fatal; the host parks. Only a failure of PID 1 itself |
+| `B2` | fatal; the host parks. A failure of PID 1 itself, or the loss of the storage service under a mirrored load source |
 | `D2` | power down |
 
 A unit test (`refcode::tests::no_code_is_in_a_qs400_family`) fails if a
@@ -59,9 +59,29 @@ serial port only, and the last code of a shutdown (`D2001090` or
 |---|---|
 | `C2001xxx`, `A2001xxx`, `B2001xxx`, `D2001xxx` | PID 1: the IPL in order, supervision, the slot, shutdown. An attention code has the number of the IPL step it belongs to |
 | `C2002xxx`, `A2002xxx` | the management network and time (`netd`) |
+| `C2003xxx`, `A2003xxx`, `B2003xxx` | the load source and its protection (`stgd`, the storage service) |
+| `C2004xxx`, `A2004xxx` | the installer, numbered after its steps |
 
-Later phases take further blocks (storage, the VMM, QSI) and record them
-here.
+Later phases take further blocks (storage pools, the VMM, QSI) and
+record them here.
+
+## The storage service and `B2003000`
+
+A mirrored load source is served to the kernel by the storage service,
+through ublk. PID 1 restarts the service when it ends, by the back-off
+rules of every service (1, 2, 4 ... 30 seconds; five failures in ten
+minutes end the restarts). While there is no server the kernel holds
+the requests to `/data`, and the next server takes them over: nothing
+is lost and nothing above notices but the wait.
+
+When the restarts end, `/data` has no server and never will have one
+in this IPL. That is `B2003000`, the one fatal code that is not PID 1's
+own failure: the host posts it on the console (the log is on `/data`)
+and parks. It does not try to write or unmount `/data` again, and a
+power off or restart asked for afterwards is done without either. The
+partitions' storage is on other disks; the operator restarts the host.
+An unprotected load source is a plain partition with no server, so the
+code cannot occur there.
 
 ## The codes
 
@@ -83,6 +103,24 @@ here.
 | `C2002010` | Management interface up | the interface has carrier, with its name |
 | `C2002020` | Management address acquired | with the address, the interface and the gateway |
 | `C2002030` | Time synchronized | the clock is in step with a time server and the RTC written, with the server |
+| `C2001075` | Host identity generated | the host's key pair and self-signed certificate were made, at the first IPL after installation |
+| `C2003010` | Mirrored load source assembled | by the storage service at every IPL of a mirrored host, with the units and the device |
+| `C2003020` | Resynchronization started | a unit is brought back in step: after a stop that was not in order, or when a unit that was away returns; with the unit |
+| `C2003025` | Resynchronization finished | the unit is in step again |
+| `C2003030` | Rebuild started | a replacement disk was put in a unit's place and is being written, with the unit |
+| `C2003035` | Rebuild finished | the replacement is in step |
+| `C2003040` | Mirrored protection started | a second disk was added to an unprotected load source; the set is assembled at the next IPL |
+| `C2004000` | Installation started | the installer writes from here on |
+| `C2004010` | Installation media verified | the media's manifest is signed by a trusted key and the payload has its hashes |
+| `C2004020` | Disks partitioned | each load-source disk has its table |
+| `C2004030` | Protection set up | the mirrored set's label is on both disks; or the load source is unprotected |
+| `C2004040` | Data file system made | `QSVSDATA` is formatted |
+| `C2004050` | Slot A copied | slot A's UKI is on every load-source disk and reads back |
+| `C2004055` | Slot B copied | the same for slot B |
+| `C2004060` | A/B record written | on every load-source disk |
+| `C2004070` | Boot entries written | a firmware entry for each slot of each disk, with `BootOrder` |
+| `C2004080` | State written | the host name, the network, the time and the service tools user |
+| `C2004090` | Installation complete | the host restarts into what was installed |
 | `A2001030` | A/B record not valid | no copy of the record is valid; a new one is written for the slot booted |
 | `A2001035` | Pending slot not confirmed | the pending slot did not confirm on its IPL; this IPL is on the default and the pending field is cleared |
 | `A2001040` | Data file system not mounted | `/data` could not be mounted, with the reason; state is in memory only. Nothing is reformatted |
@@ -94,7 +132,16 @@ here.
 | `A2002005` | No management interface | no link matches `network.toml` after 30 seconds |
 | `A2002010` | No carrier on the management interface | no carrier for 30 seconds, with the interface |
 | `A2002020` | No management address | carrier but no address for 30 seconds, with the interface |
+| `A2003010` | Mirrored load source not assembled | no unit that is in step was found, with the reason; `/data` is not mounted |
+| `A2003020` | Load-source unit failed | a unit is missing or failed, with its number, location code and serial; at every IPL while it lasts, and when it happens |
+| `A2003030` | Rebuild not finished | a resynchronization or a rebuild ended early, with the reason |
+| `A2004010` | Installation media refused | the manifest's signature or a payload hash is wrong; nothing was written |
+| `A2004015` | Installation answers not valid | an `[install]` table was found and refused, with the reason; nothing was written |
+| `A2004090` | Installation failed | a step failed, with the step and the reason; the installer starts over |
+| `A2001075` | Host identity not generated | the key pair or certificate could not be made or written |
+| `A2004070` | Boot entries not written | the firmware's variables could not be written; the disks still start by their default path |
 | `B2001000` | Host PID 1 failed | by PID 1's panic handler, with the panic message, before it parks |
+| `B2003000` | Storage service stopped | the storage service of a mirrored load source failed five times in ten minutes; the host parks |
 | `D2001000` | Host shutdown started | an orderly shutdown began, with what asked for it |
 | `D2001090` | Host powering off | services are stopped and `/data` is unmounted; power off follows |
 | `D2001091` | Host restarting | services are stopped and `/data` is unmounted; a restart follows |

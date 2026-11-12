@@ -1105,6 +1105,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "protect"
+version = "0.1.0"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
+dependencies = [
+ "blockdev",
+ "crc",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "qsvshook"
 version = "0.1.0"
 dependencies = [
@@ -1129,6 +1140,7 @@ dependencies = [
  "kvm-bindings",
  "kvm-ioctls",
  "logd",
+ "qsvsstgd",
  "refcode",
  "release",
  "rustix",
@@ -1153,6 +1165,25 @@ dependencies = [
  "netd",
  "refcode",
  "release",
+]
+
+[[package]]
+name = "qsvsstgd"
+version = "0.1.0"
+dependencies = [
+ "abrec",
+ "blockdev",
+ "diskimg",
+ "hostdisk",
+ "hostinv",
+ "ipc",
+ "protect",
+ "refcode",
+ "release",
+ "rustix",
+ "supervise",
+ "ublk",
+ "uuid",
 ]
 
 [[package]]
@@ -1855,6 +1886,17 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "ublk"
+version = "0.1.0"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
+dependencies = [
+ "blockdev",
+ "rustix",
+ "thiserror",
+ "tracing",
+]
 
 [[package]]
 name = "unicode-ident"

@@ -25,6 +25,7 @@ use abrec::{AbError, AbPart, Device, SLOT_BYTES, Slot, Spec};
 use vrm::Release;
 
 use crate::layout::RECORD_TYPE_GUID;
+use crate::multi::Copies;
 
 /// The record's magic: `QSVSREC`, padded with a zero to the field.
 pub const MAGIC: [u8; 8] = *b"QSVSREC\0";
@@ -260,15 +261,21 @@ pub fn write<D: Device>(part: &mut AbPart<D>, record: HostRecord) -> Result<u64,
     part.write(&record.encode()).map(|(_, sequence)| sequence)
 }
 
-/// The record partition of this host, opened for reading and writing.
-#[cfg(target_os = "linux")]
-pub fn open() -> Result<AbPart<std::fs::File>, AbError> {
-    let path = abrec::locate(&SPEC)?;
-    let dev = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
-    Ok(AbPart::open(SPEC, dev))
+/// The newest valid record on any disk of `copies` and its sequence.
+pub fn read_all<D: Device>(copies: &mut Copies<D>) -> Result<(HostRecord, u64), AbError> {
+    let stored = copies.read()?;
+    let record = HostRecord::decode(&stored.payload)
+        .ok_or(AbError::Malformed("not a version 2 host record"))?;
+    Ok((record, stored.sequence))
+}
+
+/// Write `record` to every disk of `copies`: the sequence, and how
+/// many disks took it.
+pub fn write_all<D: Device>(
+    copies: &mut Copies<D>,
+    record: HostRecord,
+) -> Result<(u64, usize), AbError> {
+    copies.write(&record.encode())
 }
 
 #[cfg(test)]

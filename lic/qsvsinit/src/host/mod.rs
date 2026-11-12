@@ -69,6 +69,8 @@ pub struct Facts {
 }
 
 /// The host.
+// Each flag is a fact of its own, not a state of one machine.
+#[allow(clippy::struct_excessive_bools)]
 pub struct Host {
     console: Console,
     log: Sender,
@@ -86,7 +88,17 @@ pub struct Host {
     /// Whether `/data` is the data partition.
     pub data_mounted: bool,
     ready: bool,
+    /// The IPL is still at its steps: no status screen, no heartbeat.
+    pub quiet: bool,
+    /// `/data` is on the storage service's device.
+    pub served: bool,
+    /// The storage service is gone for good under a mounted `/data`.
+    storage_lost: bool,
+    /// A Service Tools session has the serial port.
+    serial_busy: bool,
     shutdown: Option<Kind>,
+    /// The shutdown has unmounted `/data` and is ending the storage service.
+    unmounted: bool,
     heartbeat_at: Instant,
     /// The screen as last drawn on the serial port, without its date.
     drawn: Vec<String>,
@@ -118,15 +130,36 @@ impl Host {
             },
             data_mounted: false,
             ready: false,
+            quiet: false,
+            served: false,
+            storage_lost: false,
+            serial_busy: false,
             shutdown: None,
+            unmounted: false,
             heartbeat_at: Instant::now() + HEARTBEAT,
             drawn: Vec::new(),
             drawn_date: String::new(),
         }
     }
 
+    /// A line on the display and, unless a session has it, the serial port.
+    fn show(&mut self, line: &str) {
+        if self.serial_busy {
+            self.console.display(line);
+        } else {
+            self.console.line(line);
+        }
+    }
+
+    /// A Service Tools session took the serial port, or gave it back.
+    pub(super) fn serial_session(&mut self, busy: bool) {
+        self.serial_busy = busy;
+        // The status screen is drawn again when the port is free.
+        self.drawn.clear();
+    }
+
     fn take(&mut self, posted: Posting) {
-        self.console.line(&posted.line);
+        self.show(&posted.line);
         self.reference = posted
             .line
             .strip_prefix(refcode::WORD)
@@ -143,7 +176,7 @@ impl Host {
 
     /// One line on the console that is no reference code, logged too.
     pub fn line(&mut self, line: &str) {
-        self.console.line(line);
+        self.show(line);
         self.say(Severity::Info, line);
     }
 
@@ -182,6 +215,12 @@ impl Host {
                         |d| format!("started again in {} s", d.as_secs()),
                     );
                     self.say(Severity::Warning, &format!("{service}: {how}; {next}"));
+                }
+                Occurrence::GaveUp { service } if service == qsvsstgd::NAME && self.served => {
+                    // The kernel holds every request to /data for a
+                    // server that will not come: the host cannot go on.
+                    self.storage_lost = true;
+                    self.post(&refcode::STORAGE_LOST, "the data file system has no server");
                 }
                 Occurrence::GaveUp { service } => self.post(&refcode::SERVICE_STOPPED, service),
                 Occurrence::Output {
@@ -301,7 +340,7 @@ impl Host {
             .cloned()
             .collect();
         let changed = undated != self.drawn;
-        if changed {
+        if changed && !self.serial_busy {
             self.console.serial_screen(&lines);
             self.drawn = undated;
         }
@@ -397,17 +436,38 @@ impl Host {
             self.occurred(occurrences);
         }
         if now >= self.heartbeat_at {
-            self.console.serial(&refcode::HEARTBEAT.line());
+            if !self.quiet && !self.serial_busy {
+                self.console.serial(&refcode::HEARTBEAT.line());
+            }
             self.heartbeat_at += HEARTBEAT;
         }
         self.log.flush();
         if self.shutdown.is_some() {
-            if self.sup.as_ref().is_none_or(Supervisor::ended) {
-                self.finish_shutdown();
-            }
-        } else {
+            self.advance_shutdown();
+        } else if !self.quiet {
             self.draw();
         }
+    }
+
+    /// The services up to the storage service have settled: each is
+    /// ready or will not be started again.
+    pub fn storage_settled(&self) -> bool {
+        self.sup
+            .as_ref()
+            .is_none_or(|sup| sup.settled_up_to(table::STGD.order))
+    }
+
+    /// Start the services that waited for `/data`.
+    pub fn release_services(&mut self) {
+        if let Some(sup) = &mut self.sup {
+            let started = sup.release(Instant::now());
+            self.occurred(started);
+        }
+    }
+
+    /// One turn of the loop, for an IPL step that waits on a service.
+    pub fn pump(&mut self) {
+        self.turn();
     }
 
     /// Run for ever: PID 1 must not exit.

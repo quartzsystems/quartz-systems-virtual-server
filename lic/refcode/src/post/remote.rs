@@ -37,6 +37,14 @@ pub fn post(event: &Event<'_>) {
     });
 }
 
+/// Post `code` through PID 1, with `detail` added to its text.
+pub fn code(code: &crate::RefCode, detail: &str) {
+    let text = code.text_with(detail);
+    ask(&format!("{} {text}", code.code), |c| {
+        c.post(code.code.to_string(), text.clone()).is_ok()
+    });
+}
+
 /// Tell PID 1 a fact for its status screen.
 pub fn note(key: &str, value: &str) {
     ask(&format!("{key} = {value}"), |c| {

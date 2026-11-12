@@ -294,3 +294,43 @@ fn a_missing_binary_is_a_failure_not_a_panic() {
         Occurrence::Failed { how, .. } if how.starts_with("could not be started")
     ));
 }
+
+#[test]
+fn held_services_wait_and_the_stop_can_leave_the_first_running() {
+    static TABLE: [Service; 2] = [
+        sh("disk", 5, &[], &["-c", "printf R >&0; exec sleep 30"]),
+        sh("log", 10, &[], &["-c", "printf R >&0; exec sleep 30"]),
+    ];
+    let now = Instant::now();
+    let mut sup = Supervisor::new(&TABLE, now).unwrap();
+    sup.hold_after(5);
+    let seen = sup.advance(now);
+    let mut d = Driver { sup, now, seen };
+    d.until("the first is ready", |s| {
+        has(s, &Occurrence::Ready { service: "disk" })
+    });
+    assert!(d.sup.settled_up_to(5));
+    assert_eq!(d.state("log"), "waiting");
+    assert_eq!(d.sup.state_of("disk"), Some("ready"));
+    assert!(!has(&d.seen, &Occurrence::AllReady));
+
+    let more = d.sup.release(d.now);
+    d.seen.extend(more);
+    d.until("all ready", |s| has(s, &Occurrence::AllReady));
+
+    // The stop in two steps: what is above the floor, then the rest.
+    d.seen.clear();
+    let more = d.sup.begin_stop_above(5, Duration::from_secs(5), d.now);
+    d.seen.extend(more);
+    let give_up = Instant::now() + Duration::from_secs(20);
+    while !d.sup.stopped_above(5) {
+        assert!(Instant::now() < give_up);
+        d.turn();
+    }
+    assert_eq!(d.state("disk"), "ready");
+    assert!(!d.sup.ended() && !has(&d.seen, &Occurrence::Ended));
+    let more = d.sup.begin_stop(Duration::from_secs(5), d.now);
+    d.seen.extend(more);
+    d.until("ended", |s| has(s, &Occurrence::Ended));
+    assert_eq!(d.state("disk"), "ended");
+}

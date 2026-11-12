@@ -58,10 +58,7 @@ impl Source {
         match self {
             Source::SlotA => format!("IPL slot A ({KEY_PREFIX}slot=A)"),
             Source::SlotB => format!("IPL slot B ({KEY_PREFIX}slot=B)"),
-            Source::Install => format!(
-                "IPL from installation media ({KEY_PREFIX}install=1): \
-                 the installer arrives in Phase 2"
-            ),
+            Source::Install => format!("IPL from installation media ({KEY_PREFIX}install=1)"),
             Source::Unknown => format!("IPL slot unknown: no {KEY_PREFIX}slot on the command line"),
         }
     }
@@ -94,6 +91,5 @@ mod tests {
     fn the_lines_name_the_key() {
         assert_eq!(Source::SlotB.line(), "IPL slot B (qsvs.slot=B)");
         assert!(Source::Install.line().contains("qsvs.install=1"));
-        assert!(Source::Install.line().contains("Phase 2"));
     }
 }

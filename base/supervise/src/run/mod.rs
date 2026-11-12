@@ -143,6 +143,10 @@ pub struct Supervisor {
     entries: Vec<Entry>,
     /// The grace each service gets once the orderly stop began.
     stopping: Option<Duration>,
+    /// Services ordered after this are not started yet.
+    held: Option<u32>,
+    /// The orderly stop leaves services ordered up to this running.
+    floor: u32,
     announced_ready: bool,
     announced_end: bool,
 }
@@ -177,6 +181,8 @@ impl Supervisor {
             order: table::start_order(table),
             entries,
             stopping: None,
+            held: None,
+            floor: 0,
             announced_ready: false,
             announced_end: false,
         })
@@ -264,6 +270,9 @@ impl Supervisor {
         }
         for i in self.order.clone() {
             let service = &self.table[i];
+            if self.held.is_some_and(|held| service.order > held) {
+                continue;
+            }
             match self.entries[i].state {
                 State::Waiting => {}
                 State::Restarting { at } if at <= now => {}
@@ -289,8 +298,9 @@ impl Supervisor {
     }
 
     fn advance_stop(&mut self, now: Instant, grace: Duration, out: &mut Vec<Occurrence>) {
-        for e in &mut self.entries {
-            if !e.state.running() {
+        let floor = self.floor;
+        for (s, e) in self.table.iter().zip(&mut self.entries) {
+            if !e.state.running() && s.order > floor {
                 e.state = State::Ended;
             }
         }
@@ -300,7 +310,7 @@ impl Supervisor {
             .iter()
             .rev()
             .copied()
-            .find(|i| self.entries[*i].state.running());
+            .find(|i| self.entries[*i].state.running() && self.table[*i].order > floor);
         match last {
             Some(i) => {
                 let e = &mut self.entries[i];
@@ -323,7 +333,7 @@ impl Supervisor {
                     }
                 }
             }
-            None if !self.announced_end => {
+            None if !self.announced_end && floor == 0 => {
                 self.announced_end = true;
                 out.push(Occurrence::Ended);
             }
@@ -421,7 +431,7 @@ impl Supervisor {
         else {
             return (false, out);
         };
-        if self.stopping.is_some() {
+        if self.stopping.is_some() && self.table[i].order > self.floor {
             self.entries[i].state = State::Ended;
             self.entries[i].pid = 0;
             out.extend(self.advance(now));
@@ -440,8 +450,62 @@ impl Supervisor {
     /// Begin the orderly stop: services end in reverse start order,
     /// each given `grace` before it is killed.
     pub fn begin_stop(&mut self, grace: Duration, now: Instant) -> Vec<Occurrence> {
+        self.begin_stop_above(0, grace, now)
+    }
+
+    /// The orderly stop of the services ordered after `floor` only:
+    /// the caller has something to do (unmount a file system) before
+    /// the ones up to `floor` may end. [`Supervisor::begin_stop`] then
+    /// ends those.
+    pub fn begin_stop_above(
+        &mut self,
+        floor: u32,
+        grace: Duration,
+        now: Instant,
+    ) -> Vec<Occurrence> {
         self.stopping = Some(grace);
+        self.floor = floor;
         self.advance(now)
+    }
+
+    /// Whether no service ordered after `floor` runs any more.
+    pub fn stopped_above(&self, floor: u32) -> bool {
+        self.table
+            .iter()
+            .zip(&self.entries)
+            .all(|(s, e)| s.order <= floor || !e.state.running())
+    }
+
+    /// Start only the services ordered up to `order` for now: the
+    /// caller has something to do (mount a file system) once they are
+    /// ready and before the others start.
+    pub fn hold_after(&mut self, order: u32) {
+        self.held = Some(order);
+    }
+
+    /// Start the services that were held back.
+    pub fn release(&mut self, now: Instant) -> Vec<Occurrence> {
+        self.held = None;
+        self.advance(now)
+    }
+
+    /// Whether the services ordered up to `order` have all settled:
+    /// each is ready, or failed too often to be started again.
+    pub fn settled_up_to(&self, order: u32) -> bool {
+        self.table
+            .iter()
+            .zip(&self.entries)
+            .filter(|(s, _)| s.order <= order)
+            .all(|(_, e)| matches!(e.state, State::Ready | State::Stopped))
+    }
+
+    /// The state of the service named `name`, as status words it.
+    pub fn state_of(&self, name: &str) -> Option<&'static str> {
+        self.table
+            .iter()
+            .zip(&self.entries)
+            .find(|(s, _)| s.name == name)
+            .map(|(_, e)| e.state.name())
     }
 
     /// Whether every service is ready.

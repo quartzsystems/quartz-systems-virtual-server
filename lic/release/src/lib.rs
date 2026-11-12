@@ -108,6 +108,12 @@ pub mod fact {
     pub const READY: &str = "ready";
     /// What the KVM probe found.
     pub const KVM: &str = "kvm";
+    /// Who has the serial port: noted by the Service Tools console.
+    pub const SERIAL_CONSOLE: &str = "console.serial";
+    /// [`SERIAL_CONSOLE`] while a session is on the serial port.
+    pub const SERIAL_SESSION: &str = "session";
+    /// [`SERIAL_CONSOLE`] when the port is PID 1's again.
+    pub const SERIAL_IDLE: &str = "idle";
 }
 
 /// The status screen's text: PID 1 draws it, the conformance harness

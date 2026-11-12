@@ -12,6 +12,7 @@ release = { path = "../release", version = "0.1.0" }
 refcode = { path = "../refcode", version = "0.1.0" }
 hostdisk = { path = "../hostdisk", version = "0.1.0" }
 hostinv = { path = "../hostinv", version = "0.1.0" }
+qsvsstgd = { path = "../qsvsstgd", version = "0.1.0" }
 appliance = { path = "../../base/appliance", version = "0.1.0" }
 state = { path = "../../base/state", version = "0.1.0" }
 supervise = { path = "../../base/supervise", version = "0.1.0" }

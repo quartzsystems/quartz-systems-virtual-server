@@ -3,8 +3,9 @@
 // root directory of this project.
 
 //! The orderly shutdown: the services end in reverse order, each with
-//! a timeout; then sync, `/data` unmounted, the `D2` code, and power
-//! off or restart.
+//! a timeout, down to the storage service; then sync and `/data`
+//! unmounted; then the storage service, which marks its set clean; the
+//! `D2` code, and power off or restart.
 
 use std::time::{Duration, Instant};
 
@@ -12,7 +13,9 @@ use refcode::post::posting;
 use rustix::fs::sync;
 use rustix::system::{RebootCommand, reboot};
 
-use super::{Host, STOP_GRACE};
+use supervise::run::Supervisor;
+
+use super::{Host, STOP_GRACE, table};
 use crate::ipl::mounts;
 
 /// How long the shutdown waits for the log service to take what PID 1
@@ -47,15 +50,43 @@ impl Host {
         while !self.log.flush() && Instant::now() < give_up {
             std::thread::sleep(Duration::from_millis(5));
         }
+        // Everything but the storage service: it serves /data until
+        // that is unmounted.
         if let Some(sup) = &mut self.sup {
-            let occurrences = sup.begin_stop(STOP_GRACE, Instant::now());
+            let occurrences = sup.begin_stop_above(table::STGD.order, STOP_GRACE, Instant::now());
             self.occurred(occurrences);
         }
     }
 
-    /// The services are gone: leave the disk clean and stop the host.
-    pub(super) fn finish_shutdown(&mut self) -> ! {
-        let kind = self.shutdown.unwrap_or(Kind::PowerOff);
+    /// Carry the shutdown on: when the services above the storage
+    /// service are gone `/data` is unmounted and the storage service
+    /// ended; when that is gone too the host stops.
+    pub(super) fn advance_shutdown(&mut self) {
+        let above_gone = self
+            .sup
+            .as_ref()
+            .is_none_or(|sup| sup.stopped_above(table::STGD.order));
+        if !self.unmounted && above_gone {
+            self.unmount();
+            if let Some(sup) = &mut self.sup {
+                let occurrences = sup.begin_stop(STOP_GRACE, Instant::now());
+                self.occurred(occurrences);
+            }
+        }
+        if self.unmounted && self.sup.as_ref().is_none_or(Supervisor::ended) {
+            self.finish_shutdown();
+        }
+    }
+
+    /// Leave the disk clean. With the storage service lost nothing can
+    /// be written or unmounted: the requests would wait for ever.
+    fn unmount(&mut self) {
+        self.unmounted = true;
+        if self.storage_lost {
+            self.console
+                .line("the data file system has no server: not synced, not unmounted");
+            return;
+        }
         sync();
         if self.data_mounted
             && let Err(e) = mounts::unmount_data(release::DATA_DIR)
@@ -64,6 +95,11 @@ impl Host {
                 .line(&format!("{} not unmounted: {e}", release::DATA_DIR));
         }
         sync();
+    }
+
+    /// The services are gone: leave the disk clean and stop the host.
+    pub(super) fn finish_shutdown(&mut self) -> ! {
+        let kind = self.shutdown.unwrap_or(Kind::PowerOff);
         // The log service is gone and its disk unmounted: this code is
         // on the console only.
         let (code, command) = match kind {

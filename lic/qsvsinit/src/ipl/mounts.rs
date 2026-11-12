@@ -27,8 +27,7 @@ fn nodev() -> MountFlags {
     plain().union(MountFlags::NODEV)
 }
 
-/// Where the firmware's variables are.
-pub const EFIVARS: &str = "/sys/firmware/efi/efivars";
+use hostdisk::boot::EFIVARS;
 
 fn kernel_table() -> [Mount; 5] {
     [

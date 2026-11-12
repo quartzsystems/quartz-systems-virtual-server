@@ -115,6 +115,49 @@ pub const ADDRESS_ACQUIRED: RefCode = progress("C2002020", "Management address a
 /// The clock is in step with a time server.
 pub const TIME_SYNCHRONIZED: RefCode = progress("C2002030", "Time synchronized");
 
+// C2003xxx: the load source and its protection.
+
+/// The mirrored load source was assembled and is served.
+pub const SET_ASSEMBLED: RefCode = progress("C2003010", "Mirrored load source assembled");
+/// A unit is being brought back in step after an unclean stop or its return.
+pub const RESYNC_STARTED: RefCode = progress("C2003020", "Resynchronization started");
+/// The unit is in step again.
+pub const RESYNC_FINISHED: RefCode = progress("C2003025", "Resynchronization finished");
+/// A replacement unit is being rebuilt.
+pub const REBUILD_STARTED: RefCode = progress("C2003030", "Rebuild started");
+/// The replacement unit is in step.
+pub const REBUILD_FINISHED: RefCode = progress("C2003035", "Rebuild finished");
+/// Mirrored protection was started; it takes effect at the next IPL.
+pub const PROTECTION_STARTED: RefCode = progress("C2003040", "Mirrored protection started");
+
+// C2004xxx: the installer, in the order of its steps.
+
+/// The installer started.
+pub const INSTALL_STARTED: RefCode = progress("C2004000", "Installation started");
+/// The media's manifest was verified against the trusted keys.
+pub const INSTALL_VERIFIED: RefCode = progress("C2004010", "Installation media verified");
+/// The load-source disks were partitioned.
+pub const INSTALL_PARTITIONED: RefCode = progress("C2004020", "Disks partitioned");
+/// The protection of the load source was set up.
+pub const INSTALL_PROTECTED: RefCode = progress("C2004030", "Protection set up");
+/// The data file system was made.
+pub const INSTALL_FORMATTED: RefCode = progress("C2004040", "Data file system made");
+/// Slot A's UKI was written and read back.
+pub const INSTALL_SLOT_A: RefCode = progress("C2004050", "Slot A copied");
+/// Slot B's UKI was written and read back.
+pub const INSTALL_SLOT_B: RefCode = progress("C2004055", "Slot B copied");
+/// The A/B record was written.
+pub const INSTALL_RECORD: RefCode = progress("C2004060", "A/B record written");
+/// The firmware's boot entries were written.
+pub const INSTALL_BOOT: RefCode = progress("C2004070", "Boot entries written");
+/// The state files were written.
+pub const INSTALL_STATE: RefCode = progress("C2004080", "State written");
+/// The installation is complete.
+pub const INSTALL_COMPLETE: RefCode = progress("C2004090", "Installation complete");
+
+/// The host's identity (key pair and certificate) was generated.
+pub const IDENTITY_GENERATED: RefCode = progress("C2001075", "Host identity generated");
+
 // A2001xxx: attention from PID 1, numbered after the IPL step.
 
 /// The A/B record had no valid copy; a new one was written.
@@ -143,10 +186,41 @@ pub const NO_CARRIER: RefCode = attention("A2002010", "No carrier on the managem
 /// The management interface has no address.
 pub const NO_ADDRESS: RefCode = attention("A2002020", "No management address");
 
+// A2003xxx: attention from the load source.
+
+/// The mirrored load source could not be assembled.
+pub const SET_NOT_ASSEMBLED: RefCode = attention("A2003010", "Mirrored load source not assembled");
+/// A unit of the mirrored load source is missing or failed.
+pub const UNIT_FAILED: RefCode = attention("A2003020", "Load-source unit failed");
+/// A resynchronization or a rebuild ended before the unit was in step.
+pub const REBUILD_FAILED: RefCode = attention("A2003030", "Rebuild not finished");
+
+// A2004xxx: attention from the installer.
+
+/// The media's manifest or its payload did not verify.
+pub const INSTALL_MEDIA_REFUSED: RefCode = attention("A2004010", "Installation media refused");
+/// The answers of an unattended installation are not valid.
+pub const INSTALL_ANSWERS_INVALID: RefCode =
+    attention("A2004015", "Installation answers not valid");
+/// A step of the installation failed.
+pub const INSTALL_FAILED: RefCode = attention("A2004090", "Installation failed");
+/// The host's identity could not be generated.
+pub const IDENTITY_NOT_GENERATED: RefCode = attention("A2001075", "Host identity not generated");
+/// The firmware's boot entries could not be written.
+pub const INSTALL_BOOT_NOT_WRITTEN: RefCode = attention("A2004070", "Boot entries not written");
+
 /// PID 1 panicked and parked.
 pub const PANIC: RefCode = RefCode {
     code: "B2001000",
     text: "Host PID 1 failed",
+    family: Family::Fatal,
+};
+
+/// The storage service failed and could not be started again: the
+/// data file system has no server and the host cannot go on.
+pub const STORAGE_LOST: RefCode = RefCode {
+    code: "B2003000",
+    text: "Storage service stopped",
     family: Family::Fatal,
 };
 
@@ -175,6 +249,24 @@ pub const ALL: &[&RefCode] = &[
     &INTERFACE_UP,
     &ADDRESS_ACQUIRED,
     &TIME_SYNCHRONIZED,
+    &SET_ASSEMBLED,
+    &RESYNC_STARTED,
+    &RESYNC_FINISHED,
+    &REBUILD_STARTED,
+    &REBUILD_FINISHED,
+    &PROTECTION_STARTED,
+    &INSTALL_STARTED,
+    &INSTALL_VERIFIED,
+    &INSTALL_PARTITIONED,
+    &INSTALL_PROTECTED,
+    &INSTALL_FORMATTED,
+    &INSTALL_SLOT_A,
+    &INSTALL_SLOT_B,
+    &INSTALL_RECORD,
+    &INSTALL_BOOT,
+    &INSTALL_STATE,
+    &INSTALL_COMPLETE,
+    &IDENTITY_GENERATED,
     &RECORD_INVALID,
     &SLOT_FELL_BACK,
     &DATA_NOT_MOUNTED,
@@ -186,7 +278,16 @@ pub const ALL: &[&RefCode] = &[
     &NO_INTERFACE,
     &NO_CARRIER,
     &NO_ADDRESS,
+    &SET_NOT_ASSEMBLED,
+    &UNIT_FAILED,
+    &REBUILD_FAILED,
+    &INSTALL_MEDIA_REFUSED,
+    &INSTALL_ANSWERS_INVALID,
+    &INSTALL_FAILED,
+    &IDENTITY_NOT_GENERATED,
+    &INSTALL_BOOT_NOT_WRITTEN,
     &PANIC,
+    &STORAGE_LOST,
     &SHUTDOWN_STARTED,
     &POWER_OFF,
     &RESTART,

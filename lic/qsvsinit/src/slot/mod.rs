@@ -10,8 +10,6 @@
 //! is on the old default, clears the pending field and says so.
 //! Nothing here writes a UKI; that is the update phase.
 
-pub mod efi;
-
 #[cfg(target_os = "linux")]
 pub use on_host::{Slots, at_ipl};
 
@@ -19,18 +17,14 @@ pub use on_host::{Slots, at_ipl};
 mod on_host {
     use std::fs::File;
     use std::path::Path;
-    use std::time::{Duration, Instant};
 
-    use abrec::{AbError, AbPart, Slot};
+    use abrec::Slot;
+    use diskimg::efi::EspLocation;
+    use hostdisk::boot::{self, EFIVARS};
+    use hostdisk::disks::{self, LoadSource};
+    use hostdisk::multi::{At, Copies};
     use hostdisk::record::{self, HostRecord, Ipl, letter};
     use refcode::RefCode;
-
-    use super::efi;
-    use crate::ipl::mounts::EFIVARS;
-
-    /// How long the boot disk may take to appear: some controllers
-    /// are probed after PID 1 has started.
-    const DISK_WAIT: Duration = Duration::from_secs(10);
 
     /// The record and what this IPL is by it.
     pub struct Slots {
@@ -40,48 +34,50 @@ mod on_host {
         pub record: Option<HostRecord>,
         /// What this IPL is.
         pub ipl: Ipl,
-        part: Option<AbPart<File>>,
+        /// The record on every load-source disk.
+        part: Option<Copies<At<File>>>,
+        /// The ESP of every load-source disk.
+        esps: Vec<EspLocation>,
     }
 
-    /// The record partition, waited for.
-    fn open() -> Result<AbPart<File>, AbError> {
-        let give_up = Instant::now() + DISK_WAIT;
-        loop {
-            match record::open() {
-                Err(AbError::NotFound) if Instant::now() < give_up => {
-                    std::thread::sleep(Duration::from_millis(50));
-                }
-                other => return other,
-            }
-        }
-    }
-
-    /// The record step of an IPL from `booted`: read the record, note
-    /// what this IPL is, and write the record back when that changes
-    /// it. `post` is given each code with its detail.
-    pub fn at_ipl(booted: Slot, mut post: impl FnMut(&RefCode, &str)) -> Slots {
+    /// The record step of an IPL from `booted` on the load-source
+    /// disks `sources`: read the record (the newest on any disk), note
+    /// what this IPL is, and write the record back, to every disk, when
+    /// that changes it. `post` is given each code with its detail.
+    pub fn at_ipl(
+        booted: Slot,
+        sources: &[LoadSource],
+        mut post: impl FnMut(&RefCode, &str),
+    ) -> Slots {
         let mut slots = Slots {
             booted,
             record: None,
             ipl: Ipl::Normal,
             part: None,
+            esps: sources.iter().map(|s| s.esp_at).collect(),
         };
-        let mut part = match open() {
+        let mut part = match disks::records(sources) {
             Ok(part) => part,
             Err(e) => {
                 post(&refcode::RECORD_INVALID, &format!("not read: {e}"));
                 return slots;
             }
         };
-        let read = record::read(&mut part);
+        let read = record::read_all(&mut part);
         let (ipl, now) = match &read {
             Ok((found, _)) => found.at_ipl(booted),
             // No copy is a record: start one from the slot that booted.
             Err(_) => (Ipl::Normal, HostRecord::new(booted)),
         };
+        // A disk whose copy is behind (it was away, or it is new) is
+        // brought to the record's sequence too.
+        let behind = part
+            .each()
+            .iter()
+            .any(|c| c.as_ref().map(|c| c.sequence) != read.as_ref().ok().map(|r| r.1));
         let written = match &read {
-            Ok((found, _)) if *found == now => Ok(()),
-            _ => record::write(&mut part, now).map(|_| ()),
+            Ok((found, _)) if *found == now && !behind => Ok(()),
+            _ => record::write_all(&mut part, now).map(|_| ()),
         };
         match (&read, &written) {
             (Err(e), Ok(())) => post(
@@ -125,7 +121,7 @@ mod on_host {
                 record.with_release(self.booted, release)
             };
             if next != record {
-                if let Err(e) = record::write(part, next) {
+                if let Err(e) = record::write_all(part, next) {
                     post(&refcode::RECORD_INVALID, &format!("not written: {e}"));
                     return;
                 }
@@ -135,8 +131,8 @@ mod on_host {
                 return;
             }
             self.ipl = Ipl::Normal;
-            let order = hostdisk::locate::esp()
-                .and_then(|(_, esp)| efi::make_default(Path::new(EFIVARS), &esp, self.booted));
+            let order =
+                boot::make_default(Path::new(EFIVARS), release::NAME, &self.esps, self.booted);
             match order {
                 Ok(order) => {
                     let list: Vec<String> = order.iter().map(|n| format!("{n:04X}")).collect();

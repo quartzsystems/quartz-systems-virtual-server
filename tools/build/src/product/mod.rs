@@ -24,7 +24,7 @@ use hostdisk::layout;
 pub const INIT: &str = "qsvsinit";
 
 /// The service packages, `/qsvs/bin/<name>` in every initramfs.
-pub const SERVICES: [&str; 2] = ["qsvslogd", "qsvsnetd"];
+pub const SERVICES: [&str; 3] = ["qsvsstgd", "qsvslogd", "qsvsnetd"];
 
 /// The test hooks' package: in a test image only.
 pub const HOOK: &str = "qsvshook";
@@ -57,11 +57,17 @@ const fn package(name: &'static str) -> Package {
     }
 }
 
-const RELEASE_PACKAGES: &[Package] = &[package(INIT), package(SERVICES[0]), package(SERVICES[1])];
+const RELEASE_PACKAGES: &[Package] = &[
+    package(INIT),
+    package(SERVICES[0]),
+    package(SERVICES[1]),
+    package(SERVICES[2]),
+];
 const TEST_PACKAGES: &[Package] = &[
     package(INIT),
     package(SERVICES[0]),
     package(SERVICES[1]),
+    package(SERVICES[2]),
     package(HOOK),
 ];
 
@@ -182,10 +188,13 @@ mod tests {
             let p = qsvs(image).unwrap();
             p.packages.iter().map(|p| p.name).collect()
         };
-        assert_eq!(names(Image::Release), ["qsvsinit", "qsvslogd", "qsvsnetd"]);
+        assert_eq!(
+            names(Image::Release),
+            ["qsvsinit", "qsvsstgd", "qsvslogd", "qsvsnetd"]
+        );
         assert_eq!(
             names(Image::Test),
-            ["qsvsinit", "qsvslogd", "qsvsnetd", "qsvshook"]
+            ["qsvsinit", "qsvsstgd", "qsvslogd", "qsvsnetd", "qsvshook"]
         );
         assert_eq!(qsvs(Image::Release).unwrap().name, "QS/VS");
         assert_ne!(qsvs(Image::Test).unwrap().name, "QS/VS");

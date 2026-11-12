@@ -73,6 +73,22 @@ pub fn parts() -> Vec<PartDesc> {
     ]
 }
 
+/// The partitions as an installer writes them: the data partition's
+/// head is cleared and its file system made afterwards, on the
+/// partition or on the mirrored set over two of them.
+pub fn install_parts() -> Vec<PartDesc> {
+    let mut parts = parts();
+    if let Some(data) = parts.last_mut() {
+        data.content = Content::Wiped;
+    }
+    parts
+}
+
+/// The smallest disk that can be a load source.
+pub fn min_disk_bytes() -> u64 {
+    diskimg::layout::min_bytes(&parts())
+}
+
 /// The disk and partition GUIDs of a built image: fixed, so the image
 /// is the same bytes every build.
 pub fn fixed_guids() -> LayoutGuids {
