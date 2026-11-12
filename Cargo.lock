@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "abrec"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "crc",
  "diskimg",
@@ -118,7 +118,7 @@ dependencies = [
 [[package]]
 name = "blockdev"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "rustix",
  "thiserror",
@@ -145,7 +145,7 @@ dependencies = [
 [[package]]
 name = "buildkit"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "anyhow",
  "diskimg",
@@ -358,7 +358,7 @@ dependencies = [
 [[package]]
 name = "dhcp"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "socket2",
  "thiserror",
@@ -378,7 +378,7 @@ dependencies = [
 [[package]]
 name = "diskimg"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "blockdev",
  "fatfs",
@@ -598,6 +598,7 @@ version = "0.1.0"
 dependencies = [
  "abrec",
  "diskimg",
+ "rustix",
  "uuid",
  "vrm",
 ]
@@ -833,7 +834,7 @@ dependencies = [
 [[package]]
 name = "ipc"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "thiserror",
 ]
@@ -1023,7 +1024,7 @@ dependencies = [
 [[package]]
 name = "netlink"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "rustix",
  "thiserror",
@@ -1032,7 +1033,7 @@ dependencies = [
 [[package]]
 name = "ntp"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "thiserror",
  "tracing",
@@ -1068,7 +1069,7 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 [[package]]
 name = "optical"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "thiserror",
 ]
@@ -1921,7 +1922,7 @@ dependencies = [
 [[package]]
 name = "vrm"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "thiserror",
 ]
@@ -2153,7 +2154,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 [[package]]
 name = "xfsfmt"
 version = "0.1.0"
-source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=6d5532fa80e4328d57b410d4bf19e64baf4a40f6#6d5532fa80e4328d57b410d4bf19e64baf4a40f6"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
 dependencies = [
  "crc",
  "thiserror",

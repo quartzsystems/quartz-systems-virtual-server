@@ -47,10 +47,9 @@ fn address(index: u32, cidr: Cidr) -> Address {
 }
 
 fn default_route(index: u32, gateway: Ipv4Addr, protocol: u8) -> Route {
-    let mut r = Route::new(Family::V4, None, 0);
+    let mut r = Route::new(Family::V4, None, 0, protocol);
     r.gateway = Some(IpAddr::V4(gateway));
     r.oif = Some(index);
-    r.protocol = protocol;
     r
 }
 

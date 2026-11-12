@@ -9,11 +9,13 @@ Every QS/400 crate is a git dependency on
 `https://github.com/quartzsystems/quartz-systems-400` at one commit:
 
 ```
-6d5532fa80e4328d57b410d4bf19e64baf4a40f6
+03d6492913318da96bc707cb68d3b54a94ef9bff
 ```
 
-It was `main` on 2026-11-11 and has `tools/buildkit`, `lic/vrm`,
-`lic/abrec` and `docs/BUILDKIT.md` (QS/400 handoffs 13 and 13a). The
+It was `main` on 2026-11-12 and has QS/400 handoff 14 (the neutral
+`console`, `scrkit`, `svcusers`, `protect`, `ublk` and `netlink`);
+Phases 0 and 1 were built at `6d5532fa`, which had `tools/buildkit`,
+`lic/vrm`, `lic/abrec` and `docs/BUILDKIT.md` (handoffs 13 and 13a). The
 crates named in `Cargo.toml` are `buildkit`, `vrm`, `diskimg` and
 `abrec`; `blockdev`, `xfsfmt` and `optical` come with them. No QS/400
 source is in this repository. Three files are the same as QS/400's at

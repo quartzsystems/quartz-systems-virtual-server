@@ -34,14 +34,14 @@ publish = false
 [workspace.dependencies]
 # QS/400's crates: git dependencies, every one at the same commit
 # (docs/PHASE0.md records it). Never path dependencies, never copies.
-buildkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
-vrm = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
-diskimg = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
-abrec = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
-ipc = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
-netlink = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
-dhcp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
-ntp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "6d5532fa80e4328d57b410d4bf19e64baf4a40f6" }
+buildkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
+vrm = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
+diskimg = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
+abrec = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
+ipc = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
+netlink = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
+dhcp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
+ntp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
 
 anyhow = "1.0.104"
 thiserror = "2.0.21"
