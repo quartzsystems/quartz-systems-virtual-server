@@ -230,7 +230,7 @@ impl Panel<Env, Outcome> for Select {
             TITLE,
             &env.system(),
             &prompt,
-            "Opt  Location                Model               Serial                  Size",
+            "Opt Location                Model               Serial                  Size",
             &rows,
             "F1=Help   F3=Exit   F12=Cancel",
         );

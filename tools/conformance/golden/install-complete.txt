@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                               System:  vs-test
+
+ QS/VS is installed.
+
+ Remove the installation media.
+
+ Press Enter to restart. The host then starts from its load source.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Enter=Restart
+

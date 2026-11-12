@@ -231,7 +231,7 @@ impl<'a> Panel<Env<'a>, Outcome> for Welcome {
 }
 
 const DISK_HEADINGS: &str =
-    "Opt  Location                Model               Serial                  Size";
+    "Opt Location                Model               Serial                  Size";
 
 fn disk_row(disk: &DiskChoice, least: u64) -> String {
     format!(

@@ -122,7 +122,7 @@ impl NetworkEntry {
             FormLine::new("VLAN ID", 4, self.vlan.clone()),
             FormLine::new("DNS servers", 46, self.dns.clone()),
         ];
-        let mut s = ui::form(title, system, &rows, keys);
+        let mut s = kit::form(title, system, &rows, keys);
         let top = ui::BODY_ROW + rows.len() + 1;
         kit::put(
             &mut s,
@@ -322,7 +322,7 @@ impl TimeEntry {
             FormLine::new("Date", 10, self.date.clone()),
             FormLine::new("Time", 8, self.time.clone()),
         ];
-        let mut s = ui::form(title, system, &lines, keys);
+        let mut s = kit::form(title, system, &lines, keys);
         let zone = self.zone().unwrap_or_default();
         let top = ui::BODY_ROW + lines.len() + 1;
         for (i, text) in [
@@ -433,7 +433,7 @@ impl UserEntry {
             FormLine::hidden("Password", 32),
             FormLine::hidden("Password again", 32),
         ];
-        let mut s = ui::form(title, system, &lines, keys);
+        let mut s = kit::form(title, system, &lines, keys);
         let top = ui::BODY_ROW + lines.len() + 1;
         for (i, rule) in users::RULES.iter().enumerate() {
             kit::put(&mut s, top + i, rule);

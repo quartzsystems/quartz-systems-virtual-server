@@ -26,6 +26,7 @@ members = [
     "base/logd",
     "base/seed",
     "base/netd",
+    "base/identity",
     "base/users",
     "base/panels",
     "base/install",

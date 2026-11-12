@@ -315,3 +315,27 @@ pub fn titled(guest: &mut Guest<'_>, title: &str, deadline: Instant) -> Result<S
         grid.row(1).trim() == title
     })
 }
+
+/// Hold a screen against its golden file.
+pub fn golden(name: &str, screen: &str) -> Result<(), String> {
+    crate::qemu::golden::check(name, screen, &release::RELEASE.to_string())
+}
+
+/// The title of the sign-on display.
+pub const SIGN_ON: &str = "Service Tools Sign On";
+/// The title of the main menu.
+pub const MAIN_MENU: &str = "QS/VS Service Tools";
+
+/// Press Enter at the serial port and sign on: the main menu's text.
+pub fn sign_on(
+    guest: &mut Guest<'_>,
+    user: &str,
+    password: &str,
+    deadline: Instant,
+) -> Result<String, String> {
+    use crate::qemu::term::key;
+    guest.type_keys(key::ENTER)?;
+    titled(guest, SIGN_ON, deadline)?;
+    guest.type_keys(&format!("{user}{}{password}{}", key::TAB, key::ENTER))?;
+    titled(guest, MAIN_MENU, deadline)
+}

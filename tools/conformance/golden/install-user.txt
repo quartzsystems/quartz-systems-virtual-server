@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                               System:  vs-test
+
+ User ID . . . . . . :
+ Password . . . . . . :
+ Password again . . . :
+
+ A user ID is 1 to 10 letters and digits. It is kept in upper case.
+ A password is 8 to 128 characters and is case sensitive.
+ It has at least one letter and at least one digit.
+ It does not contain the user ID.
+
+ What is typed in the password fields is not shown.
+
+
+
+
+
+
+
+
+
+ Enter=Continue   F1=Help   F3=Exit   F12=Cancel
+

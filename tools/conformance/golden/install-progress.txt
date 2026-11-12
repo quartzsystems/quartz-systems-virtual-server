@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                               System:  vs-test
+
+ Installing. Do not power the machine off.
+
+   >  C2004020  Partitioning the disks
+      C2004030  Setting up protection
+      C2004040  Making the data file system
+      C2004050  Copying slot A
+      C2004055  Copying slot B
+      C2004060  Writing the A/B record
+      C2004070  Writing boot entries
+      C2004080  Writing state
+
+   0%  --------------------------------------------------
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                            System:  QSVS123456
+
+ Everything on these disks will be erased:
+
+   P0000-B00-D10-F0  virtio-blk  serial QSVSHD0  671.0 MB
+
+ It becomes an unprotected load source.
+
+ Nothing is erased yet. The disks are written after the summary.
+
+
+
+
+
+ Type ERASE to confirm  . . . :
+
+
+
+
+
+
+ Enter=Continue   F1=Help   F3=Exit   F12=Cancel
+

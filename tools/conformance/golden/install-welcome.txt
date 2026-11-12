@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                            System:  QSVS123456
+
+ QS/VS V1R0M0 <build> (Quartz Systems/Virtual Server)
+
+ This installs the hypervisor on this machine: it erases the disks
+ you choose, makes them the load source the host starts from, and
+ sets the host name, the management network, the time and the first
+ service tools user. Partitions are then made and run from the
+ management console, QS/MC.
+
+ Nothing is written until you have seen the summary and pressed F10.
+
+ Press Enter to continue, or F3 to leave without installing.
+
+
+
+
+
+
+
+
+ Enter=Continue   F1=Help   F3=Exit
+

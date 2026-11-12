@@ -18,6 +18,7 @@ state = { path = "../../base/state", version = "0.1.0" }
 supervise = { path = "../../base/supervise", version = "0.1.0" }
 logd = { path = "../../base/logd", version = "0.1.0" }
 seed = { path = "../../base/seed", version = "0.1.0" }
+identity = { path = "../../base/identity", version = "0.1.0" }
 abrec.workspace = true
 diskimg.workspace = true
 

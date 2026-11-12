@@ -1,0 +1,14 @@
+[package]
+name = "identity"
+description = "The identity an appliance makes for itself at its first IPL: an Ed25519 key pair and a self-signed X.509 certificate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+appliance = { path = "../appliance", version = "0.1.0" }
+ed25519-dalek = "3.0.0"
+
+[lints]
+workspace = true

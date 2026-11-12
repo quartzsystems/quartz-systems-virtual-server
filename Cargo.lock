@@ -890,6 +890,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "identity"
+version = "0.1.0"
+dependencies = [
+ "appliance",
+ "ed25519-dalek",
+]
+
+[[package]]
 name = "idna"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1262,6 +1270,7 @@ dependencies = [
  "diskimg",
  "hostdisk",
  "hostinv",
+ "identity",
  "kvm-bindings",
  "kvm-ioctls",
  "logd",

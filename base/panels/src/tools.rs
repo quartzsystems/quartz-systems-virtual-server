@@ -89,7 +89,7 @@ impl<E: Host + ?Sized> Panel<E, String> for SignOn {
     }
 
     fn render(&self, env: &mut E) -> Screen {
-        ui::form(
+        kit::form(
             "Service Tools Sign On",
             &env.system(),
             &[
@@ -388,7 +388,7 @@ impl<E: Host + ?Sized + 'static, O: 'static> Panel<E, O> for UsersPanel {
             "Work with Service Tools User IDs",
             &env.system(),
             "Type an option by a user ID, press Enter.  2=Change password  4=Remove",
-            "Opt  User ID",
+            "Opt User ID",
             &ids,
             "F1=Help   F3=Exit   F6=Add   F12=Cancel",
         )
@@ -509,7 +509,7 @@ impl<E: Host + ?Sized, O> Panel<E, O> for Password {
     }
 
     fn render(&self, env: &mut E) -> Screen {
-        let mut s = ui::form(
+        let mut s = kit::form(
             "Change Password",
             &env.system(),
             &[
@@ -683,7 +683,7 @@ impl<E: Host + ?Sized, O> Panel<E, O> for LogPanel {
         };
         let rows = self.rows(env);
         let (shown, foot) = kit::window(&rows, self.top, LOG_ROWS);
-        let mut s = ui::form(
+        let mut s = kit::form(
             title,
             &env.system(),
             &[FormLine::new(

@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                               System:  vs-test
+
+ Load-source disk . . . : P0000-B00-D10-F0  serial QSVSHD0  671.0 MB
+ Protection . . . . . . : None
+ Host name  . . . . . . : vs-test
+ Interface  . . . . . . : auto
+ Address  . . . . . . . : from DHCP
+ Time zone  . . . . . . : UTC
+ Time servers . . . . . : none
+ Service tools user . . : ADMIN
+
+ F10 erases the disks named and installs. F12 goes back.
+
+
+
+
+
+
+
+
+
+ F1=Help   F3=Exit   F10=Install   F12=Cancel
+

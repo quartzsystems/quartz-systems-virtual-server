@@ -181,6 +181,25 @@ mod on_host {
         host.facts.serial = loaded.serial;
     }
 
+    /// The host's identity: made at the first IPL that has a data
+    /// file system to keep it on, and never again.
+    fn identity(host: &mut Host) {
+        if !host.data_mounted {
+            return;
+        }
+        let made = identity::ensure(
+            &APPLIANCE.state_dir(),
+            &host.facts.host,
+            &host.facts.serial,
+            appliance::time::now_secs(),
+        );
+        match made {
+            Ok(true) => host.post(&refcode::IDENTITY_GENERATED, identity::CERT_FILE),
+            Ok(false) => {}
+            Err(e) => host.post(&refcode::IDENTITY_NOT_GENERATED, &e.to_string()),
+        }
+    }
+
     /// The services step: what waited for `/data` is started.
     fn services(host: &mut Host) {
         host.release_services();
@@ -229,6 +248,7 @@ mod on_host {
         let store = Store::at(APPLIANCE.state_dir());
         seed(&mut host, &store);
         state(&mut host, &store);
+        identity(&mut host);
         services(&mut host);
         host.run()
     }

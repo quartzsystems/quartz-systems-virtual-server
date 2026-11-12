@@ -65,6 +65,7 @@ mod on_host {
     /// quiet. What ended it, for the log.
     fn session(screens: &Screens, env: &mut Env) -> &'static str {
         screens.drain();
+        env.status();
         let mut sign_on: Runner<Env, String> = Runner::new(Box::new(SignOn));
         env.user = match run(screens, &mut sign_on, env, Some(SIGN_ON_IDLE)) {
             Ended::Outcome(user) => user,

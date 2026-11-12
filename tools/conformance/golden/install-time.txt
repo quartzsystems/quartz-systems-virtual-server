@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                               System:  vs-test
+
+ UTC offset . . . . . :
+ Time servers . . . . :
+ Date . . . . . . . . :
+ Time . . . . . . . . :
+
+ The clock now shows yyyy-mm-dd hh:mm UTC.
+
+ UTC offset: +hh:mm or -hh:mm; blank is UTC. It changes what is
+ displayed. The clock itself keeps UTC.
+ Time servers: names or addresses, separated by commas. With time
+ servers the clock follows them and Date and Time are not used.
+ Date as yyyy-mm-dd and Time as hh:mm, in the offset above; blank
+ leaves the clock as it is.
+
+
+
+
+
+
+ Enter=Continue   F1=Help   F3=Exit   F12=Cancel
+

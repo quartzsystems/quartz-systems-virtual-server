@@ -5,7 +5,7 @@
 //! Small things every panel uses, over the screen kit's builders.
 
 use console::{Attr, Screen};
-use scrkit::ui;
+use scrkit::ui::{self, FormLine};
 
 /// Rows a list or a text may fill between the heading and the keys.
 pub const BODY_ROWS: usize = 15;
@@ -18,6 +18,34 @@ pub fn enterable(mut s: Screen) -> Screen {
     if s.fields.is_empty() {
         s.field(ui::SELECTION_ROW + 1, ui::BODY_COL, 1, true);
     }
+    s
+}
+
+/// A form: a label and an input field a line from row 4, as the screen
+/// kit's own, with the labels' dot leaders in one set of columns and
+/// their colons under one another.
+#[must_use]
+pub fn form(title: &str, system: &str, lines: &[FormLine], keys: &str) -> Screen {
+    let longest = lines.iter().map(|l| l.label.len()).max().unwrap_or(0);
+    // Past the longest label: a space, a dot, a space, the colon.
+    let width = (longest + 3).max(20);
+    let col = ui::BODY_COL + width + 2;
+    let mut s = Screen::new();
+    ui::header(&mut s, title, system);
+    for (i, line) in lines.iter().enumerate() {
+        let row = ui::BODY_ROW + i;
+        s.put(row, ui::BODY_COL, &dotted(line.label, width), Attr::GREEN);
+        if line.hidden {
+            s.field_secret(row, col, line.len, ui::SECRET_LEN);
+        } else {
+            s.field(row, col, line.len, false);
+        }
+        if !line.value.is_empty() {
+            s.put(row, col, &line.value, Attr::INPUT);
+        }
+    }
+    ui::keys(&mut s, keys);
+    s.cursor = (ui::BODY_ROW - 1, col - 1);
     s
 }
 
@@ -120,8 +148,31 @@ mod tests {
         let s = page("Title", "SYS", &lines(&["one"]), "Enter=Continue");
         assert_eq!(s.fields.len(), 1);
         assert!(s.fields[0].nondisplay);
-        let form = ui::form("T", "SYS", &[ui::FormLine::new("A", 3, "")], "");
-        assert_eq!(enterable(form).fields.len(), 1);
+        let one = form("T", "SYS", &[FormLine::new("A", 3, "")], "");
+        assert_eq!(enterable(one).fields.len(), 1);
+    }
+
+    #[test]
+    fn a_form_s_colons_are_under_one_another() {
+        let s = form(
+            "Network",
+            "SYS",
+            &[
+                FormLine::new("Host name", 10, "vs-01"),
+                FormLine::new("IP address", 15, ""),
+                FormLine::hidden("Password", 8),
+            ],
+            "F12=Cancel",
+        );
+        let dump = s.dump();
+        let rows: Vec<&str> = dump.lines().collect();
+        assert_eq!(&rows[3][..31], " Host name . . . . . : vs-01   ");
+        assert_eq!(&rows[4][..25], " IP address  . . . . :   ");
+        assert_eq!(&rows[5][..25], " Password  . . . . . :   ");
+        assert_eq!(s.fields.len(), 3);
+        assert!(s.fields.iter().all(|f| f.col == 24));
+        assert!(s.fields[2].nondisplay && s.fields[2].capacity == ui::SECRET_LEN);
+        assert!(rows[22].contains("F12=Cancel"));
     }
 
     #[test]

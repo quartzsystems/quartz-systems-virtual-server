@@ -1,0 +1,24 @@
+                              QS/VS Service Tools
+                                                                 System:  QS/VS
+
+ Select one of the following:
+
+      1. Work with system status
+      2. Work with disk units
+      3. Configure management network
+      4. Management console pairing  (not yet available: comes with QSI)
+      5. Work with service tools user IDs
+      6. Date and time
+      7. Display logs
+      8. Service functions  (not yet available: comes with code update)
+      9. Power off or restart
+
+
+
+
+
+ Selection
+
+
+ F1=Help   F3=Sign off   F12=Sign off
+

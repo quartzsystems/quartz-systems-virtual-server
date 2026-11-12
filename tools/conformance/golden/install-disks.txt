@@ -1,0 +1,24 @@
+                                 Install QS/VS
+                                                            System:  QSVS123456
+
+ Type 1 by the load-source disk, or by two disks for mirrored protection.
+
+ Opt  Location                Model               Serial                  Size
+     P0000-B00-D10-F0        virtio-blk          QSVSHD0             671.0 MB
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Enter=Continue   F1=Help   F3=Exit   F12=Cancel
+

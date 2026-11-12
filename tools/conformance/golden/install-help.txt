@@ -1,0 +1,24 @@
+                                 Help: Welcome
+                                                            System:  QSVS123456
+
+ This installs the product on the disks of this machine. The
+ disks you choose are erased; no other disk is touched.
+
+ The screens that follow ask for the load-source disks, the host
+ name and management network, the time, and a service tools user.
+ A summary shows what you chose. F10 on it starts the installation;
+ until then F12 goes back a screen and F3 leaves.
+
+ F1 shows help on every screen.
+
+
+
+
+
+
+
+
+
+
+ Enter=Continue   F12=Cancel
+
