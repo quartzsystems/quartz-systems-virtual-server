@@ -15,9 +15,11 @@ use crate::sysfs::hex;
 const BRIDGE_CLASS: &str = "0604";
 
 /// The slots of the SMBIOS `table` whose function is present. A slot
-/// with a designation that normalises to nothing is left out.
+/// with a designation that normalises to nothing is left out, and so
+/// are slots that share a designation: their code would not be one
+/// place.
 pub(crate) fn slots(sys: &Path, table: &[u8]) -> Vec<Slot> {
-    smbios::slots(table)
+    let found: Vec<Slot> = smbios::slots(table)
         .into_iter()
         .filter_map(|record| {
             let address = PciAddress {
@@ -37,7 +39,15 @@ pub(crate) fn slots(sys: &Path, table: &[u8]) -> Vec<Slot> {
                 bridge: hex(device.join("class"), 6).starts_with(BRIDGE_CLASS),
             })
         })
-        .collect()
+        .collect();
+    let once = |slot: &Slot| {
+        found
+            .iter()
+            .filter(|other| other.designation == slot.designation)
+            .count()
+            == 1
+    };
+    found.iter().filter(|slot| once(slot)).cloned().collect()
 }
 
 /// The PCI functions among the components of a sysfs path, in order.
@@ -82,5 +92,19 @@ mod tests {
         assert_eq!(found[1].address.to_string(), "0000:05:00.0");
         assert!(!found[1].bridge);
         assert!(slots(&tree.sys(), &[]).is_empty());
+    }
+
+    #[test]
+    fn slots_with_one_designation_are_not_used() {
+        let tree = Tree::new("place-twins");
+        tree.file("sys/bus/pci/devices/0000:04:00.0/class", "0x020000\n");
+        tree.file("sys/bus/pci/devices/0000:05:00.0/class", "0x020000\n");
+        tree.file("sys/bus/pci/devices/0000:06:00.0/class", "0x010802\n");
+        let mut table = slot("PCIe Slot", 0, 4, 0, 0);
+        table.extend(slot("PCIE slot", 0, 5, 0, 0));
+        table.extend(slot("M.2 Slot 1", 0, 6, 0, 0));
+        let found = slots(&tree.sys(), &table);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].designation, "M-2-SLOT-1");
     }
 }

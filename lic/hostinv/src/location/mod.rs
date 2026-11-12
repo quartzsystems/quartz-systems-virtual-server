@@ -5,8 +5,6 @@
 //! Location codes: one string that says where a disk, a network
 //! interface or a PCI device is. `docs/LOCATION.md` is the format.
 //!
-//! NEEDS-CODY: the format is Claude's proposal and needs sign-off.
-//!
 //! The functions here are pure: the caller reads the PCI functions on
 //! the way to a device from its sysfs path and the slots from SMBIOS.
 
