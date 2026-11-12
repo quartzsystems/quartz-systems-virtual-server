@@ -98,6 +98,14 @@ mod tests {
             self.posted.push((code, text));
         }
         fn note(&mut self, _key: String, _value: String) {}
+        fn set_host(
+            &mut self,
+            _name: String,
+            _time_zone: String,
+            _ntp_servers: Vec<String>,
+        ) -> Result<(), String> {
+            Ok(())
+        }
     }
 
     #[test]

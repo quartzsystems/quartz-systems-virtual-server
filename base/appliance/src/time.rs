@@ -67,6 +67,34 @@ pub fn civil(secs: i64) -> Civil {
     }
 }
 
+/// Seconds since the epoch of a civil date and time in UTC.
+pub fn from_civil(year: i64, month: i64, day: i64, hour: i64, minute: i64, second: i64) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    (era * 146_097 + doe - 719_468) * 86_400 + hour * 3600 + minute * 60 + second
+}
+
+/// The seconds since the epoch of a time written by [`rfc3339`].
+pub fn parse_rfc3339(text: &str) -> Option<i64> {
+    let number = |from: usize, to: usize| text.get(from..to)?.parse::<i64>().ok();
+    let marks = text.as_bytes();
+    if marks.len() < 20 || marks[4] != b'-' || marks[10] != b'T' || marks[13] != b':' {
+        return None;
+    }
+    Some(from_civil(
+        number(0, 4)?,
+        number(5, 7)?,
+        number(8, 10)?,
+        number(11, 13)?,
+        number(14, 16)?,
+        number(17, 19)?,
+    ))
+}
+
 /// `2026-11-12T10:22:03.123456789Z`, what a log record carries.
 pub fn rfc3339(nanos: i64) -> String {
     let c = civil(nanos.div_euclid(1_000_000_000));
@@ -180,5 +208,23 @@ mod tests {
         ] {
             assert!(bad.parse::<Zone>().is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_civil_time_goes_to_seconds_and_back() {
+        assert_eq!(from_civil(1970, 1, 1, 0, 0, 0), 0);
+        assert_eq!(from_civil(2000, 3, 1, 0, 0, 0), 11_017 * 86_400);
+        let secs = from_civil(2026, 11, 12, 13, 5, 0);
+        assert_eq!(secs, 1_794_488_700);
+        let c = civil(secs);
+        assert_eq!(
+            (c.year, c.month, c.day, c.hour, c.minute),
+            (2026, 11, 12, 13, 5)
+        );
+        assert_eq!(
+            parse_rfc3339(&rfc3339(secs * 1_000_000_000 + 7)),
+            Some(secs)
+        );
+        assert_eq!(parse_rfc3339("yesterday"), None);
     }
 }

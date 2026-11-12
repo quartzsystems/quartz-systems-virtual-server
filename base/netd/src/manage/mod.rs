@@ -405,6 +405,11 @@ impl<K: Kernel> Manager<K> {
         self.refresh(now);
     }
 
+    /// The configuration in use.
+    pub fn config(&self) -> &Network {
+        &self.config
+    }
+
     /// The management line: the address, or why there is none.
     pub fn line(&self) -> String {
         match (&self.active, &self.address) {

@@ -76,6 +76,21 @@ fn int(n: impl TryInto<libc::c_int>) -> libc::c_int {
     n.try_into().unwrap_or(0)
 }
 
+/// Set the system clock to `secs` since the epoch, and the RTC from it.
+pub fn set(secs: i64) -> io::Result<()> {
+    use rustix::time::{ClockId, Timespec, clock_settime};
+    clock_settime(
+        ClockId::Realtime,
+        Timespec {
+            tv_sec: secs,
+            tv_nsec: 0,
+        },
+    )?;
+    // A machine without an RTC keeps the time until it powers off.
+    let _ = write_rtc();
+    Ok(())
+}
+
 /// Set the RTC from the system clock (UTC).
 pub fn write_rtc() -> io::Result<()> {
     let now = civil(now_nanos().div_euclid(1_000_000_000));

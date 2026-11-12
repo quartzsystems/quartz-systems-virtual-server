@@ -30,12 +30,51 @@ ipc::wire_struct!(NetStatus {
     line
 });
 
+/// [`TrialStatus::state`]: no change was made.
+pub const TRIAL_NONE: &str = "none";
+/// [`TrialStatus::state`]: a change is on trial.
+pub const TRIAL_TRYING: &str = "trying";
+/// [`TrialStatus::state`]: the change was kept and written.
+pub const TRIAL_KEPT: &str = "kept";
+/// [`TrialStatus::state`]: the change was taken back.
+pub const TRIAL_RESTORED: &str = "restored";
+
+/// How a change made with [`Net::apply`] stands.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TrialStatus {
+    /// [`TRIAL_NONE`], [`TRIAL_TRYING`], [`TRIAL_KEPT`] or
+    /// [`TRIAL_RESTORED`].
+    pub state: String,
+    /// While trying: the seconds until the change is taken back.
+    pub seconds_left: u32,
+    /// The status screen's management line, as it is now.
+    pub line: String,
+    /// Why a change was taken back.
+    pub reason: String,
+}
+ipc::wire_struct!(TrialStatus {
+    state,
+    seconds_left,
+    line,
+    reason
+});
+
 ipc::rpc! {
     request Request, service Net, client Calls, dispatch dispatch;
     /// Read the state files again and apply what changed.
     0 => fn reload / Reload () -> Result<(), String>;
     /// The management interface.
     1 => fn status / Status () -> NetStatus;
+    /// Put the network of `network` (the text of a `network.toml`) on
+    /// the interface, on trial: it is written only once it works or is
+    /// confirmed, and taken back after thirty seconds otherwise.
+    2 => fn apply / Apply (network: String) -> Result<(), String>;
+    /// How the change made last stands.
+    3 => fn trial / Trial () -> TrialStatus;
+    /// Keep the change on trial whatever the interface says.
+    4 => fn confirm / Confirm () -> Result<(), String>;
+    /// Set the clock, and the RTC from it: seconds since the epoch.
+    5 => fn set_clock / SetClock (secs: i64) -> Result<(), String>;
 }
 
 /// A client of the service's socket.

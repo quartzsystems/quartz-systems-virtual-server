@@ -24,7 +24,7 @@ use hostdisk::layout;
 pub const INIT: &str = "qsvsinit";
 
 /// The service packages, `/qsvs/bin/<name>` in every initramfs.
-pub const SERVICES: [&str; 3] = ["qsvsstgd", "qsvslogd", "qsvsnetd"];
+pub const SERVICES: [&str; 4] = ["qsvsstgd", "qsvslogd", "qsvsnetd", "qsvstools"];
 
 /// The installer's package, `/qsvs/bin/qsvsinstall` in the media
 /// UKI's initramfs only.
@@ -66,6 +66,7 @@ const RELEASE_PACKAGES: &[Package] = &[
     package(SERVICES[0]),
     package(SERVICES[1]),
     package(SERVICES[2]),
+    package(SERVICES[3]),
     package(INSTALLER),
 ];
 const TEST_PACKAGES: &[Package] = &[
@@ -73,6 +74,7 @@ const TEST_PACKAGES: &[Package] = &[
     package(SERVICES[0]),
     package(SERVICES[1]),
     package(SERVICES[2]),
+    package(SERVICES[3]),
     package(INSTALLER),
     package(HOOK),
 ];
@@ -201,6 +203,7 @@ mod tests {
                 "qsvsstgd",
                 "qsvslogd",
                 "qsvsnetd",
+                "qsvstools",
                 "qsvsinstall"
             ]
         );
@@ -211,6 +214,7 @@ mod tests {
                 "qsvsstgd",
                 "qsvslogd",
                 "qsvsnetd",
+                "qsvstools",
                 "qsvsinstall",
                 "qsvshook"
             ]
@@ -221,7 +225,13 @@ mod tests {
         let repo = qsvs(Image::Test).unwrap().repo;
         let manifest = std::fs::read_to_string(repo.join("Cargo.toml")).unwrap();
         for name in names(Image::Test) {
-            assert!(manifest.contains(&format!("lic/{name}")), "{name}");
+            // Service Tools is the one that is not Licensed Internal Code.
+            let member = if name == SERVICES[3] {
+                "svc/tools".to_string()
+            } else {
+                format!("lic/{name}")
+            };
+            assert!(manifest.contains(&member), "{name}");
         }
     }
 }

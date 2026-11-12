@@ -68,6 +68,10 @@ ipc::rpc! {
     3 => fn post / Post (code: String, text: String) -> ();
     /// A fact for the status screen.
     4 => fn note / Note (key: String, value: String) -> ();
+    /// Set the host's name, display zone and time servers: PID 1
+    /// writes the host's state file and takes the name and the zone
+    /// into use.
+    5 => fn set_host / SetHost (name: String, time_zone: String, ntp_servers: Vec<String>) -> Result<(), String>;
 }
 
 #[cfg(test)]

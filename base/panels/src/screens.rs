@@ -147,6 +147,20 @@ pub struct Screens {
     keys: Sender<Command>,
     last_key: Arc<Mutex<Instant>>,
     described: String,
+    framebuffer: bool,
+}
+
+/// A way to show a screen on a console from another thread.
+#[derive(Clone)]
+pub struct Shower {
+    show: Sender<Command>,
+}
+
+impl Shower {
+    /// Show a screen.
+    pub fn show(&self, screen: Screen) {
+        let _ = self.show.send(Command::ShowScreen(screen));
+    }
 }
 
 impl Screens {
@@ -158,6 +172,7 @@ impl Screens {
             Ok(()) => console.describe(),
             Err(e) => e.to_string(),
         };
+        let framebuffer = console.has_display();
         if let Some(serial) = displays.serial {
             console.add_display(Box::new(AnsiDisplay::new(serial).named("serial")));
             described.push_str(", serial terminal");
@@ -187,6 +202,19 @@ impl Screens {
             keys,
             last_key,
             described,
+            framebuffer,
+        }
+    }
+
+    /// Whether the console is on a framebuffer.
+    pub fn has_framebuffer(&self) -> bool {
+        self.framebuffer
+    }
+
+    /// A way to show screens from another thread.
+    pub fn shower(&self) -> Shower {
+        Shower {
+            show: self.show.clone(),
         }
     }
 

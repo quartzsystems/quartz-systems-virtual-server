@@ -135,6 +135,8 @@ pub mod screen {
     pub const REFERENCE: &str = "Reference";
     /// The label of a service's row.
     pub const SERVICE: &str = "Service";
+    /// The last line: how the console is reached.
+    pub const SIGN_ON: &str = "Press Enter to sign on to Service Tools.";
 
     /// One row: the label in its column, then the value.
     pub fn row(label: &str, value: &str) -> String {
@@ -144,6 +146,42 @@ pub mod screen {
     /// A service's row: its name in its column, then its state.
     pub fn service(name: &str, state: &str) -> String {
         row(SERVICE, &format!("{name:<10} {state}"))
+    }
+
+    use supervise::control::HostStatus;
+
+    /// The rows of the screen: the label and the fact it shows.
+    const ROWS: [(&str, &str); 5] = [
+        (SLOT, super::fact::SLOT),
+        (HOST, super::fact::HOST),
+        (MANAGEMENT, super::fact::MANAGEMENT),
+        (DATE, super::fact::DATE),
+        (REFERENCE, super::fact::REFERENCE),
+    ];
+
+    /// The screen for `status`, under `banner`: the facts, a line a
+    /// service, and how the console is reached.
+    pub fn lines(banner: &str, status: &HostStatus) -> Vec<String> {
+        let mut out = vec![banner.to_string()];
+        for (label, key) in ROWS {
+            let mut value = status.fact(key).unwrap_or("").to_string();
+            if key == super::fact::SLOT
+                && let Some(record) = status.fact(super::fact::RECORD)
+            {
+                value = format!("{value} ({record})");
+            }
+            out.push(row(label, &value));
+        }
+        for one in &status.services {
+            let failures = match one.failures {
+                0 => String::new(),
+                1 => ", 1 failure".to_string(),
+                n => format!(", {n} failures"),
+            };
+            out.push(service(&one.name, &format!("{}{failures}", one.state)));
+        }
+        out.push(SIGN_ON.to_string());
+        out
     }
 }
 
@@ -165,6 +203,7 @@ pub fn fix_id(number: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use supervise::control::{HostStatus, ServiceStatus};
 
     #[test]
     fn the_banner_names_the_release_and_the_build() {
@@ -189,5 +228,49 @@ mod tests {
     fn fixes_are_qv_and_five_digits() {
         assert_eq!(fix_id(1), "QV00001");
         assert_eq!(fix_id(12345), "QV12345");
+    }
+
+    #[test]
+    fn the_screen_is_the_banner_five_facts_and_a_line_a_service() {
+        let fact = |k: &str, v: &str| (k.to_string(), v.to_string());
+        let status = HostStatus {
+            facts: vec![
+                fact(fact::SLOT, "A"),
+                fact(fact::RECORD, "default A, nothing pending"),
+                fact(fact::HOST, "QSVS123456"),
+                fact(fact::MANAGEMENT, "10.0.2.15/24 on eth0, gateway 10.0.2.2"),
+                fact(fact::DATE, "2026-11-12 10:22 UTC"),
+                fact(fact::REFERENCE, "C2001090 Base ready"),
+                fact(fact::TIME, "1794478923"),
+            ],
+            services: vec![
+                ServiceStatus {
+                    name: "logd".into(),
+                    state: "ready".into(),
+                    pid: 2,
+                    failures: 0,
+                },
+                ServiceStatus {
+                    name: "netd".into(),
+                    state: "restarting".into(),
+                    pid: 0,
+                    failures: 2,
+                },
+            ],
+        };
+        assert_eq!(
+            screen::lines("QS/VS V1R0M0 abc1234", &status),
+            [
+                "QS/VS V1R0M0 abc1234",
+                "Slot           A (default A, nothing pending)",
+                "Host name      QSVS123456",
+                "Management     10.0.2.15/24 on eth0, gateway 10.0.2.2",
+                "Date and time  2026-11-12 10:22 UTC",
+                "Reference      C2001090 Base ready",
+                "Service        logd       ready",
+                "Service        netd       restarting, 2 failures",
+                "Press Enter to sign on to Service Tools.",
+            ]
+        );
     }
 }

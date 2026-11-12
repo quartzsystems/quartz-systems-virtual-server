@@ -43,13 +43,30 @@ const NETD: Service = Service {
     ready_within: READY_WITHIN,
 };
 
+/// The Service Tools console, on the display and the serial port.
+pub const TOOLS: Service = Service {
+    name: "tools",
+    binary: "/qsvs/bin/qsvstools",
+    args: &[],
+    order: 30,
+    needs: &[],
+    ready_within: READY_WITHIN,
+};
+
 /// The base services.
 #[cfg(not(test_hooks))]
-pub static TABLE: &[Service] = &[STGD, LOGD, NETD];
+pub static TABLE: &[Service] = &[STGD, LOGD, NETD, TOOLS];
 
 /// The base services and, in a test image, the test hooks' two.
 #[cfg(test_hooks)]
-pub static TABLE: &[Service] = &[STGD, LOGD, NETD, crate::hooks::FLAKY, crate::hooks::CHANNEL];
+pub static TABLE: &[Service] = &[
+    STGD,
+    LOGD,
+    NETD,
+    TOOLS,
+    crate::hooks::FLAKY,
+    crate::hooks::CHANNEL,
+];
 
 #[cfg(test)]
 mod tests {

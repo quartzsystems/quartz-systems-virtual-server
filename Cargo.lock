@@ -1338,6 +1338,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "qsvstools"
+version = "0.1.0"
+dependencies = [
+ "appliance",
+ "console",
+ "hostinv",
+ "netd",
+ "panels",
+ "qsvsstgd",
+ "refcode",
+ "release",
+ "rustix",
+ "serde_json",
+ "state",
+ "supervise",
+ "svcusers",
+ "users",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1396,6 +1416,7 @@ name = "release"
 version = "0.1.0"
 dependencies = [
  "appliance",
+ "supervise",
  "vrm",
 ]
 

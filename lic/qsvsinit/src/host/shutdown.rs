@@ -39,6 +39,8 @@ impl Host {
             return;
         }
         self.shutdown = Some(kind);
+        // The serial port is PID 1's again: the shutdown is said there.
+        self.serial_session(false);
         let what = match kind {
             Kind::PowerOff => "power off",
             Kind::Restart => "restart",

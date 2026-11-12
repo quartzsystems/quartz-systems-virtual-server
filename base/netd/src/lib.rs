@@ -8,7 +8,9 @@
 //!   MAC, or the first with carrier), an optional VLAN, DHCP or a
 //!   static address, carrier loss and return, reload. IPv4 only; IPv6
 //!   is link-local.
-//! - [`control`]: the service's socket: reload and status.
+//! - [`control`]: the service's socket: reload, status, a change on
+//!   trial, the clock set by hand.
+//! - [`trial`]: a change of the network that is kept only if it works.
 //! - [`time`]: the clock kept in step with the configured time
 //!   servers.
 //! - [`sys`] and [`serve`]: the machine on Linux, over QS/400's
@@ -25,3 +27,4 @@ pub mod serve;
 #[cfg(target_os = "linux")]
 pub mod sys;
 pub mod time;
+pub mod trial;

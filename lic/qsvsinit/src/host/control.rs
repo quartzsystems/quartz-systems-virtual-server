@@ -36,6 +36,23 @@ impl Control for Host {
         }
     }
 
+    fn set_host(
+        &mut self,
+        name: String,
+        time_zone: String,
+        ntp_servers: Vec<String>,
+    ) -> Result<(), String> {
+        let done = self.host_settings(name, time_zone, ntp_servers);
+        match &done {
+            Ok(()) => self.say(
+                Severity::Info,
+                &format!("host settings changed: host {}", self.facts.host),
+            ),
+            Err(e) => self.say(Severity::Warning, &format!("host settings refused: {e}")),
+        }
+        done
+    }
+
     fn note(&mut self, key: String, value: String) {
         if key == fact::SERIAL_CONSOLE {
             self.serial_session(value == fact::SERIAL_SESSION);
@@ -51,6 +68,28 @@ impl Control for Host {
 }
 
 impl Host {
+    /// Write `host.toml` and take the name and the zone into use.
+    fn host_settings(
+        &mut self,
+        name: String,
+        time_zone: String,
+        ntp_servers: Vec<String>,
+    ) -> Result<(), String> {
+        use state::Document as _;
+        let host = state::Host {
+            name: Some(name.clone()),
+            time_zone,
+            ntp_servers,
+        };
+        host.validate()?;
+        let store = state::Store::at(std::path::Path::new(release::DATA_DIR).join("state"));
+        store.save(&host).map_err(|e| e.to_string())?;
+        let _ = rustix::system::sethostname(name.as_bytes());
+        self.facts.host = name;
+        self.facts.zone = host.zone();
+        Ok(())
+    }
+
     /// Accept one connection and answer its request.
     pub(super) fn serve_control(&mut self) {
         let Some(Ok((stream, _))) = self.listener.as_ref().map(UnixListener::accept) else {

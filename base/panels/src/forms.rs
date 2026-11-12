@@ -10,7 +10,7 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 
-use appliance::time::{Zone, civil};
+use appliance::time::{Zone, civil, from_civil};
 use console::Screen;
 use scrkit::ui::{self, FormLine};
 use state::{Cidr, Device, Document, Host, Mode, Network};
@@ -272,17 +272,6 @@ pub struct TimeChoice {
     pub clock: Option<i64>,
 }
 
-/// Days since the epoch of a civil date.
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let y = if month <= 2 { year - 1 } else { year };
-    let era = y.div_euclid(400);
-    let yoe = y.rem_euclid(400);
-    let mp = (month + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
 fn numbers<const N: usize>(text: &str, by: char) -> Option<[i64; N]> {
     let parts: Vec<i64> = text
         .split(by)
@@ -402,7 +391,7 @@ impl TimeEntry {
         let [hour, minute, second] = time
             .filter(|[h, m, s]| *h < 24 && *m < 60 && *s < 60)
             .ok_or("Time must be as 14:05 or 14:05:30.")?;
-        let local = days_from_civil(year, month, day) * 86_400 + hour * 3600 + minute * 60 + second;
+        let local = from_civil(year, month, day, hour, minute, second);
         // A day that the month does not have comes back as another date.
         let back = civil(local);
         if i64::from(back.day) != day || i64::from(back.month) != month {
@@ -598,8 +587,6 @@ mod tests {
         assert!(wrong("", "", "12.11.2026", "10:00").starts_with("Date"));
         assert!(wrong("", "", "2026-11-12", "25:00").starts_with("Time"));
         assert!(wrong("", "", "2026-02-30", "10:00").contains("no such day"));
-        assert_eq!(days_from_civil(1970, 1, 1), 0);
-        assert_eq!(days_from_civil(2000, 3, 1), 11_017);
     }
 
     #[test]

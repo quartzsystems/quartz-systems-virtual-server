@@ -1,0 +1,29 @@
+[package]
+name = "qsvstools"
+description = "QS/VS's Service Tools console: the common panels with QS/VS's menu, system status and disk units, on the display and on the serial port"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[dependencies]
+release = { path = "../../lic/release", version = "0.1.0" }
+refcode = { path = "../../lic/refcode", version = "0.1.0" }
+hostinv = { path = "../../lic/hostinv", version = "0.1.0" }
+qsvsstgd = { path = "../../lic/qsvsstgd", version = "0.1.0" }
+appliance = { path = "../../base/appliance", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+netd = { path = "../../base/netd", version = "0.1.0" }
+users = { path = "../../base/users", version = "0.1.0" }
+panels = { path = "../../base/panels", version = "0.1.0" }
+console.workspace = true
+svcusers.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix.workspace = true
+
+[lints]
+workspace = true

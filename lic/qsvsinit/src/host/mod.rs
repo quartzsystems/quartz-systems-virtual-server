@@ -210,6 +210,11 @@ impl Host {
                     how,
                     restart_in,
                 } => {
+                    // A session that ended with its service has the
+                    // serial port no more.
+                    if service == table::TOOLS.name && self.serial_busy {
+                        self.serial_session(false);
+                    }
                     let next = restart_in.map_or_else(
                         || "not started again".to_string(),
                         |d| format!("started again in {} s", d.as_secs()),
