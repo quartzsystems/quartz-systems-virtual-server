@@ -186,10 +186,16 @@ pub fn recorded(run: &Run<'_>) -> Result<String, String> {
         }
     };
 
-    // Nothing asked yet: side A.
+    // Nothing asked yet, and no record to ask through: a disk that
+    // has never IPLed. Side A.
     let mut guest = qs400(run, 2, "side = \"recorded\"")?;
     let first = activation(run, &mut guest, None)?;
-    want(1, &first, 'A', "side A")?;
+    if first.0 != 'A' || !first.1.is_empty() {
+        return Err(format!(
+            "IPL 1, of a disk that has never IPLed: side {} loaded, the record read as `{}`",
+            first.0, first.1
+        ));
+    }
     power_down_with(run, &mut guest, ASK_B)?;
     if !guest.said(&armed) {
         return Err("the guest did not say `next IPL from slot B`".into());
