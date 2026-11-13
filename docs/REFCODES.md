@@ -71,9 +71,23 @@ installed host's history starts with its first IPL.
 | `C2002xxx`, `A2002xxx` | the management network and time (`netd`) |
 | `C2003xxx`, `A2003xxx`, `B2003xxx` | the load source and its protection (`stgd`, the storage service) |
 | `C2004xxx`, `A2004xxx` | the installer, numbered after its steps |
+| `C2005xxx`, `A2005xxx` | a partition: its activation and IPL in order, what it lacked when it could not IPL, and how it ended (`qsvmm`) |
 
-Later phases take further blocks (storage pools, the VMM, QSI) and
-record them here.
+Later phases take further blocks (storage pools, QSI) and record them
+here.
+
+## A partition's codes
+
+The codes of the `C2005` and `A2005` blocks are the host's, about a
+partition: its own reference codes are QS/400's, on its own console.
+`qsvmm` has no way to PID 1 once it has dropped its privileges, so it
+reports a code as a line `REF <code> <text>` on its standard error,
+and whoever started it posts the line as it stands (`docs/VMM.md`). An
+IPL posts `C2005000` to `C2005090` in order; one that cannot go on
+posts the `A2005` code that names what was missing and then ends with
+`A2005100`. How the partition ended is posted by whoever started it,
+from the exit code of `qsvmm` or the signal that killed it, with the
+partition's name and that code.
 
 ## The storage service and `B2003000`
 
@@ -146,6 +160,18 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2004070` | Boot entries written | a firmware entry for each slot of each disk, with `BootOrder` |
 | `C2004080` | State written | the host name, the network, the time and the service tools user |
 | `C2004090` | Installation complete | the host restarts into what was installed |
+| `C2005000` | Partition activation started | `qsvmm` read the profile, with the partition's name |
+| `C2005010` | Partition disk units opened | every disk unit is open for direct I/O, with their number and the load source's size |
+| `C2005020` | Partition load-source table read | the load source has a GPT whose checksums hold |
+| `C2005030` | Partition LIC record read | with the side of the last IPL that completed, the keylock position, the console mode and the record's sequence |
+| `C2005035` | Partition IPL attributes written | the keylock position or the console mode of the profile is in the LIC record |
+| `C2005037` | Partition has no LIC record yet | the LIC partition is blank, or there is none and the IPL did not need it; the guest writes the first record |
+| `C2005040` | Partition IPL image read | the side's UKI was read from the ESP, with the side and its size |
+| `C2005050` | Partition kernel loaded | the kernel, the page tables, the GDT and the zero page are in guest memory |
+| `C2005060` | Partition machine built | with the processors, the memory and the disk units |
+| `C2005090` | Partition started | the processors are running, with the name and the side |
+| `C2005100` | Partition powered off | the guest powered off: exit code 0 |
+| `C2005110` | Partition ended for a restart | the guest asked for a restart: exit code 10. It is not restarted in place |
 | `A2001030` | A/B record not valid | no copy of the record is valid; a new one is written for the slot booted |
 | `A2001035` | Pending slot not confirmed | the pending slot did not confirm on its IPL; this IPL is on the default and the pending field is cleared |
 | `A2001040` | Data file system not mounted | `/data` could not be mounted, with the reason; state is in memory only. Nothing is reformatted |
@@ -166,6 +192,22 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2004090` | Installation failed | a step failed, with the step and the reason; the installer starts over |
 | `A2001075` | Host identity not generated | the key pair or certificate could not be made or written |
 | `A2004070` | Boot entries not written | the firmware's variables could not be written; the disks still start by their default path |
+| `A2005000` | Partition profile not valid | the profile could not be read or a value in it is refused, with the value |
+| `A2005010` | Partition disk unit cannot be read | a disk unit could not be opened for direct I/O or read, with the unit and the error |
+| `A2005020` | Partition load source has no partition table | no GPT, or one whose checksum or a field does not hold, with which |
+| `A2005021` | Partition load source has no EFI system partition | the table has no partition of the ESP's type |
+| `A2005022` | Partition EFI system partition cannot be read | the ESP holds no FAT16 or FAT32 volume, or a damaged one |
+| `A2005030` | Partition has no IPL image for the side | the ESP has no UKI at the side's path, with the side |
+| `A2005031` | Partition IPL image cannot be read | the UKI's cluster chain is damaged or the file is larger than 128 MiB |
+| `A2005040` | Partition load source has no LIC partition | the IPL needs the LIC record (the recorded side, or a keylock position or console mode to write) and the table has no LIC partition |
+| `A2005041` | Partition LIC record not valid | neither copy of the LIC record is valid and the partition is not blank |
+| `A2005050` | Partition IPL image is not a kernel | the UKI is not a bzImage with a 64-bit entry, with what is wrong |
+| `A2005060` | Partition machine not built | KVM, memory, a device or the privilege drop failed, with which |
+| `A2005100` | Partition did not IPL | `qsvmm` ended before the partition ran: exit code 30. The code before it says why |
+| `A2005120` | Partition ended with a guest fault | a triple fault, or KVM could not enter the guest: exit code 20 |
+| `A2005130` | Partition ended with a VMM error | `qsvmm` failed while the partition ran: exit code 40, or one it does not use |
+| `A2005140` | Partition ended by the host | `qsvmm` was sent `SIGTERM`: exit code 50 |
+| `A2005150` | Partition VMM killed | `qsvmm` was killed by a signal, with the signal |
 | `B2001000` | Host PID 1 failed | by PID 1's panic handler, with the panic message, before it parks |
 | `B2003000` | Storage service stopped | the storage service of a mirrored load source failed five times in ten minutes; the host parks |
 | `D2001000` | Host shutdown started | an orderly shutdown began, with what asked for it |

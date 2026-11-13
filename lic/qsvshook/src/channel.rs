@@ -209,6 +209,78 @@ fn sum(path: &str) -> Vec<String> {
     }
 }
 
+/// The partition hook's commands.
+fn partition(rest: &str) -> Vec<String> {
+    use crate::partition::{END_FILE, PID_FILE, START_FILE, runner};
+    let (verb, argument) = rest.split_once(' ').unwrap_or((rest, ""));
+    let pid = || -> Option<Pid> {
+        let text = fs::read_to_string(PID_FILE).ok()?;
+        Pid::from_raw(text.trim().parse().ok()?)
+    };
+    match verb {
+        "start" => done(fs::write(START_FILE, b"")),
+        "pid" => pid().map_or_else(
+            || error("no partition is running"),
+            |pid| vec![format!("{} {}", word::OK, pid.as_raw_nonzero())],
+        ),
+        "kill" => {
+            let signal = match argument {
+                "TERM" => Signal::TERM,
+                "KILL" => Signal::KILL,
+                other => return error(format!("partition kill TERM|KILL, not {other}")),
+            };
+            match pid() {
+                Some(pid) => done(kill_process(pid, signal)),
+                None => error("no partition is running"),
+            }
+        }
+        "send" => {
+            let socket = runner::console_socket(&runner::profile_name());
+            done(
+                std::os::unix::net::UnixStream::connect(socket).and_then(|mut console| {
+                    console.write_all(
+                        format!(
+                            "{argument}
+"
+                        )
+                        .as_bytes(),
+                    )
+                }),
+            )
+        }
+        "end" => fs::read_to_string(END_FILE).map_or_else(
+            |_| error("the partition has not ended"),
+            |how| vec![format!("{} {}", word::OK, how.trim())],
+        ),
+        other => error(format!("partition start|pid|kill|send|end, not {other}")),
+    }
+}
+
+/// Mount the xfs file system on a device read-only: a guest's, to see
+/// from the host what the guest wrote.
+fn mount_ro(rest: &str) -> Vec<String> {
+    use rustix::mount::{MountFlags, mount};
+    let Some((device, directory)) = rest.split_once(' ') else {
+        return error("mount <device> <directory>");
+    };
+    if let Err(e) = fs::create_dir_all(directory) {
+        return error(e);
+    }
+    let flags = MountFlags::RDONLY | MountFlags::NOSUID | MountFlags::NODEV | MountFlags::NOEXEC;
+    done(mount(device, directory, "xfs", flags, None))
+}
+
+fn scsi_probe(device: &str) -> Vec<String> {
+    match crate::partition::probe::probe(Path::new(device)) {
+        Ok(lines) => lines
+            .into_iter()
+            .map(|line| format!("{} {line}", word::LINE))
+            .chain(ok())
+            .collect(),
+        Err(e) => error(e),
+    }
+}
+
 /// The answer to one command line.
 fn answer(line: &str) -> Vec<String> {
     let (name, rest) = line.split_once(' ').unwrap_or((line, ""));
@@ -223,6 +295,13 @@ fn answer(line: &str) -> Vec<String> {
         command::STORAGE => storage(),
         command::LOAD => load(rest),
         command::SUM => sum(rest),
+        command::PARTITION => partition(rest),
+        command::MOUNT => mount_ro(rest),
+        command::UNMOUNT => done(rustix::mount::unmount(
+            rest,
+            rustix::mount::UnmountFlags::empty(),
+        )),
+        command::SCSI_PROBE => scsi_probe(rest),
         command::POWER_OFF => done(control().power_off()),
         command::RESTART => done(control().restart()),
         command::NET_RELOAD => {

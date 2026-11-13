@@ -4,6 +4,8 @@ members = [
     # Host tools: the build orchestrator and the conformance harness.
     "tools/build",
     "tools/conformance",
+    # The fuzzer: every reader of bytes a guest controls.
+    "tools/fuzz",
     # Licensed Internal Code: PID 1, release identity, reference codes, the services.
     "lic/qsvsinit",
     "lic/qsvslogd",
@@ -31,6 +33,12 @@ members = [
     "base/install",
     "base/loadsource",
     "base/stgd",
+    # The VMM: one process for one partition.
+    "vmm/arch",
+    "vmm/acpi",
+    "vmm/devices",
+    "vmm/ipl",
+    "vmm/qsvmm",
 ]
 
 [workspace.package]
@@ -57,6 +65,20 @@ ublk = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d
 console = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff", default-features = false }
 scrkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
 svcusers = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
+# The guest's LIC record. The one QS/400-specific crate QS/VS depends on,
+# and only the IPL loader (vmm/ipl) uses it.
+licpart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "03d6492913318da96bc707cb68d3b54a94ef9bff" }
+
+# The rust-vmm crates the VMM is built on (docs/PHASE3.md says why each
+# passes deny).
+kvm-bindings = { version = "0.14.2", features = ["fam-wrappers"] }
+kvm-ioctls = "0.25.1"
+vm-memory = { version = "0.18.0", features = ["backend-mmap"] }
+virtio-queue = "0.18.0"
+linux-loader = { version = "0.14.0", default-features = false, features = ["bzimage"] }
+vm-superio = "0.8.2"
+vmm-sys-util = "0.15.0"
+acpi_tables = "0.2.1"
 
 anyhow = "1.0.104"
 thiserror = "2.0.21"
@@ -91,3 +113,14 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 debug = false
+
+# The fuzzer (`build fuzz`): optimized, but a panic unwinds so the loop
+# catches it, and arithmetic is checked as in tests.
+[profile.fuzz]
+inherits = "release"
+panic = "unwind"
+lto = false
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
+strip = "none"

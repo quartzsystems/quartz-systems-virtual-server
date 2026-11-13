@@ -4,8 +4,9 @@
 
 //! The initramfs of every UKI: `/init` (qsvsinit), the mount points, a
 //! console node, and the trusted signer keys under `/qsvs/keys/`. A
-//! slot's has the services under `/qsvs/bin/`, and `qsvshook` in a
-//! test image; the media's has the installer there instead.
+//! slot's has the services and the VMM under `/qsvs/bin/`, and
+//! `qsvshook` in a test image; the media's has the installer there
+//! instead.
 
 use std::fs;
 use std::path::PathBuf;
@@ -47,7 +48,11 @@ fn all(ctx: &Ctx, hooks: bool, kind: UkiKind) -> Result<Vec<Entry>> {
         vec![super::INSTALLER]
     } else {
         let hook = hooks.then_some(super::HOOK);
-        super::SERVICES.into_iter().chain(hook).collect()
+        super::SERVICES
+            .into_iter()
+            .chain([super::VMM])
+            .chain(hook)
+            .collect()
     };
     for name in binaries {
         entries.push(Entry::file(&format!("qsvs/bin/{name}"), binary(ctx, name)?));

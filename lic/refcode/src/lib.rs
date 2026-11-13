@@ -214,6 +214,81 @@ pub const IDENTITY_NOT_GENERATED: RefCode = attention("A2001075", "Host identity
 /// The firmware's boot entries could not be written.
 pub const INSTALL_BOOT_NOT_WRITTEN: RefCode = attention("A2004070", "Boot entries not written");
 
+// C2005xxx: a partition's activation and IPL, in order. `qsvmm`
+// reports them; whoever started it posts them.
+
+/// The VMM read its profile and is activating the partition.
+pub const PARTITION_ACTIVATING: RefCode = progress("C2005000", "Partition activation started");
+/// The load source and the other disk units are open.
+pub const PARTITION_DISKS_OPENED: RefCode = progress("C2005010", "Partition disk units opened");
+/// The load source's partition table was read.
+pub const PARTITION_TABLE_READ: RefCode = progress("C2005020", "Partition load-source table read");
+/// The guest's LIC record was read.
+pub const PARTITION_RECORD_READ: RefCode = progress("C2005030", "Partition LIC record read");
+/// The keylock position or the console mode was written to the LIC record.
+pub const PARTITION_RECORD_WRITTEN: RefCode =
+    progress("C2005035", "Partition IPL attributes written");
+/// The load source has no LIC record yet; the guest writes the first.
+pub const PARTITION_NO_RECORD: RefCode = progress("C2005037", "Partition has no LIC record yet");
+/// The side's UKI was read from the ESP.
+pub const PARTITION_IMAGE_READ: RefCode = progress("C2005040", "Partition IPL image read");
+/// The kernel is in guest memory with its boot structures.
+pub const PARTITION_LOADED: RefCode = progress("C2005050", "Partition kernel loaded");
+/// Memory, processors and devices are built.
+pub const PARTITION_MACHINE_BUILT: RefCode = progress("C2005060", "Partition machine built");
+/// The processors are running.
+pub const PARTITION_STARTED: RefCode = progress("C2005090", "Partition started");
+/// The guest powered off.
+pub const PARTITION_POWERED_OFF: RefCode = progress("C2005100", "Partition powered off");
+/// The guest asked for a restart; the VMM ended for it.
+pub const PARTITION_RESTART: RefCode = progress("C2005110", "Partition ended for a restart");
+
+// A2005xxx: a partition that cannot IPL, and one that ended badly.
+
+/// The profile is not one a partition can be made from.
+pub const PARTITION_PROFILE_INVALID: RefCode = attention("A2005000", "Partition profile not valid");
+/// A disk unit could not be opened or read.
+pub const PARTITION_DISK_UNREADABLE: RefCode =
+    attention("A2005010", "Partition disk unit cannot be read");
+/// The load source has no usable partition table.
+pub const PARTITION_NO_TABLE: RefCode =
+    attention("A2005020", "Partition load source has no partition table");
+/// The load source has no EFI system partition.
+pub const PARTITION_NO_ESP: RefCode = attention(
+    "A2005021",
+    "Partition load source has no EFI system partition",
+);
+/// The EFI system partition holds no volume that can be read.
+pub const PARTITION_BAD_ESP: RefCode =
+    attention("A2005022", "Partition EFI system partition cannot be read");
+/// The ESP has no UKI for the IPL side.
+pub const PARTITION_NO_IMAGE: RefCode =
+    attention("A2005030", "Partition has no IPL image for the side");
+/// The side's UKI cannot be read.
+pub const PARTITION_BAD_IMAGE: RefCode =
+    attention("A2005031", "Partition IPL image cannot be read");
+/// The load source has no LIC partition and the IPL needs its record.
+pub const PARTITION_NO_LIC: RefCode =
+    attention("A2005040", "Partition load source has no LIC partition");
+/// Neither copy of the LIC record is valid.
+pub const PARTITION_BAD_RECORD: RefCode = attention("A2005041", "Partition LIC record not valid");
+/// The side's UKI is not a bzImage that can be started.
+pub const PARTITION_NOT_KERNEL: RefCode =
+    attention("A2005050", "Partition IPL image is not a kernel");
+/// The machine could not be built.
+pub const PARTITION_NOT_BUILT: RefCode = attention("A2005060", "Partition machine not built");
+/// The VMM ended before the partition ran.
+pub const PARTITION_NOT_IPLED: RefCode = attention("A2005100", "Partition did not IPL");
+/// The guest faulted: a triple fault or a failed entry.
+pub const PARTITION_GUEST_FAULT: RefCode =
+    attention("A2005120", "Partition ended with a guest fault");
+/// The VMM itself failed while the partition ran.
+pub const PARTITION_VMM_ERROR: RefCode = attention("A2005130", "Partition ended with a VMM error");
+/// The VMM was asked to end.
+pub const PARTITION_ENDED: RefCode = attention("A2005140", "Partition ended by the host");
+/// The VMM was killed.
+pub const PARTITION_KILLED: RefCode = attention("A2005150", "Partition VMM killed");
+
 /// PID 1 panicked and parked.
 pub const PANIC: RefCode = RefCode {
     code: "B2001000",
@@ -273,6 +348,18 @@ pub const ALL: &[&RefCode] = &[
     &INSTALL_STATE,
     &INSTALL_COMPLETE,
     &IDENTITY_GENERATED,
+    &PARTITION_ACTIVATING,
+    &PARTITION_DISKS_OPENED,
+    &PARTITION_TABLE_READ,
+    &PARTITION_RECORD_READ,
+    &PARTITION_RECORD_WRITTEN,
+    &PARTITION_NO_RECORD,
+    &PARTITION_IMAGE_READ,
+    &PARTITION_LOADED,
+    &PARTITION_MACHINE_BUILT,
+    &PARTITION_STARTED,
+    &PARTITION_POWERED_OFF,
+    &PARTITION_RESTART,
     &RECORD_INVALID,
     &SLOT_FELL_BACK,
     &DATA_NOT_MOUNTED,
@@ -293,6 +380,22 @@ pub const ALL: &[&RefCode] = &[
     &INSTALL_FAILED,
     &IDENTITY_NOT_GENERATED,
     &INSTALL_BOOT_NOT_WRITTEN,
+    &PARTITION_PROFILE_INVALID,
+    &PARTITION_DISK_UNREADABLE,
+    &PARTITION_NO_TABLE,
+    &PARTITION_NO_ESP,
+    &PARTITION_BAD_ESP,
+    &PARTITION_NO_IMAGE,
+    &PARTITION_BAD_IMAGE,
+    &PARTITION_NO_LIC,
+    &PARTITION_BAD_RECORD,
+    &PARTITION_NOT_KERNEL,
+    &PARTITION_NOT_BUILT,
+    &PARTITION_NOT_IPLED,
+    &PARTITION_GUEST_FAULT,
+    &PARTITION_VMM_ERROR,
+    &PARTITION_ENDED,
+    &PARTITION_KILLED,
     &PANIC,
     &STORAGE_LOST,
     &SHUTDOWN_STARTED,

@@ -1,0 +1,25 @@
+[package]
+name = "fuzz"
+description = "QS/VS's fuzzer, in Rust: every reader of bytes a guest controls, run on mutated input with LLVM's coverage counters as the guide"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "qsvsfuzz"
+path = "src/main.rs"
+
+[dependencies]
+ipl = { path = "../../vmm/ipl", version = "0.1.0" }
+devices = { path = "../../vmm/devices", version = "0.1.0" }
+arch = { path = "../../vmm/arch", version = "0.1.0" }
+vm-memory.workspace = true
+virtio-queue.workspace = true
+vmm-sys-util.workspace = true
+
+[lints]
+workspace = true

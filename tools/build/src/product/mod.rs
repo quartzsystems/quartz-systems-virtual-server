@@ -27,6 +27,10 @@ pub const INIT: &str = "qsvsinit";
 /// The service packages, `/qsvs/bin/<name>` in every initramfs.
 pub const SERVICES: [&str; 4] = ["qsvsstgd", "qsvslogd", "qsvsnetd", "qsvstools"];
 
+/// The VMM's package, `/qsvs/bin/qsvmm` in a slot's initramfs. A
+/// release image has it and nothing that starts it.
+pub const VMM: &str = "qsvmm";
+
 /// The installer's package, `/qsvs/bin/qsvsinstall` in the media
 /// UKI's initramfs only.
 pub const INSTALLER: &str = "qsvsinstall";
@@ -68,6 +72,7 @@ const RELEASE_PACKAGES: &[Package] = &[
     package(SERVICES[1]),
     package(SERVICES[2]),
     package(SERVICES[3]),
+    package(VMM),
     package(INSTALLER),
 ];
 const TEST_PACKAGES: &[Package] = &[
@@ -76,6 +81,7 @@ const TEST_PACKAGES: &[Package] = &[
     package(SERVICES[1]),
     package(SERVICES[2]),
     package(SERVICES[3]),
+    package(VMM),
     package(INSTALLER),
     package(HOOK),
 ];
@@ -205,6 +211,7 @@ mod tests {
                 "qsvslogd",
                 "qsvsnetd",
                 "qsvstools",
+                "qsvmm",
                 "qsvsinstall"
             ]
         );
@@ -216,6 +223,7 @@ mod tests {
                 "qsvslogd",
                 "qsvsnetd",
                 "qsvstools",
+                "qsvmm",
                 "qsvsinstall",
                 "qsvshook"
             ]
@@ -229,6 +237,8 @@ mod tests {
             // Service Tools is the one that is not Licensed Internal Code.
             let member = if name == SERVICES[3] {
                 "svc/tools".to_string()
+            } else if name == VMM {
+                format!("vmm/{name}")
             } else {
                 format!("lic/{name}")
             };

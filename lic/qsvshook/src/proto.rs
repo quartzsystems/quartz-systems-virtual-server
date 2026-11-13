@@ -49,6 +49,20 @@ pub mod command {
     /// `sum <path>`: a file's length and the sum of its bytes, which
     /// is enough to tell a file the load wrote from one that is torn.
     pub const SUM: &str = "sum";
+    /// `partition start`: start the partition again, for the profile
+    /// at `/run/partition.toml`. `partition kill <TERM|KILL>`: signal
+    /// `qsvmm`. `partition pid`: its process id. `partition send
+    /// <text>`: type a line at the partition's console. `partition
+    /// end`: how the last run ended.
+    pub const PARTITION: &str = "partition";
+    /// `mount <device> <directory>`: mount an xfs file system read-only.
+    pub const MOUNT: &str = "mount";
+    /// `umount <directory>`: unmount it.
+    pub const UNMOUNT: &str = "umount";
+    /// `scsiprobe <device>`: make the requests no guest kernel sends
+    /// of a host device, through the virtio-scsi device; a `line` for
+    /// each thing seen.
+    pub const SCSI_PROBE: &str = "scsiprobe";
 }
 
 /// The first words of an answer's lines.

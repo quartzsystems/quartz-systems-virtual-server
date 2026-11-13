@@ -14,6 +14,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "acpi"
+version = "0.1.0"
+dependencies = [
+ "acpi_tables",
+ "arch",
+]
+
+[[package]]
+name = "acpi_tables"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce821f856a3eb1d033287f2dcfcdf94276d7895dd5bdd8ca45ae17e7d33d4dd9"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -81,6 +98,16 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 [[package]]
 name = "appliance"
 version = "0.1.0"
+
+[[package]]
+name = "arch"
+version = "0.1.0"
+dependencies = [
+ "kvm-bindings",
+ "linux-loader",
+ "thiserror",
+ "vm-memory",
+]
 
 [[package]]
 name = "argon2"
@@ -424,6 +451,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "devices"
+version = "0.1.0"
+dependencies = [
+ "arch",
+ "rustix",
+ "thiserror",
+ "virtio-queue",
+ "vm-memory",
+ "vm-superio",
+ "vmm-sys-util",
+]
+
+[[package]]
 name = "dhcp"
 version = "0.1.0"
 source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
@@ -595,6 +635,18 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "fuzz"
+version = "0.1.0"
+dependencies = [
+ "arch",
+ "devices",
+ "ipl",
+ "virtio-queue",
+ "vm-memory",
+ "vmm-sys-util",
 ]
 
 [[package]]
@@ -938,6 +990,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipl"
+version = "0.1.0"
+dependencies = [
+ "abrec",
+ "arch",
+ "licpart",
+ "linux-loader",
+ "thiserror",
+ "uuid",
+ "vm-memory",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1047,6 +1112,26 @@ name = "libc"
 version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+
+[[package]]
+name = "licpart"
+version = "0.1.0"
+source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=03d6492913318da96bc707cb68d3b54a94ef9bff#03d6492913318da96bc707cb68d3b54a94ef9bff"
+dependencies = [
+ "abrec",
+ "diskimg",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "linux-loader"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d54207cb617cd75b10c57ad20235c914ab62b180ceeff2ef3111983670d3b321"
+dependencies = [
+ "vm-memory",
+]
 
 [[package]]
 name = "linux-raw-sys"
@@ -1249,17 +1334,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "qsvmm"
+version = "0.1.0"
+dependencies = [
+ "acpi",
+ "arch",
+ "devices",
+ "ipl",
+ "kvm-bindings",
+ "kvm-ioctls",
+ "libc",
+ "refcode",
+ "release",
+ "rustix",
+ "serde",
+ "thiserror",
+ "toml",
+ "vm-memory",
+ "vmm-sys-util",
+]
+
+[[package]]
 name = "qsvshook"
 version = "0.1.0"
 dependencies = [
+ "devices",
  "hex",
  "hostinv",
  "netd",
+ "qsvmm",
+ "refcode",
  "release",
  "rustix",
+ "seed",
  "state",
  "stgd",
  "supervise",
+ "virtio-queue",
+ "vm-memory",
 ]
 
 [[package]]
@@ -2178,6 +2290,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "virtio-bindings"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "091f1f09cfbf2a78563b562e7a949465cce1aef63b6065645188d995162f8868"
+
+[[package]]
+name = "virtio-queue"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f631bfd09362a9b17f0cfd5ca3b0a1b179d153fa276f9ce86919d560891e61d6"
+dependencies = [
+ "libc",
+ "log",
+ "virtio-bindings",
+ "vm-memory",
+ "vmm-sys-util",
+]
+
+[[package]]
+name = "vm-memory"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b55e753c7725603745cb32b2287ef7ef3da05c03c7702cda3fa8abe25ae0465"
+dependencies = [
+ "libc",
+ "thiserror",
+ "winapi",
+]
+
+[[package]]
+name = "vm-superio"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "503041e3dca68fbd5425c04e4c2ad63c57a31da5b6eb13aaafbcaaf2b9cdc74f"
+
+[[package]]
 name = "vmm-sys-util"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2305,6 +2453,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "winapi"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
+dependencies = [
+ "winapi-i686-pc-windows-gnu",
+ "winapi-x86_64-pc-windows-gnu",
+]
+
+[[package]]
+name = "winapi-i686-pc-windows-gnu"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
+
+[[package]]
 name = "winapi-util"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2312,6 +2476,12 @@ checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "winapi-x86_64-pc-windows-gnu"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows-link"
@@ -2450,6 +2620,26 @@ dependencies = [
  "quote",
  "syn 3.0.7",
  "synstructure",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8"
+dependencies = [
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

@@ -1,0 +1,16 @@
+[package]
+name = "arch"
+description = "A partition's x86_64 boot state: the memory map, page tables, segment and control registers, the zero page, CPUID and MSR policy, the local APIC"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kvm-bindings.workspace = true
+linux-loader.workspace = true
+vm-memory.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

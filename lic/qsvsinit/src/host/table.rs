@@ -66,6 +66,7 @@ pub static TABLE: &[Service] = &[
     TOOLS,
     crate::hooks::FLAKY,
     crate::hooks::CHANNEL,
+    crate::hooks::PARTITION,
 ];
 
 #[cfg(test)]
@@ -81,5 +82,14 @@ mod tests {
         for service in TABLE {
             assert!(service.binary.starts_with(release::BIN_DIR));
         }
+        // Nothing of a release image starts the VMM: only the test
+        // hooks' partition service does.
+        #[cfg(not(test_hooks))]
+        assert!(TABLE.iter().all(|s| !s.binary.ends_with("qsvmm")));
+        assert!(
+            TABLE
+                .iter()
+                .all(|s| s.name != "partition" || cfg!(test_hooks))
+        );
     }
 }

@@ -1,0 +1,29 @@
+[package]
+name = "qsvmm"
+description = "The virtual machine monitor: one process for one partition. Reads a profile, IPLs the guest from its load source, runs it on KVM and exits with a code that says why it ended"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arch = { path = "../arch", version = "0.1.0" }
+acpi = { path = "../acpi", version = "0.1.0" }
+devices = { path = "../devices", version = "0.1.0" }
+ipl = { path = "../ipl", version = "0.1.0" }
+refcode = { path = "../../lic/refcode", version = "0.1.0" }
+release = { path = "../../lic/release", version = "0.1.0" }
+serde.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+kvm-bindings.workspace = true
+kvm-ioctls.workspace = true
+vm-memory.workspace = true
+vmm-sys-util.workspace = true
+rustix.workspace = true
+libc.workspace = true
+
+[lints]
+workspace = true

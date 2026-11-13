@@ -1,0 +1,21 @@
+[package]
+name = "ipl"
+description = "A partition's IPL loader: the side's UKI read from the ESP of the load-source disk, the LIC record read and its IPL attributes written through licpart, the kernel loaded and the zero page filled"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arch = { path = "../arch", version = "0.1.0" }
+# The one QS/400-specific crate QS/VS depends on, here only: the LIC
+# record of the guest.
+licpart.workspace = true
+abrec.workspace = true
+linux-loader.workspace = true
+vm-memory.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

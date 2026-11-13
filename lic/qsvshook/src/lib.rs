@@ -11,7 +11,9 @@
 //!   second serial port.
 //! - [`churn`]: the state churn of the power-pull test, and the check
 //!   of what it left.
-//! - [`channel`], [`flaky`]: the two services (Linux).
+//! - [`channel`], [`flaky`]: two of the services (Linux).
+//! - [`partition`]: the third: the one partition a test image starts,
+//!   for the profile on a volume of its own.
 //!
 //! A hook is switched on for one IPL by an SMBIOS OEM string the
 //! harness gives QEMU, [`oem_string`].
@@ -23,6 +25,7 @@ pub mod channel;
 pub mod churn;
 #[cfg(target_os = "linux")]
 pub mod flaky;
+pub mod partition;
 pub mod proto;
 
 /// The hook that keeps a slot on trial from confirming (PID 1's).

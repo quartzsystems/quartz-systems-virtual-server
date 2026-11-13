@@ -2,8 +2,9 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The test hooks' binary: `qsvshook channel` and `qsvshook flaky`,
-//! the two services a test image's PID 1 has in its table.
+//! The test hooks' binary: `qsvshook channel`, `qsvshook flaky` and
+//! `qsvshook partition`, the services a test image's PID 1 has in its
+//! table.
 
 #[cfg(target_os = "linux")]
 fn main() {
@@ -13,7 +14,11 @@ fn main() {
             eprintln!("the channel did not start: {e}");
         }
         Some("flaky") => qsvshook::flaky::run(),
-        other => eprintln!("qsvshook channel | flaky, not {other:?}"),
+        Some("partition") => {
+            let Err(e) = qsvshook::partition::runner::run();
+            eprintln!("the partition hook did not start: {e}");
+        }
+        other => eprintln!("qsvshook channel | flaky | partition, not {other:?}"),
     }
     std::process::exit(1);
 }

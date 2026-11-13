@@ -13,10 +13,18 @@ hostinv = { path = "../hostinv", version = "0.1.0" }
 state = { path = "../../base/state", version = "0.1.0" }
 supervise = { path = "../../base/supervise", version = "0.1.0" }
 netd = { path = "../../base/netd", version = "0.1.0" }
+seed = { path = "../../base/seed", version = "0.1.0" }
+refcode = { path = "../refcode", version = "0.1.0" }
+# The partition hook starts the VMM and reads what it reports; its
+# probe drives the virtio-scsi device directly.
+qsvmm = { path = "../../vmm/qsvmm", version = "0.1.0" }
+devices = { path = "../../vmm/devices", version = "0.1.0" }
 hex.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rustix = { workspace = true, features = ["termios"] }
+rustix = { workspace = true, features = ["termios", "mount"] }
+virtio-queue.workspace = true
+vm-memory.workspace = true
 
 [lints]
 workspace = true
