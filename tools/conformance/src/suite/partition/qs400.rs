@@ -140,6 +140,8 @@ fn activation(
         .rfind(&mark)
         .and_then(|at| guest.log[at + mark.len()..].lines().next())
         .unwrap_or("")
+        // What a posting adds follows its code's text and a colon.
+        .trim_start_matches(':')
         .trim()
         .to_string();
     let loaded = ['A', 'B']
