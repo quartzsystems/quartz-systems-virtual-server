@@ -27,8 +27,13 @@ pub const LOW_RAM_END: u64 = 0x9_FC00;
 pub const HIGH_RAM_START: u64 = 0x10_0000;
 /// The ACPI tables: the root pointer first, where a scan finds it.
 pub const ACPI_START: u64 = 0xE_0000;
-/// Bytes kept for the ACPI tables.
-pub const ACPI_BYTES: u64 = 0x2_0000;
+/// Bytes kept for the ACPI tables: up to the page of the reset vector.
+pub const ACPI_BYTES: u64 = 0x1_F000;
+/// The last page of the first megabyte, where the reset vector is.
+pub const RESET_PAGE_START: u64 = 0xF_F000;
+/// Where a processor starts after a reset, and where a kernel that
+/// finds no other way to restart jumps.
+pub const RESET_VECTOR: u64 = 0xF_FFF0;
 
 /// The GDT.
 pub const GDT_START: u64 = 0x500;
@@ -174,6 +179,11 @@ impl Ram {
                 kind: Kind::Acpi,
             },
             Range {
+                start: RESET_PAGE_START,
+                bytes: HIGH_RAM_START - RESET_PAGE_START,
+                kind: Kind::Reserved,
+            },
+            Range {
                 start: HIGH_RAM_START,
                 bytes: self.low - HIGH_RAM_START,
                 kind: Kind::Ram,
@@ -204,8 +214,8 @@ mod tests {
         let ram = Ram::for_bytes(512 * MIB).unwrap();
         assert_eq!(ram.regions(), [(0, 512 * MIB)]);
         let map = ram.e820();
-        assert_eq!(map.len(), 5);
-        assert_eq!(map[3].start + map[3].bytes, 512 * MIB);
+        assert_eq!(map.len(), 6);
+        assert_eq!(map[4].start + map[4].bytes, 512 * MIB);
     }
 
     #[test]

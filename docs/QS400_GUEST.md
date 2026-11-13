@@ -9,8 +9,8 @@ change: a list a QS/400 handoff can be written from.
 **The short answer: it IPLs.** An unmodified QS/400 disk image reaches
 `SRC C6001090 IPL complete` in a partition, from either side, with one
 to four processors, finds its disks on virtio-scsi, takes its time from
-the clock, powers off and restarts through ACPI, and recovers its
-object store after the VMM is killed under it. Nothing in QS/400 blocks
+the clock, powers off through ACPI, restarts by the reset vector, and
+recovers its object store after the VMM is killed under it. Nothing in QS/400 blocks
 a suite of Phase 3. What does not work is everything QS/400 does
 through firmware variables: choosing the side of the next IPL.
 
@@ -201,10 +201,16 @@ It has no effect that was seen.
 - **Power off.** `reboot(PowerOff)` after `SRC D1001090`. The kernel
   writes the sleep type of S5 to the ACPI sleep control register,
   `qsvmm` ends with exit code 0, and the host posts `C2005100`. Works.
-- **Restart.** `reboot(Restart)`. The kernel writes the reset value to
-  the ACPI reset register, which is the keyboard controller's command
-  port; `qsvmm` ends with exit code 10 and the host posts `C2005110`.
-  Works. It is not restarted in place: whoever started it decides.
+- **Restart.** `reboot(Restart)`. The kernel does not write the ACPI
+  reset register: on hardware-reduced ACPI, with EFI support compiled
+  in, it asks EFI's reset service, has none in a partition, and jumps
+  in real mode to the reset vector. With nothing there the guest ran
+  through empty memory and the partition never ended (the first runs
+  were read wrongly as working). `qsvmm` now has seven bytes at the
+  reset vector that pulse the reset line (`docs/VMM.md`): it ends
+  with exit code 10 and the host posts `C2005110`. It is not restarted
+  in place: whoever started it decides. A kernel command line cannot
+  ask for another method: QS/400's is baked with `CMDLINE_OVERRIDE`.
 
 ### Anything else that fails or warns
 
@@ -269,6 +275,11 @@ For a QS/400 handoff, in the order of how much a partition needs each.
 7. **Nothing for the console.** Serial mode works as it is. A
    partition's profile should set it; the display path's `A6005008` is
    then never seen.
+8. **Restart by the ACPI reset register in a partition**, if the seven
+   bytes `qsvmm` keeps at the reset vector are not wanted
+   (`docs/OPEN_QUESTIONS.md` item 29): `reboot=acpi` in the baked
+   command line does it, and is harmless on a machine with firmware
+   only if its reset register works.
 
 None of these is needed for Phase 3. Item 1 is needed before a
 partition can apply a LIC PTF or be told `IPLSRC`, which is before

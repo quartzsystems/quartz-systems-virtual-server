@@ -10,8 +10,10 @@
 //! - [`tables`]: the page tables and the GDT, written into guest memory.
 //! - [`regs`]: the registers of the boot processor.
 //! - [`zeropage`]: the boot parameters.
+//! - [`reset`]: the reset vector, for a guest that restarts by it.
 
 pub mod regs;
+pub mod reset;
 pub mod tables;
 pub mod zeropage;
 

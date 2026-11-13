@@ -69,7 +69,8 @@ Huge pages are Phase 4.
 |---|---|---|
 | `0` | `9FC00` | RAM. The boot structures: the GDT at `500`, the zero page at `7000`, six pages of page tables from `9000`, the (empty) command line at `20000` |
 | `9FC00` | `A0000` | reserved |
-| `E0000` | `100000` | the ACPI tables, the root pointer first |
+| `E0000` | `FF000` | the ACPI tables, the root pointer first |
+| `FF000` | `100000` | reserved. Seven bytes at the reset vector, `FFFF0`: `mov al, FE`, `out 64, al`, `hlt` and a jump back to it |
 | `100000` | 3 GiB at most | RAM. The kernel is loaded at `1000000` |
 | `C0000000` | `E8000000` | PCI memory space |
 | `E8000000` | `E8100000` | PCI configuration space, memory mapped (bus 0) |
@@ -112,6 +113,17 @@ kernel, and one that did would be a guest fault. A power off or a
 restart the guest asks of the devices below ends the partition from
 the device.
 
+**The reset vector.** A Linux kernel that finds hardware-reduced ACPI
+and has EFI support compiled in restarts by EFI's reset service. A
+partition has none, and the kernel's next and last resort is a jump in
+real mode to the reset vector; the ACPI reset register and the
+keyboard controller are not tried. So the reset vector holds seven
+bytes that pulse the reset line, in a page the memory map reserves.
+They are the only bytes of the VMM's a guest ever runs, they run when
+a guest jumps there and never before its kernel, and a guest that
+writes over them has only undone its own restart. `NEEDS-CODY`
+(`docs/OPEN_QUESTIONS.md` item 29).
+
 ## Devices
 
 No firmware, no VGA, no keyboard, no floppy, no IDE.
@@ -122,7 +134,7 @@ No firmware, no VGA, no keyboard, no floppy, no IDE.
 | PIT | in KVM | made, and not used by a kernel that has the paravirtual clock |
 | Serial port | ports `3F8` to `3FF`, interrupt 4 | a 16550 (`vm-superio`). The guest's kernel messages and, in serial console mode, its console |
 | Clock | ports `70`, `71`, interrupt 8 (never raised) | a CMOS clock: the time in BCD, 24-hour, UTC. A guest that sets it moves it for as long as the partition runs |
-| Reset line | ports `60` to `64` | `vm-superio`'s i8042, of which only the pulse on the reset line (`FE` to port `64`) does anything: the partition ends for a restart. The FADT names that port as the ACPI reset register |
+| Reset line | ports `60` to `64` | `vm-superio`'s i8042, of which only the pulse on the reset line (`FE` to port `64`) does anything: the partition ends for a restart. The FADT names that port as the ACPI reset register, and the reset vector pulses it |
 | Power off | ports `600`, `601` | the ACPI sleep control and status registers of a hardware-reduced machine. S5 with the enable bit ends the partition as powered off |
 | PCI host bridge | ports `CF8` to `CFF`, and memory at `E8000000` | one bus. Device 0 is the bridge (`1b36:0008`); a virtio function follows at each device number |
 | virtio-scsi | PCI `00:01.0`, `1af4:1048` | one target, a disk at each LUN |
@@ -228,6 +240,13 @@ timer is armed for beside what the TSC reads now, and the eight bytes
 it is about to run. A partition that has gone quiet is either running
 somewhere or waiting for an interrupt that does not come, and this
 says which. The process goes on.
+
+For a processor that takes no interrupts the line has more: `cr2`,
+the general registers, the first 48 words of its stack, and any text
+those point at near the code. A kernel that stops itself before it
+has a console, as the decompressor does, has its reason nowhere else.
+What is read is the guest's and is only shown: each read is bounded
+and goes through the guest's own page tables by KVM.
 
 ## The threat model for guest-controlled input
 

@@ -41,8 +41,9 @@ fn exists(guest: &mut Session, n: u32, deadline: Instant) -> Result<(), String> 
         guest,
         &format!("CHKOBJ OBJ(QGPL/{object}) OBJTYPE(*DTAARA)"),
     )?;
-    let found = guest_line(&format!("QGPL/{object} *DTAARA exists."));
-    let lost = guest_line(&format!("CPF9801 object {object}"));
+    // An answer follows the console's prompt or starts a line.
+    let found = format!("QGPL/{object} *DTAARA exists.");
+    let lost = format!("CPF9801 object {object}");
     match guest.expect_any(&[&found, &lost], deadline)? {
         0 => Ok(()),
         _ => Err(format!(
@@ -64,7 +65,7 @@ fn write(guest: &mut Session, next: &mut u32, until: Instant) -> Result<Vec<u32>
         )?;
         // The cut may come before the guest answers: that object was
         // not acknowledged and may or may not be there.
-        let created = guest_line(&format!("Data area {object} created."));
+        let created = format!("Data area {object} created.");
         if guest.expect(&created, until).is_ok() {
             acknowledged.push(n);
         }

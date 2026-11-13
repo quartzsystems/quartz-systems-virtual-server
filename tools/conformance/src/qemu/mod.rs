@@ -90,6 +90,11 @@ pub struct Launch {
     pub keys: bool,
     /// Disks are at the places their [`Drive::place`] says.
     pub pinned: bool,
+    /// The machine's memory is allocated before it runs. A machine that
+    /// runs a partition needs it where the harness is itself in a
+    /// virtual machine: memory the outer host brings in while a nested
+    /// guest runs has reached that guest damaged (`docs/PHASE3.md`).
+    pub prealloc: bool,
 }
 
 /// The PCI device number of a pinned disk's place.
@@ -165,6 +170,9 @@ pub fn args(l: &Launch) -> Vec<OsString> {
         a.extend(["-enable-kvm", "-cpu", "host"].map(OsString::from));
     }
     a.extend(["-m".into(), l.memory_mb.to_string().into()]);
+    if l.prealloc {
+        a.push("-mem-prealloc".into());
+    }
     let smp = match l.topology {
         Some((sockets, cores, threads)) => format!(
             "{},sockets={sockets},cores={cores},threads={threads}",
@@ -285,6 +293,7 @@ mod tests {
             media_first: false,
             keys: false,
             pinned: false,
+            prealloc: false,
         }
     }
 
@@ -311,6 +320,16 @@ mod tests {
             ..launch()
         });
         assert!(!without.iter().any(|w| w == "-enable-kvm" || w == "host"));
+    }
+
+    #[test]
+    fn memory_is_allocated_first_only_when_asked() {
+        assert!(!words(&launch()).contains(&"-mem-prealloc".into()));
+        let asked = words(&Launch {
+            prealloc: true,
+            ..launch()
+        });
+        assert!(asked.contains(&"-mem-prealloc".into()));
     }
 
     #[test]

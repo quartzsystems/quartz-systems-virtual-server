@@ -55,7 +55,7 @@ pub fn params(header: &setup_header, ram: &Ram) -> boot_params {
             },
         };
     }
-    #[allow(clippy::cast_possible_truncation)] // six entries at most
+    #[allow(clippy::cast_possible_truncation)] // seven entries at most
     {
         params.e820_entries = map.len() as u8;
     }
@@ -88,8 +88,8 @@ mod tests {
         assert_eq!({ p.hdr.init_size }, 0x300_0000);
         assert_eq!({ p.hdr.type_of_loader }, 0xFF);
         assert_eq!({ p.acpi_rsdp_addr }, ACPI_START);
-        assert_eq!(p.e820_entries, 6);
-        let last = p.e820_table[5];
+        assert_eq!(p.e820_entries, 7);
+        let last = p.e820_table[6];
         assert_eq!(
             ({ last.addr }, { last.size }, { last.r#type }),
             (1 << 32, 5 << 30, 1)
@@ -107,6 +107,6 @@ mod tests {
         let magic: u32 = mem.read_obj(GuestAddress(ZERO_PAGE_START + 0x202)).unwrap();
         assert_eq!(magic, HEADER_MAGIC);
         let entries: u8 = mem.read_obj(GuestAddress(ZERO_PAGE_START + 0x1E8)).unwrap();
-        assert_eq!(entries, 5);
+        assert_eq!(entries, 6);
     }
 }

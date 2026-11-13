@@ -165,6 +165,20 @@ the same for every partition, so one partition's process could signal
 another's or read its serial log. With one partition that is nothing.
 Phase 4 gives each partition its own.
 
+### 29. Seven bytes at the reset vector (NEEDS-CODY)
+
+An unmodified QS/400 restarts by a jump to the reset vector
+(`docs/QS400_GUEST.md`), and a partition has no firmware there. `qsvmm`
+puts seven bytes there that pulse the reset line it already has, so
+that `pwrdwn restart` ends the partition with `C2005110`. Nothing runs
+before the kernel and the IPL is still the VMM's, but it is guest code
+the VMM supplies, which "no guest firmware" did not foresee. The
+other ways: QS/400 restarts by the ACPI reset register when it is a
+partition (`reboot=acpi` in its baked command line, or the call in
+`slic`), a QS/400 change; or ACPI that is not hardware-reduced, with
+the PM1 blocks and the SCI that come with it. To confirm, or to say
+which.
+
 ## Closed
 
 1. **The host reference code range.** Confirmed: families `C2`, `A2`,

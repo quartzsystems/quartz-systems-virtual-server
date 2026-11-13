@@ -162,6 +162,7 @@ impl Suite {
                 media_first: false,
                 keys: false,
                 pinned: false,
+                prealloc: false,
             },
             timeout: Duration::from_secs(timeout),
             allow_no_kvm: allow_no_kvm(),

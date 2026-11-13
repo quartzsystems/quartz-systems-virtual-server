@@ -141,7 +141,8 @@ pub fn write_acpi(memory: &Memory, processors: u32) -> io::Result<()> {
         .ok_or_else(|| io::Error::other("the ACPI tables do not fit"))?;
     memory
         .write_slice(&tables.bytes, GuestAddress(ACPI_START))
-        .map_err(|e| io::Error::other(format!("the ACPI tables: {e}")))
+        .map_err(|e| io::Error::other(format!("the ACPI tables: {e}")))?;
+    arch::boot::reset::write(memory).map_err(io::Error::other)
 }
 
 /// The devices of a partition.

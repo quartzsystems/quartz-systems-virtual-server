@@ -382,6 +382,40 @@ the host, and suites 3 to 9 on block devices.
   for five seconds; on a busy host `qsvmm` had not bound it by then and
   the partition ran with nothing relayed. It tries for as long as the
   run lasts.
+- **A partition's memory arrived damaged, under the harness only.**
+  About half of the partition starts in a QEMU host went wrong, each
+  differently: a guest silent from its first instruction, a triple
+  fault, a kernel fault one second in, a lock never released. `qsvmm`
+  was given a report of its processors for it (`SIGUSR1`,
+  `docs/VMM.md`), and the silent guests had stopped themselves in the
+  kernel's decompressor with `XZ-compressed data is corrupt`, 4, 20
+  and 46 MiB into the kernel. The kernel as `qsvmm` loaded it was
+  whole each time; in one stopped guest four bytes of the copy the
+  decompressor makes of it had changed. A few bytes in the wrong
+  place is not what a device model's mistake looks like, and the same
+  `qsvmm` straight on the build host's KVM started 36 guests of 36.
+  The partition is three levels deep here (Hyper-V, WSL's kernel, the
+  QEMU host, the partition), and WSL's kernel moves and reclaims the
+  QEMU host's memory as it runs. With that memory allocated before
+  the machine runs (`-mem-prealloc`, for the machines that run a
+  partition: `Launch::prealloc`) six suites of six passed where four
+  of six had just failed. It is taken for the outer hosts' nested
+  paging and not `qsvmm`'s; that is an inference from those runs, not
+  a proof. `NEEDS-CODY`: the partition suites on a Linux machine that
+  is no virtual machine, and the first partition on real hardware.
+- **A guest's restart never ended the partition.** `pwrdwn restart`
+  printed `reboot: Restarting system` and `qsvmm` ran on. The
+  processors' report had processor 0 in real mode, running through
+  the GDT's bytes: the kernel had jumped to the reset vector, where
+  a partition had nothing, and had written to neither the ACPI reset
+  register nor the keyboard controller (`docs/QS400_GUEST.md` says
+  why). The reset vector has seven bytes now that pulse the reset
+  line (`vmm/arch/src/boot/reset.rs`, `docs/OPEN_QUESTIONS.md` item
+  29). `docs/QS400_GUEST.md` had said a restart worked; it had not
+  been read from a run of this build.
+- **The suites looked for an answer at the start of a line.** QS/400's
+  service console writes its prompt before an answer, so `QGPL/KILLED
+  *DTAARA exists.` is mid-line. Suites 6 and 7 look for the text.
 
 ## Not done
 
@@ -402,6 +436,12 @@ Of the VMM:
   QS/400's are restated in `vmm/ipl` until QS/400 exports them.
   `docs/QS400_GUEST.md` ends with the list; `docs/OPEN_QUESTIONS.md`
   items 23 to 25.
+- **NEEDS-CODY: the seven bytes at the reset vector**, which a guest's
+  restart needs and "no guest firmware" did not foresee
+  (`docs/OPEN_QUESTIONS.md` item 29).
+- **NEEDS-CODY: the partition suites on a Linux machine that is no
+  virtual machine.** Under WSL they pass only with the QEMU host's
+  memory allocated first ("Found while testing").
 - **NEEDS-CODY: the first partition on real hardware.** Everything in
   this record ran three levels deep, under QEMU, on a build host that
   is itself a virtual machine. On the Dell test machine a partition is
@@ -451,3 +491,8 @@ disk image written to a second disk.
 - [ ] The partition's `serial.log` under
       `/data/log/partitions/TESTLPAR/` is owned by user 23000 and
       rotates at 4 MiB.
+- [ ] The cheap guest and QS/400 started twenty times each: every
+      start reaches its first code. Under the harness, three levels
+      deep, about half did not until the QEMU host's memory was
+      allocated first ("Found while testing"); a real machine has no
+      such layer, and this is where that is shown.

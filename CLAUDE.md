@@ -214,7 +214,7 @@ lic/            PID 1, release, installer, base services
   refcode/        host reference codes (docs/REFCODES.md), the code of each base event, the poster
   hostinv/        the host inventory and the location codes (docs/LOCATION.md)
 vmm/            the VMM: one process for one partition
-  arch/           x86_64 boot state: the memory map, page tables and GDT, registers, the zero page; CPUID and MSR policy, the local APIC
+  arch/           x86_64 boot state: the memory map, page tables and GDT, registers, the zero page, the reset vector; CPUID and MSR policy, the local APIC
   acpi/           the tables in place of firmware: RSDP, XSDT, FADT, MADT, MCFG, the DSDT
   devices/        the I/O port bus; the 16550, the CMOS clock, the reset line, the power-off register; the PCI bus, configuration space, MSI-X; virtio-pci, virtio-scsi, virtio-rng
     src/virtio/scsi/  the command decoder, a disk LUN, the direct-I/O backing store

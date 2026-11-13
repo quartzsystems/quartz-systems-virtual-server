@@ -139,6 +139,7 @@ pub fn launch(run: &Run<'_>, units: &[PathBuf], profile: &str) -> Result<Launch,
         snapshot: false,
         memory_mb: HOST_MEMORY_MB,
         cpus: HOST_CPUS,
+        prealloc: true,
         extra,
         ..run.launch()
     })

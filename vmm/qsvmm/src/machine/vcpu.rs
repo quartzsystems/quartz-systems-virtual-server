@@ -125,17 +125,20 @@ fn read_virtual(vcpu: &VcpuFd, memory: &Memory, address: u64, bytes: &mut [u8]) 
 /// what the words there point at, near the code, when it is printable.
 /// A kernel that stopped itself early names its reason this way and no
 /// other. Everything read is the guest's: bounded, and only shown.
-fn said(vcpu: &VcpuFd, memory: &Memory, rsp: u64, rip: u64) -> Vec<String> {
+fn said(vcpu: &VcpuFd, memory: &Memory, registers: &[u64], rsp: u64, rip: u64) -> Vec<String> {
     const WORDS: u64 = 512;
     const NEAR: u64 = 16 << 20;
     const MOST: usize = 6;
-    let mut found: Vec<String> = Vec::new();
+    let mut pointers = registers.to_vec();
     for word in 0..WORDS {
         let mut raw = [0u8; 8];
         if !read_virtual(vcpu, memory, rsp.wrapping_add(word * 8), &mut raw) {
             break;
         }
-        let pointer = u64::from_le_bytes(raw);
+        pointers.push(u64::from_le_bytes(raw));
+    }
+    let mut found: Vec<String> = Vec::new();
+    for pointer in pointers {
         if pointer.abs_diff(rip) > NEAR {
             continue;
         }
@@ -178,9 +181,23 @@ fn state(vcpu: &VcpuFd, index: u32, memory: &Memory) -> String {
             parts.push("code not mapped".into());
         }
         if r.rflags & 0x200 == 0 {
-            let said = said(vcpu, memory, r.rsp, r.rip);
+            let registers = [
+                r.rax, r.rbx, r.rcx, r.rdx, r.rsi, r.rdi, r.rbp, r.r8, r.r9, r.r10, r.r11, r.r12,
+                r.r13, r.r14, r.r15,
+            ];
+            parts.push(format!("registers {registers:x?}"));
+            let mut stack = Vec::new();
+            for word in 0..48u64 {
+                let mut raw = [0u8; 8];
+                if !read_virtual(vcpu, memory, r.rsp.wrapping_add(word * 8), &mut raw) {
+                    break;
+                }
+                stack.push(u64::from_le_bytes(raw));
+            }
+            parts.push(format!("stack {stack:x?}"));
+            let said = said(vcpu, memory, &registers, r.rsp, r.rip);
             if !said.is_empty() {
-                parts.push(format!("stack names {said:?}"));
+                parts.push(format!("names {said:?}"));
             }
         }
     }

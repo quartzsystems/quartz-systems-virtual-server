@@ -218,7 +218,8 @@ pub fn kill(run: &Run<'_>) -> Result<String, String> {
         &mut guest,
         "CRTDTAARA DTAARA(QGPL/KILLED) TYPE(*CHAR) LEN(50)",
     )?;
-    expect_guest(&mut guest, "Data area KILLED created.", deadline)?;
+    // An answer follows the console's prompt or starts a line.
+    guest.expect("Data area KILLED created.", deadline)?;
     signal(&mut guest, "KILL")?;
     let second = expect_code(&mut guest, &refcode::PARTITION_KILLED, deadline)?;
     if !second.contains("signal 9") {
@@ -233,7 +234,7 @@ pub fn kill(run: &Run<'_>) -> Result<String, String> {
     console_ready(&mut guest, deadline)?;
     // What the guest had acknowledged before the kill is there.
     send(&mut guest, "CHKOBJ OBJ(QGPL/KILLED) OBJTYPE(*DTAARA)")?;
-    expect_guest(&mut guest, "QGPL/KILLED *DTAARA exists.", deadline)?;
+    guest.expect("QGPL/KILLED *DTAARA exists.", deadline)?;
     let how = power_down(&mut guest, false, deadline)?;
     host_unaffected(&mut guest)?;
     Ok(format!(
