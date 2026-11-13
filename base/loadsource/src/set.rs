@@ -254,7 +254,7 @@ impl SetLabel {
 /// disk's copy says the reverse: each was started without the other
 /// and went on alone.
 ///
-/// NEEDS-CODY: the rule to confirm (`docs/OPEN_QUESTIONS.md` item 20).
+/// The rule is confirmed (`docs/OPEN_QUESTIONS.md` item 20).
 /// The host does not choose between such disks by the sequence of
 /// their records: it stops before the data file system is mounted and
 /// asks the operator which to keep.

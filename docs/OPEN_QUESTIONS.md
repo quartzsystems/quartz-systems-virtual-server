@@ -50,46 +50,6 @@ every power loss is not acceptable. They need a write-intent bitmap in
 QS/400's `protect` before Phase 5, which is a change in QS/400's
 repository and a new pin here; the load source then takes it too.
 
-### 20. A pair with no third party (NEEDS-CODY, to confirm the rule)
-
-If each disk of a mirrored pair is started alone in turn, each records
-the other as missing and goes on. Until Phase 3 the record with the
-higher sequence won when both were back, and the other disk was
-written from it: what the loser alone had written was lost, silently.
-
-The Phase 3 handoff decided: no winner is picked. The rule, as built
-(`base/loadsource/src/set.rs`, `apart`): the copies of the set's label
-are read from each disk by itself; when one disk's copy has its own
-unit in step and another's not, and that other disk's copy says the
-reverse, the units ran apart. The storage service then posts `A2003040`
-and assembles nothing; PID 1 mounts no `/data` and starts no other
-service; the display and the serial port show `Select Load-Source Unit
-to Keep` with each unit's location code, serial number and the time
-its disk was last written (`docs/SERVICETOOLS.md`). The operator's
-choice is recorded by the storage service in the label on both disks
-(`C2003050`), the IPL goes on from the unit kept, and the other is
-written again from it. The host waits for the choice without limit.
-The suite `mirror-split` shows all of it.
-
-What Cody is asked to confirm:
-
-- The rule itself, and that the host waits for ever: a host that was
-  split and then loses power comes back to a screen, not to service,
-  until someone is at the console (or at its serial port through a
-  BMC).
-- That the screen needs no sign-on. The users are on `/data`, and
-  which `/data` is the question; being at the console is the
-  authority, as for the installer.
-- That a disk which ran alone while the other was merely away, and
-  never started, is still taken as the newer one without a question
-  (it is: only one side then says the other was missing).
-- That the A/B record, which is read before the storage service
-  starts, still follows the highest sequence of the two disks. It
-  holds the default slot and the releases confirmed, not data.
-- The label's version 2 (the time written). A release from before it
-  does not read a version 2 label: a host that goes back to such a
-  release in its other slot would find its set not assembled. No such
-  release has shipped.
 
 ### 22. Who owns the service tools users
 
@@ -165,19 +125,6 @@ the same for every partition, so one partition's process could signal
 another's or read its serial log. With one partition that is nothing.
 Phase 4 gives each partition its own.
 
-### 29. Seven bytes at the reset vector (NEEDS-CODY)
-
-An unmodified QS/400 restarts by a jump to the reset vector
-(`docs/QS400_GUEST.md`), and a partition has no firmware there. `qsvmm`
-puts seven bytes there that pulse the reset line it already has, so
-that `pwrdwn restart` ends the partition with `C2005110`. Nothing runs
-before the kernel and the IPL is still the VMM's, but it is guest code
-the VMM supplies, which "no guest firmware" did not foresee. The
-other ways: QS/400 restarts by the ACPI reset register when it is a
-partition (`reboot=acpi` in its baked command line, or the call in
-`slic`), a QS/400 change; or ACPI that is not hardware-reduced, with
-the PM1 blocks and the SCI that come with it. To confirm, or to say
-which.
 
 ## Closed
 
@@ -273,9 +220,28 @@ which.
     `appliance::Event` like the other base services'. Each appliance
     keeps its own member label, under its own magic: there is no
     shared on-disk label written by `protect`.
+20. **A pair where each disk ran alone.** Confirmed as built on
+    2026-11-13: no winner is picked (`base/loadsource/src/set.rs`,
+    `apart`). The storage service posts `A2003040` and assembles
+    nothing, PID 1 mounts no `/data` and starts no other service, and
+    the console asks which unit to keep, without limit and without a
+    sign-on: being at the console is the authority, as for the
+    installer. A disk that ran alone while the other was merely away
+    is still taken as the newer one without a question. The A/B
+    record still follows the higher sequence of the two disks. The
+    label is version 2, with the time written; no release from before
+    it has shipped.
 21. **PID 1 does not supervise during its own IPL steps.** Left as it
     is: the steps between the storage service being ready and the
     services being started (`/data` mounted, the clock, the seed, the
     state, the identity) run without the loop, for about a second at
     an IPL. A storage service that ended exactly then is started again
     when they are done.
+29. **Seven bytes at the reset vector.** Kept, on 2026-11-13. An
+    unmodified QS/400 restarts by a jump to the reset vector
+    (`docs/QS400_GUEST.md`), and `qsvmm` keeps seven bytes there that
+    pulse the reset line it already has (`docs/VMM.md`). "No guest
+    firmware" stands as it was meant: nothing of the VMM's runs before
+    the guest's kernel, and the IPL is the VMM's. A QS/400 that
+    restarts by the ACPI reset register in a partition would make them
+    unused, not wrong; ACPI that is not hardware-reduced was not taken.

@@ -10,7 +10,7 @@ a side effect of other work.
 | Base | x86_64 only. Linux 6.18.y LTS, the same pin as QS/400, built `LLVM=1`, monolithic (`MODULES=n`), EFI stub, initramfs embedded; the bzImage is the UKI; two ESP slots A and B |
 | Userland | 100% Rust, static musl. Rust PID 1 `qsvsinit` supervising a fixed service table. No systemd, no shell, no SSH |
 | Hypervisor | KVM. Own VMM `qsvmm`, one process per partition, on the rust-vmm crates. No QEMU on the host |
-| Partition IPL | No guest firmware: the VMM loads the side's UKI from the partition's load-source disk and starts it through the 64-bit Linux boot protocol, with ACPI tables of its own. The keylock position and the console mode are written to the guest's LIC record before the IPL |
+| Partition IPL | No guest firmware: the VMM loads the side's UKI from the partition's load-source disk and starts it through the 64-bit Linux boot protocol, with ACPI tables of its own. The keylock position and the console mode are written to the guest's LIC record before the IPL. Seven bytes at the reset vector end the partition when its guest restarts by a jump there |
 | Virtual devices | virtio over PCI for everything a partition does I/O with: scsi, net (vhost-net), console, rng. Four devices beside them for what virtio has no place for: a 16550, a CMOS clock, the reset line, the ACPI power-off register |
 | Partition process | `qsvmm` opens what it needs as root, then runs as an unprivileged user with no capability. It exits with a code that says why the partition ended; a guest restart ends it |
 | Storage | Storage pools are xfs file systems; virtual disks are raw files; software RAID as on QS/400, presented through a ublk block device |
@@ -184,7 +184,7 @@ kept unit's label to both disks with the other unit stale
 the other unit being written again from the one kept. Nothing bounds
 the wait. A unit that ran alone while the other never started is no
 such case: only one copy then says the other was missing, and it is
-the newer. The rule waits for Cody to confirm it
+the newer. The rule is confirmed
 (`docs/OPEN_QUESTIONS.md` item 20).
 
 **The slot rule.** A slot is chosen by firmware boot entry, as QS/400

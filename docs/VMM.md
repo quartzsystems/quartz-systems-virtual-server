@@ -121,7 +121,7 @@ keyboard controller are not tried. So the reset vector holds seven
 bytes that pulse the reset line, in a page the memory map reserves.
 They are the only bytes of the VMM's a guest ever runs, they run when
 a guest jumps there and never before its kernel, and a guest that
-writes over them has only undone its own restart. `NEEDS-CODY`
+writes over them has only undone its own restart. Kept as a decision
 (`docs/OPEN_QUESTIONS.md` item 29).
 
 ## Devices

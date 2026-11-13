@@ -113,7 +113,9 @@ See `docs/ARCHITECTURE.md`. Short form:
 - **Hypervisor.** KVM. Own VMM `qsvmm`, one process per partition, on the
   rust-vmm crates. No QEMU on the host.
 - **Partition IPL.** No guest firmware: the VMM loads the partition's UKI
-  from its virtual disk directly.
+  from its virtual disk directly. Seven bytes at the reset vector end
+  the partition when its guest restarts by a jump there; nothing of
+  the VMM's runs before the guest's kernel.
 - **Virtual devices.** virtio over PCI only: scsi, net (vhost-net),
   console, rng.
 - **Storage.** Storage pools are xfs file systems; virtual disks are raw
@@ -135,8 +137,8 @@ See `docs/ARCHITECTURE.md`. Short form:
 - **Units that ran apart.** When each disk of a mirrored pair ran
   without the other, the host picks no winner: it posts `A2003040`,
   mounts no `/data`, starts nothing else and asks at the console which
-  unit to keep; the other is written again from it. `NEEDS-CODY` to
-  confirm the rule (`docs/OPEN_QUESTIONS.md` item 20).
+  unit to keep; the other is written again from it. Confirmed
+  (`docs/OPEN_QUESTIONS.md` item 20).
 - **The slot rule.** A slot is chosen by firmware boot entry; there is
   one for each slot of each load-source disk. The A/B record
   (version 2) holds the default slot, the pending slot, the attempts

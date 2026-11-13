@@ -95,9 +95,8 @@ rule ("Units that ran apart"), `docs/SERVICETOOLS.md` the screen, and
 - `base/panels/src/keep.rs`: the panel and its confirmation.
   `svc/tools/src/keep.rs`: the console run for that one panel.
 
-The rule waits for Cody to confirm it: `NEEDS-CODY`, in
-`docs/OPEN_QUESTIONS.md` item 20, which lists what exactly, and at the
-rule itself in `set.rs`.
+Cody confirmed the rule as built on 2026-11-13
+(`docs/OPEN_QUESTIONS.md` item 20).
 
 ### 16: what brings menu options 4 and 8
 
@@ -494,8 +493,8 @@ build host ("Found while testing").
   a partition had nothing, and had written to neither the ACPI reset
   register nor the keyboard controller (`docs/QS400_GUEST.md` says
   why). The reset vector has seven bytes now that pulse the reset
-  line (`vmm/arch/src/boot/reset.rs`, `docs/OPEN_QUESTIONS.md` item
-  29). `docs/QS400_GUEST.md` had said a restart worked; it had not
+  line (`vmm/arch/src/boot/reset.rs`; kept, `docs/OPEN_QUESTIONS.md`
+  item 29). `docs/QS400_GUEST.md` had said a restart worked; it had not
   been read from a run of this build.
 - **The suites looked for an answer at the start of a line.** QS/400's
   service console writes its prompt before an answer, so `QGPL/KILLED
@@ -508,9 +507,6 @@ build host ("Found while testing").
 
 ## Not done
 
-- **NEEDS-CODY: the rule for units that ran apart** is built as the
-  handoff has it and is to be confirmed (`docs/OPEN_QUESTIONS.md`
-  item 20).
 - `BLOCKED(phase3)`: the choice of the unit to keep was made at the serial port only; no suite types it at the display's keyboard.
 - `BLOCKED(phase3)`: three disks that ran apart (a unit replaced while the other ran alone) are unit-tested in `set.rs` only.
 - `BLOCKED(phase3)`: a disk of another host's pair, put in beside this host's, is not units that ran apart: the label with the higher sequence is still taken, as before.
@@ -525,9 +521,6 @@ Of the VMM:
   QS/400's are restated in `vmm/ipl` until QS/400 exports them.
   `docs/QS400_GUEST.md` ends with the list; `docs/OPEN_QUESTIONS.md`
   items 23 to 25.
-- **NEEDS-CODY: the seven bytes at the reset vector**, which a guest's
-  restart needs and "no guest firmware" did not foresee
-  (`docs/OPEN_QUESTIONS.md` item 29).
 - **NEEDS-CODY: the partition suites on a Linux machine that is no
   virtual machine.** Under WSL they pass only with the QEMU host's
   memory allocated first ("Found while testing").
