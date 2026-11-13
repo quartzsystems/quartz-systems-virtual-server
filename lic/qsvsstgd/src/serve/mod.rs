@@ -97,6 +97,28 @@ fn member_state(state: UnitState) -> MemberState {
     }
 }
 
+/// The load-source disks, waited for. A set whose label names a member
+/// that is not there yet is given the whole wait: a disk behind a slow
+/// controller is late, not missing, and taking it for missing costs a
+/// resynchronization.
+fn found_disks() -> Vec<LoadSource> {
+    let give_up = Instant::now() + DISK_WAIT;
+    loop {
+        let sources = disks::load_sources_within(Duration::from_secs(1));
+        let whole = disks::label(&sources).is_none_or(|label| {
+            label
+                .members
+                .iter()
+                .filter(|m| m.state != MemberState::Missing)
+                .all(|m| sources.iter().any(|s| s.data_guid == m.partition))
+        });
+        if (!sources.is_empty() && whole) || Instant::now() >= give_up {
+            return sources;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 /// The service's state.
 struct Core {
     sources: Vec<LoadSource>,
@@ -143,7 +165,7 @@ impl Core {
     /// Find the disks and assemble what their label describes.
     fn assemble() -> Result<Self, String> {
         let mut core = Core {
-            sources: disks::load_sources_within(DISK_WAIT),
+            sources: found_disks(),
             inventory: Vec::new(),
             label: None,
             set: None,

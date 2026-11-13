@@ -205,7 +205,8 @@ pub fn installed_base(run: &Run<'_>) -> Result<String, String> {
         passed.push(*name);
     }
     Ok(format!(
-        "on a disk the release installer wrote: {ipl}; on a disk the test image's installer          wrote, the {} suites of the base system pass: {}",
+        "on a disk the release installer wrote: {ipl}; on a disk the test image's installer \
+         wrote, the {} suites of the base system pass: {}",
         passed.len(),
         passed.join(", ")
     ))

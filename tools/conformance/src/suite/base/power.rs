@@ -209,10 +209,13 @@ pub fn shutdown(run: &Run<'_>) -> Result<String, String> {
     }
     // This boot's file is there once the log service has read the
     // kernel's buffer, a moment after it is ready.
+    // An installed disk has been through one IPL before these three:
+    // the one that followed its installation.
+    let boots = 3 + usize::from(run.installed);
     let give_up = Instant::now() + Duration::from_secs(10);
     loop {
         let kernel = channel.ls("/data/log/kernel")?;
-        if kernel.len() == 3 {
+        if kernel.len() == boots {
             break;
         }
         if Instant::now() >= give_up {
