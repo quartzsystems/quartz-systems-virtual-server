@@ -14,10 +14,13 @@
 //! - [`screens`]: the console on the framebuffer and on a serial
 //!   terminal, and the loop that runs a stack of panels on it (Linux).
 //! - [`tools`]: the panels every service console has.
+//! - [`keep`]: the one panel shown before the data file system exists,
+//!   when the units of a mirrored load source ran apart.
 
 #![forbid(unsafe_code)]
 
 pub mod forms;
+pub mod keep;
 pub mod kit;
 pub mod panel;
 #[cfg(target_os = "linux")]

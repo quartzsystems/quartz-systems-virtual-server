@@ -38,6 +38,12 @@ pub fn data_device(appliance: &Appliance) -> PathBuf {
     appliance.storage_file("data")
 }
 
+/// The file the service makes while the units of a mirrored pair ran
+/// apart and it waits to be told which to keep. PID 1 looks for it.
+pub fn choose_marker(appliance: &Appliance) -> PathBuf {
+    appliance.storage_file("choose")
+}
+
 /// One disk of the machine, as the appliance's inventory has it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DiskIdentity {
@@ -60,6 +66,9 @@ pub struct Host {
 pub const NONE: &str = "none";
 /// `protection` of a mirrored load source.
 pub const MIRRORED: &str = "mirrored";
+/// The `state` of a unit that ran without the other while the other
+/// ran without it.
+pub const APART: &str = "Apart";
 
 /// One load-source unit.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -74,9 +83,12 @@ pub struct Unit {
     pub location: String,
     /// The disk's size, 0 when it is not there.
     pub bytes: u64,
-    /// `Unprotected`, `Active`, `Suspended`, `Resuming`, `Failed` or
-    /// `Missing`.
+    /// `Unprotected`, `Active`, `Suspended`, `Resuming`, `Failed`,
+    /// `Missing` or [`APART`].
     pub state: String,
+    /// When the label on the unit's disk was last written, in seconds
+    /// since the epoch; 0 when that is not known.
+    pub written: u64,
 }
 ipc::wire_struct!(Unit {
     number,
@@ -84,7 +96,8 @@ ipc::wire_struct!(Unit {
     serial,
     location,
     bytes,
-    state
+    state,
+    written
 });
 
 /// The load source, as status shows it.
@@ -108,6 +121,9 @@ pub struct Status {
     /// Why the last request failed after it was accepted; empty when
     /// it did not.
     pub failure: String,
+    /// The units ran apart: nothing is served until one is chosen
+    /// with `keep`.
+    pub choose: bool,
 }
 ipc::wire_struct!(Status {
     protection,
@@ -117,7 +133,8 @@ ipc::wire_struct!(Status {
     work_unit,
     percent,
     restart_needed,
-    failure
+    failure,
+    choose
 });
 
 impl Status {
@@ -141,6 +158,9 @@ ipc::rpc! {
     /// Put the disk named in the place of unit `number`, which is
     /// missing or failed, and rebuild it. The disk is erased.
     2 => fn replace / Replace (number: u32, disk: String) -> Result<(), String>;
+    /// Of units that ran apart, keep the one on the disk named: the
+    /// other is written again from it. The set is then assembled.
+    3 => fn keep / Keep (disk: String) -> Result<(), String>;
 }
 
 /// A client of the service's socket.
@@ -188,6 +208,7 @@ mod tests {
             location: "P0000-B00-D05-F0-U0".into(),
             bytes: 1 << 30,
             state: state.into(),
+            written: 1_794_478_923,
         };
         let mut status = Status {
             protection: MIRRORED.into(),
@@ -198,6 +219,7 @@ mod tests {
             percent: 40,
             restart_needed: false,
             failure: String::new(),
+            choose: false,
         };
         let back: Status = ipc::decode(&ipc::encode(&status)).unwrap();
         assert_eq!(back, status);

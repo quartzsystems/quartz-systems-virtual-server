@@ -10,6 +10,8 @@
 //! place of all that follows the clock.
 
 #[cfg(target_os = "linux")]
+mod choose;
+#[cfg(target_os = "linux")]
 mod clock;
 pub mod cmdline;
 #[cfg(target_os = "linux")]
@@ -38,7 +40,7 @@ mod on_host {
     use supervise::signal::{CHLD, INT, Signals, TERM};
 
     use super::cmdline::{self, Source};
-    use super::{clock, install, mounts, state as state_step};
+    use super::{choose, clock, install, mounts, state as state_step};
     use crate::console::Console;
     use crate::host::{Host, table};
     use crate::{kvm, slot, sys};
@@ -88,7 +90,10 @@ mod on_host {
 
     /// The storage step: the control socket, then the service table
     /// with everything after the storage service held back, and the
-    /// loop turned until that service is ready or will not be.
+    /// loop turned until that service is ready or will not be. A
+    /// mirrored pair whose units ran apart is not assembled until the
+    /// operator has chosen one: the choice is shown meanwhile, for as
+    /// long as it takes, and nothing else is started.
     fn storage(host: &mut Host) {
         let control = APPLIANCE.control_socket();
         let _ = std::fs::remove_file(&control);
@@ -102,10 +107,18 @@ mod on_host {
         sup.hold_after(table::STGD.order);
         host.quiet = true;
         host.start(sup, listener);
-        let give_up = Instant::now() + STORAGE_WAIT;
-        while !host.storage_settled() && Instant::now() < give_up {
+        let mut give_up = Instant::now() + STORAGE_WAIT;
+        let mut chooser = choose::Chooser::new(stgd::choose_marker(&APPLIANCE));
+        while !host.storage_settled() {
+            if chooser.wanted(host) {
+                host.storage_waits();
+                give_up = Instant::now() + STORAGE_WAIT;
+            } else if Instant::now() >= give_up {
+                break;
+            }
             host.pump();
         }
+        chooser.end(host);
     }
 
     /// What `/data` is mounted from: what the storage service named,

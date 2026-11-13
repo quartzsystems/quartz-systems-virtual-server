@@ -466,6 +466,19 @@ impl Host {
             .is_none_or(|sup| sup.settled_up_to(table::STGD.order))
     }
 
+    /// The storage service waits on the operator: it is not late.
+    pub fn storage_waits(&mut self) {
+        if let Some(sup) = &mut self.sup {
+            sup.patient(table::STGD.name, Instant::now());
+        }
+    }
+
+    /// Lend the serial port to a console PID 1 runs itself, or take it
+    /// back: while it is lent, lines go to the display only.
+    pub fn lend_serial(&mut self, lent: bool) {
+        self.serial_session(lent);
+    }
+
     /// Start the services that waited for `/data`.
     pub fn release_services(&mut self) {
         if let Some(sup) = &mut self.sup {

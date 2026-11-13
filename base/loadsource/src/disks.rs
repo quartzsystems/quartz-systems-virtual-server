@@ -196,6 +196,20 @@ pub fn label(names: &LoadSourceNames, sources: &[LoadSource]) -> Option<SetLabel
     SetLabel::decode(&stored.payload)
 }
 
+/// The newest label each disk of `sources` holds itself: the disk's
+/// place in `sources` and its label. Disks without one are left out.
+pub fn own_labels(names: &LoadSourceNames, sources: &[LoadSource]) -> Vec<(usize, SetLabel)> {
+    sources
+        .iter()
+        .enumerate()
+        .filter_map(|(i, source)| {
+            let one = std::slice::from_ref(source);
+            let stored = labels(names, one).ok()?.read().ok()?;
+            Some((i, SetLabel::decode(&stored.payload)?))
+        })
+        .collect()
+}
+
 /// The newest A/B record on `sources`.
 pub fn record(
     names: &LoadSourceNames,

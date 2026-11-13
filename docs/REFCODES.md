@@ -93,6 +93,20 @@ partitions' storage is on other disks; the operator restarts the host.
 An unprotected load source is a plain partition with no server, so the
 code cannot occur there.
 
+## Units that ran apart and `A2003040`
+
+A mirrored pair has no third party. When each disk was started without
+the other, each records the other as missing and goes on alone, and
+when both are back nothing on them says which holds what the operator
+wants. The host does not choose. The storage service posts `A2003040`
+and assembles nothing; PID 1 mounts no `/data` and starts no other
+service, and the display and the serial port show `Select Load-Source
+Unit to Keep` (`docs/SERVICETOOLS.md`), with each unit's location
+code, serial number and the time its disk was last written. When the
+operator has chosen, `C2003050` is posted, the IPL goes on from the
+unit kept, and the other is written again from it (`C2003020`,
+`C2003025`). The host waits for the choice as long as it takes.
+
 ## The codes
 
 | Code | Text | Posted |
@@ -120,6 +134,7 @@ code cannot occur there.
 | `C2003030` | Rebuild started | a replacement disk was put in a unit's place and is being written, with the unit |
 | `C2003035` | Rebuild finished | the replacement is in step |
 | `C2003040` | Mirrored protection started | a second disk was added to an unprotected load source; the set is assembled at the next IPL |
+| `C2003050` | Load-source unit kept | the operator chose which of two units that ran apart to keep, with the unit; the other is written again from it |
 | `C2004000` | Installation started | the installer writes from here on |
 | `C2004010` | Installation media verified | the media's manifest is signed by a trusted key and the payload has its hashes |
 | `C2004020` | Disks partitioned | each load-source disk has its table |
@@ -145,6 +160,7 @@ code cannot occur there.
 | `A2003010` | Mirrored load source not assembled | no unit that is in step was found, with the reason; `/data` is not mounted |
 | `A2003020` | Load-source unit failed | a unit is missing or failed, with its number, location code and serial; at every IPL while it lasts, and when it happens |
 | `A2003030` | Rebuild not finished | a resynchronization or a rebuild ended early, with the reason |
+| `A2003040` | Load-source units ran apart | each unit of the mirrored pair ran without the other, with the units; `/data` is not mounted and nothing else starts until the operator chooses the unit to keep |
 | `A2004010` | Installation media refused | the manifest's signature or a payload hash is wrong; nothing was written |
 | `A2004015` | Installation answers not valid | an `[install]` table was found and refused, with the reason; nothing was written |
 | `A2004090` | Installation failed | a step failed, with the step and the reason; the installer starts over |

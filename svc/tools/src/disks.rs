@@ -420,6 +420,7 @@ mod tests {
             location: format!("P0000-B00-D1{}-F0", number - 1),
             bytes: if disk.is_empty() { 0 } else { 671_088_640 },
             state: state.into(),
+            written: 0,
         }
     }
 

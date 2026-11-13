@@ -101,17 +101,19 @@ pub fn storage_lines(status: &Storage) -> Vec<String> {
         fact("percent", &status.percent.to_string()),
         fact("restart_needed", &status.restart_needed.to_string()),
         fact("failure", &status.failure),
+        fact("choose", &status.choose.to_string()),
     ];
     lines.extend(status.units.iter().map(|u| {
         format!(
-            "{} {}|{}|{}|{}|{}|{}",
+            "{} {}|{}|{}|{}|{}|{}|{}",
             word::UNIT,
             u.number,
             u.disk,
             u.serial,
             u.location,
             u.bytes,
-            u.state
+            u.state,
+            u.written
         )
     }));
     lines
@@ -133,12 +135,14 @@ pub fn parse_storage(lines: &[String]) -> Result<Storage, String> {
                     "percent" => status.percent = value.parse().map_err(|_| bad())?,
                     "restart_needed" => status.restart_needed = value == "true",
                     "failure" => status.failure = value.into(),
+                    "choose" => status.choose = value == "true",
                     _ => return Err(bad()),
                 }
             }
             Some((word::UNIT, rest)) => {
                 let fields: Vec<&str> = rest.split('|').collect();
-                let [number, disk, serial, location, bytes, state] = fields.as_slice() else {
+                let [number, disk, serial, location, bytes, state, written] = fields.as_slice()
+                else {
                     return Err(bad());
                 };
                 status.units.push(Unit {
@@ -148,6 +152,7 @@ pub fn parse_storage(lines: &[String]) -> Result<Storage, String> {
                     location: (*location).to_string(),
                     bytes: bytes.parse().map_err(|_| bad())?,
                     state: (*state).to_string(),
+                    written: written.parse().map_err(|_| bad())?,
                 });
             }
             Some((word::ERROR, why)) => return Err(why.to_string()),
@@ -234,15 +239,20 @@ mod tests {
                 location: "P0000-B00-D06-F0-U0".into(),
                 bytes: 0,
                 state: "Missing".into(),
+                written: 1_794_478_923,
             }],
             work: "rebuilding".into(),
             work_unit: 2,
             percent: 40,
             restart_needed: true,
             failure: "unit 2: no".into(),
+            choose: false,
         };
         let lines = storage_lines(&status);
-        assert_eq!(lines[7], "unit 2||QSVSHD1|P0000-B00-D06-F0-U0|0|Missing");
+        assert_eq!(
+            lines[8],
+            "unit 2||QSVSHD1|P0000-B00-D06-F0-U0|0|Missing|1794478923"
+        );
         assert_eq!(parse_storage(&lines), Ok(status));
         assert!(parse_storage(&["unit 2".into()]).is_err());
     }

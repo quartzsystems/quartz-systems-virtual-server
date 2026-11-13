@@ -179,6 +179,7 @@ impl QsVs {
             id: Uuid::from_bytes(random()?),
             blocks: self.data_bytes() / BLOCK,
             clean: true,
+            written: u64::try_from(appliance::time::now_secs()).unwrap_or(0),
             members: vec![
                 member(0, MemberState::Active),
                 member(1, MemberState::Resuming),

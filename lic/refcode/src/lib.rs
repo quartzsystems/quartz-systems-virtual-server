@@ -129,6 +129,8 @@ pub const REBUILD_STARTED: RefCode = progress("C2003030", "Rebuild started");
 pub const REBUILD_FINISHED: RefCode = progress("C2003035", "Rebuild finished");
 /// Mirrored protection was started; it takes effect at the next IPL.
 pub const PROTECTION_STARTED: RefCode = progress("C2003040", "Mirrored protection started");
+/// The operator chose which of two units that ran apart to keep.
+pub const UNIT_KEPT: RefCode = progress("C2003050", "Load-source unit kept");
 
 // C2004xxx: the installer, in the order of its steps.
 
@@ -194,6 +196,9 @@ pub const SET_NOT_ASSEMBLED: RefCode = attention("A2003010", "Mirrored load sour
 pub const UNIT_FAILED: RefCode = attention("A2003020", "Load-source unit failed");
 /// A resynchronization or a rebuild ended before the unit was in step.
 pub const REBUILD_FAILED: RefCode = attention("A2003030", "Rebuild not finished");
+/// Each unit of the mirrored load source ran without the other: the
+/// host waits, before `/data` is mounted, to be told which to keep.
+pub const UNITS_APART: RefCode = attention("A2003040", "Load-source units ran apart");
 
 // A2004xxx: attention from the installer.
 
@@ -255,6 +260,7 @@ pub const ALL: &[&RefCode] = &[
     &REBUILD_STARTED,
     &REBUILD_FINISHED,
     &PROTECTION_STARTED,
+    &UNIT_KEPT,
     &INSTALL_STARTED,
     &INSTALL_VERIFIED,
     &INSTALL_PARTITIONED,
@@ -281,6 +287,7 @@ pub const ALL: &[&RefCode] = &[
     &SET_NOT_ASSEMBLED,
     &UNIT_FAILED,
     &REBUILD_FAILED,
+    &UNITS_APART,
     &INSTALL_MEDIA_REFUSED,
     &INSTALL_ANSWERS_INVALID,
     &INSTALL_FAILED,

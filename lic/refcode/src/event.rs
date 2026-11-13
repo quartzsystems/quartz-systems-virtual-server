@@ -40,6 +40,8 @@ fn storage(what: Storage) -> &'static RefCode {
     match what {
         Storage::SetAssembled => &crate::SET_ASSEMBLED,
         Storage::SetNotAssembled => &crate::SET_NOT_ASSEMBLED,
+        Storage::PairSplit => &crate::UNITS_APART,
+        Storage::UnitKept => &crate::UNIT_KEPT,
         Storage::UnitFailed => &crate::UNIT_FAILED,
         Storage::ResyncStarted => &crate::RESYNC_STARTED,
         Storage::ResyncFinished => &crate::RESYNC_FINISHED,

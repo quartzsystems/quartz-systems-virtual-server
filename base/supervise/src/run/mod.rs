@@ -483,6 +483,17 @@ impl Supervisor {
         self.held = Some(order);
     }
 
+    /// Give the service named `name`, which is starting, its time to
+    /// become ready again from `now`: it waits on something that is
+    /// not its own to hurry, an operator's answer.
+    pub fn patient(&mut self, name: &str, now: Instant) {
+        for (s, e) in self.table.iter().zip(&mut self.entries) {
+            if s.name == name && e.state == State::Starting && !e.late {
+                e.started = now;
+            }
+        }
+    }
+
     /// Start the services that were held back.
     pub fn release(&mut self, now: Instant) -> Vec<Occurrence> {
         self.held = None;

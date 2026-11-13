@@ -85,7 +85,11 @@ impl Env {
 
     /// The storage service's status; `None` when it does not answer.
     pub fn storage(&mut self) -> Option<stgd::Status> {
-        self.storage.status().ok()
+        // Before it has looked at the disks it has nothing to say.
+        self.storage
+            .status()
+            .ok()
+            .filter(|status| !status.protection.is_empty())
     }
 
     /// Start mirrored protection with `disk`.

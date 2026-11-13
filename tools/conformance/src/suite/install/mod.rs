@@ -14,6 +14,7 @@ mod attended;
 mod mirror;
 mod pull;
 mod refuse;
+mod split;
 mod tools;
 mod unattended;
 
@@ -48,6 +49,7 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("installed-base", unattended::installed_base),
     // Beyond the handoff's thirteen.
     ("mirror-start", mirror::start),
+    ("mirror-split", split::split),
 ];
 
 /// The size of a disk a suite installs on: little more than the least

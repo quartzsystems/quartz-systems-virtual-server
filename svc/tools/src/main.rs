@@ -15,6 +15,7 @@
 
 mod disks;
 mod env;
+mod keep;
 mod menu;
 
 #[cfg(target_os = "linux")]
@@ -129,6 +130,11 @@ mod on_host {
     }
 
     pub fn main() {
+        // PID 1 runs the console so when the load source's units ran
+        // apart: one panel, no session.
+        if std::env::args().nth(1).as_deref() == Some(release::KEEP_UNIT) {
+            crate::keep::main();
+        }
         let mut signals = match Signals::take(&[TERM]) {
             Ok(signals) => signals,
             Err(e) => {

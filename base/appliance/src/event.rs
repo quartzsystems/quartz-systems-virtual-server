@@ -12,6 +12,11 @@ pub enum Storage {
     SetAssembled,
     /// The mirrored set could not be assembled.
     SetNotAssembled,
+    /// The units of the pair each ran without the other: the operator
+    /// must say which to keep.
+    PairSplit,
+    /// The operator chose the unit to keep.
+    UnitKept,
     /// A unit is missing or failed.
     UnitFailed,
     /// A unit is being brought back in step.

@@ -52,6 +52,10 @@ pub const CONTROL_SOCKET: &str = "/run/qsvsinit.sock";
 /// Where the service binaries are in the initramfs.
 pub const BIN_DIR: &str = "/qsvs/bin";
 
+/// The argument PID 1 gives the Service Tools console to have it ask
+/// which load-source unit to keep, and nothing else.
+pub const KEEP_UNIT: &str = "keep-unit";
+
 /// What a default host name starts with.
 pub const HOST_PREFIX: &str = "QSVS";
 

@@ -199,6 +199,7 @@ pub fn start_protection(core: &mut Core, disk: &str) -> Result<(), String> {
         blocks: blocks_of(first.data_bytes),
         // Nothing has run on it yet.
         clean: true,
+        written: super::clock(),
         members: vec![
             member(&first, MemberState::Active),
             member(&second, MemberState::Resuming),

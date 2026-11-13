@@ -1,0 +1,24 @@
+                              Confirm Unit to Keep
+                                                                 System:  QS/VS
+
+ This unit is kept, and the host goes on from it:
+
+   Unit 2  P0000-B00-D11-F0  serial QSVSHD1
+   last written yyyy-mm-dd hh:mm UTC
+
+ Everything written to the other while it ran alone is lost. It is
+ written again from the unit kept:
+
+   Unit 1  P0000-B00-D10-F0  serial QSVSHD0
+
+ Press F10 to confirm, or F12 to go back.
+
+
+
+
+
+
+
+
+ F1=Help   F10=Confirm   F12=Cancel
+

@@ -276,6 +276,26 @@ fn a_service_that_is_never_ready_is_killed_and_counted() {
 }
 
 #[test]
+fn a_service_that_waits_on_an_operator_is_given_its_time_again() {
+    static TABLE: [Service; 1] = [sh("mute", 10, &[], &["-c", "exec sleep 30"])];
+    let mut d = Driver::new(&TABLE);
+    let first = d.sup.deadline().unwrap();
+    // Past its time, but told to be patient just before: not killed.
+    d.now = first + Duration::from_secs(1);
+    d.sup.patient("mute", d.now);
+    assert!(d.sup.advance(d.now).is_empty());
+    assert_eq!(d.state("mute"), "starting");
+    assert_eq!(d.sup.deadline(), Some(d.now + Duration::from_secs(5)));
+    // Left alone, it is late like any other.
+    d.until("failed", |s| {
+        s.iter().any(|o| matches!(o, Occurrence::Failed { .. }))
+    });
+    let more = d.sup.begin_stop(Duration::from_millis(100), d.now);
+    d.seen.extend(more);
+    d.until("ended", |s| has(s, &Occurrence::Ended));
+}
+
+#[test]
 fn a_missing_binary_is_a_failure_not_a_panic() {
     static TABLE: [Service; 1] = [Service {
         name: "ghost",

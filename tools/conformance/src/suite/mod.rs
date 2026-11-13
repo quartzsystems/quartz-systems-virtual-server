@@ -418,7 +418,7 @@ mod tests {
 
     #[test]
     fn there_are_phase_0_s_suite_the_ten_of_the_base_system_and_the_thirteen_of_phase_2() {
-        assert_eq!(names().len(), 1 + 10 + 13 + 1);
+        assert_eq!(names().len(), 1 + 10 + 13 + 2);
         assert_eq!(
             names()[11..],
             [
@@ -435,7 +435,8 @@ mod tests {
                 "media-refused",
                 "answers-invalid",
                 "installed-base",
-                "mirror-start"
+                "mirror-start",
+                "mirror-split"
             ]
         );
         assert_eq!(

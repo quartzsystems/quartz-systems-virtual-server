@@ -7,8 +7,11 @@
 //! this process, keeps the label in step with the members, brings a
 //! stale member back in step, and prepares a disk that is added or put
 //! in a member's place. With an unprotected load source there is no
-//! set: it names the data partition and answers status.
+//! set: it names the data partition and answers status. A pair whose
+//! units each ran without the other is not assembled until the operator
+//! has said which to keep ([`apart`]).
 
+mod apart;
 mod guard;
 mod journal;
 mod prepare;
@@ -16,8 +19,8 @@ mod prepare;
 use std::fs;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use appliance::{Appliance, Event, LoadSourceNames};
@@ -76,9 +79,45 @@ enum Job {
 
 /// What the socket's thread asks the loop.
 enum Msg {
-    Status(Sender<Status>),
     Start(String, Sender<Result<(), String>>),
     Replace(u32, String, Sender<Result<(), String>>),
+    Keep(String, Sender<Result<(), String>>),
+}
+
+/// The status as the socket answers it. The loop says what it is at
+/// every turn and before anything that takes long; the socket never
+/// waits for the loop to say it, so a status asked for while a disk is
+/// being prepared is the one of a moment ago and not an empty one.
+#[derive(Clone, Default)]
+pub struct Shown(Arc<Mutex<Status>>);
+
+impl Shown {
+    /// The status is `status` now.
+    fn set(&self, status: Status) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = status;
+    }
+
+    /// The status as last said.
+    fn get(&self) -> Status {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
+/// The time a label is written at, in seconds since the epoch: the
+/// RTC's, since the service starts before PID 1 sets the system clock
+/// from it; the system clock's on a machine without one.
+fn clock() -> u64 {
+    fs::read_to_string("/sys/class/rtc/rtc0/since_epoch")
+        .ok()
+        .and_then(|t| t.trim().parse().ok())
+        .unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs())
+        })
 }
 
 fn unit_state(state: MemberState) -> UnitState {
@@ -312,6 +351,7 @@ impl Core {
             self.recorded.set(guard::states(set));
             return;
         }
+        label.written = clock();
         let written = disks::labels(self.names(), &self.sources)
             .map_err(text)
             .and_then(|mut l| l.write(&label.encode()).map_err(text));
@@ -339,6 +379,7 @@ impl Core {
                         location,
                         bytes: disks::disk_bytes(&s.disk),
                         state: "Unprotected".into(),
+                        written: 0,
                     }
                 })
                 .collect();
@@ -364,6 +405,7 @@ impl Core {
                     serial: m.serial.clone(),
                     location: m.location.clone(),
                     state: state.word().into(),
+                    written: label.written,
                 }
             })
             .collect()
@@ -396,6 +438,7 @@ impl Core {
             percent,
             restart_needed: self.restart_needed,
             failure: self.failure.clone(),
+            choose: false,
         }
     }
 
@@ -555,20 +598,24 @@ impl Core {
     }
 }
 
-/// The socket's side of a request: ask the loop and wait.
-struct Asker(Sender<Msg>);
+/// The socket's side of a request: the status as the loop last said
+/// it; for anything else, ask the loop and wait.
+struct Asker {
+    loop_: Sender<Msg>,
+    shown: Shown,
+}
 
 impl Asker {
     fn ask<T>(&self, msg: impl FnOnce(Sender<T>) -> Msg) -> Option<T> {
         let (tx, rx) = mpsc::channel();
-        self.0.send(msg(tx)).ok()?;
+        self.loop_.send(msg(tx)).ok()?;
         rx.recv_timeout(Duration::from_secs(2)).ok()
     }
 }
 
 impl Storage for Asker {
     fn status(&mut self) -> Status {
-        self.ask(Msg::Status).unwrap_or_default()
+        self.shown.get()
     }
 
     fn start_protection(&mut self, disk: String) -> Result<(), String> {
@@ -580,10 +627,18 @@ impl Storage for Asker {
         self.ask(|tx| Msg::Replace(number, disk, tx))
             .unwrap_or_else(|| Err("the storage service is busy".into()))
     }
+
+    fn keep(&mut self, disk: String) -> Result<(), String> {
+        self.ask(|tx| Msg::Keep(disk, tx))
+            .unwrap_or_else(|| Err("the storage service is busy".into()))
+    }
 }
 
-fn serve_socket(listener: &UnixListener, tx: &Sender<Msg>) {
-    let mut asker = Asker(tx.clone());
+fn serve_socket(listener: &UnixListener, tx: &Sender<Msg>, shown: Shown) {
+    let mut asker = Asker {
+        loop_: tx.clone(),
+        shown,
+    };
     for stream in listener.incoming().flatten() {
         let _ = supervise::control::answer(stream, |request| {
             Ok(dispatch(&mut asker, ipc::decode::<Request>(request)?))
@@ -591,17 +646,16 @@ fn serve_socket(listener: &UnixListener, tx: &Sender<Msg>) {
     }
 }
 
-fn answer(core: &mut Core, rx: &Receiver<Msg>) {
+fn answer(core: &mut Core, rx: &Receiver<Msg>, shown: &Shown) {
     while let Ok(msg) = rx.try_recv() {
         match msg {
-            Msg::Status(reply) => {
-                let _ = reply.send(core.status());
-            }
             Msg::Start(disk, reply) => {
                 let checked = prepare::check_start(core, &disk);
                 if checked.is_ok() {
                     core.job = Some(Job::Start(disk));
                 }
+                // Whoever asked sees the work from its first look.
+                shown.set(core.status());
                 let _ = reply.send(checked);
             }
             Msg::Replace(number, disk, reply) => {
@@ -609,7 +663,11 @@ fn answer(core: &mut Core, rx: &Receiver<Msg>) {
                 if let Ok(member) = checked {
                     core.job = Some(Job::Replace(member, disk));
                 }
+                shown.set(core.status());
                 let _ = reply.send(checked.map(|_| ()));
+            }
+            Msg::Keep(_, reply) => {
+                let _ = reply.send(Err("the units did not run apart".into()));
             }
         }
     }
@@ -635,6 +693,18 @@ pub fn run(appliance: &Appliance, host: Host) -> String {
         Ok(signals) => signals,
         Err(e) => return format!("the signal descriptor: {e}"),
     };
+    // The socket first: a pair that ran apart is asked about on it
+    // before anything is assembled.
+    let (tx, rx) = mpsc::channel();
+    let _ = fs::remove_file(&socket);
+    let listener = match UnixListener::bind(&socket) {
+        Ok(listener) => listener,
+        Err(e) => return format!("{}: {e}", socket.display()),
+    };
+    let shown = Shown::default();
+    let for_socket = shown.clone();
+    std::thread::spawn(move || serve_socket(&listener, &tx, for_socket));
+    apart::settle(appliance, host, &rx, &mut signals, &shown);
     let mut core = match Core::assemble(appliance, host) {
         Ok(core) => core,
         Err(e) => {
@@ -654,13 +724,7 @@ pub fn run(appliance: &Appliance, host: Host) -> String {
     if let Err(e) = fs::write(&data_device, &data) {
         return format!("{}: {e}", data_device.display());
     }
-    let (tx, rx) = mpsc::channel();
-    let _ = fs::remove_file(&socket);
-    let listener = match UnixListener::bind(&socket) {
-        Ok(listener) => listener,
-        Err(e) => return format!("{}: {e}", socket.display()),
-    };
-    std::thread::spawn(move || serve_socket(&listener, &tx));
+    shown.set(core.status());
     if let Err(e) = supervise::ready::signal() {
         return format!("the readiness pipe: {e}");
     }
@@ -674,10 +738,11 @@ pub fn run(appliance: &Appliance, host: Host) -> String {
         if term(&mut signals, wait) {
             core.stop();
         }
-        answer(&mut core, &rx);
+        answer(&mut core, &rx, &shown);
         core.events();
         core.job();
         core.work();
+        shown.set(core.status());
     }
 }
 
