@@ -53,6 +53,16 @@ Two postings are not in the history: the heartbeat, which is on the
 serial port only, and the last code of a shutdown (`D2001090` or
 `D2001091`), which is posted after `/data` is unmounted.
 
+While a Service Tools session has the serial port, PID 1 prints nothing
+there: a code posted meanwhile is on the display's console and in the
+history, and the port's lines go on from the sign-off. A shutdown takes
+the port back at once.
+
+The installer's codes (`C2004xxx`, `A2004xxx`) are posted where there
+is no log service and no `/data`: they are on the progress display, as
+each step is done, and in the installer's own log in memory. The
+installed host's history starts with its first IPL.
+
 ## The blocks
 
 | Block | Whose |

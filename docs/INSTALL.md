@@ -56,8 +56,9 @@ disk before F10 on the summary.
 2. **Select load-source disks.** Every disk of the machine with its
    location code (`docs/LOCATION.md`), model, serial number and size.
    Type 1 by one disk for an unprotected load source, or by two for
-   mirrored protection. A disk smaller than a load source may be (some
-   560 MB) is listed, marked, and cannot be chosen. Two disks of
+   mirrored protection. A disk smaller than a load source may be (559
+   MiB; the screen says 586.1 MB) is listed, marked, and cannot be
+   chosen. Two disks of
    different size are mirrored to the size of the smaller. The disk the
    media is on, and a seed volume, are not listed.
 3. **Confirm erase.** The disks again, and what they become. Type
