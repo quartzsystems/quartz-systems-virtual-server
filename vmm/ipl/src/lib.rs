@@ -7,8 +7,9 @@
 //! would, from the host's side of the load-source disk.
 //!
 //! 1. The partition table: the ESP and the LIC partition by type.
-//! 2. The LIC record: the side recorded, and the keylock position and
-//!    console mode written when the profile sets them.
+//! 2. The LIC record: the side the partition asked for, taken once,
+//!    and the keylock position and console mode written when the
+//!    activation sets them.
 //! 3. The side's UKI, read from the ESP's FAT volume.
 //! 4. The kernel loaded, the page tables, GDT and zero page written.
 //!
@@ -45,9 +46,9 @@ pub use licpart::LIC_TYPE_GUID as LIC_TYPE;
 /// The GPT type of an EFI system partition.
 pub const ESP_TYPE: Uuid = uuid!("c12a7328-f81f-11d2-ba4b-00a0c93ec93b");
 /// Side A's UKI on the guest's ESP: the removable-media path.
-pub const SIDE_A_PATH: &str = "EFI/BOOT/BOOTX64.EFI";
+pub use diskimg::SLOT_A_UKI as SIDE_A_PATH;
 /// Side B's UKI on the guest's ESP.
-pub const SIDE_B_PATH: &str = "EFI/QS400/B.EFI";
+pub use diskimg::SLOT_B_UKI as SIDE_B_PATH;
 /// The most bytes a UKI may have.
 pub const MAX_IMAGE_BYTES: usize = 128 << 20;
 
@@ -58,7 +59,9 @@ pub enum Side {
     A,
     /// Side B.
     B,
-    /// The side of the last IPL that completed, by the LIC record.
+    /// The side the partition itself asked for, by its LIC record:
+    /// the once-only slot when there is one, which is then cleared,
+    /// else the default slot, else side A.
     Recorded,
 }
 
@@ -69,7 +72,8 @@ pub enum Step {
     TableRead,
     /// The LIC record was read.
     RecordRead(Recorded),
-    /// The keylock position or the console mode was written.
+    /// The record was written: the keylock position, the console
+    /// mode, or the once-only slot cleared.
     RecordWritten,
     /// The load source has no LIC record yet and none was needed.
     NoRecord,
@@ -161,16 +165,17 @@ pub fn read<D: Device>(
         .ok_or(Fault::NoEsp)?;
     let lic = table.iter().find(|p| p.type_guid == licpart::LIC_TYPE_GUID);
 
-    // The record is needed to know the recorded side and to hold the
+    // The record is needed to know the side asked for and to hold the
     // settings; without either, a disk with no LIC partition loads.
-    let needed = side == Side::Recorded || settings.any();
+    let take = side == Side::Recorded;
+    let needed = take || settings.any();
     let recorded = match lic {
         Some(lic) => {
             let part = Part::new(&mut *disk, lic.offset(), lic.bytes());
-            let recorded = lic::prepare(part, settings, now).map_err(Fault::BadRecord)?;
+            let recorded = lic::prepare(part, settings, take, now).map_err(Fault::BadRecord)?;
             if let Some(recorded) = recorded {
                 step(Step::RecordRead(recorded));
-                if settings.any() {
+                if recorded.written {
                     step(Step::RecordWritten);
                 }
             }
@@ -185,8 +190,7 @@ pub fn read<D: Device>(
     let side = match side {
         Side::A => Slot::A,
         Side::B => Slot::B,
-        // A disk that has not IPLed yet starts from side A, as its
-        // first record will say.
+        // A disk that has not IPLed yet has asked for nothing: side A.
         Side::Recorded => recorded.map_or(Slot::A, |r| r.side),
     };
 
@@ -427,6 +431,75 @@ mod tests {
         };
         let (result, _) = run(&mut Cursor::new(image), Side::A, settings);
         assert!(matches!(result, Err(Fault::NoLic)));
+    }
+
+    /// The guest's own request, as `slic` writes it in a partition.
+    fn ask(disk: &mut Cursor<Vec<u8>>, source: licpart::IplSource) {
+        let at = disk.get_ref().len() - (64 + 4 * licpart::SLOT_BYTES / 512) * 512;
+        let bytes = (4 * licpart::SLOT_BYTES) as u64;
+        let mut part = licpart::LicPart::open(Part::new(&mut *disk, at as u64, bytes));
+        let mut record = part.read().unwrap();
+        source.store(&mut record).unwrap();
+        part.write(&mut record).unwrap();
+    }
+
+    fn asked(disk: &mut Cursor<Vec<u8>>) -> licpart::IplSource {
+        let at = disk.get_ref().len() - (64 + 4 * licpart::SLOT_BYTES / 512) * 512;
+        let bytes = (4 * licpart::SLOT_BYTES) as u64;
+        let mut part = licpart::LicPart::open(Part::new(&mut *disk, at as u64, bytes));
+        licpart::IplSource::of(&part.read().unwrap())
+    }
+
+    #[test]
+    fn the_recorded_side_is_what_the_partition_asked_for() {
+        let (a, b) = sides();
+        let mut disk = Cursor::new(build_disk(&[(SIDE_A_PATH, &a), (SIDE_B_PATH, &b)], true));
+        let side = |disk: &mut Cursor<Vec<u8>>, side| {
+            let (result, steps) = run(disk, side, Settings::default());
+            (result.unwrap().side, steps.contains(&Step::RecordWritten))
+        };
+        // Nothing asked: side A, and the record is not written.
+        assert_eq!(side(&mut disk, Side::Recorded), (Slot::A, false));
+
+        // Side B for one IPL: taken, cleared, and the next is side A.
+        let once = licpart::IplSource {
+            next: Some(Slot::B),
+            default: None,
+        };
+        ask(&mut disk, once);
+        assert_eq!(side(&mut disk, Side::Recorded), (Slot::B, true));
+        assert_eq!(asked(&mut disk), licpart::IplSource::default());
+        assert_eq!(side(&mut disk, Side::Recorded), (Slot::A, false));
+
+        // Side B from now on: every IPL, and the record stays.
+        let default = licpart::IplSource {
+            next: None,
+            default: Some(Slot::B),
+        };
+        ask(&mut disk, default);
+        assert_eq!(side(&mut disk, Side::Recorded), (Slot::B, false));
+        assert_eq!(side(&mut disk, Side::Recorded), (Slot::B, false));
+        assert_eq!(asked(&mut disk), default);
+    }
+
+    #[test]
+    fn an_explicit_side_overrides_and_leaves_the_request() {
+        let (a, b) = sides();
+        let mut disk = Cursor::new(build_disk(&[(SIDE_A_PATH, &a), (SIDE_B_PATH, &b)], true));
+        let once = licpart::IplSource {
+            next: Some(Slot::B),
+            default: Some(Slot::B),
+        };
+        ask(&mut disk, once);
+        let (result, steps) = run(&mut disk, Side::A, Settings::default());
+        assert_eq!(result.unwrap().side, Slot::A);
+        assert!(!steps.contains(&Step::RecordWritten));
+        assert_eq!(asked(&mut disk), once);
+        // The request is still there for the activation that takes it.
+        let (result, steps) = run(&mut disk, Side::Recorded, Settings::default());
+        assert_eq!(result.unwrap().side, Slot::B);
+        assert!(matches!(steps[1], Step::RecordRead(r) if r.once && r.side == Slot::B));
+        assert_eq!(asked(&mut disk).next, None);
     }
 
     #[test]

@@ -114,7 +114,7 @@ fn lic_seeds() -> Vec<Vec<u8>> {
                 keylock: Some(Keylock::Manual),
                 console: Some(ConsoleMode::Serial),
             };
-            let _ = ipl::lic::prepare(&mut set, settings, 1);
+            let _ = ipl::lic::prepare(&mut set, settings, false, 1);
             seeds.push(record);
             seeds.push(set.into_inner());
         }
@@ -140,10 +140,10 @@ fn lic_partition(data: &[u8]) {
         },
     ] {
         let mut dev = Cursor::new(data.to_vec());
-        if let Ok(Some(recorded)) = ipl::lic::prepare(&mut dev, settings, 1) {
+        if let Ok(Some(recorded)) = ipl::lic::prepare(&mut dev, settings, true, 1) {
             // What was written reads back.
-            if settings.any() {
-                let again = ipl::lic::prepare(&mut dev, Settings::default(), 1);
+            if recorded.written {
+                let again = ipl::lic::prepare(&mut dev, Settings::default(), false, 1);
                 assert!(matches!(again, Ok(Some(r)) if r.sequence == recorded.sequence));
             }
         }
@@ -559,7 +559,7 @@ mod tests {
         assert!(ipl::load::check(&bzimage_seeds()[0]).is_ok());
         let mut record = Cursor::new(lic_seeds()[0].clone());
         assert!(matches!(
-            ipl::lic::prepare(&mut record, Settings::default(), 1),
+            ipl::lic::prepare(&mut record, Settings::default(), true, 1),
             Ok(Some(_))
         ));
         assert!(find("scsi").is_some());

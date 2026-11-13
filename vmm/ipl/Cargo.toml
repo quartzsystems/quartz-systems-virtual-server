@@ -12,6 +12,8 @@ arch = { path = "../arch", version = "0.1.0" }
 # record of the guest.
 licpart.workspace = true
 abrec.workspace = true
+# The paths of the sides' UKIs on the guest's ESP.
+diskimg.workspace = true
 linux-loader.workspace = true
 vm-memory.workspace = true
 uuid.workspace = true

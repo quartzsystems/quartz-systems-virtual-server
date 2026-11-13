@@ -89,10 +89,11 @@ fn post_step(step: Step) {
         Step::RecordRead(recorded) => post(
             &refcode::PARTITION_RECORD_READ,
             &format!(
-                "side {} keylock {} console {} sequence {}",
+                "side {}{} keylock {} console {} sequence {}",
                 ipl::side_letter(recorded.side),
+                if recorded.once { " once" } else { "" },
                 recorded.keylock.attribute(),
-                recorded.console.name(),
+                ipl::lic::console_name(recorded.console),
                 recorded.sequence
             ),
         ),
