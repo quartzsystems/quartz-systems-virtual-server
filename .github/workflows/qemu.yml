@@ -103,6 +103,17 @@ jobs:
             target/test-image/x86_64-unknown-linux-musl
           key: qsvs-build-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'kernel/VERSION', 'kernel/config/**') }}
 
+      # The guest of the partition suites that IPL QS/400: its disk
+      # image, built by QS/400's own orchestrator at the commit every
+      # QS/400 crate here is pinned to (docs/PHASE3.md).
+      - name: QS/400 guest image at the pinned commit
+        run: |
+          pin=$(sed -n 's/^buildkit = .*rev = "([0-9a-f]*)".*//p' Cargo.toml)
+          git clone https://github.com/quartzsystems/quartz-systems-400 "$RUNNER_TEMP/qs400"
+          git -C "$RUNNER_TEMP/qs400" checkout "$pin"
+          (cd "$RUNNER_TEMP/qs400" && QS400_TARGET_DIR="$RUNNER_TEMP/qs400-target" cargo run -q -p build -- all)
+          echo "QSVS_QS400_IMAGE=$(cat "$RUNNER_TEMP/qs400-target/images/disk.path")" >> "$GITHUB_ENV"
+
       - run: cargo run -q -p build -- doctor
       - run: cargo run -q -p build -- all
       - run: cargo run -q -p build -- all --test-image

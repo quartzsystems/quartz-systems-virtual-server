@@ -157,6 +157,169 @@ hashes were not run for this: they are the phase's acceptance.
   serial port.** `C2003050` is posted while the choice's console still
   has it; the suite looks in the history, as `mirror-replace` does.
 
+## What exists
+
+`docs/VMM.md` has the machine and the threat model, `docs/PROFILE.md`
+the profile, `docs/QS400_GUEST.md` what QS/400 does in a partition.
+
+### The VMM (`vmm/`)
+
+- `vmm/arch`: a partition's x86_64 boot state. The memory map with the
+  32-bit hole; the page tables and the GDT; the boot processor's
+  registers for the 64-bit Linux boot protocol; the zero page (the
+  kernel's own setup header, the memory map, the ACPI root pointer);
+  the CPUID a partition sees, its boot MSRs, the local APIC's pins.
+  Nothing in it calls KVM.
+- `vmm/acpi`: the tables in place of firmware, as one block: RSDP,
+  XSDT, a hardware-reduced FADT with the reset and sleep registers,
+  MADT, MCFG, and a DSDT with the PCI host bridge, the serial port,
+  the clock and the power-off device.
+- `vmm/devices`: the I/O port bus; the 16550 (`vm-superio`), the CMOS
+  clock, the keyboard controller's reset line (`vm-superio`), the ACPI
+  sleep register; the PCI bus with configuration space by port and by
+  memory, and MSI-X; virtio over PCI (modern), with `ioeventfd` and
+  `irqfd` asked of a `Platform` the VMM answers with KVM; virtio-scsi
+  with disk LUNs over a direct-I/O backing store; virtio-rng.
+- `vmm/ipl`: the IPL loader. Bounded readers of the guest's disk (GPT,
+  FAT16 and FAT32); the LIC record read and its keylock position and
+  console mode written through QS/400's `licpart`; the bzImage loaded
+  with `linux-loader`. A step done is a `Step` and a load source that
+  cannot be IPLed from a `Fault`; `qsvmm` posts each as a code.
+- `vmm/qsvmm`: the binary. The profile; the machine on KVM; a thread a
+  processor; the serial port's log and console socket; the privilege
+  drop; the exit codes.
+
+**Two readers were written here though QS/400's `diskimg` has one of
+each.** `diskimg::read_table` and `diskimg::fat::read_file_at` read
+back what a build or an installer has just written: they want a
+writable device, read a file whole whatever its size, and follow the
+table's counts and the FAT's chains as they find them. The loader's
+disk is a guest's to write, so its readers check both GPT checksums
+and every field, bound a directory and a chain, and refuse a file over
+128 MiB before reading it (`vmm/ipl/src/gpt.rs`, `fat.rs`). The LIC
+record is read and written by `licpart` and nothing else.
+
+### Starting a partition by hand
+
+There is no partition manager. In a test image, and only there, PID 1's
+table has a third hook service, `qsvshook partition`
+(`lic/qsvshook/src/partition/`). It looks for a FAT volume labelled
+`QSVSPART` with `partition.toml` on it, starts `qsvmm` for that
+profile, posts the codes `qsvmm` reports, relays the partition's
+serial output to the host's serial port a line at a time
+(`TESTLPAR| SRC C6001090  IPL complete`), and posts how the partition
+ended with `qsvmm`'s exit code or the signal that killed it. The
+channel has commands to start it again with another profile, to
+signal it, to type at the partition's console, and to make of a host
+device the requests no guest kernel sends (`scsiprobe`).
+
+A release image has `/qsvs/bin/qsvmm` and nothing that starts it: a
+unit test holds PID 1's table to that, and Phase 0's suite on the
+release image checks that no partition code is posted.
+
+### Reference codes
+
+A new block, `C2005xxx` and `A2005xxx` (`docs/REFCODES.md`): twelve
+codes for the steps of an activation and its orderly ends, sixteen for
+what a partition lacked when it could not IPL and for the ends that
+are not orderly.
+
+### The fuzzer (`tools/fuzz`)
+
+libFuzzer is C++, and the tree builds no C, so the loop is in Rust, as
+QS/400's own fuzzer is (none of its source is here: it is not a
+library, and it is QS/400's). `cargo run -p build -- fuzz` builds
+`qsvsfuzz` with LLVM's `SanitizerCoverage` inline counters and runs
+eight targets: `gpt`, `fat`, `lic`, `disk`, `bzimage`, `scsi`,
+`virtqueue`, `devices`. A finding is a panic (arithmetic is checked in
+the fuzz profile) or an input that runs for more than five seconds;
+its bytes are written under `<target>/fuzz/crashes/`.
+
+### Build
+
+- `qsvmm` is a package of both images and is in a slot's initramfs.
+- `build doctor` has a row for `QSVS_QS400_IMAGE`: a warning when it is
+  unset or not a QS/400 disk image, since the pipeline does not need
+  it and four suites do.
+- `build fuzz`, and `build test` runs the fuzz targets after the
+  suites.
+
+## The crates added
+
+Every one is from crates.io at the version named, pure Rust, with no
+`links` key and no build script that compiles anything; `build deny`
+passes with them (the count is in the acceptance table).
+
+| Crate | Version | License | Used for | Build script |
+|---|---|---|---|---|
+| `kvm-ioctls` | 0.25.1 | Apache-2.0 OR MIT | KVM: the VM, the processors, `irqfd`, `ioeventfd`, interrupt routing | probes the compiler's version, compiles nothing |
+| `kvm-bindings` | 0.14.2 | Apache-2.0 | KVM's structures, as Rust written ahead of time; `fam-wrappers` for the CPUID, MSR and routing tables | none |
+| `vm-memory` | 0.18.0 | Apache-2.0 OR BSD-3-Clause | guest memory: every access bounds-checked against the regions | none |
+| `virtio-queue` | 0.18.0 | Apache-2.0 AND BSD-3-Clause | the virtqueue: descriptor chains, the rings | none |
+| `virtio-bindings` | 0.2.7 | BSD-3-Clause OR Apache-2.0 | `virtio-queue`'s constants | none |
+| `linux-loader` | 0.14.0 | Apache-2.0 AND BSD-3-Clause | the bzImage loader, the zero page's structure (`bzimage` feature only) | none |
+| `vm-superio` | 0.8.2 | Apache-2.0 OR BSD-3-Clause | the 16550 and the i8042 | none |
+| `vmm-sys-util` | 0.15.0 | BSD-3-Clause | eventfd, epoll, the flexible-array wrappers | none |
+| `acpi_tables` | 0.2.1 | Apache-2.0 | the ACPI table and AML writer | none |
+
+They bring `zerocopy`, `zerocopy-derive`, `bitflags` (two versions)
+and `log` with them; `zerocopy`'s build script too only probes the compiler. No C
+header is read at build time: `kvm-bindings` and `virtio-bindings`
+ship their bindings as source.
+
+One QS/400 crate was added, at the pin of every other:
+`licpart`, with what it depends on there (`abrec`, `diskimg`, both
+already taken). `Cargo.toml` has fifteen `rev =` values, all
+`03d6492913318da96bc707cb68d3b54a94ef9bff`. No QS/400 source is copied.
+Two constants of QS/400's are restated in `vmm/ipl`, each a fact of
+its disk format that no crate QS/VS may depend on exports
+(`docs/OPEN_QUESTIONS.md` item 24).
+
+## Kernel additions
+
+None. The host's kernel has had KVM since Phase 0, and what a partition
+is given needs nothing more of it: direct I/O on files and block
+devices, eventfd, epoll. A QS/VS kernel as a guest already has
+virtio-pci, virtio-scsi and the 8250 driver.
+
+## The QS/400 guest image
+
+The suites that IPL QS/400 need a QS/400 disk image built by QS/400's
+own orchestrator at the pinned commit, named by `QSVS_QS400_IMAGE`:
+
+```
+git clone https://github.com/quartzsystems/quartz-systems-400 qs400-pin
+cd qs400-pin && git checkout 03d6492913318da96bc707cb68d3b54a94ef9bff
+QS400_TARGET_DIR=$HOME/qs400-pin-target cargo run -p build -- all
+export QSVS_QS400_IMAGE=$HOME/qs400-pin-target/images/qs400-V1R1M0-<hash>.img
+```
+
+It is a 4 GiB sparse file, about 260 MiB on disk. Nothing of it is
+changed: each suite works on a copy. `build doctor` says whether the
+variable names one.
+
+## Running
+
+```
+cargo run -p build -- all --test-image
+cargo run -p build -- test --suite partition-boot
+cargo run -p build -- test --suite fuzz
+cargo run -p build -- fuzz --target scsi --secs 600
+cargo run -p build -- test
+```
+
+By hand, on any Linux host with KVM, as an ordinary user who may open
+`/dev/kvm` (the privilege drop is then skipped, and `qsvmm` says so):
+
+```
+cargo build -p qsvmm
+target/debug/qsvmm --profile my.toml --data /tmp/p/data --run /tmp/p/run
+```
+
+The guest's serial output is in
+`/tmp/p/data/log/partitions/<name>/serial.log`, and its console is the
+socket `/tmp/p/run/partitions/<name>/console.sock`.
+
 ## Not done
 
 - **NEEDS-CODY: the rule for units that ran apart** is built as the

@@ -118,8 +118,13 @@ impl Channel {
 
     /// Send one command and take its answer. An `error` line is an error.
     pub fn ask(&mut self, command: &str) -> Result<Vec<String>, String> {
+        self.ask_within(command, ANSWER)
+    }
+
+    /// [`Channel::ask`] for a command that may take `patience`.
+    pub fn ask_within(&mut self, command: &str, patience: Duration) -> Result<Vec<String>, String> {
         self.send(command)?;
-        let lines = self.answer(Instant::now() + ANSWER)?;
+        let lines = self.answer(Instant::now() + patience)?;
         match lines.first().and_then(|l| l.split_once(' ')) {
             Some((word::ERROR, why)) => Err(format!("`{command}`: {why}")),
             _ => Ok(lines),

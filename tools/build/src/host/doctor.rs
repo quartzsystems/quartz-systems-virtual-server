@@ -4,13 +4,15 @@
 
 //! The rows QS/VS adds to `buildkit`'s doctor: KVM and nested
 //! virtualization on the build host (the test boots a hypervisor), the
-//! OVMF firmware, and the license headers.
+//! OVMF firmware, the QS/400 image the partition suites IPL, and the
+//! license headers.
 
 use std::fs;
 
 use buildkit::Ctx;
 use buildkit::host::doctor::{Row, Status};
 use conformance::suite::ALLOW_NO_KVM_ENV;
+use conformance::suite::partition::{QS400_IMAGE_ENV, qs400_image};
 use conformance::{firmware, qemu};
 
 /// The `nested` parameter of whichever KVM vendor module is loaded.
@@ -91,6 +93,21 @@ fn ovmf() -> Row {
     }
 }
 
+/// The QS/400 disk image the partition suites IPL. Without it those
+/// suites cannot run; the rest of the pipeline does not need it.
+fn guest_image() -> Row {
+    let name = format!("QS/400 guest image ({QS400_IMAGE_ENV})");
+    match qs400_image() {
+        Ok(path) => row(
+            &name,
+            true,
+            format!("{} has an ESP and a LIC partition", path.display()),
+            false,
+        ),
+        Err(e) => row(&name, false, e, false),
+    }
+}
+
 fn headers(ctx: &Ctx) -> Row {
     let name = "license headers";
     match super::header::check(&ctx.paths.repo) {
@@ -127,6 +144,7 @@ pub fn rows(ctx: &Ctx) -> Vec<Row> {
         kvm(required),
         nested(required),
         ovmf(),
+        guest_image(),
         headers(ctx),
         neutral(ctx),
     ]

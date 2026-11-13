@@ -10,8 +10,9 @@ a side effect of other work.
 | Base | x86_64 only. Linux 6.18.y LTS, the same pin as QS/400, built `LLVM=1`, monolithic (`MODULES=n`), EFI stub, initramfs embedded; the bzImage is the UKI; two ESP slots A and B |
 | Userland | 100% Rust, static musl. Rust PID 1 `qsvsinit` supervising a fixed service table. No systemd, no shell, no SSH |
 | Hypervisor | KVM. Own VMM `qsvmm`, one process per partition, on the rust-vmm crates. No QEMU on the host |
-| Partition IPL | No guest firmware: the VMM loads the partition's UKI from its virtual disk directly |
-| Virtual devices | virtio over PCI only: scsi, net (vhost-net), console, rng |
+| Partition IPL | No guest firmware: the VMM loads the side's UKI from the partition's load-source disk and starts it through the 64-bit Linux boot protocol, with ACPI tables of its own. The keylock position and the console mode are written to the guest's LIC record before the IPL |
+| Virtual devices | virtio over PCI for everything a partition does I/O with: scsi, net (vhost-net), console, rng. Four devices beside them for what virtio has no place for: a 16550, a CMOS clock, the reset line, the ACPI power-off register |
+| Partition process | `qsvmm` opens what it needs as root, then runs as an unprivileged user with no capability. It exits with a code that says why the partition ended; a guest restart ends it |
 | Storage | Storage pools are xfs file systems; virtual disks are raw files; software RAID as on QS/400, presented through a ublk block device |
 | Virtual Ethernet | VLAN-aware kernel bridges, tap devices with vhost-net |
 | Management | QSI server on TCP 2300 with mutual TLS; Service Tools console locally; nothing else listens |
@@ -47,13 +48,46 @@ failure and its resource limits are a process's. QEMU never runs on the
 host; it is a test tool that stands in for a real machine.
 
 **Partition IPL.** A partition has no firmware. A QS/400 system disk
-carries its UKIs on an ESP; the VMM reads the UKI of the slot to IPL
-from the partition's virtual disk and starts it directly.
+carries its UKIs on an ESP, one file a side; the IPL loader (`vmm/ipl`)
+reads the partition table, finds the ESP and the LIC partition by type,
+reads the side's UKI from the FAT volume, loads it as the bzImage it is
+and enters it at its 64-bit entry, with the memory map and the ACPI
+root pointer in the zero page. The kernel's command line is baked in
+and it ignores a loader's, so the side is chosen by which file is
+loaded and nothing else can be passed that way. What an operator sets
+at a panel, the keylock position and the console mode, the host writes
+into the guest's LIC record before the IPL, through QS/400's `licpart`:
+the one QS/400-specific crate QS/VS depends on, used by the loader
+alone. The guest's disk is the guest's to write, so the loader reads it
+as a hostile one (`docs/VMM.md`); a load source it cannot IPL from
+gives a reference code that names what is missing. What QS/400 does in
+a partition, and what it cannot do yet without firmware variables
+(choose the side of its next IPL), is `docs/QS400_GUEST.md`.
 
-**Virtual devices.** A partition sees virtio devices on a PCI bus and
-nothing else: virtio-scsi for disks, tape and optical, virtio-net backed
-by vhost-net, a virtio console and virtio-rng. No emulated legacy
-hardware.
+**Virtual devices.** A partition does its I/O through virtio devices on
+a PCI bus: virtio-scsi for disks, tape and optical, virtio-net backed
+by vhost-net, a virtio console and virtio-rng. Phase 3 has virtio-scsi
+with disk LUNs and virtio-rng. A virtual disk's backing store is opened
+for direct I/O and a guest's flush is a flush of the host's device: the
+guest's crash consistency is its own and rests on that. Beside the
+virtio devices are four that virtio has no place for and a kernel
+expects to find: a 16550 for its messages and its console, a CMOS
+clock, the keyboard controller's reset line, and the ACPI sleep
+register that powers the partition off. There is no other emulated
+hardware: no display, no keyboard, no IDE. The interrupt controllers
+and the PIT are KVM's (`docs/VMM.md`).
+
+**The partition process.** `qsvmm` starts as root, opens KVM, the
+partition's disks, its log and its console socket, and then becomes an
+unprivileged user for good, with no capability and no way to gain one;
+the guest runs only after that. It reports reference codes on its
+standard error and whoever started it posts them. It ends when the
+partition does, with an exit code that says why: powered off, restart
+asked for, guest fault, could not IPL, VMM error, ended by the host. A
+guest restart ends the process; starting it again is the partition
+manager's, which is Phase 4. Until then nothing of a release image
+starts `qsvmm`: a test image starts one partition, from a profile
+written by hand (`docs/PROFILE.md`).
 
 **Storage.** A storage pool is an xfs file system and a virtual disk is
 a raw file in it. Protection is the software RAID QS/400 has, served to

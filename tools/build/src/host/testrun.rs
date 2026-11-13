@@ -12,6 +12,13 @@ use buildkit::{Ctx, UkiKind};
 use conformance::suite::Images;
 use tracing::{error, info, warn};
 
+/// The suite that runs the fuzz targets.
+const FUZZ: &str = "fuzz";
+/// Seconds each fuzz target runs in `test`.
+const FUZZ_SECS: u64 = 60;
+/// Fuzz targets run at a time.
+const FUZZ_JOBS: usize = 4;
+
 /// Run the suites of `media`, or the one named `only`. The serial log
 /// is printed on failure.
 pub fn test(
@@ -24,7 +31,13 @@ pub fn test(
         for name in conformance::suite::names() {
             println!("{name}");
         }
+        println!("{FUZZ}");
         return Ok(());
+    }
+    // The fuzz targets are a suite the build tool runs itself: they
+    // are compiled with coverage counters.
+    if only == Some(FUZZ) {
+        return super::fuzz::fuzz(release, None, FUZZ_SECS, FUZZ_JOBS);
     }
     let images = Images {
         release_disk: paths::read_pointer(&release.paths.disk_pointer()).ok(),
@@ -60,6 +73,9 @@ pub fn test(
     match suite.run(media, only, passed) {
         Ok(reports) => {
             info!("test: PASS, {} step(s), media {media}", reports.len());
+            if media == conformance::Media::Disk && only.is_none() {
+                super::fuzz::fuzz(release, None, FUZZ_SECS, FUZZ_JOBS)?;
+            }
             Ok(())
         }
         Err(e) => {

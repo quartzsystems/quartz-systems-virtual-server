@@ -6,6 +6,7 @@
 //! header check, the neutrality check of `base/` and the QEMU suites.
 
 pub mod doctor;
+pub mod fuzz;
 pub mod header;
 pub mod neutral;
 pub mod testrun;

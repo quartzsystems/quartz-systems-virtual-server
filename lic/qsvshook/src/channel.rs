@@ -267,7 +267,55 @@ fn mount_ro(rest: &str) -> Vec<String> {
         return error(e);
     }
     let flags = MountFlags::RDONLY | MountFlags::NOSUID | MountFlags::NODEV | MountFlags::NOEXEC;
-    done(mount(device, directory, "xfs", flags, None))
+    // A guest's file system may have the identifier of the host's own:
+    // both come from one build.
+    done(mount(device, directory, "xfs", flags, Some(c"nouuid")))
+}
+
+/// Copy bytes between files and devices: a megabyte at a time, and
+/// into a file a megabyte of zeros is left a hole.
+fn copy(rest: &str) -> Vec<String> {
+    use std::os::unix::fs::FileExt;
+    let words: Vec<&str> = rest.split(' ').collect();
+    let [from, skip, to, seek, bytes] = words.as_slice() else {
+        return error("copy <from> <skip> <to> <seek> <bytes>");
+    };
+    let (Ok(skip), Ok(seek), Ok(bytes)) = (
+        skip.parse::<u64>(),
+        seek.parse::<u64>(),
+        bytes.parse::<u64>(),
+    ) else {
+        return error("copy <from> <skip> <to> <seek> <bytes>");
+    };
+    let run = || -> io::Result<u64> {
+        let source = File::open(from)?;
+        let target = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(to)?;
+        let holes = target.metadata()?.file_type().is_file();
+        if holes && target.metadata()?.len() < seek + bytes {
+            target.set_len(seek + bytes)?;
+        }
+        let mut chunk = vec![0u8; 1 << 20];
+        let (mut at, mut written) = (0u64, 0u64);
+        while at < bytes {
+            let n = usize::try_from((bytes - at).min(1 << 20)).unwrap_or(1 << 20);
+            source.read_exact_at(&mut chunk[..n], skip + at)?;
+            if !holes || chunk[..n].iter().any(|b| *b != 0) {
+                target.write_all_at(&chunk[..n], seek + at)?;
+                written += n as u64;
+            }
+            at += n as u64;
+        }
+        target.sync_all()?;
+        Ok(written)
+    };
+    match run() {
+        Ok(written) => vec![format!("{} {written}", word::OK)],
+        Err(e) => error(e),
+    }
 }
 
 fn scsi_probe(device: &str) -> Vec<String> {
@@ -302,6 +350,7 @@ fn answer(line: &str) -> Vec<String> {
             rustix::mount::UnmountFlags::empty(),
         )),
         command::SCSI_PROBE => scsi_probe(rest),
+        command::COPY => copy(rest),
         command::POWER_OFF => done(control().power_off()),
         command::RESTART => done(control().restart()),
         command::NET_RELOAD => {

@@ -12,7 +12,9 @@ The build pipeline is QS/400's, taken as a library: `buildkit`, `vrm`,
 `diskimg` and `abrec` are git dependencies on
 `https://github.com/quartzsystems/quartz-systems-400`, all at one commit.
 So are what the installer and the local console are made of: `console`,
-`scrkit`, `svcusers`, `protect`, `ublk`, `blockdev`.
+`scrkit`, `svcusers`, `protect`, `ublk`, `blockdev`. One crate that is
+QS/400's own is taken too, at the same commit: `licpart`, for the
+guest's LIC record, by the IPL loader alone.
 
 ## Phases
 
@@ -60,8 +62,10 @@ written with.
   Comments are short.
 - QS/400 crates are git dependencies pinned to one commit (`rev = "..."`),
   the same commit for every crate, recorded in `docs/PHASE0.md`. Never
-  path dependencies, never copies. Do not depend on QS/400's `svctools`
-  or `licpart` crates: they are QS/400's own. `console` is neutral
+  path dependencies, never copies. Do not depend on QS/400's `svctools`:
+  it is QS/400's own. `licpart` is the one QS/400-specific crate QS/VS
+  depends on, and only the IPL loader (`vmm/ipl`) uses it, to read the
+  guest's LIC record and write its IPL attributes. `console` is neutral
   since QS/400's handoff 14 and is taken without its `session` feature.
 - Everything under `base/` is product-neutral: QS/MC will pin those
   crates from this repository. What QS/MC's installer and local console
@@ -81,6 +85,15 @@ written with.
   and for power, the storage service for the disks. PID 1's loop never
   waits on `/data`: a write there is another thread's.
 - No password is kept, logged or shown: only its salted hash.
+- Every byte a guest controls is hostile: a register write, a virtqueue
+  descriptor, a SCSI command, every byte of its disks (`docs/VMM.md`).
+  Code that reads one does not panic on it, read or write outside what
+  the guest was given, or allocate by a size it names. A new reader of
+  guest bytes gets a target in `tools/fuzz`.
+- `qsvmm` opens what it needs as root and then runs as an unprivileged
+  user with no capability; it reports reference codes on standard
+  error and whoever started it posts them. Nothing of a release image
+  starts it before Phase 4: only the test hooks' partition service does.
 - Test hooks are compiled only into a test image (`--test-image`,
   `cfg(test_hooks)`, the `qsvshook` binary). Nothing of them may reach a
   release artifact; the userland and manifest steps check.
@@ -163,11 +176,12 @@ tools/          host tools
   build/          the orchestrator, a thin binary over buildkit: cargo run -p build -- <cmd>
     src/product/    QS/VS as buildkit's Product: names, kernel symbols, initramfs, media; the two image kinds
     src/image/      the userland step and the hooks check, the A/B record on the disk image, the manifest's kind
-    src/host/       doctor rows, the license header check, the neutrality check of base/, `test`
+    src/host/       doctor rows, the license header check, the neutrality check of base/, `test`, `fuzz`
   conformance/    the QEMU harness
     src/qemu/       launch, OVMF, serial capture, the serial port as a 24x80 grid, typed keys, golden files, firmware variables, image copies, the test hooks' channel
-    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions
+    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3
     golden/         every installer and Service Tools screen, as text
+  fuzz/           qsvsfuzz, the Rust fuzzer: LLVM's coverage counters, the mutator, the loop, a target for every reader of guest bytes
 base/           what every Quartz appliance needs; product-neutral
   appliance/      the Appliance description with its load-source names, events, civil time, the Ethernet links
   state/          typed TOML state files: schema versions, migration, atomic writes
@@ -195,12 +209,20 @@ lic/            PID 1, release, installer, base services
   qsvsstgd/       base/stgd run as QS/VS, with QS/VS's inventory
   qsvsinstall/    the installer: base/install over QS/VS's media, disks and state
   qsvshook/       the test hooks' binary: the harness's channel, a failing service, the state churn
+    src/partition/  the one partition a test image starts: the runner, and the probe of requests no guest sends
   release/        V1R0M0 over QS/400's vrm, the banner, the prefixes, the Appliance description, QS/VS's load-source names
   refcode/        host reference codes (docs/REFCODES.md), the code of each base event, the poster
   hostinv/        the host inventory and the location codes (docs/LOCATION.md)
+vmm/            the VMM: one process for one partition
+  arch/           x86_64 boot state: the memory map, page tables and GDT, registers, the zero page; CPUID and MSR policy, the local APIC
+  acpi/           the tables in place of firmware: RSDP, XSDT, FADT, MADT, MCFG, the DSDT
+  devices/        the I/O port bus; the 16550, the CMOS clock, the reset line, the power-off register; the PCI bus, configuration space, MSI-X; virtio-pci, virtio-scsi, virtio-rng
+    src/virtio/scsi/  the command decoder, a disk LUN, the direct-I/O backing store
+  ipl/            the IPL loader: bounded GPT and FAT readers, the LIC record through licpart, the bzImage into guest memory
+  qsvmm/          the binary: the profile, the exit codes, the machine on KVM, the processors' loop, the serial log and console socket, the privilege drop
 svc/            Service Tools
   tools/          qsvstools: QS/VS's menu, system status and disk units over base/panels; the two sessions; the one panel PID 1 runs it for
-docs/           ARCHITECTURE, PHASE0, PHASE1, PHASE2, PHASE3, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
+docs/           ARCHITECTURE, PHASE0, PHASE1, PHASE2, PHASE3, QS400_GUEST, VMM, PROFILE, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
 ```
 
 Category folders are created as phases need them. The full set: `tools/`
@@ -218,15 +240,16 @@ with `QSVS_TARGET_DIR`.
 cargo run -p build -- doctor          host prerequisites, the license headers, base/ neutral
 cargo run -p build -- all             fetch, kernel, userland, initramfs, uki, disk, iso, manifest
 cargo run -p build -- all --test-image   the same with the test hooks, under <target>/test-image/
-cargo run -p build -- test            Phase 0's suite on the release image, the ten base suites and the fifteen of Phase 2 on the test image
+cargo run -p build -- test            Phase 0's suite on the release image; the ten base suites, the fifteen of Phase 2 and the ten of Phase 3 on the test image; then the fuzz targets, 60 s each
 cargo run -p build -- test --suite dhcp  one suite alone (--suite list names them)
 cargo run -p build -- test --media iso   boot the installation ISO to the installer's first screen
 QSVS_GOLDEN=update cargo run -p build -- test --suite install-serial   write the golden screens instead of comparing
+cargo run -p build -- fuzz            build the fuzzer with coverage counters and run every target (--target NAME, --secs N, --jobs N)
 cargo run -p build -- deny            cargo-deny and the C-linkage check
 cargo run -p build -- notices         rewrite lic/release/NOTICES.txt (--check in CI)
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvstools -p qsvsinstall -p qsvshook --all-targets --target x86_64-unknown-linux-musl -- -D warnings
+cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvstools -p qsvsinstall -p qsvshook -p qsvmm --all-targets --target x86_64-unknown-linux-musl -- -D warnings
 cargo test --workspace
 ```
 
@@ -237,7 +260,9 @@ logs are always under `target/logs/`.
 Environment: `QSVS_TARGET_DIR`, `QSVS_JOBS`, `QSVS_SIGNING_KEY`,
 `QSVS_TRUSTED_KEYS`, `QSVS_BUILD_ID`, `QSVS_RELEASE`, `QSVS_OVMF_CODE`,
 `QSVS_OVMF_VARS`, `QSVS_QEMU`, `QSVS_NO_KVM`, `QSVS_BOOT_TIMEOUT`,
-`QSVS_ALLOW_NO_KVM` (`docs/PHASE0.md` says what each does).
+`QSVS_ALLOW_NO_KVM` (`docs/PHASE0.md` says what each does), and
+`QSVS_QS400_IMAGE`, the QS/400 disk image the partition suites IPL
+(`docs/PHASE3.md` says how to make it).
 `QSVS_TEST_HOOKS` is the build's own: the userland step sets it, on for
 a test image and off for a release image, whatever the caller has.
 
@@ -253,7 +278,13 @@ a test image and off for a release image, whatever the caller has.
   the acceptance table, the checklist for the first real machine, what
   was not done then.
 - `docs/PHASE3.md`: the VMM core, and before it the answers to Phase
-  2's questions as they were applied; what is not done.
+  2's questions as they were applied: what exists, how to run it, the
+  crates added, the acceptance table, what is not done.
+- `docs/QS400_GUEST.md`: what an unmodified QS/400 does in a partition
+  without firmware, and what QS/400 would have to change.
+- `docs/VMM.md`: the machine: memory map, devices, interrupts, ACPI,
+  exit codes, the threat model for guest-controlled input.
+- `docs/PROFILE.md`: a partition's profile, provisional.
 - `docs/INSTALL.md`: the operator's guide to installing, attended and
   unattended.
 - `docs/SERVICETOOLS.md`: every panel of the local console.

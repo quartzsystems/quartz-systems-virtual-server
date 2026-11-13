@@ -8,7 +8,7 @@ entry says what that was and what changed. The Phase 2 handoff decided
 9 and 13 again, and Phase 2 raised 16 to 22. The Phase 3 handoff
 answered those: 16, 18 and 21 are closed below, 20 was decided and
 built and waits for Cody to confirm the rule, 17 and 22 are decided in
-Phase 8, and 19 stays open.
+Phase 8, and 19 stays open. Phase 3 raised 23 to 28.
 
 ## Open
 
@@ -101,6 +101,69 @@ share one copy in memory. If QSI is to manage them from QS/MC, they
 need an owner both can ask: PID 1, or a service of their own. The
 Phase 3 handoff: decide in Phase 8, when QSI may need to manage them.
 Nothing changed.
+
+### 23. The side of a partition's next IPL (NEEDS-CODY: a QS/400 handoff)
+
+QS/400 chooses the side of its next IPL through firmware variables
+(`BootNext`, `BootOrder`). A partition has none, and the request is
+lost: `IPLSRC(B)` at a power down says `IPL source not set: not booted
+through UEFI` (`docs/QS400_GUEST.md`). The LIC record has no field for
+it that `licpart` owns: the default and pending slots are in a TLV of
+QS/400's `ptf` crate. So `side = "recorded"` in a profile means the
+side of the last IPL that completed. Recommended: QS/400 records the
+once-only slot and the default slot through `licpart` when it has no
+firmware, and `vmm/ipl` honours them. Needed before a partition can
+apply a LIC PTF, so before Phase 4 calls the IPL source the
+partition's own.
+
+### 24. What QS/VS restates of QS/400 (a QS/400 handoff)
+
+Two things the IPL loader knows of QS/400 that it does not get from
+`licpart`: the console mode's TLV tag and its two values, which are in
+QS/400's `svctools` (`vmm/ipl/src/lic.rs`), and the two paths of the
+sides' UKIs on the ESP, which are in `slic` (`vmm/ipl/src/lib.rs`).
+Each is a constant, not copied source. Recommended: QS/400 moves the
+console mode into `licpart` and exports the paths from `diskimg`, and
+QS/VS takes them from there at the next pin.
+
+### 25. A partition's identity
+
+A partition has no SMBIOS tables. QS/400 so has no machine serial
+number (`QSRLNBR 0000000` in every partition) and cannot name its
+hypervisor (`unidentified hypervisor` in `QSHWQUAL`). Two ways: QS/VS
+writes SMBIOS tables for a partition, with a serial number from its
+profile; or QS/400 learns a partition from QS/VS's ACPI tables and the
+service channel of Phase 7. Recommended: decide with Phase 4's
+profiles, which is where a partition's serial number would be kept.
+
+### 26. Which disks the host takes for its own load source
+
+The host takes every disk whose table has its three partition types
+for a load-source disk: it writes its A/B record to each. That was
+right when every disk was the host's. A partition's disk can now look
+like one (a QS/VS image as a guest's disk, which only the conformance
+harness has; but also a disk moved from another host). The harness
+wraps its guest image so the host does not see it
+(`tools/conformance/src/suite/partition/devices.rs`). Recommended,
+before a partition is given a whole disk (Phases 5 and 10): the host
+takes the disk it IPLed from and the members its set's label names,
+and no other.
+
+### 27. Whose the keylock is
+
+The profile's `keylock`, when it has one, is written to the guest's
+LIC record at every activation; the guest's own `mode manual` at its
+service console writes the same field for its next IPL. Whoever wrote
+last wins. On a machine the keylock is a physical key. Recommended:
+decide with Phase 4's panel functions whether a partition's keylock is
+the host's alone.
+
+### 28. One user for every partition
+
+`qsvmm` runs as user and group 23000 once it has opened its devices:
+the same for every partition, so one partition's process could signal
+another's or read its serial log. With one partition that is nothing.
+Phase 4 gives each partition its own.
 
 ## Closed
 

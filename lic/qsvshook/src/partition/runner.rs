@@ -13,6 +13,8 @@ use std::os::unix::net::UnixStream;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -93,12 +95,16 @@ fn follow_reports(name: String, stderr: impl Read + Send + 'static) -> thread::J
 }
 
 /// Relay the partition's serial output, a line at a time, for as long
-/// as the console socket is there.
-fn follow_serial(name: String) {
+/// as the console socket is there. `over` says the run has ended: a
+/// socket not yet there by then will not be this run's.
+fn follow_serial(name: String, over: Arc<AtomicBool>) {
     thread::spawn(move || {
         let socket = console_socket(&name);
         let mut console = None;
         for _ in 0..200 {
+            if over.load(Ordering::Relaxed) {
+                return;
+            }
             match UnixStream::connect(&socket) {
                 Ok(stream) => {
                     console = Some(stream);
@@ -148,8 +154,10 @@ fn run_once() {
     };
     let _ = fs::write(PID_FILE, format!("{}\n", child.id()));
     let reports = child.stderr.take().map(|e| follow_reports(name.clone(), e));
-    follow_serial(name.clone());
+    let over = Arc::new(AtomicBool::new(false));
+    follow_serial(name.clone(), over.clone());
     let status = child.wait();
+    over.store(true, Ordering::Relaxed);
     let _ = fs::remove_file(PID_FILE);
     // Every code `qsvmm` reported is posted before its end is.
     if let Some(reports) = reports {

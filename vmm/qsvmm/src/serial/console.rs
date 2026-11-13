@@ -23,7 +23,7 @@ use super::{Clients, patient};
 /// The socket's file name.
 pub const FILE: &str = "console.sock";
 /// The most clients at once.
-const MAX_CLIENTS: usize = 4;
+const MAX_CLIENTS: usize = 8;
 /// How long the guest is given to take a byte before it is dropped.
 const INPUT_PATIENCE: Duration = Duration::from_secs(5);
 

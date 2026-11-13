@@ -39,6 +39,9 @@ use fat::FatError;
 use lic::{RecordError, Recorded, Settings};
 use part::Part;
 
+/// The GPT type of QS/400's LIC partition.
+pub use licpart::LIC_TYPE_GUID as LIC_TYPE;
+
 /// The GPT type of an EFI system partition.
 pub const ESP_TYPE: Uuid = uuid!("c12a7328-f81f-11d2-ba4b-00a0c93ec93b");
 /// Side A's UKI on the guest's ESP: the removable-media path.

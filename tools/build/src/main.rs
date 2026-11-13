@@ -74,6 +74,19 @@ enum Command {
         #[arg(long)]
         suite: Option<String>,
     },
+    /// Build the fuzzer with coverage counters and run its targets:
+    /// every reader of bytes a guest controls.
+    Fuzz {
+        /// Run one target alone.
+        #[arg(long)]
+        target: Option<String>,
+        /// Seconds for each target.
+        #[arg(long, default_value_t = 60)]
+        secs: u64,
+        /// Targets run at a time.
+        #[arg(long, default_value_t = 4)]
+        jobs: usize,
+    },
     /// Check host prerequisites, the license headers and that `base/`
     /// is product-neutral.
     Doctor,
@@ -173,6 +186,9 @@ fn main() -> Result<()> {
             let release = context(Image::Release, cli.verbose)?;
             let test = context(Image::Test, cli.verbose)?;
             host::testrun::test(&release, &test, media, suite.as_deref())?;
+        }
+        Command::Fuzz { target, secs, jobs } => {
+            host::fuzz::fuzz(&ctx, target.as_deref(), secs, jobs)?;
         }
         Command::Doctor => buildkit::host::doctor::doctor(&ctx)?,
         Command::Deny => buildkit::host::deny::deny(&ctx)?,

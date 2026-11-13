@@ -11,6 +11,8 @@ release = { path = "../../lic/release", version = "0.1.0" }
 refcode = { path = "../../lic/refcode", version = "0.1.0" }
 loadsource = { path = "../../base/loadsource", version = "0.1.0" }
 qsvshook = { path = "../../lic/qsvshook", version = "0.1.0" }
+ipl = { path = "../../vmm/ipl", version = "0.1.0" }
+qsvmm = { path = "../../vmm/qsvmm", version = "0.1.0" }
 stgd = { path = "../../base/stgd", version = "0.1.0" }
 users = { path = "../../base/users", version = "0.1.0" }
 svcusers.workspace = true

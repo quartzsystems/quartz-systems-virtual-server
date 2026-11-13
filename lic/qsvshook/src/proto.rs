@@ -59,6 +59,10 @@ pub mod command {
     pub const MOUNT: &str = "mount";
     /// `umount <directory>`: unmount it.
     pub const UNMOUNT: &str = "umount";
+    /// `copy <from> <skip> <to> <seek> <bytes>`: copy bytes from one
+    /// file or device to another, each from an offset. Into a file,
+    /// what is zero is left a hole.
+    pub const COPY: &str = "copy";
     /// `scsiprobe <device>`: make the requests no guest kernel sends
     /// of a host device, through the virtio-scsi device; a `line` for
     /// each thing seen.

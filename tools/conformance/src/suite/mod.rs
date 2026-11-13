@@ -7,10 +7,12 @@
 //! and the ISO suite boots the installation media; each checks what
 //! PID 1 says on the serial console. Phase 1's ten ([`base`]) boot the
 //! test image and check the serial console and the control socket's
-//! status.
+//! status. Phase 2's ([`install`]) install from the ISO. Phase 3's
+//! ([`partition`]) start a partition on the test image.
 
 pub mod base;
 pub mod install;
+pub mod partition;
 pub mod slotb;
 
 use std::cell::RefCell;
@@ -119,6 +121,7 @@ pub fn names() -> Vec<&'static str> {
     let mut names = vec![IPL];
     names.extend(base::SUITES.iter().map(|s| s.0));
     names.extend(install::SUITES.iter().map(|s| s.0));
+    names.extend(partition::SUITES.iter().map(|s| s.0));
     names
 }
 
@@ -201,7 +204,11 @@ impl Suite {
         if wanted(IPL) {
             done(self.phase0()?);
         }
-        for (name, suite) in base::SUITES.iter().chain(install::SUITES) {
+        let suites = base::SUITES
+            .iter()
+            .chain(install::SUITES)
+            .chain(partition::SUITES);
+        for (name, suite) in suites {
             if wanted(name) {
                 done(vec![self.base_suite(name, *suite)?]);
             }
@@ -395,6 +402,15 @@ pub fn ipl_check(
         s.expect(&tag, deadline)?;
         s.expect(&tag, deadline)?;
         detail.push_str(", two heartbeats");
+        // Nothing of an image starts a partition by itself: no code of
+        // the partition block is posted.
+        let partition = &refcode::PARTITION_ACTIVATING.code[..5];
+        if s.said(&format!("{} {partition}", refcode::WORD))
+            || s.said(&format!("{} A{}", refcode::WORD, &partition[1..]))
+        {
+            return Err("a partition code was posted: something started a partition".into());
+        }
+        detail.push_str(", no partition started");
     }
     Ok((detail, warning))
 }
@@ -417,10 +433,28 @@ mod tests {
     }
 
     #[test]
-    fn there_are_phase_0_s_suite_the_ten_of_the_base_system_and_the_thirteen_of_phase_2() {
-        assert_eq!(names().len(), 1 + 10 + 13 + 2);
+    fn there_are_phase_0_s_suite_and_those_of_each_phase_since() {
+        // Phase 0's, Phase 1's ten, Phase 2's thirteen and the two
+        // beside them, Phase 3's ten (its eleventh, the fuzz targets,
+        // is the build tool's).
+        assert_eq!(names().len(), 1 + 10 + 13 + 2 + 10);
         assert_eq!(
-            names()[11..],
+            names()[26..],
+            [
+                "partition-boot",
+                "partition-scsi",
+                "partition-ipl-a",
+                "partition-ipl-b",
+                "partition-attributes",
+                "partition-kill",
+                "partition-power-pull",
+                "partition-end",
+                "partition-damaged",
+                "partition-privilege"
+            ]
+        );
+        assert_eq!(
+            names()[11..26],
             [
                 "install-serial",
                 "install-display",
