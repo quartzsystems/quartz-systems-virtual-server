@@ -3,7 +3,7 @@
 
  The answers of an unattended installation were found and cannot be used:
 
- seed.toml: [install]: there is no disk NO-SUCH-DISK
+ seed.toml: [install]: there is no disk NO-SUCH-DISK.
 
 
 

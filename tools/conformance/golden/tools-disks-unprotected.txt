@@ -1,0 +1,24 @@
+                              Work with Disk Units
+                                                               System:  vs-test
+
+ Protection . . : None: the load source is one disk
+
+ Unit  Location                Serial                  Size  State
+    1  P0000-B00-D10-F0        QSVSHD0             671.0 MB  Unprotected
+
+ Other disks, not configured:
+       P0000-B00-D11-F0        QSVSHD1             671.0 MB
+
+ Select one of the following:
+
+      1. Start mirrored protection
+      2. Replace a failed unit
+      5. Display the units again
+
+
+
+ Selection
+
+
+ F1=Help   F3=Exit   F12=Cancel
+

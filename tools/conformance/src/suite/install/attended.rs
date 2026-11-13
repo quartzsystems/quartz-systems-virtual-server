@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use release::{fact, screen};
 
 use super::{
-    HOST, INSTALL_WITHIN, INSTALLER_ENDED, PASSWORD, USER, blank_disks, boot, golden, machine,
-    power_off, sign_on, titled, with_media,
+    HOST, INSTALL_WITHIN, INSTALLER_ENDED, MAIN_MENU, PASSWORD, USER, blank_disks, boot, golden,
+    golden_frame, machine, option, power_off, sign_on, titled, with_media,
 };
 use crate::qemu::Launch;
 use crate::qemu::term::key;
@@ -146,6 +146,7 @@ pub fn serial(run: &Run<'_>) -> Result<String, String> {
     let deadline = run.deadline();
     let menu = sign_on(&mut guest, USER, PASSWORD, deadline)?;
     golden("tools-main", &menu)?;
+    let toured = tour(&mut guest, deadline)?;
     guest.type_keys(key::F3)?;
     // Signed off: the port is PID 1's again and shows the status.
     let after = guest.log.len();
@@ -159,8 +160,112 @@ pub fn serial(run: &Run<'_>) -> Result<String, String> {
     Ok(format!(
         "{seen} screens of the installer matched their golden files, typed at the serial port; \
          the installed host is {HOST} at {DHCP_ADDRESS} from slot A, base ready; {USER} signed \
-         on to Service Tools and off again"
+         on to Service Tools, {toured} of its panels matched theirs, and signed off"
     ))
+}
+
+/// Through the panels of Service Tools the other suites do not visit,
+/// each held against its golden file: how many.
+fn tour(guest: &mut Guest<'_>, deadline: Instant) -> Result<usize, String> {
+    let mut seen = 0;
+    let mut held = |name: &str, text: &str| -> Result<(), String> {
+        seen += 1;
+        golden(name, text)
+    };
+    let back = |guest: &mut Guest<'_>| -> Result<String, String> {
+        guest.type_keys(key::F12)?;
+        titled(guest, MAIN_MENU, deadline)
+    };
+    guest.type_keys(key::F1)?;
+    held(
+        "tools-help",
+        &titled(guest, "Help: QS/VS Service Tools", deadline)?,
+    )?;
+    guest.type_keys(key::ENTER)?;
+    titled(guest, MAIN_MENU, deadline)?;
+
+    // The options that are not there yet say what brings them.
+    for (number, word) in [(4, "QSI"), (8, "code update")] {
+        guest.type_keys(&format!("{number}{}", key::ENTER))?;
+        let said = guest.screen("the word of an option not there yet", deadline, |grid| {
+            grid.message()
+                .starts_with(&format!("Option {number} is not available yet."))
+        })?;
+        if !said.lines().last().unwrap_or("").contains(word) {
+            return Err(format!(
+                "option {number} does not say what brings it:\n{said}"
+            ));
+        }
+    }
+
+    held(
+        "tools-status",
+        &option(guest, 1, "Work with System Status", deadline)?,
+    )?;
+    back(guest)?;
+    held(
+        "tools-disks",
+        &option(guest, 2, "Work with Disk Units", deadline)?,
+    )?;
+    back(guest)?;
+    option(guest, 5, "Work with Service Tools User IDs", deadline)?;
+    guest.type_keys(&format!("2{}", key::ENTER))?;
+    held(
+        "tools-user-password",
+        &titled(guest, "Change Password", deadline)?,
+    )?;
+    guest.type_keys(key::F12)?;
+    titled(guest, "Work with Service Tools User IDs", deadline)?;
+    back(guest)?;
+    held("tools-time", &option(guest, 6, "Date and Time", deadline)?)?;
+    back(guest)?;
+
+    held("tools-logs", &option(guest, 7, "Display Logs", deadline)?)?;
+    let history = option(guest, 1, "Display Reference Code History", deadline)?;
+    seen += 1;
+    golden_frame("tools-log-history", &history)?;
+    if !history.contains(refcode::BASE_READY.code) {
+        return Err(format!(
+            "the history display has no {}:\n{history}",
+            refcode::BASE_READY.code
+        ));
+    }
+    guest.type_keys(key::F12)?;
+    titled(guest, "Display Logs", deadline)?;
+    let system = option(guest, 2, "Display System Log", deadline)?;
+    seen += 1;
+    golden_frame("tools-log-system", &system)?;
+    if !system.contains("service tools user ADMIN signed on") {
+        return Err(format!(
+            "the system log display lacks the sign-on:\n{system}"
+        ));
+    }
+    guest.type_keys(key::F12)?;
+    titled(guest, "Display Logs", deadline)?;
+    back(guest)?;
+
+    let mut held = |name: &str, text: &str| -> Result<(), String> {
+        seen += 1;
+        golden(name, text)
+    };
+    held(
+        "tools-power",
+        &option(guest, 9, "Power Off or Restart", deadline)?,
+    )?;
+    held(
+        "tools-restart",
+        &option(guest, 2, "Confirm Restart", deadline)?,
+    )?;
+    guest.type_keys(key::F12)?;
+    titled(guest, "Power Off or Restart", deadline)?;
+    held(
+        "tools-power-off",
+        &option(guest, 1, "Confirm Power Off", deadline)?,
+    )?;
+    guest.type_keys(key::F12)?;
+    titled(guest, "Power Off or Restart", deadline)?;
+    back(guest)?;
+    Ok(seen)
 }
 
 /// The `sendkey` name of a character.

@@ -1,0 +1,24 @@
+                           Help: QS/VS Service Tools
+                                                               System:  vs-test
+
+ Type the number of an option and press Enter.
+
+ 1 shows the host's state. 2 shows the load-source disks and
+ their protection, and adds or replaces one. 3 changes the
+ management network. 5 works with the users of this console.
+ 6 sets the display zone, the time servers and the clock.
+ 7 shows the logs. 9 powers the host off or restarts it.
+
+ Options 4 and 8 are not available in this release. Partitions
+ are made and run from the management console, QS/MC.
+
+ F3 or F12 signs you off. So does ten minutes without a key.
+
+
+
+
+
+
+
+ Enter=Continue   F12=Cancel
+

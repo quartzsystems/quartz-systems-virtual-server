@@ -45,6 +45,8 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("media-refused", refuse::media),
     ("answers-invalid", refuse::answers),
     ("installed-base", unattended::installed_base),
+    // Beyond the handoff's thirteen.
+    ("mirror-start", mirror::start),
 ];
 
 /// The size of a disk a suite installs on: little more than the least
@@ -411,6 +413,12 @@ pub fn golden(name: &str, screen: &str) -> Result<(), String> {
     crate::qemu::golden::check(name, screen, &release::RELEASE.to_string())
 }
 
+/// Hold the frame of a log's display against its golden file: the
+/// rows of the log itself are whatever the host has logged.
+pub fn golden_frame(name: &str, screen: &str) -> Result<(), String> {
+    crate::qemu::golden::check_frame(name, screen, &release::RELEASE.to_string(), 6, 20)
+}
+
 /// The title of the sign-on display.
 pub const SIGN_ON: &str = "Service Tools Sign On";
 /// The title of the main menu.
@@ -462,7 +470,7 @@ pub fn in_history(
 
 /// `error` with the newest lines of the host's system log under it:
 /// what the services said, which the serial port does not show.
-pub fn with_log(guest: &mut Guest<'_>, error: String) -> String {
+pub fn with_log(guest: &mut Guest<'_>, error: &str) -> String {
     let log = guest
         .channel(Instant::now() + Duration::from_secs(5))
         .and_then(|c| c.text("/data/log/system.ndjson"))

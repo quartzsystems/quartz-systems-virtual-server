@@ -1,0 +1,24 @@
+                              Power Off or Restart
+                                                               System:  vs-test
+
+ Select one of the following:
+
+      1. Power off
+      2. Restart
+
+
+
+
+
+
+
+
+
+
+
+
+ Selection
+
+
+ F1=Help   F3=Exit   F12=Cancel
+

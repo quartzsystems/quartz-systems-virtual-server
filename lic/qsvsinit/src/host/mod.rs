@@ -283,16 +283,20 @@ impl Host {
 
     /// Read the inventory again and write it: the management link's
     /// carrier and speed are known only once it is up.
+    ///
+    /// The write is another thread's: `/data` may be on the storage
+    /// service's device, and this loop is what starts that service
+    /// again when it ends. It must never wait for it.
     pub(super) fn refresh_inventory(&mut self) {
-        let kept = Some(self.facts.serial.as_str()).filter(|s| !s.is_empty());
-        let inventory = hostinv::read(&hostinv::Roots::default(), kept);
-        let store = state::Store::at(std::path::Path::new(release::DATA_DIR).join("state"));
-        if let Err(e) = store.save(&inventory) {
-            self.say(
-                Severity::Warning,
-                &format!("the inventory was not written: {e}"),
-            );
-        }
+        let kept = Some(self.facts.serial.clone()).filter(|s| !s.is_empty());
+        std::thread::spawn(move || {
+            let inventory = hostinv::read(&hostinv::Roots::default(), kept.as_deref());
+            let store = state::Store::at(std::path::Path::new(release::DATA_DIR).join("state"));
+            if let Err(e) = store.save(&inventory) {
+                // Standard error is the console; the log is on /data too.
+                eprintln!("the inventory was not written: {e}");
+            }
+        });
     }
 
     /// The status: the facts in the screen's order, then the services.

@@ -17,11 +17,14 @@ use std::path::PathBuf;
 pub const ENV: &str = "QSVS_GOLDEN";
 
 /// The words after which a number changes from run to run.
-const COUNTED: [&str; 2] = ["process ", "sequence "];
+const COUNTED: [&str; 3] = ["process ", "sequence ", "restored in "];
 
 /// The labels of rows whose value depends on the machine the suite
-/// runs on.
-const OF_THE_HOST: [&str; 1] = ["KVM"];
+/// runs on, or on the moment the screen was taken: what the KVM probe
+/// found, the management line while an address comes and goes, and
+/// which code was posted last. The suites assert those facts by
+/// themselves.
+const OF_THE_HOST: [&str; 3] = ["KVM", "Management", "Reference code"];
 
 /// The directory of the golden files.
 pub fn dir() -> PathBuf {
@@ -134,7 +137,7 @@ fn mask_host(line: &str) -> String {
             .is_some_and(|rest| rest.trim_start_matches([' ', '.']).starts_with(':'))
     });
     match line.find(':') {
-        Some(colon) if labelled => format!("{} <of the host>", &line[..=colon]),
+        Some(colon) if labelled => format!("{} <not compared>", &line[..=colon]),
         _ => line.to_string(),
     }
 }
@@ -149,6 +152,29 @@ pub fn mask(screen: &str, release: &str) -> String {
         out.push('\n');
     }
     out
+}
+
+/// [`check`] for a display of a log: only its frame is held, the rows
+/// from `first` to `last` being whatever the host has logged.
+pub fn check_frame(
+    name: &str,
+    screen: &str,
+    release: &str,
+    first: usize,
+    last: usize,
+) -> Result<(), String> {
+    let frame: Vec<&str> = screen
+        .lines()
+        .enumerate()
+        .map(|(i, line)| {
+            if (first..=last).contains(&(i + 1)) {
+                ""
+            } else {
+                line
+            }
+        })
+        .collect();
+    check(name, &format!("{}\n", frame.join("\n")), release)
 }
 
 /// Hold `screen` against the golden file `name`, or write the file
@@ -204,8 +230,8 @@ mod tests {
              Date and time  yyyy-mm-dd hh:mm UTC+hh:mm\n\
              The clock now shows yyyy-mm-dd hh:mm:ss UTC.\n\
              Uptime . . . . . . : 0 days hh:mm:ss\n\
-             Reference code . . : C2001090 Base ready: #.## s after the kernel started\n\
-             KVM  . . . . . . . : <of the host>\n\
+             Reference code . . : <not compared>\n\
+             KVM  . . . . . . . : <not compared>\n\
              logd       ready, process #\n\
              MAC 52:54:00:12:34:56 at 10.0.2.15/24, 671.0 MB, 30 s\n"
         );

@@ -15,7 +15,8 @@ a side effect of other work.
 | Storage | Storage pools are xfs file systems; virtual disks are raw files; software RAID as on QS/400, presented through a ublk block device |
 | Virtual Ethernet | VLAN-aware kernel bridges, tap devices with vhost-net |
 | Management | QSI server on TCP 2300 with mutual TLS; Service Tools console locally; nothing else listens |
-| Disk layout | GPT: ESP (slot A and B UKIs), an A/B record partition, `QSVSDATA` (xfs). Storage pools on other disks |
+| Disk layout | A load-source disk is GPT: ESP (slot A and B UKIs), a record partition, `QSVSDATA`. One disk, or two mirrored: each then has its own ESP and record, and `QSVSDATA` is one xfs on a protected set over the two. Storage pools on other disks |
+| Local console | Service Tools on the display and the serial port, each its own session; the installer on both at once. QS/400's `console` and screen kit |
 | Identity | Release `V1R0M0` from `VERSION` (`1.0.0`). Fixes `QVnnnnn`. Message prefix `QVS`. Environment prefix `QSVS_`. Kernel command-line keys `qsvs.` |
 
 ## Each in a sentence or two
@@ -68,12 +69,70 @@ on the local display and the serial port covers what must work before
 the network does: host basics, networking and disks. Nothing else
 listens on the network.
 
-**Disk layout.** The boot disk is GPT: the ESP with both slots' UKIs; a
-small partition holding the A/B record (two copies with a sequence and a
-CRC, QS/400's neutral `abrec` under QS/VS's magic `QSVSREC` and its own
-partition type); and `QSVSDATA`, an xfs for the host's own state,
-mounted at `/data`. Storage pools live on other disks, so the host can
-be reinstalled without touching a partition's data.
+**Disk layout.** The disk a host starts from is its load source. It is
+GPT: the ESP with both slots' UKIs; a small partition holding the A/B
+record (two copies with a sequence and a CRC, QS/400's neutral `abrec`
+under QS/VS's magic `QSVSREC` and its own partition type); and
+`QSVSDATA`, an xfs for the host's own state, mounted at `/data`.
+Storage pools live on other disks, so the host can be reinstalled
+without touching a partition's data.
+
+**The mirrored load source.** The load source is one disk, or two with
+mirrored protection; parity is for storage pools, later. The firmware
+must be able to start the host from either disk alone, so nothing the
+firmware or PID 1 reads before the protected set is up can be inside
+it:
+
+- Each disk has its own ESP with both slots' UKIs, and the firmware has
+  a boot entry for each slot of each disk. `BootOrder` names the
+  default slot on the first disk, then on the second, then the other
+  slot on each.
+- Each disk has its own record partition. The A/B record is the copy
+  with the highest valid sequence on either disk, and a write goes to
+  both with one sequence, so a disk that was away is brought level at
+  the next write.
+- `QSVSDATA` is one xfs. Unprotected, it is the data partition.
+  Mirrored, it is on a protected set over the two disks' data
+  partitions: QS/400's `protect`, served to the kernel as a block
+  device through `ublk` by the storage service, `qsvsstgd`.
+
+`protect` keeps nothing on a member that says what it is, so the host
+records the set itself, in the record partition of every disk and
+outside the set (`lic/hostdisk/src/set.rs`): the set's identity and
+size, each member by the GUID of its data partition with its state and
+the location code and serial number its disk had, and whether the set
+was stopped in order. Beside it is the map of a resynchronization under
+way, so a power loss does not start one over. The record partition so
+holds three records, each as two copies under `abrec`: the A/B record,
+the set's label, the resume map.
+
+The storage service is the first of the service table. It assembles the
+set, names the device, and only then does PID 1 mount `/data`; at a
+shutdown `/data` is unmounted before the service is ended, and the
+service marks the label clean as its last act. A label found open at
+an IPL means the host was cut off while it ran: the two members may
+differ in whatever was being written, so the second is written again
+from the first (a resynchronization; the map lets it go on from where a
+further power loss stopped it). A member that is missing or failed is
+recorded as such on the other before the host goes on, the host runs on
+the one, and an attention code is posted at every IPL while that lasts.
+A member that comes back, or a disk put in its place, is written from
+the other while the host runs.
+
+The device is added so that it outlives its server
+(`ublk`'s recovery): when the storage service ends without stopping
+it, the kernel holds the requests to `/data` and the next server takes
+them over, and a file system mounted on it stays mounted. PID 1
+restarts the service by the rules of every service. When those end the
+restarts, `/data` has no server: that is the fatal code `B2003000`
+(`docs/REFCODES.md`).
+
+Two things follow that an operator should know. After a power loss the
+whole data partition is written again, not only what was in flight:
+there is no write-intent bitmap. And a mirrored pair has no third
+party: if each disk is started alone in turn, each records the other as
+missing, and when both are back the one whose record is newer wins and
+the other is written from it.
 
 **The slot rule.** A slot is chosen by firmware boot entry, as QS/400
 chooses its own: there is a `Boot####` entry for each slot's UKI,
@@ -98,9 +157,34 @@ reserved bytes. Version 1 was Phase 0's four bytes, which nothing ever
 read; a copy of that version is not a valid copy, and PID 1 writes a new
 record for the slot it booted from when it finds no valid one.
 
+**The local console.** A person at the machine has the display and the
+first serial port. Both are QS/400's `console`: the 24x80 grid, drawn on
+the framebuffer with its own font and on a serial terminal with ANSI
+sequences, with its field editor and its keys. The screens are built
+with QS/400's screen kit. The installer shows one set of screens on
+both at once. On a running host the Service Tools console service gives
+each its own session: the display shows the status screen until Enter
+is pressed; the serial port stays PID 1's, with reference codes and the
+status screen as lines, until Enter is pressed there, and is PID 1's
+again at sign-off. The console edits no state file: it asks the network
+service for a network change, which is tried and taken back if it does
+not work, PID 1 for the host's settings and for power, and the storage
+service for the disks. Service tools users are its own
+(`docs/SERVICETOOLS.md`).
+
+**Installation.** The media UKI carries `qsvs.install=1`, and PID 1
+then runs the installer in place of the service table. The ISO carries
+the two slots' UKIs and a manifest of them signed with the build's key;
+the installer's initramfs holds the public key, and media that does not
+verify is refused before anything is written (`docs/INSTALL.md`). The
+host's identity, a key pair and a self-signed certificate, is made at
+the first IPL of what was installed.
+
 **The base crates.** What every Quartz appliance needs under its own
 services is in `base/`: the appliance description, state, supervision,
-logging, the management network with time, and the seed. These were to
+logging, the management network with time, the seed, and since Phase 2
+the installer's screens, the panels every service console has, service
+tools users and the host's identity. These were to
 live in the QS/MC repository; that repository is still empty, so they
 are written here and QS/MC will pin them from this repository, as this
 repository pins QS/400's. Everything under `base/` is therefore
@@ -111,8 +195,11 @@ QS/VS name outside its tests and comments, and no `base/` crate depends
 on a crate of `lic/`. A test fails the build otherwise
 (`tools/build/src/host/neutral.rs`, also a row of `build doctor`). The
 QS/VS side is thin: `lic/release` has the description, `lic/refcode`
-says which reference code each base event is, and `qsvslogd` and
-`qsvsnetd` are the base services run as QS/VS.
+says which reference code each base event is, `qsvslogd` and
+`qsvsnetd` are the base services run as QS/VS, `lic/qsvsinstall` is the
+installer's disks, media and state under the base screens, and
+`svc/tools` is QS/VS's menu, system status and disk units over the
+base panels.
 
 **Identity.** The release is `V1R0M0`, from `VERSION` (`1.0.0`), through
 QS/400's `vrm`. Fixes are numbered `QVnnnnn`, messages are prefixed
@@ -123,7 +210,8 @@ kernel command-line key `qsvs.`.
 
 - The build pipeline is QS/400's `buildkit`, a git dependency pinned by
   revision with `vrm`, `diskimg` and `abrec`, all at one commit
-  (`docs/PHASE0.md`). `tools/build` is a clap enum over it and the QS/VS
+  (`docs/PHASE0.md`). The console, the screen kit, the users, the
+  protection engine and `ublk` are QS/400's too, at the same commit. `tools/build` is a clap enum over it and the QS/VS
   `Product` description.
 - Builds are reproducible: fixed `SOURCE_DATE_EPOCH` and
   `KBUILD_BUILD_*`, a deterministic cpio, fixed GPT GUIDs, FAT volume id

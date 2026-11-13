@@ -13,6 +13,10 @@ use supervise::control::{Control, HostStatus, serve};
 
 use super::{Host, Kind};
 
+/// How long a request waits for a state file to be written: less than
+/// a client of the control socket waits for its answer.
+const WRITE_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+
 impl Control for Host {
     fn status(&mut self) -> HostStatus {
         self.status_now()
@@ -82,8 +86,17 @@ impl Host {
             ntp_servers,
         };
         host.validate()?;
-        let store = state::Store::at(std::path::Path::new(release::DATA_DIR).join("state"));
-        store.save(&host).map_err(|e| e.to_string())?;
+        // Written by another thread and waited for a moment only: this
+        // loop must never wait on /data (see `refresh_inventory`).
+        let (done, written) = std::sync::mpsc::channel();
+        let to_write = host.clone();
+        std::thread::spawn(move || {
+            let store = state::Store::at(std::path::Path::new(release::DATA_DIR).join("state"));
+            let _ = done.send(store.save(&to_write).map_err(|e| e.to_string()));
+        });
+        written
+            .recv_timeout(WRITE_WAIT)
+            .map_err(|_| "the data file system does not answer".to_string())??;
         let _ = rustix::system::sethostname(name.as_bytes());
         self.facts.host = name;
         self.facts.zone = host.zone();

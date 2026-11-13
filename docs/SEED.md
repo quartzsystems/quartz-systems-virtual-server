@@ -4,9 +4,9 @@ How a host gets its first configuration before there is a console to
 enter it on, and how a test gets any. The code is `base/seed`; the label
 comes from the appliance (`QSVSSEED` for QS/VS, `lic/release`).
 
-This format is the start of the unattended-install answers file of
-Phase 2: an installer's answers will be further tables of a later
-`schema_version`, beside the two here.
+The same file, with one more table, is the answers file of an
+unattended installation: `[install]`, from `schema_version = 2`. The
+installer reads it from the same volume (`docs/INSTALL.md`).
 
 ## When a seed is read
 
@@ -30,10 +30,15 @@ clock is set, before the state files are read:
 
 A seed is applied once. The volume can stay attached: step 1 stops the
 search from then on. To seed a host again, `host.toml` has to go, which
-nothing in Phase 1 does.
+nothing does.
 
-Nothing but a seed writes `host.toml` in Phase 1, so a host that came up
-without a seed volume can be given one later: the next IPL reads it.
+An installed host is configured from its first IPL: the installer wrote
+`host.toml`, from what the operator typed or from the answers file. A
+seed volume attached to it later is not read. A host that was not
+installed (the built disk image, which the suites boot) has no
+`host.toml` until a seed or Service Tools writes one, so it can be given
+a seed volume later: the next IPL reads it. A running host reads the
+`[host]` and `[network]` tables of a seed and leaves `[install]` alone.
 What the host keeps for itself is in other files (`identity.toml`, the
 serial number it derives when the firmware gives none, and
 `inventory.toml`), and they do not make it configured.
@@ -60,8 +65,9 @@ vlan = 100
 dns = ["192.0.2.53"]
 ```
 
-`schema_version` is required and is `1`. A file of a newer version is
-refused, as a state file is.
+`schema_version` is required and is `1` or `2`. A file of a newer
+version is refused, as a state file is. Version 2 is version 1 with the
+`[install]` table allowed; a file that has that table says 2.
 
 Each table has exactly the keys of the state file it becomes, and is
 checked by that file's own rules (`base/state/src/doc/`). A table left
@@ -91,7 +97,50 @@ it.
 | `vlan` | the 802.1Q VLAN ID, 1 to 4094; the interface is then `<device>.<id>` | none |
 | `dns` | name servers, IPv4 or IPv6; with DHCP they come before the lease's | none |
 
-IPv6 is link-local only in Phase 1 and has no keys.
+IPv6 is link-local only and has no keys.
+
+### `[install]`, the answers of an unattended installation
+
+```toml
+schema_version = 2
+
+[install]
+disks = ["S4EVNX0M702341", "P0000-B03-D00-F0-U1"]
+protection = "mirrored"
+user_id = "ADMIN"
+password_hash = "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$..."
+
+[host]
+name = "vs-01"
+
+[network]
+mode = "dhcp"
+```
+
+| Key | Value | Default |
+|---|---|---|
+| `disks` | the load-source disks: one, or two for mirrored protection. Each is a disk's serial number or its location code (`docs/LOCATION.md`), whichever names exactly one disk of the machine | required |
+| `protection` | `none` or `mirrored` | `none` for one disk, `mirrored` for two |
+| `user_id` | the first service tools user ID: 1 to 10 letters and digits | required |
+| `password_hash` | the hash of that user's password, an Argon2id PHC string. The password itself is never in the file | required |
+
+The installer holds the table against the machine before it writes
+anything: each disk must be there and large enough, two disks must
+differ, the protection must fit the number of disks, the user ID must be
+one and the hash must be an Argon2id hash. Anything else stops it on a
+screen that says what is wrong (`docs/INSTALL.md`).
+
+A password hash is made by any Argon2id tool that writes the PHC string
+form, with a salt of its own; for example, with the `argon2` command of
+the reference implementation:
+
+```
+printf '%s' 'the password' | argon2 "$(head -c 16 /dev/urandom | base64)" -id -e
+```
+
+The installer does not check the password's rules, since it never sees
+the password: the rules of `docs/SERVICETOOLS.md` are the operator's to
+keep here.
 
 ## Making a seed volume
 
@@ -99,4 +148,6 @@ Any FAT volume labelled `QSVSSEED` with `seed.toml` in its root: a USB
 stick formatted on any system, or an image file given to a virtual
 machine as a disk. The conformance harness makes one with QS/400's
 `diskimg::fat` (`tools/conformance/src/qemu/image.rs`, `seed_volume`):
-31 MiB of FAT16, the file under its long name.
+31 MiB of FAT16, the file under its long name. Its answers files, for
+the unattended suites, are written by `answers` in
+`tools/conformance/src/suite/install/mod.rs`.

@@ -657,12 +657,48 @@ impl LogPanel {
         lines
             .into_iter()
             .filter(|l| l.severity >= self.least)
-            .map(|l| {
+            .flat_map(|l| {
                 let mark = ["   ", "W  ", "E  "][usize::from(l.severity.min(2))];
-                kit::fit(&format!("{}  {mark}{}", l.time, l.text), 78)
+                log_rows(&format!("{}  {mark}", l.time), &l.text)
             })
             .collect()
     }
+}
+
+/// The rows of one line of a log: its head, then its text, which goes
+/// on under itself on further rows when it is longer than the screen.
+fn log_rows(head: &str, text: &str) -> Vec<String> {
+    let room = 78usize.saturating_sub(head.len()).max(20);
+    // Broken between words; a word longer than a row is cut.
+    let mut parts = vec![String::new()];
+    for word in text.split(|c: char| c.is_whitespace() || c.is_control()) {
+        let mut word: Vec<char> = word.chars().collect();
+        while !word.is_empty() {
+            let last = parts.last_mut().expect("never empty");
+            let used = last.chars().count();
+            let gap = usize::from(used > 0);
+            if used + gap + word.len() <= room {
+                last.push_str(&" ".repeat(gap));
+                last.extend(word.drain(..));
+            } else if used > 0 {
+                parts.push(String::new());
+            } else {
+                last.extend(word.drain(..room));
+            }
+        }
+    }
+    parts
+        .iter()
+        .enumerate()
+        .map(|(i, part)| {
+            let lead = if i == 0 {
+                head.to_string()
+            } else {
+                " ".repeat(head.len())
+            };
+            format!("{lead}{part}").trim_end().to_string()
+        })
+        .collect()
 }
 
 /// Rows of a log shown at once.
@@ -1080,6 +1116,21 @@ pub(crate) mod tests {
         assert!(warnings.contains("Code 30") && !warnings.contains("Code 31"));
         r.enter(&fields(&["7"]), &mut env);
         assert_eq!(message(&r, &mut env), "Show must be 1, 2 or 3.");
+
+        // A line longer than the screen goes on under itself.
+        let head = "2026-11-12 14:05  W  ";
+        let rows = log_rows(head, &"x".repeat(100));
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].len(), 78);
+        assert_eq!(rows[1], format!("{}{}", " ".repeat(21), "x".repeat(43)));
+        // It is broken between words, not in one.
+        let said = "tools: service tools user ADMIN signed on at the serial port after a while";
+        let rows = log_rows(head, said);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].ends_with("signed on at the serial"));
+        assert_eq!(rows[1].trim_start(), "port after a while");
+        assert!(rows.iter().all(|r| r.len() <= 78));
+        assert_eq!(log_rows("head  ", ""), ["head"]);
 
         let mut r: Runner<Fake, ()> = Runner::new(Box::new(power(true)));
         assert!(r.screen(&mut env).dump().contains("Confirm Restart"));

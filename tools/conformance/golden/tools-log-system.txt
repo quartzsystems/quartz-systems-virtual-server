@@ -1,0 +1,24 @@
+                               Display System Log
+                                                               System:  vs-test
+
+ Show: 1=All, 2=Warnings and errors, 3=Errors . : 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Enter=Show   F1=Help   F3=Exit   F7=Newer   F8=Older   F12=Cancel
+

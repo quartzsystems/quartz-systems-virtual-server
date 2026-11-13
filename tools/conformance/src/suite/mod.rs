@@ -186,15 +186,7 @@ impl Suite {
         };
         if media == Media::Iso {
             let iso = image(self.images.iso.as_ref(), "ISO")?;
-            done(vec![self.ipl(
-                "IPL from media",
-                &Launch {
-                    cdrom: Some(iso.to_path_buf()),
-                    ..self.base.clone()
-                },
-                "IPL from installation media (qsvs.install=1)",
-                true,
-            )?]);
+            done(vec![self.media(iso)?]);
             return Ok(reports);
         }
         if let Some(name) = only
@@ -215,6 +207,44 @@ impl Suite {
             }
         }
         Ok(reports)
+    }
+
+    /// The installation media: the IPL as PID 1 says it, and then the
+    /// installer's first screen in place of the service table.
+    fn media(&self, iso: &Path) -> Result<Report, HarnessError> {
+        let step = "IPL from media";
+        let launch = Launch {
+            cdrom: Some(iso.to_path_buf()),
+            ..self.base.clone()
+        };
+        let mut session = Session::spawn(&launch)?;
+        let deadline = Instant::now() + self.timeout;
+        let source = "IPL from installation media (qsvs.install=1)";
+        let outcome =
+            self.check(&mut session, source, false, deadline)
+                .and_then(|(detail, warning)| {
+                    session
+                        .screen("the installer's welcome", deadline, |grid| {
+                            grid.row(1).trim() == "Install QS/VS"
+                                && grid.contains("Press Enter to continue")
+                        })
+                        .map(|_| (format!("{detail}, then the installer's welcome"), warning))
+                });
+        let elapsed = session.elapsed();
+        session.kill();
+        match outcome {
+            Ok((detail, warning)) => Ok(Report {
+                name: step,
+                elapsed,
+                detail,
+                warning,
+            }),
+            Err(reason) => Err(HarnessError::Failed {
+                step,
+                reason,
+                log: std::mem::take(&mut session.log),
+            }),
+        }
     }
 
     /// Phase 0's disk suite, on the release image: slot A, then slot B.
@@ -388,7 +418,7 @@ mod tests {
 
     #[test]
     fn there_are_phase_0_s_suite_the_ten_of_the_base_system_and_the_thirteen_of_phase_2() {
-        assert_eq!(names().len(), 1 + 10 + 13);
+        assert_eq!(names().len(), 1 + 10 + 13 + 1);
         assert_eq!(
             names()[11..],
             [
@@ -404,7 +434,8 @@ mod tests {
                 "tools-sign-on",
                 "media-refused",
                 "answers-invalid",
-                "installed-base"
+                "installed-base",
+                "mirror-start"
             ]
         );
         assert_eq!(

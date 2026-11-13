@@ -65,6 +65,44 @@ fn change(
     )
 }
 
+/// A change to a VLAN nothing answers on: no address comes, so it is
+/// taken back. How long that took, and the management line after it.
+fn lost(
+    guest: &mut Guest<'_>,
+    before: &str,
+    deadline: Instant,
+) -> Result<(Duration, String), String> {
+    option(guest, 3, NETWORK, deadline)?;
+    let vlan = [None, None, None, None, None, None, Some("100"), None];
+    let started = Instant::now();
+    let trial = change(guest, &vlan, "is being tried", Duration::from_secs(10))?;
+    golden("tools-network-trial", &trial)?;
+    let restored = guest.screen(
+        "the change taken back",
+        Instant::now() + Duration::from_secs(50),
+        |grid| grid.contains("The new configuration was not kept."),
+    )?;
+    let took = started.elapsed();
+    golden("tools-network-restored", &restored)?;
+    if took < Duration::from_secs(28) || took > Duration::from_secs(40) {
+        return Err(format!(
+            "the change was taken back after {took:?}, not 30 s"
+        ));
+    }
+    let line = management(guest, DHCP_ADDRESS, Duration::from_secs(20))?;
+    if network_toml(guest)? != before {
+        return Err("network.toml was written by a change that was taken back".into());
+    }
+    if channel(guest)?
+        .ls("/sys/class/net")?
+        .iter()
+        .any(|l| l == "eth0.100")
+    {
+        return Err("eth0.100 is still there".into());
+    }
+    Ok((took, line))
+}
+
 /// Suite 9.
 pub fn network(run: &Run<'_>) -> Result<String, String> {
     let disks = installed(run, Kind::Single)?;
@@ -93,9 +131,8 @@ pub fn network(run: &Run<'_>) -> Result<String, String> {
     ];
     let shown = change(&mut guest, &fixed, kept, Duration::from_secs(20))?;
     golden("tools-network-kept", &shown)?;
-    if let Err(e) = management(&mut guest, STATIC_LINE, Duration::from_secs(10)) {
-        return Err(super::with_log(&mut guest, e));
-    }
+    management(&mut guest, STATIC_LINE, Duration::from_secs(10))
+        .map_err(|e| super::with_log(&mut guest, &e))?;
     let written = network_toml(&mut guest)?;
     if !written.contains("mode = \"static\"") || !written.contains("10.0.2.15/24") {
         return Err(format!(
@@ -131,35 +168,7 @@ pub fn network(run: &Run<'_>) -> Result<String, String> {
     guest.type_keys(key::ENTER)?;
     titled(&mut guest, MAIN_MENU, deadline)?;
 
-    // A VLAN nothing answers on: no address, so the change is taken back.
-    option(&mut guest, 3, NETWORK, deadline)?;
-    let vlan = [None, None, None, None, None, None, Some("100"), None];
-    let started = Instant::now();
-    let trial = change(&mut guest, &vlan, "is being tried", Duration::from_secs(10))?;
-    golden("tools-network-trial", &trial)?;
-    let restored = guest.screen(
-        "the change taken back",
-        Instant::now() + Duration::from_secs(50),
-        |grid| grid.contains("The new configuration was not kept."),
-    )?;
-    let took = started.elapsed();
-    golden("tools-network-restored", &restored)?;
-    if took < Duration::from_secs(28) || took > Duration::from_secs(40) {
-        return Err(format!(
-            "the change was taken back after {took:?}, not 30 s"
-        ));
-    }
-    let line = management(&mut guest, DHCP_ADDRESS, Duration::from_secs(20))?;
-    if network_toml(&mut guest)? != before {
-        return Err("network.toml was written by a change that was taken back".into());
-    }
-    if channel(&mut guest)?
-        .ls("/sys/class/net")?
-        .iter()
-        .any(|l| l == "eth0.100")
-    {
-        return Err("eth0.100 is still there".into());
-    }
+    let (took, line) = lost(&mut guest, &before, deadline)?;
     let now = netd_pid(&mut guest)?;
     if now != pid {
         return Err(format!("netd was restarted: process {pid}, now {now}"));
@@ -216,7 +225,7 @@ fn manage_users(guest: &mut Guest<'_>, deadline: Instant) -> Result<(), String> 
         grid.message() == format!("User ID {SECOND} added.")
     }) {
         Ok(listed) => listed,
-        Err(e) => return Err(super::with_log(guest, e)),
+        Err(e) => return Err(super::with_log(guest, &e)),
     };
     if !listed.contains(SECOND) {
         return Err(format!("the list lacks {SECOND}:\n{listed}"));

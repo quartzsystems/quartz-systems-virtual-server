@@ -46,8 +46,8 @@ pub mod command {
     /// `load <megabytes>`: write and sync a file of that size under
     /// `/data`, again and again, until `load 0`.
     pub const LOAD: &str = "load";
-    /// `sum <path>`: the SHA-256-free check of a file: its length and
-    /// the sum of its bytes.
+    /// `sum <path>`: a file's length and the sum of its bytes, which
+    /// is enough to tell a file the load wrote from one that is torn.
     pub const SUM: &str = "sum";
 }
 

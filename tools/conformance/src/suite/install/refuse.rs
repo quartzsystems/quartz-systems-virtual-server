@@ -64,7 +64,7 @@ pub fn media(run: &Run<'_>) -> Result<String, String> {
         grid.row(1).trim() == TITLE && grid.contains("This installation media is refused")
     })?;
     golden("install-media-refused", &shown)?;
-    if !shown.contains("not signed by a key this installer trusts") {
+    if !shown.contains("The manifest is not signed by a key this installer trusts.") {
         return Err(format!("the refusal does not say why:\n{shown}"));
     }
     // Enter does not go on to an installation; F3 leaves.

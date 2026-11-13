@@ -1,0 +1,24 @@
+                               Confirm Power Off
+                                                               System:  vs-test
+
+ The host will shut down in order and power off.
+
+ Its services are stopped, its disks left clean. Every partition
+ that runs on this host ends with it.
+
+ Press F10 to confirm, or F12 to go back.
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F10=Confirm   F12=Cancel
+

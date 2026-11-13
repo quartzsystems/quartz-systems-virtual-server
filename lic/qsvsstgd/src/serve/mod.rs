@@ -9,6 +9,7 @@
 //! in a member's place. With an unprotected load source there is no
 //! set: it names the data partition and answers status.
 
+mod guard;
 mod journal;
 mod prepare;
 
@@ -28,8 +29,9 @@ use qsvsstgd::{DATA_DEVICE, MIRRORED, NONE, Request, SOCKET, Status, Storage, Un
 use refcode::post::remote;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use supervise::signal::{Signals, TERM};
-use ublk::{BlockTarget, Device, Options};
+use ublk::{Device, Options};
 
+use guard::{Guarded, Recorded};
 use journal::Journal;
 
 /// The device number this boot's set has: a server that starts and
@@ -39,6 +41,9 @@ const DEVICE_ID: &str = "/run/qsvsstgd.id";
 const DISK_WAIT: Duration = Duration::from_secs(10);
 /// Megabytes copied between two looks at the socket and the signals.
 const STEP_CHUNKS: u64 = 16;
+/// How long a copy stands back, after each megabyte, while the host
+/// has transfers of its own under way.
+const GIVE_WAY: Duration = Duration::from_millis(20);
 
 fn text(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -99,6 +104,8 @@ struct Core {
     inventory: Vec<(String, String, String)>,
     label: Option<SetLabel>,
     set: Option<MirrorSet>,
+    /// The states the label on the disks has, for the device's transfers.
+    recorded: Arc<Recorded>,
     device: Option<Device>,
     /// What `/data` is mounted from.
     data: Option<PathBuf>,
@@ -140,6 +147,7 @@ impl Core {
             inventory: Vec::new(),
             label: None,
             set: None,
+            recorded: Arc::default(),
             device: None,
             data: None,
             work: None,
@@ -184,7 +192,9 @@ impl Core {
             });
         }
         let set = MirrorSet::open(*label.id.as_bytes(), label.blocks, members).map_err(text)?;
-        let target = Arc::new(BlockTarget(set.clone()));
+        // The label as read is what the disks say of the members now.
+        core.recorded.set(guard::states(&set));
+        let target = Arc::new(Guarded::new(set.clone(), Arc::clone(&core.recorded)));
         let device = match kept {
             Some(id) => Device::recover(id, target),
             None => Device::start_with(target, Options { recovery: true }),
@@ -262,6 +272,7 @@ impl Core {
             }
         }
         if !force && self.label.as_ref() == Some(&label) {
+            self.recorded.set(guard::states(set));
             return;
         }
         let written = disks::labels(&self.sources)
@@ -270,6 +281,8 @@ impl Core {
         if let Err(e) = written {
             eprintln!("the set's label was not written: {e}");
         }
+        // Transfers that waited for this go on.
+        self.recorded.set(guard::states(set));
         self.label = Some(label);
     }
 
@@ -353,10 +366,12 @@ impl Core {
     fn events(&mut self) {
         let Some(set) = &self.set else { return };
         let events = set.drain_events();
+        // Every look brings the label level: a transfer that changed a
+        // member's state waits for it.
+        self.write_label(false);
         if events.is_empty() {
             return;
         }
-        self.write_label(false);
         let units = self.units();
         for event in events {
             match event {
@@ -435,7 +450,20 @@ impl Core {
         }
         let Some(work) = &mut self.work else { return };
         let mut journal = Journal::on(&self.sources);
-        match set.resume_step(&mut work.resume, &mut journal, STEP_CHUNKS) {
+        // A megabyte at a time: each is copied with the set held, and
+        // the host's own transfers go between them, not behind them all.
+        let mut step = set.resume_step(&mut work.resume, &mut journal, 1);
+        for _ in 1..STEP_CHUNKS {
+            if !matches!(&step, Ok(progress) if !progress.complete) {
+                break;
+            }
+            let give_up = Instant::now() + GIVE_WAY;
+            while self.recorded.busy() && Instant::now() < give_up {
+                std::thread::sleep(Duration::from_micros(200));
+            }
+            step = set.resume_step(&mut work.resume, &mut journal, 1);
+        }
+        match step {
             Ok(progress) if progress.complete => {
                 let (code, member) = match work.kind {
                     Kind::Resync => (&refcode::RESYNC_FINISHED, work.member),

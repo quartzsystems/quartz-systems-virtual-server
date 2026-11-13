@@ -113,6 +113,21 @@ pub fn refused<'a>(reason: String) -> Runner<Env<'a>, Outcome> {
     }))
 }
 
+/// A reason as a screen words it: a capital first, unless it starts
+/// with a file's name, and a full stop last.
+fn sentence(reason: &str) -> String {
+    let named = reason.split(' ').next().is_some_and(|w| w.contains('.'));
+    let mut chars = reason.chars();
+    let first = match chars.next() {
+        Some(c) if !named => c.to_uppercase().collect::<String>(),
+        Some(c) => c.to_string(),
+        None => String::new(),
+    };
+    let rest = chars.as_str();
+    let stop = if rest.ends_with('.') { "" } else { "." };
+    format!("{first}{rest}{stop}")
+}
+
 /// Break `text` into lines of at most `width` characters, at spaces.
 fn wrap(text: &str, width: usize) -> Vec<String> {
     let mut lines = vec![String::new()];
@@ -146,7 +161,7 @@ impl<'a> Panel<Env<'a>, Outcome> for Stopped {
 
     fn render(&self, env: &mut Env<'a>) -> Screen {
         let mut lines = vec![self.heading.to_string(), String::new()];
-        lines.extend(wrap(&self.reason, 74));
+        lines.extend(wrap(&sentence(&self.reason), 74));
         kit::page(&env.title(), &env.system(), &lines, self.keys)
     }
 
@@ -1133,7 +1148,11 @@ pub(crate) mod tests {
         let mut r = stopped("seed.toml: [install]: there is no disk SER-X".into());
         let shown = text(&r, &mut env);
         assert!(shown.contains("cannot be used"));
-        assert!(shown.contains("there is no disk SER-X"));
+        assert!(shown.contains("seed.toml: [install]: there is no disk SER-X."));
+        assert_eq!(
+            sentence("the media is of another release"),
+            "The media is of another release."
+        );
         enter(&mut r, &mut env, &[""]);
         assert_eq!(r.top(), "install-welcome");
 

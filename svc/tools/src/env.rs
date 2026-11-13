@@ -121,15 +121,14 @@ impl Env {
     pub fn note(&mut self, key: &str, value: &str) {
         let _ = self.control.note(key.to_string(), value.to_string());
     }
+}
 
-    /// A record's time in the display zone, to the minute.
-    fn time(&self, value: &serde_json::Value) -> String {
-        let zone = self.zone();
-        value["time"]
-            .as_str()
-            .and_then(parse_rfc3339)
-            .map_or_else(String::new, |secs| zone.display(secs)[..16].to_string())
-    }
+/// A record's time in the display zone `zone`, to the minute.
+fn stamp(zone: Zone, value: &serde_json::Value) -> String {
+    value["time"]
+        .as_str()
+        .and_then(parse_rfc3339)
+        .map_or_else(String::new, |secs| zone.display(secs)[..16].to_string())
 }
 
 /// The lines of the log files named, newest first, at most
@@ -347,10 +346,11 @@ impl Host for Env {
     }
 
     fn history(&mut self) -> Vec<LogLine> {
+        let zone = self.zone();
         log(&["refcodes.ndjson"], |v| {
             let code = v["code"].as_str()?;
             Some(LogLine {
-                time: self.time(v),
+                time: stamp(zone, v),
                 severity: match code.as_bytes().first() {
                     Some(b'A') => 1,
                     Some(b'B') => 2,
@@ -362,9 +362,10 @@ impl Host for Env {
     }
 
     fn system_log(&mut self) -> Vec<LogLine> {
+        let zone = self.zone();
         log(&["system.ndjson", "system.1.ndjson"], |v| {
             Some(LogLine {
-                time: self.time(v),
+                time: stamp(zone, v),
                 severity: match v["severity"].as_str()? {
                     "warning" => 1,
                     "error" => 2,

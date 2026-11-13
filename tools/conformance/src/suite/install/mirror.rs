@@ -193,6 +193,78 @@ pub fn replace(run: &Run<'_>) -> Result<String, String> {
     ))
 }
 
+/// Beyond the thirteen: mirrored protection started on an unprotected
+/// load source from Service Tools, with a second disk. It takes effect
+/// at the next IPL, which assembles the set and writes the new unit.
+pub fn start(run: &Run<'_>) -> Result<String, String> {
+    let disks = installed(run, Kind::Single)?;
+    let second = run.file("second.img");
+    image::blank(&second, DISK_BYTES)?;
+    let both = [Some(disks[0].as_path()), Some(second.as_path())];
+    let mut launch = machine(run, &both);
+    launch.keys = true;
+    let mut guest = boot(run, &launch)?;
+    let deadline = run.deadline();
+    put_marker(&mut guest)?;
+    sign_on(&mut guest, USER, PASSWORD, deadline)?;
+    let units = option(&mut guest, 2, DISK_UNITS, deadline)?;
+    golden("tools-disks-unprotected", &units)?;
+    guest.type_keys(&format!("1{}", key::ENTER))?;
+    guest.screen("the disks to choose from", deadline, |grid| {
+        grid.contains("to mirror the load source with")
+    })?;
+    guest.type_keys(&format!("1{}", key::ENTER))?;
+    super::titled(&mut guest, "Confirm Erase of Disk", deadline)?;
+    guest.type_keys(key::F10)?;
+    let prepared = guest.screen(
+        "the disk prepared",
+        Instant::now() + REBUILD_WITHIN,
+        |grid| grid.contains("Mirrored protection starts at the next IPL"),
+    )?;
+    golden("tools-disk-protect", &prepared)?;
+    super::in_history(
+        &mut guest,
+        &refcode::PROTECTION_STARTED,
+        "unit 2",
+        run.deadline(),
+    )?;
+    // Until the IPL the host runs on the partition as before.
+    let status = channel(&mut guest)?.status()?;
+    let data = fact_of(&status, fact::DATA)?.to_string();
+    if data.starts_with("/dev/ublkb") {
+        return Err(format!("/data moved to {data} without an IPL"));
+    }
+    guest.type_keys(key::ENTER)?;
+    power_off(&mut guest)?;
+    drop(guest);
+
+    // The next IPL: the set, with the new unit written from the first.
+    let mut guest = boot(run, &machine(run, &both))?;
+    let served = served(&mut guest)?;
+    guest.seen(&posted_code(&refcode::SET_ASSEMBLED), run.deadline())?;
+    let storage = protected(&mut guest, REBUILD_WITHIN)?;
+    check_marker(&mut guest)?;
+    power_off(&mut guest)?;
+    drop(guest);
+    for disk in [&disks[0], &second] {
+        let label = on_disk(disk)?.label.ok_or("a disk has no set label")?;
+        if !label.clean || !label.protected() {
+            return Err(format!("after it all a label is {label:?}"));
+        }
+    }
+    Ok(format!(
+        "an unprotected load source on {data} given a second disk from Service Tools option 2: \
+         prepared while the host ran, `{}` posted; at the next IPL /data is on {served}, unit 2 \
+         was written from unit 1 and both are {}; what was on /data before is there",
+        refcode::PROTECTION_STARTED.line(),
+        storage.units[1].state
+    ))
+}
+
+fn posted_code(code: &refcode::RefCode) -> String {
+    crate::suite::base::posted(code, "")
+}
+
 /// The lines of the load's list: the files it wrote whole.
 fn load_done(guest: &mut Guest<'_>) -> Result<Vec<(u64, u64)>, String> {
     let text = channel(guest)?.text("/data/load/done").unwrap_or_default();

@@ -11,13 +11,17 @@ basics, networking and disks.
 
 ## Status
 
-Phase 1, the base system. A clean clone builds a reproducible, bootable
-image whose PID 1 runs the IPL in order, supervises a fixed table of
-services (logging, the management network and time), keeps its state on
-`QSVSDATA`, takes an inventory of the host, confirms the slot it booted
-from and shuts down in order. There is no VMM, no installer and no
-Service Tools console yet. See `docs/PHASE1.md`; Phase 0, the toolchain,
-is `docs/PHASE0.md`.
+Phase 2: QS/VS installs on a blank machine and is configured by a
+person. A clean clone builds a reproducible image and an installation
+ISO. The ISO's installer, on the display and the serial port, writes a
+load source on one disk or mirrors it over two; an answers file makes
+it unattended. The installed host runs the IPL in order, supervises its
+services (storage, logging, the management network and time, the
+Service Tools console), keeps its state on `QSVSDATA`, starts from
+either disk of a mirrored pair, and is configured from Service Tools.
+There is no VMM, storage pool or virtual Ethernet yet. See
+`docs/PHASE2.md`; the base system is `docs/PHASE1.md`, the toolchain
+`docs/PHASE0.md`.
 
 ## Building
 
@@ -33,7 +37,7 @@ cargo run -p build -- test --media iso
 
 The outputs are under `target/images/` (or `$QSVS_TARGET_DIR/images/`):
 the three UKIs, the disk image, the installation ISO and the signed
-manifest. `--test-image` builds the same with the test hooks the base
+manifest. `--test-image` builds the same with the test hooks the
 suites need, under `target/test-image/`; it is never shipped.
 
 ## Documents
@@ -41,6 +45,9 @@ suites need, under `target/test-image/`; it is never shipped.
 - `docs/ARCHITECTURE.md`: the locked decisions.
 - `docs/PHASE0.md`: what Phase 0 built, and the evidence.
 - `docs/PHASE1.md`: what Phase 1 built, and the evidence.
+- `docs/PHASE2.md`: what Phase 2 built, and the evidence.
+- `docs/INSTALL.md`: installing a host, attended and unattended.
+- `docs/SERVICETOOLS.md`: the Service Tools console, panel by panel.
 - `docs/REFCODES.md`: host reference codes.
 - `docs/SEED.md`: the first configuration of a host, `seed.toml`.
 - `docs/LOCATION.md`: the location codes of the inventory.

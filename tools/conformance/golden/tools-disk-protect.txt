@@ -1,0 +1,24 @@
+                              Work with Disk Units
+                                                               System:  vs-test
+
+ Unit  Location                Serial                  Size  State
+    1  P0000-B00-D10-F0        QSVSHD0             671.0 MB  Unprotected
+
+ The disk is prepared. Mirrored protection starts at the next IPL:
+ restart the host from the main menu when it suits.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Enter=Continue   F1=Help
+

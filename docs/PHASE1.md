@@ -365,8 +365,8 @@ the evidence above:
   carrier, and the DMI slot records the location codes are derived from
   (QEMU's machine has none, so every code seen was of the PCI address
   form; the slot form is unit-tested only).
-- `BLOCKED(phase1)`: named time zones wait for the Service Tools console of Phase 2; fixed offsets until then (`docs/OPEN_QUESTIONS.md` item 9).
-- `BLOCKED(phase1)`: QS/400's `netlink` still carries its own route protocol number and table name; to change there, then move the pin (`docs/OPEN_QUESTIONS.md` item 13).
+- `BLOCKED(phase1)`: named time zones wait for the Service Tools console of Phase 2; fixed offsets until then (`docs/OPEN_QUESTIONS.md` item 9). Decided in Phase 2: fixed offsets only, in V1.
+- `BLOCKED(phase1)`: QS/400's `netlink` still carries its own route protocol number and table name; to change there, then move the pin (`docs/OPEN_QUESTIONS.md` item 13). Done in Phase 2, with the pin (`docs/PHASE2.md`).
 - `BLOCKED(phase1)`: nothing writes the other slot, sets a pending slot
   or `BootNext`; the suite does that from the host side. That is the
   update phase.
@@ -390,3 +390,12 @@ the evidence above:
 Not in Phase 1, and not started: the installer and the Service Tools
 console (Phase 2); software RAID; any VMM, storage pool or virtual
 Ethernet code; any network listener.
+
+Phase 2 changed three things this record describes. The status screen
+is the idle screen of the Service Tools console: on the serial port it
+is as here, with a last line that says how to sign on; the display
+shows it through the console's own renderer. The service table has two
+more services (`stgd` first, `tools` after `netd`), so the suites count
+six ready services where this record says four. And the installation
+media no longer runs the service table: `test --media iso` ends at the
+installer's first screen, not at two heartbeats (`docs/PHASE2.md`).

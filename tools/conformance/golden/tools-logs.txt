@@ -1,0 +1,24 @@
+                                  Display Logs
+                                                               System:  vs-test
+
+ Select one of the following:
+
+      1. Reference code history
+      2. System log
+
+
+
+
+
+
+
+
+
+
+
+
+ Selection
+
+
+ F1=Help   F3=Exit   F12=Cancel
+
