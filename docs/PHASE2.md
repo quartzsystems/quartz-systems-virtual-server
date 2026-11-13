@@ -242,8 +242,9 @@ finished (497 s). During the second, the Windows volume that holds the
 WSL virtual disk ran out of space and WSL failed with I/O errors. So
 two rows of the table have no evidence yet, and say so. Everything
 else below was measured the same day on the same host, suite by suite,
-from the working tree (WSL Ubuntu, kernel 6.18.33, 12 threads, Intel,
-`kvm_intel` nested = Y, Rust 1.98.0, QEMU 10.2.1, cargo-deny 0.20.2).
+from the working tree, on the host of `docs/PHASE1.md` (WSL Ubuntu,
+Intel, `kvm_intel` nested = Y; QEMU 10.2.1 and cargo-deny 0.20.2 by
+`doctor`).
 
 | # | Check | Result |
 |---|---|---|
