@@ -21,10 +21,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use hostdisk::gpt;
-use hostdisk::layout::{DATA_TYPE_GUID, RECORD_TYPE_GUID, SLOT_A_PATH, SLOT_B_PATH};
-use hostdisk::record::HostRecord;
-use hostdisk::set::{self, SetLabel};
+use loadsource::gpt;
+use loadsource::layout::{SLOT_A_PATH, data_type, record_type};
+use loadsource::record::HostRecord;
+use loadsource::set::{self, SetLabel};
+use release::{LOAD_SOURCE, SLOT_B_PATH};
 
 use super::base::{Guest, Run, SuiteFn, base_ready};
 use crate::qemu::term::Grid;
@@ -239,15 +240,12 @@ pub fn power_off(guest: &mut Guest<'_>) -> Result<(), String> {
 
 /// Wait until the mirrored load source is whole: both units active and
 /// nothing being copied.
-pub fn protected(guest: &mut Guest<'_>, within: Duration) -> Result<qsvsstgd::Status, String> {
+pub fn protected(guest: &mut Guest<'_>, within: Duration) -> Result<stgd::Status, String> {
     let deadline = Instant::now() + within;
     guest
         .channel(deadline)?
         .storage_until("both units in step", deadline, |s| {
-            s.protection == qsvsstgd::MIRRORED
-                && s.units.len() == 2
-                && s.whole()
-                && s.work.is_empty()
+            s.protection == stgd::MIRRORED && s.units.len() == 2 && s.whole() && s.work.is_empty()
         })
 }
 
@@ -347,12 +345,13 @@ pub fn on_disk(disk: &Path) -> Result<OnDisk, String> {
     };
     let esp = part(diskimg::layout::ESP_TYPE_GUID)?;
     let esp = read(esp.offset(), esp.bytes())?;
-    let records = part(RECORD_TYPE_GUID)?;
+    let records = part(record_type(&LOAD_SOURCE))?;
     let records = read(records.offset(), records.bytes())?;
     let label_at = usize::try_from(set::LABEL_OFFSET).unwrap_or(0);
+    let label_spec = set::label_spec(&LOAD_SOURCE);
     let label = abrec::AbPart::open(
-        set::LABEL_SPEC,
-        std::io::Cursor::new(records[label_at..label_at + 2 * set::LABEL_SPEC.slot_bytes].to_vec()),
+        label_spec,
+        std::io::Cursor::new(records[label_at..label_at + 2 * label_spec.slot_bytes].to_vec()),
     )
     .read()
     .ok()
@@ -360,10 +359,13 @@ pub fn on_disk(disk: &Path) -> Result<OnDisk, String> {
     Ok(OnDisk {
         slot_a: diskimg::fat::read_file(&esp, SLOT_A_PATH).map_err(|e| text(&e))?,
         slot_b: diskimg::fat::read_file(&esp, SLOT_B_PATH).map_err(|e| text(&e))?,
-        record: hostdisk::record::read_bytes(&records[..2 * hostdisk::record::SPEC.slot_bytes])
-            .map_err(|e| text(&e))?,
+        record: loadsource::record::read_bytes(
+            &LOAD_SOURCE,
+            &records[..2 * loadsource::record::spec(&LOAD_SOURCE).slot_bytes],
+        )
+        .map_err(|e| text(&e))?,
         label,
-        data_guid: part(DATA_TYPE_GUID)?.guid,
+        data_guid: part(data_type(&LOAD_SOURCE))?.guid,
     })
 }
 

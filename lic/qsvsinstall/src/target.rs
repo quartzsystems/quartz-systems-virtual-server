@@ -14,14 +14,15 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use abrec::Slot;
-use hostdisk::boot::{self, EFIVARS};
-use hostdisk::disks::{self, LoadSource};
-use hostdisk::layout::{SLOT_A_PATH, SLOT_B_PATH};
-use hostdisk::record::{self, HostRecord};
-use hostdisk::set::{BLOCK, Member, MemberState, SetLabel};
-use hostdisk::{prepare, sys};
 use install::{Answers, DiskChoice, Step, Target};
+use loadsource::boot::{self, EFIVARS};
+use loadsource::disks::{self, LoadSource};
+use loadsource::layout::SLOT_A_PATH;
+use loadsource::record::{self, HostRecord};
+use loadsource::set::{BLOCK, Member, MemberState, SetLabel};
+use loadsource::{prepare, sys};
 use panels::forms::LinkChoice;
+use release::{LOAD_SOURCE, SLOT_B_PATH};
 use rustix::mount::{MountFlags, UnmountFlags, mount, unmount};
 use state::{Host, Store};
 use uuid::Uuid;
@@ -120,7 +121,7 @@ impl QsVs {
             refcode::INSTALL_STARTED.text
         ));
         // An ESP with nothing in it: the slots are copied by their own steps.
-        let esp = prepare::esp_image(&[], &[])?;
+        let esp = prepare::esp_image(&LOAD_SOURCE, &[], &[])?;
         for disk in &answers.disks {
             let node = Path::new("/dev").join(&disk.name);
             let mut file = OpenOptions::new()
@@ -130,7 +131,7 @@ impl QsVs {
                 .map_err(|e| format!("{}: {e}", node.display()))?;
             let guids = prepare::guids_from(&[random()?, random()?, random()?, random()?]);
             let bytes = disks::disk_bytes(&disk.name);
-            prepare::write_table(&mut file, bytes, &esp, &guids, &mut |_, _| {})
+            prepare::write_table(&LOAD_SOURCE, &mut file, bytes, &esp, &guids, &mut |_, _| {})
                 .map_err(|e| format!("disk at {}: {e}", disk.location))?;
             file.sync_all().map_err(text)?;
             sys::reread_partitions(&file)
@@ -139,7 +140,7 @@ impl QsVs {
         let give_up = Instant::now() + Duration::from_secs(15);
         for disk in &answers.disks {
             loop {
-                if let Some(source) = disks::load_source(&disk.name) {
+                if let Some(source) = disks::load_source(&LOAD_SOURCE, &disk.name) {
                     self.sources.push(source);
                     break;
                 }
@@ -183,7 +184,7 @@ impl QsVs {
                 member(1, MemberState::Resuming),
             ],
         };
-        disks::labels(&self.sources)
+        disks::labels(&LOAD_SOURCE, &self.sources)
             .map_err(text)?
             .write(&label.encode())
             .map_err(text)?;
@@ -198,6 +199,7 @@ impl QsVs {
             .open(&first.data)
             .map_err(|e| format!("{}: {e}", first.data.display()))?;
         prepare::format_data(
+            &LOAD_SOURCE,
             &mut data,
             self.data_bytes(),
             Uuid::from_bytes(random()?),
@@ -233,7 +235,7 @@ impl QsVs {
     }
 
     fn record(&mut self) -> Result<(), String> {
-        let mut records = disks::records(&self.sources).map_err(text)?;
+        let mut records = disks::records(&LOAD_SOURCE, &self.sources).map_err(text)?;
         let (_, written) = record::write_all(&mut records, HostRecord::INITIAL).map_err(text)?;
         if written != self.sources.len() {
             return Err(format!(
@@ -248,7 +250,14 @@ impl QsVs {
     /// disks by their default path, so this does not fail the step.
     fn boot_entries(&mut self) {
         let esps: Vec<_> = self.sources.iter().map(|s| s.esp_at).collect();
-        if let Err(e) = boot::make_default(Path::new(EFIVARS), release::NAME, &esps, Slot::A) {
+        let made = boot::make_default(
+            Path::new(EFIVARS),
+            &LOAD_SOURCE,
+            release::NAME,
+            &esps,
+            Slot::A,
+        );
+        if let Err(e) = made {
             (self.log)(&format!(
                 "{} {}: {e}",
                 refcode::INSTALL_BOOT_NOT_WRITTEN.code,
@@ -341,7 +350,7 @@ impl Target for QsVs {
     }
 
     fn min_disk_bytes(&self) -> u64 {
-        hostdisk::layout::min_disk_bytes()
+        loadsource::layout::min_disk_bytes(&LOAD_SOURCE)
     }
 
     fn links(&mut self) -> Vec<LinkChoice> {

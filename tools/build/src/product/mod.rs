@@ -18,7 +18,8 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use buildkit::{Notices, Package, Product, UkiKind};
-use hostdisk::layout;
+use loadsource::layout;
+use release::LOAD_SOURCE;
 
 /// The PID 1 package, `/init` in every initramfs.
 pub const INIT: &str = "qsvsinit";
@@ -96,7 +97,7 @@ pub fn qsvs(image: Image) -> Result<Product> {
     Ok(Product {
         id: "qsvs",
         name,
-        vendor: layout::VENDOR,
+        vendor: LOAD_SOURCE.vendor,
         env_prefix: release::ENV_PREFIX,
         key_prefix: release::KEY_PREFIX,
         repo,
@@ -112,10 +113,10 @@ pub fn qsvs(image: Image) -> Result<Product> {
         uki_cmdline,
         initramfs,
         disk_bytes: layout::DEFAULT_DISK_BYTES,
-        disk_parts: layout::parts,
-        disk_guids: layout::fixed_guids,
-        esp_label: layout::ESP_LABEL,
-        esp_volume_id: layout::ESP_VOLUME_ID,
+        disk_parts: || layout::parts(&LOAD_SOURCE),
+        disk_guids: || layout::fixed_guids(&LOAD_SOURCE),
+        esp_label: LOAD_SOURCE.esp_label,
+        esp_volume_id: LOAD_SOURCE.esp_volume_id,
         media: Some(media::media),
         doctor: crate::host::doctor::rows,
         deny: &[],
@@ -182,7 +183,7 @@ mod tests {
         let p = qsvs(Image::Release).unwrap();
         assert_eq!((p.id, p.vendor), ("qsvs", "QSVS"));
         assert_eq!((p.env_prefix, p.key_prefix), ("QSVS_", "qsvs."));
-        assert_eq!(buildkit::image::disk::slot_b(&p), layout::SLOT_B_PATH);
+        assert_eq!(buildkit::image::disk::slot_b(&p), LOAD_SOURCE.slot_b_path);
         assert_eq!(buildkit::image::disk::SLOT_A, layout::SLOT_A_PATH);
         let spec = p.fat_spec(diskimg::fat::DISK_ESP).unwrap();
         assert_eq!(&spec.label, b"QSVS ESP   ");

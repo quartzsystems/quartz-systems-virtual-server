@@ -171,7 +171,7 @@ dependencies = [
  "diskimg",
  "ed25519-dalek",
  "hex",
- "hostdisk",
+ "loadsource",
  "release",
  "serde_json",
  "tracing",
@@ -297,15 +297,15 @@ dependencies = [
  "appliance",
  "diskimg",
  "hex",
- "hostdisk",
+ "loadsource",
  "netlink",
  "ntp",
  "qsvshook",
- "qsvsstgd",
  "refcode",
  "release",
  "seed",
  "state",
+ "stgd",
  "supervise",
  "svcusers",
  "thiserror",
@@ -680,17 +680,6 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-
-[[package]]
-name = "hostdisk"
-version = "0.1.0"
-dependencies = [
- "abrec",
- "diskimg",
- "rustix",
- "uuid",
- "vrm",
-]
 
 [[package]]
 name = "hostinv"
@@ -1072,6 +1061,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
+name = "loadsource"
+version = "0.1.0"
+dependencies = [
+ "abrec",
+ "appliance",
+ "diskimg",
+ "rustix",
+ "uuid",
+ "vrm",
+]
+
+[[package]]
 name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1254,10 +1255,10 @@ dependencies = [
  "hex",
  "hostinv",
  "netd",
- "qsvsstgd",
  "release",
  "rustix",
  "state",
+ "stgd",
  "supervise",
 ]
 
@@ -1268,18 +1269,18 @@ dependencies = [
  "abrec",
  "appliance",
  "diskimg",
- "hostdisk",
  "hostinv",
  "identity",
  "kvm-bindings",
  "kvm-ioctls",
+ "loadsource",
  "logd",
- "qsvsstgd",
  "refcode",
  "release",
  "rustix",
  "seed",
  "state",
+ "stgd",
  "supervise",
 ]
 
@@ -1293,9 +1294,9 @@ dependencies = [
  "diskimg",
  "ed25519-dalek",
  "hex",
- "hostdisk",
  "hostinv",
  "install",
+ "loadsource",
  "netd",
  "netlink",
  "panels",
@@ -1331,19 +1332,10 @@ dependencies = [
 name = "qsvsstgd"
 version = "0.1.0"
 dependencies = [
- "abrec",
- "blockdev",
- "diskimg",
- "hostdisk",
  "hostinv",
- "ipc",
- "protect",
  "refcode",
  "release",
- "rustix",
- "supervise",
- "ublk",
- "uuid",
+ "stgd",
 ]
 
 [[package]]
@@ -1355,12 +1347,12 @@ dependencies = [
  "hostinv",
  "netd",
  "panels",
- "qsvsstgd",
  "refcode",
  "release",
  "rustix",
  "serde_json",
  "state",
+ "stgd",
  "supervise",
  "svcusers",
  "users",
@@ -1797,6 +1789,23 @@ dependencies = [
  "serde",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "stgd"
+version = "0.1.0"
+dependencies = [
+ "abrec",
+ "appliance",
+ "blockdev",
+ "diskimg",
+ "ipc",
+ "loadsource",
+ "protect",
+ "rustix",
+ "supervise",
+ "ublk",
+ "uuid",
 ]
 
 [[package]]

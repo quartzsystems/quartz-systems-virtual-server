@@ -93,7 +93,7 @@ mod on_host {
 
     /// The disk a block device is, or is on.
     fn disk_of(device: &Path) -> String {
-        hostdisk::disks::disk_of(device).unwrap_or_else(|| {
+        loadsource::disks::disk_of(device).unwrap_or_else(|| {
             device
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())

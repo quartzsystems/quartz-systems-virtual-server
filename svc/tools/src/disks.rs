@@ -11,8 +11,8 @@ use console::Screen;
 use panels::tools::Confirm;
 use panels::ui;
 use panels::{Flow, Help, Named, Panel, PanelFlow, kit};
-use qsvsstgd::{MIRRORED, Status, Unit};
 use state::doc::inventory::Disk;
+use stgd::{MIRRORED, Status, Unit};
 
 use crate::env::Env;
 use crate::menu::Outcome;

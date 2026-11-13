@@ -20,23 +20,27 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
+use appliance::{Appliance, Event, LoadSourceNames};
 use blockdev::{BlockDev, LinuxBlockDev};
-use hostdisk::disks::{self, LoadSource};
-use hostdisk::set::{BLOCK, Member, MemberState, SetLabel};
+use loadsource::disks::{self, LoadSource};
+use loadsource::set::{BLOCK, Member, MemberState, SetLabel};
 use protect::UnitState;
 use protect::set::{MirrorMember, MirrorSet, Resume, SetEvent};
-use qsvsstgd::{DATA_DEVICE, MIRRORED, NONE, Request, SOCKET, Status, Storage, Unit, dispatch};
-use refcode::post::remote;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use supervise::signal::{Signals, TERM};
 use ublk::{Device, Options};
 
+use crate::{DiskIdentity, Host, MIRRORED, NONE, Request, Status, Storage, Unit, dispatch};
 use guard::{Guarded, Recorded};
 use journal::Journal;
 
-/// The device number this boot's set has: a server that starts and
-/// finds it takes the device over instead of adding one.
-const DEVICE_ID: &str = "/run/qsvsstgd.id";
+use appliance::Storage as What;
+
+/// The file that holds the device number this boot's set has: a server
+/// that starts and finds it takes the device over instead of adding one.
+fn device_id(app: &Appliance) -> PathBuf {
+    app.storage_file("id")
+}
 /// How long the load-source disks may take to appear.
 const DISK_WAIT: Duration = Duration::from_secs(10);
 /// Megabytes copied between two looks at the socket and the signals.
@@ -101,11 +105,11 @@ fn member_state(state: UnitState) -> MemberState {
 /// that is not there yet is given the whole wait: a disk behind a slow
 /// controller is late, not missing, and taking it for missing costs a
 /// resynchronization.
-fn found_disks() -> Vec<LoadSource> {
+fn found_disks(names: &LoadSourceNames) -> Vec<LoadSource> {
     let give_up = Instant::now() + DISK_WAIT;
     loop {
-        let sources = disks::load_sources_within(Duration::from_secs(1));
-        let whole = disks::label(&sources).is_none_or(|label| {
+        let sources = disks::load_sources_within(names, Duration::from_secs(1));
+        let whole = disks::label(names, &sources).is_none_or(|label| {
             label
                 .members
                 .iter()
@@ -121,9 +125,12 @@ fn found_disks() -> Vec<LoadSource> {
 
 /// The service's state.
 struct Core {
+    /// The appliance this service runs as.
+    app: Appliance,
+    host: Host,
     sources: Vec<LoadSource>,
     /// The inventory's disks: serial numbers and location codes.
-    inventory: Vec<(String, String, String)>,
+    inventory: Vec<DiskIdentity>,
     label: Option<SetLabel>,
     set: Option<MirrorSet>,
     /// The states the label on the disks has, for the device's transfers.
@@ -142,17 +149,23 @@ impl Core {
     fn identity(&self, disk: &str) -> (String, String) {
         self.inventory
             .iter()
-            .find(|(name, _, _)| name == disk)
-            .map(|(_, serial, location)| (serial.clone(), location.clone()))
+            .find(|d| d.name == disk)
+            .map(|d| (d.serial.clone(), d.location.clone()))
             .unwrap_or_default()
     }
 
     fn read_inventory(&mut self) {
-        self.inventory = hostinv::read(&hostinv::Roots::default(), None)
-            .disks
-            .into_iter()
-            .map(|d| (d.name, d.serial, d.location))
-            .collect();
+        self.inventory = (self.host.inventory)();
+    }
+
+    /// What the load source carries that is the appliance's.
+    fn names(&self) -> &'static LoadSourceNames {
+        self.app.load_source
+    }
+
+    /// Post an event of the load source.
+    fn post(&self, what: What, detail: &str) {
+        (self.app.post)(&Event::Storage { what, detail });
     }
 
     /// The load-source disk that holds a member.
@@ -163,9 +176,11 @@ impl Core {
     }
 
     /// Find the disks and assemble what their label describes.
-    fn assemble() -> Result<Self, String> {
+    fn assemble(app: &Appliance, host: Host) -> Result<Self, String> {
         let mut core = Core {
-            sources: found_disks(),
+            app: *app,
+            host,
+            sources: found_disks(app.load_source),
             inventory: Vec::new(),
             label: None,
             set: None,
@@ -178,14 +193,14 @@ impl Core {
             failure: String::new(),
         };
         core.read_inventory();
-        let Some(mut label) = disks::label(&core.sources) else {
+        let Some(mut label) = disks::label(core.names(), &core.sources) else {
             // Unprotected: the partition itself.
             core.data = core.sources.first().map(|s| s.data.clone());
             return Ok(core);
         };
         // A device of this boot is still there: this server takes it
         // over, and nothing was cut off but the server.
-        let kept = fs::read_to_string(DEVICE_ID)
+        let kept = fs::read_to_string(device_id(app))
             .ok()
             .and_then(|id| id.trim().parse::<u32>().ok())
             .filter(|id| Path::new(&format!("/dev/ublkb{id}")).exists());
@@ -222,7 +237,7 @@ impl Core {
             None => Device::start_with(target, Options { recovery: true }),
         }
         .map_err(text)?;
-        let _ = fs::write(DEVICE_ID, device.id().to_string());
+        let _ = fs::write(device_id(app), device.id().to_string());
         let node = device.block_path();
         let give_up = Instant::now() + Duration::from_secs(10);
         while !node.exists() {
@@ -242,26 +257,26 @@ impl Core {
         } else {
             "served"
         };
-        remote::code(
-            &refcode::SET_ASSEMBLED,
+        core.post(
+            What::SetAssembled,
             &format!("{} units, {what} as {}", core.units().len(), node.display()),
         );
         for unit in core.units() {
             if unit.state == "Missing" || unit.state == "Failed" {
-                Core::post_failed(&unit);
+                core.post_failed(&unit);
             }
         }
         Ok(core)
     }
 
-    fn post_failed(unit: &Unit) {
+    fn post_failed(&self, unit: &Unit) {
         let place = if unit.location.is_empty() {
             String::new()
         } else {
             format!(" at {}", unit.location)
         };
-        remote::code(
-            &refcode::UNIT_FAILED,
+        self.post(
+            What::UnitFailed,
             &format!(
                 "unit {}{place}, serial {}: {}",
                 unit.number,
@@ -297,7 +312,7 @@ impl Core {
             self.recorded.set(guard::states(set));
             return;
         }
-        let written = disks::labels(&self.sources)
+        let written = disks::labels(self.names(), &self.sources)
             .map_err(text)
             .and_then(|mut l| l.write(&label.encode()).map_err(text));
         if let Err(e) = written {
@@ -400,7 +415,7 @@ impl Core {
                 SetEvent::Failed { member, what } => {
                     eprintln!("unit {} failed: {what}", member + 1);
                     if let Some(unit) = units.get(member) {
-                        Core::post_failed(unit);
+                        self.post_failed(unit);
                     }
                     if self.work.as_ref().is_some_and(|w| w.member == member) {
                         self.work = None;
@@ -421,16 +436,16 @@ impl Core {
     /// Start copying to `member`.
     fn begin(&mut self, member: usize, kind: Kind) {
         let Some(set) = &self.set else { return };
-        let mut journal = Journal::on(&self.sources);
+        let mut journal = Journal::on(self.names(), &self.sources);
         match set.resume(member, &mut journal) {
             Ok(resume) => {
-                let code = match kind {
-                    Kind::Resync => &refcode::RESYNC_STARTED,
-                    Kind::Rebuild => &refcode::REBUILD_STARTED,
+                let what = match kind {
+                    Kind::Resync => What::ResyncStarted,
+                    Kind::Rebuild => What::RebuildStarted,
                 };
                 let p = resume.progress();
-                remote::code(
-                    code,
+                self.post(
+                    what,
                     &format!(
                         "unit {}, {} of {} MiB already in step",
                         member + 1,
@@ -447,7 +462,7 @@ impl Core {
             }
             Err(e) => {
                 self.failure = format!("unit {}: {e}", member + 1);
-                remote::code(&refcode::REBUILD_FAILED, &self.failure);
+                self.post(What::RebuildFailed, &self.failure);
             }
         }
     }
@@ -470,8 +485,9 @@ impl Core {
                 self.begin(member, Kind::Resync);
             }
         }
+        let names = self.names();
         let Some(work) = &mut self.work else { return };
-        let mut journal = Journal::on(&self.sources);
+        let mut journal = Journal::on(names, &self.sources);
         // A megabyte at a time: each is copied with the set held, and
         // the host's own transfers go between them, not behind them all.
         let mut step = set.resume_step(&mut work.resume, &mut journal, 1);
@@ -487,14 +503,14 @@ impl Core {
         }
         match step {
             Ok(progress) if progress.complete => {
-                let (code, member) = match work.kind {
-                    Kind::Resync => (&refcode::RESYNC_FINISHED, work.member),
-                    Kind::Rebuild => (&refcode::REBUILD_FINISHED, work.member),
+                let (what, member) = match work.kind {
+                    Kind::Resync => (What::ResyncFinished, work.member),
+                    Kind::Rebuild => (What::RebuildFinished, work.member),
                 };
                 self.work = None;
                 self.write_label(false);
-                remote::code(
-                    code,
+                self.post(
+                    what,
                     &format!("unit {}, {} MiB", member + 1, progress.chunks),
                 );
             }
@@ -503,7 +519,7 @@ impl Core {
                 self.failure = format!("unit {}: {e}", work.member + 1);
                 self.work = None;
                 self.write_label(false);
-                remote::code(&refcode::REBUILD_FAILED, &self.failure);
+                self.post(What::RebuildFailed, &self.failure);
             }
         }
     }
@@ -531,7 +547,7 @@ impl Core {
                     label.clean = true;
                 }
                 self.write_label(true);
-                let _ = fs::remove_file(DEVICE_ID);
+                let _ = fs::remove_file(device_id(&self.app));
             }
             Err(e) => eprintln!("the device was not stopped: {e}"),
         }
@@ -610,17 +626,23 @@ fn term(signals: &mut Signals, wait: Duration) -> bool {
     readable && signals.read().contains(&TERM)
 }
 
-/// Run the storage service. It returns only when it could not start.
-pub fn run() -> String {
+/// Run the storage service as `appliance`. It returns only when it
+/// could not start.
+pub fn run(appliance: &Appliance, host: Host) -> String {
+    let data_device = crate::data_device(appliance);
+    let socket = crate::socket(appliance);
     let mut signals = match Signals::take(&[TERM]) {
         Ok(signals) => signals,
         Err(e) => return format!("the signal descriptor: {e}"),
     };
-    let mut core = match Core::assemble() {
+    let mut core = match Core::assemble(appliance, host) {
         Ok(core) => core,
         Err(e) => {
-            remote::code(&refcode::SET_NOT_ASSEMBLED, &e);
-            let _ = fs::write(DATA_DEVICE, "");
+            (appliance.post)(&Event::Storage {
+                what: What::SetNotAssembled,
+                detail: &e,
+            });
+            let _ = fs::write(&data_device, "");
             return e;
         }
     };
@@ -629,14 +651,14 @@ pub fn run() -> String {
         .as_ref()
         .map(|d| d.display().to_string())
         .unwrap_or_default();
-    if let Err(e) = fs::write(DATA_DEVICE, &data) {
-        return format!("{DATA_DEVICE}: {e}");
+    if let Err(e) = fs::write(&data_device, &data) {
+        return format!("{}: {e}", data_device.display());
     }
     let (tx, rx) = mpsc::channel();
-    let _ = fs::remove_file(SOCKET);
-    let listener = match UnixListener::bind(SOCKET) {
+    let _ = fs::remove_file(&socket);
+    let listener = match UnixListener::bind(&socket) {
         Ok(listener) => listener,
-        Err(e) => return format!("{SOCKET}: {e}"),
+        Err(e) => return format!("{}: {e}", socket.display()),
     };
     std::thread::spawn(move || serve_socket(&listener, &tx));
     if let Err(e) = supervise::ready::signal() {

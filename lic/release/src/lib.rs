@@ -9,7 +9,7 @@
 
 #![forbid(unsafe_code)]
 
-pub use appliance::{Appliance, Event};
+pub use appliance::{Appliance, Event, LoadSourceNames};
 pub use vrm::Release;
 
 /// The release `build.rs` captured: `VERSION` (`1.0.0` is `V1R0M0`), or
@@ -58,6 +58,30 @@ pub const HOST_PREFIX: &str = "QSVS";
 /// The FAT volume label of a seed volume.
 pub const SEED_LABEL: &str = "QSVSSEED";
 
+/// Slot B's UKI on the ESP of a load-source disk.
+pub const SLOT_B_PATH: &str = "EFI/QSVS/B.EFI";
+
+/// What a QS/VS load source carries that is QS/VS's own. These are on
+/// every installed disk: none may change.
+pub static LOAD_SOURCE: LoadSourceNames = LoadSourceNames {
+    record_type: 0x1f07_2256_9b60_4f79_a93e_f2af_75b7_2775,
+    data_type: 0x5a62_035d_0a21_4e5c_8bd1_e390_8ef0_dfb9,
+    data_fs_uuid: 0xfe6b_2094_8863_4006_8bcd_fadc_df20_6e94,
+    esp_name: "QSVS ESP",
+    record_name: "QSVS-AB",
+    data_name: "QSVSDATA",
+    vendor: "QSVS",
+    slot_b_path: SLOT_B_PATH,
+    esp_label: "QSVS ESP",
+    // `QSVS`.
+    esp_volume_id: 0x5153_5653,
+    guid_seed: *b"QSVS",
+    record_magic: *b"QSVSREC\0",
+    label_magic: *b"QSVSSET\0",
+    resume_magic: *b"QSVSRSM\0",
+    resume_map_magic: *b"QSVSRMAP",
+};
+
 /// QS/VS as the base crates see it. The caller says how an event is
 /// posted and a fact noted: PID 1 does both itself, a service asks
 /// PID 1.
@@ -70,6 +94,7 @@ pub const fn appliance(post: fn(&Event<'_>), note: fn(&str, &str)) -> Appliance 
         run_dir: RUN_DIR,
         host_prefix: HOST_PREFIX,
         seed_label: SEED_LABEL,
+        load_source: &LOAD_SOURCE,
         post,
         note,
     }
@@ -222,6 +247,39 @@ mod tests {
         assert_eq!((a.banner)(), banner());
         // A FAT label is eleven characters at most.
         assert!(a.seed_label.len() <= 11);
+        assert_eq!(a.storage_file("sock").to_str(), Some("/run/qsvsstgd.sock"));
+    }
+
+    /// What is on every installed disk. A change here orphans them.
+    #[test]
+    fn the_load_source_s_names_are_what_installed_disks_carry() {
+        let n = &LOAD_SOURCE;
+        let guid = |bits: u128| {
+            let h = format!("{bits:032x}");
+            format!(
+                "{}-{}-{}-{}-{}",
+                &h[..8],
+                &h[8..12],
+                &h[12..16],
+                &h[16..20],
+                &h[20..]
+            )
+        };
+        assert_eq!(guid(n.record_type), "1f072256-9b60-4f79-a93e-f2af75b72775");
+        assert_eq!(guid(n.data_type), "5a62035d-0a21-4e5c-8bd1-e3908ef0dfb9");
+        assert_eq!(guid(n.data_fs_uuid), "fe6b2094-8863-4006-8bcd-fadcdf206e94");
+        assert_eq!(
+            (n.esp_name, n.record_name, n.data_name),
+            ("QSVS ESP", "QSVS-AB", "QSVSDATA")
+        );
+        assert_eq!((n.vendor, n.slot_b_path), ("QSVS", "EFI/QSVS/B.EFI"));
+        assert_eq!((n.esp_label, n.esp_volume_id), ("QSVS ESP", 0x5153_5653));
+        assert_eq!(&n.guid_seed, b"QSVS");
+        assert_eq!(&n.record_magic, b"QSVSREC\0");
+        assert_eq!(&n.label_magic, b"QSVSSET\0");
+        assert_eq!(&n.resume_magic, b"QSVSRSM\0");
+        assert_eq!(&n.resume_map_magic, b"QSVSRMAP");
+        assert!(n.slot_b_path.contains(n.vendor));
     }
 
     #[test]

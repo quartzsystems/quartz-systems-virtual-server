@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use diskimg::efi::{self, EspLocation};
-use hostdisk::layout::SLOT_B_PATH;
+use release::SLOT_B_PATH;
 
 use crate::error::HarnessError;
 use crate::qemu::{firmware, vars};

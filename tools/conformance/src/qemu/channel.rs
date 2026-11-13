@@ -132,7 +132,7 @@ impl Channel {
     }
 
     /// The storage service's status.
-    pub fn storage(&mut self) -> Result<qsvsstgd::Status, String> {
+    pub fn storage(&mut self) -> Result<stgd::Status, String> {
         parse_storage(&self.ask(command::STORAGE)?)
     }
 
@@ -141,8 +141,8 @@ impl Channel {
         &mut self,
         what: &str,
         deadline: Instant,
-        done: impl Fn(&qsvsstgd::Status) -> bool,
-    ) -> Result<qsvsstgd::Status, String> {
+        done: impl Fn(&stgd::Status) -> bool,
+    ) -> Result<stgd::Status, String> {
         loop {
             let status = self.storage();
             if let Ok(status) = &status

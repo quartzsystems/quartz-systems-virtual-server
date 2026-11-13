@@ -10,8 +10,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use hostdisk::record::HostRecord;
-use hostdisk::set::MemberState;
+use loadsource::record::HostRecord;
+use loadsource::set::MemberState;
 use release::fact;
 
 use super::{

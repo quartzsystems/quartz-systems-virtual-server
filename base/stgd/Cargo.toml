@@ -1,0 +1,25 @@
+[package]
+name = "stgd"
+description = "An appliance's storage service: the mirrored load source assembled, served through ublk, resynchronized and rebuilt; its socket's requests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+appliance = { path = "../appliance", version = "0.1.0" }
+loadsource = { path = "../loadsource", version = "0.1.0" }
+supervise = { path = "../supervise", version = "0.1.0" }
+ipc.workspace = true
+abrec.workspace = true
+diskimg.workspace = true
+protect.workspace = true
+blockdev.workspace = true
+ublk.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix.workspace = true
+
+[lints]
+workspace = true

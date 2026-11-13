@@ -15,7 +15,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use hostdisk::payload::{self, Manifest};
+use loadsource::payload::{self, Manifest};
+use release::LOAD_SOURCE;
 use sha2::{Digest, Sha256};
 
 /// The trusted signers' public keys, 32 bytes each.
@@ -57,7 +58,7 @@ fn volume_id(device: &Path) -> Option<String> {
 /// The block device that holds this release's media; the whole device
 /// before any partition of it.
 pub fn find() -> Option<PathBuf> {
-    let wanted = payload::volume_id(hostdisk::layout::VENDOR, &release::RELEASE.to_string());
+    let wanted = payload::volume_id(LOAD_SOURCE.vendor, &release::RELEASE.to_string());
     let mut names: Vec<String> = fs::read_dir("/sys/class/block")
         .ok()?
         .flatten()
@@ -144,7 +145,7 @@ pub fn check(manifest: &Manifest, name: &str, bytes: &[u8]) -> Result<(), String
 
 /// Verify the payload under `root` (the mounted media) against `keys`.
 pub fn verify(root: &Path, keys: &[u8]) -> Result<Payload, String> {
-    let dir = find_in(root, payload::DIR)?;
+    let dir = find_in(root, payload::dir(&LOAD_SOURCE))?;
     let read = |name: &str| -> Result<Vec<u8>, String> {
         let path = find_in(&dir, name)?;
         fs::read(&path).map_err(|e| format!("{name}: {e}"))
@@ -156,7 +157,7 @@ pub fn verify(root: &Path, keys: &[u8]) -> Result<Payload, String> {
     if !signed(&text, &signature, keys) {
         return Err("the manifest is not signed by a key this installer trusts".into());
     }
-    let manifest = Manifest::parse(&String::from_utf8_lossy(&text))?;
+    let manifest = Manifest::parse(&LOAD_SOURCE, &String::from_utf8_lossy(&text))?;
     if manifest.release != release::RELEASE.to_string() {
         return Err(format!(
             "the media is of release {}, this installer of {}",
@@ -189,7 +190,7 @@ pub fn open() -> Result<(PathBuf, Payload), String> {
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
-    use hostdisk::payload::File as Entry;
+    use loadsource::payload::File as Entry;
 
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("qsvsinstall-{name}-{}", std::process::id()));
@@ -212,7 +213,7 @@ mod tests {
             build: "test".into(),
             files: vec![entry(payload::SLOT_A, &a), entry(payload::SLOT_B, &b)],
         };
-        let text = manifest.render();
+        let text = manifest.render(&LOAD_SOURCE);
         let signature = hex::encode(key.sign(text.as_bytes()).to_bytes());
         let put = |name: &str, bytes: &[u8]| {
             fs::write(dir.join("qsvs").join(name.to_lowercase()), bytes).unwrap();

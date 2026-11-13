@@ -7,41 +7,48 @@
 
 use std::io;
 
-use hostdisk::disks::{self, LoadSource};
-use hostdisk::set::{RESUME_MAGIC, RESUME_SPEC};
+use appliance::LoadSourceNames;
+use loadsource::disks::{self, LoadSource};
+use loadsource::set::resume_spec;
 use protect::mirror::ResumeState;
 use protect::set::ResumeJournal;
 
 /// The journal on the record partitions of the disks given.
 pub struct Journal {
+    names: &'static LoadSourceNames,
     sources: Vec<LoadSource>,
 }
 
 impl Journal {
     /// The journal on `sources`.
-    pub fn on(sources: &[LoadSource]) -> Self {
+    pub fn on(names: &'static LoadSourceNames, sources: &[LoadSource]) -> Self {
         Self {
+            names,
             sources: sources.to_vec(),
         }
     }
 
     fn write(&self, payload: &[u8]) -> io::Result<()> {
-        let mut maps = disks::resume_maps(&self.sources).map_err(io::Error::other)?;
+        let mut maps = disks::resume_maps(self.names, &self.sources).map_err(io::Error::other)?;
         maps.write(payload).map(|_| ()).map_err(io::Error::other)
     }
 }
 
 impl ResumeJournal for Journal {
     fn load(&mut self, unit_uuid: [u8; 16]) -> Option<ResumeState> {
-        let stored = disks::resume_maps(&self.sources).ok()?.read().ok()?;
-        ResumeState::decode(&RESUME_MAGIC, &stored.payload).filter(|s| s.unit_uuid == unit_uuid)
+        let stored = disks::resume_maps(self.names, &self.sources)
+            .ok()?
+            .read()
+            .ok()?;
+        ResumeState::decode(&self.names.resume_map_magic, &stored.payload)
+            .filter(|s| s.unit_uuid == unit_uuid)
     }
 
     fn save(&mut self, state: &ResumeState) -> io::Result<()> {
-        let bytes = state.encode(&RESUME_MAGIC);
+        let bytes = state.encode(&self.names.resume_map_magic);
         // A set too large for the map's room is not kept: after a power
         // loss its resynchronization starts over.
-        if bytes.len() + abrec::HEAD_LEN + 8 > RESUME_SPEC.slot_bytes {
+        if bytes.len() + abrec::HEAD_LEN + 8 > resume_spec(self.names).slot_bytes {
             return Ok(());
         }
         self.write(&bytes)

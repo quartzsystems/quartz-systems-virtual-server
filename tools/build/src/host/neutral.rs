@@ -150,7 +150,7 @@ mod tests {
         let manifest = "[package]\nname = \"state\"\ndescription = \"no release here\"\n\n\
                         [dependencies]\nappliance = { path = \"../appliance\" }\n\
                         serde.workspace = true\nrefcode.workspace = true\n\
-                        other = { path = \"../../lic/hostdisk\" }\n\n\
+                        other = { path = \"../../lic/hostinv\" }\n\n\
                         [target.'cfg(unix)'.dependencies]\nrelease = { version = \"1\" }\n";
         assert_eq!(
             lic_dependencies(manifest, &lic),

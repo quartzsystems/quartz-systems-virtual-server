@@ -4,7 +4,7 @@ members = [
     # Host tools: the build orchestrator and the conformance harness.
     "tools/build",
     "tools/conformance",
-    # Licensed Internal Code: PID 1, release identity, reference codes, the disk.
+    # Licensed Internal Code: PID 1, release identity, reference codes, the services.
     "lic/qsvsinit",
     "lic/qsvslogd",
     "lic/qsvsnetd",
@@ -14,7 +14,6 @@ members = [
     "lic/qsvshook",
     "lic/release",
     "lic/refcode",
-    "lic/hostdisk",
     "lic/hostinv",
     # Service Tools: QS/VS's menu and its host-specific panels.
     "svc/tools",
@@ -30,6 +29,8 @@ members = [
     "base/users",
     "base/panels",
     "base/install",
+    "base/loadsource",
+    "base/stgd",
 ]
 
 [workspace.package]

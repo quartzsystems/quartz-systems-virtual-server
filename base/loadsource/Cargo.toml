@@ -1,12 +1,13 @@
 [package]
-name = "hostdisk"
-description = "QS/VS's own disk: the GPT layout (ESP, A/B record, QSVSDATA), the A/B record over abrec, and finding the partitions on a running host"
+name = "loadsource"
+description = "An appliance's load source: the GPT layout (ESP, records, data), the A/B record and a mirrored set's label over abrec, the boot entries, and finding the disks on a running host"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
+appliance = { path = "../appliance", version = "0.1.0" }
 abrec.workspace = true
 vrm.workspace = true
 diskimg.workspace = true

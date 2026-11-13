@@ -7,7 +7,7 @@
 //! An answer's line is a word and its text; file contents travel as
 //! hex, so nothing in them can look like a line of the protocol.
 
-use qsvsstgd::{Status as Storage, Unit};
+use stgd::{Status as Storage, Unit};
 use supervise::control::{HostStatus, ServiceStatus};
 
 /// The line that ends an answer.

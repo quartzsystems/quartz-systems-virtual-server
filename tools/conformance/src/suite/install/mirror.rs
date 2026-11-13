@@ -302,16 +302,16 @@ pub fn storage_kill(run: &Run<'_>) -> Result<String, String> {
         }
         let pid = channel(&mut guest)?
             .status()?
-            .service(qsvsstgd::NAME)
+            .service(stgd::NAME)
             .map_or(0, |s| s.pid);
-        channel(&mut guest)?.ask(&format!("{} {}", command::KILL, qsvsstgd::NAME))?;
+        channel(&mut guest)?.ask(&format!("{} {}", command::KILL, stgd::NAME))?;
         // PID 1 starts it again; the new server takes the device over.
         let deadline = Instant::now() + Duration::from_secs(60);
         let status = channel(&mut guest)?.until("the storage service again", deadline, |s| {
-            s.service(qsvsstgd::NAME)
+            s.service(stgd::NAME)
                 .is_some_and(|s| s.state == "ready" && s.pid != pid)
         })?;
-        pids.push((pid, status.service(qsvsstgd::NAME).map_or(0, |s| s.pid)));
+        pids.push((pid, status.service(stgd::NAME).map_or(0, |s| s.pid)));
         // What waited goes on: the load writes more files whole.
         let before = load_done(&mut guest)?.len();
         while load_done(&mut guest)?.len() <= before {
@@ -350,7 +350,7 @@ pub fn storage_kill(run: &Run<'_>) -> Result<String, String> {
     let storage = protected(&mut guest, Duration::from_secs(30))?;
     let status = channel(&mut guest)?.status()?;
     all_ready(&status)?;
-    let failures = status.service(qsvsstgd::NAME).map_or(0, |s| s.failures);
+    let failures = status.service(stgd::NAME).map_or(0, |s| s.failures);
     power_off(&mut guest)?;
     drop(guest);
     for disk in &disks {

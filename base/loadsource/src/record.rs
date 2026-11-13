@@ -2,8 +2,8 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! QS/VS's A/B record: QS/400's neutral `abrec` under QS/VS's own magic
-//! and partition type. The payload, version 2, is sixteen bytes:
+//! The A/B record: QS/400's neutral `abrec` under the appliance's own
+//! magic and partition type. The payload, version 2, is sixteen bytes:
 //!
 //! | Bytes | What |
 //! |---|---|
@@ -22,13 +22,11 @@
 use std::io::Cursor;
 
 use abrec::{AbError, AbPart, Device, SLOT_BYTES, Slot, Spec};
+use appliance::LoadSourceNames;
 use vrm::Release;
 
-use crate::layout::RECORD_TYPE_GUID;
+use crate::layout::record_type;
 use crate::multi::Copies;
-
-/// The record's magic: `QSVSREC`, padded with a zero to the field.
-pub const MAGIC: [u8; 8] = *b"QSVSREC\0";
 
 /// The payload's format version. A copy of version 1 (Phase 0's four
 /// bytes, which nothing ever read) is not a valid copy.
@@ -38,13 +36,15 @@ pub const VERSION: u32 = 2;
 pub const PAYLOAD_LEN: usize = 16;
 
 /// The record as `abrec` sees it.
-pub const SPEC: Spec = Spec {
-    magic: MAGIC,
-    version: VERSION,
-    type_guid: RECORD_TYPE_GUID,
-    slot_bytes: SLOT_BYTES,
-    min_payload: PAYLOAD_LEN,
-};
+pub fn spec(names: &LoadSourceNames) -> Spec {
+    Spec {
+        magic: names.record_magic,
+        version: VERSION,
+        type_guid: record_type(names),
+        slot_bytes: SLOT_BYTES,
+        min_payload: PAYLOAD_LEN,
+    }
+}
 
 /// What the record holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -235,16 +235,17 @@ impl HostRecord {
 
 /// The first bytes of a new record partition: `record` in copy A with
 /// sequence 1, copy B empty. Both copies' room, the rest zero.
-pub fn initial_bytes(record: HostRecord) -> Result<Vec<u8>, AbError> {
-    let mut part = AbPart::open(SPEC, Cursor::new(vec![0u8; 2 * SPEC.slot_bytes]));
+pub fn initial_bytes(names: &LoadSourceNames, record: HostRecord) -> Result<Vec<u8>, AbError> {
+    let spec = spec(names);
+    let mut part = AbPart::open(spec, Cursor::new(vec![0u8; 2 * spec.slot_bytes]));
     part.init(&record.encode())?;
     Ok(part.into_device().into_inner())
 }
 
 /// The newest valid record in `bytes` (the head of the partition) and
 /// its sequence.
-pub fn read_bytes(bytes: &[u8]) -> Result<(HostRecord, u64), AbError> {
-    read(&mut AbPart::open(SPEC, Cursor::new(bytes.to_vec())))
+pub fn read_bytes(names: &LoadSourceNames, bytes: &[u8]) -> Result<(HostRecord, u64), AbError> {
+    read(&mut AbPart::open(spec(names), Cursor::new(bytes.to_vec())))
 }
 
 /// The newest valid record on `part` and its sequence.
@@ -283,15 +284,17 @@ mod tests {
     use super::*;
 
     const V1R0M0: Release = Release { v: 1, r: 0, m: 0 };
+    const NAMES: &LoadSourceNames = &LoadSourceNames::DEMO;
+    const SLOT: usize = SLOT_BYTES;
 
     #[test]
     fn a_new_partition_reads_back_as_slot_a_sequence_1() {
-        let bytes = initial_bytes(HostRecord::INITIAL).unwrap();
-        assert_eq!(bytes.len(), 2 * SPEC.slot_bytes);
-        assert_eq!(&bytes[..8], b"QSVSREC\0");
+        let bytes = initial_bytes(NAMES, HostRecord::INITIAL).unwrap();
+        assert_eq!(bytes.len(), 2 * SLOT);
+        assert_eq!(&bytes[..8], b"QSDMREC\0");
         // Copy B is untouched.
-        assert!(bytes[SPEC.slot_bytes..].iter().all(|b| *b == 0));
-        assert_eq!(read_bytes(&bytes).unwrap(), (HostRecord::INITIAL, 1));
+        assert!(bytes[SLOT..].iter().all(|b| *b == 0));
+        assert_eq!(read_bytes(NAMES, &bytes).unwrap(), (HostRecord::INITIAL, 1));
     }
 
     #[test]
@@ -321,8 +324,11 @@ mod tests {
 
     #[test]
     fn an_empty_partition_has_no_record() {
-        let zeros = vec![0u8; 2 * SPEC.slot_bytes];
-        assert!(matches!(read_bytes(&zeros), Err(AbError::NoValidCopy)));
+        let zeros = vec![0u8; 2 * SLOT];
+        assert!(matches!(
+            read_bytes(NAMES, &zeros),
+            Err(AbError::NoValidCopy)
+        ));
     }
 
     #[test]
@@ -384,16 +390,16 @@ mod tests {
     #[test]
     fn writes_alternate_between_the_copies() {
         let mut part = AbPart::open(
-            SPEC,
-            Cursor::new(initial_bytes(HostRecord::INITIAL).unwrap()),
+            spec(NAMES),
+            Cursor::new(initial_bytes(NAMES, HostRecord::INITIAL).unwrap()),
         );
         let next = HostRecord::INITIAL.confirm(Slot::A, V1R0M0);
         assert_eq!(write(&mut part, next).unwrap(), 2);
         assert_eq!(read(&mut part).unwrap(), (next, 2));
         let bytes = part.into_device().into_inner();
         // Copy A still holds the first record; copy B the second.
-        assert_eq!(&bytes[SPEC.slot_bytes..SPEC.slot_bytes + 8], b"QSVSREC\0");
-        assert_eq!(read_bytes(&bytes).unwrap().1, 2);
+        assert_eq!(&bytes[SLOT..SLOT + 8], b"QSDMREC\0");
+        assert_eq!(read_bytes(NAMES, &bytes).unwrap().1, 2);
     }
 
     #[test]

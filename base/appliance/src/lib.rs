@@ -10,16 +10,19 @@
 //!   [`Event`] is posted and how a fact reaches the status screen.
 //! - [`time`]: civil dates from the UTC clock, and the display zone.
 //! - [`links`]: the Ethernet links sysfs shows.
+//! - [`names`]: what its load source carries that is its own.
 
 #![forbid(unsafe_code)]
 
 pub mod event;
 pub mod links;
+pub mod names;
 pub mod time;
 
 use std::path::PathBuf;
 
-pub use event::Event;
+pub use event::{Event, Storage};
+pub use names::LoadSourceNames;
 
 /// One appliance, as the base crates see it.
 #[derive(Clone, Copy, Debug)]
@@ -38,6 +41,8 @@ pub struct Appliance {
     pub host_prefix: &'static str,
     /// The FAT volume label of a seed volume.
     pub seed_label: &'static str,
+    /// What its load source carries that is its own.
+    pub load_source: &'static LoadSourceNames,
     /// Post the reference code the product has for an event.
     pub post: fn(&Event<'_>),
     /// Tell PID 1 a fact for its status screen.
@@ -69,6 +74,12 @@ impl Appliance {
     pub fn net_socket(&self) -> PathBuf {
         PathBuf::from(self.run_dir).join("netd.sock")
     }
+
+    /// A file of the storage service in the run directory,
+    /// `<run>/<id>stgd.<what>`.
+    pub fn storage_file(&self, what: &str) -> PathBuf {
+        PathBuf::from(self.run_dir).join(format!("{}stgd.{what}", self.id))
+    }
 }
 
 /// The key of the status screen's management line.
@@ -80,6 +91,7 @@ mod tests {
 
     fn demo() -> Appliance {
         Appliance {
+            load_source: &LoadSourceNames::DEMO,
             id: "qsdemo",
             name: "QSDEMO",
             banner: || "QSDEMO V0R1M0 test".into(),
@@ -100,5 +112,9 @@ mod tests {
         assert_eq!(a.control_socket(), PathBuf::from("/run/qsdemoinit.sock"));
         assert_eq!(a.log_socket(), PathBuf::from("/run/logd.sock"));
         assert_eq!(a.net_socket(), PathBuf::from("/run/netd.sock"));
+        assert_eq!(
+            a.storage_file("sock"),
+            PathBuf::from("/run/qsdemostgd.sock")
+        );
     }
 }

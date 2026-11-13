@@ -5,7 +5,7 @@
 //! The reference code QS/VS posts for each event the base crates
 //! report, and what the posting adds to the code's text.
 
-use appliance::Event;
+use appliance::{Event, Storage};
 
 use crate::RefCode;
 
@@ -31,6 +31,23 @@ pub fn code_of(event: &Event<'_>) -> (&'static RefCode, String) {
         Event::NoCarrier { interface } => (&crate::NO_CARRIER, (*interface).to_string()),
         Event::NoAddress { interface } => (&crate::NO_ADDRESS, (*interface).to_string()),
         Event::TimeSynchronized { server } => (&crate::TIME_SYNCHRONIZED, (*server).to_string()),
+        Event::Storage { what, detail } => (storage(*what), (*detail).to_string()),
+    }
+}
+
+/// The code of each thing the storage service says.
+fn storage(what: Storage) -> &'static RefCode {
+    match what {
+        Storage::SetAssembled => &crate::SET_ASSEMBLED,
+        Storage::SetNotAssembled => &crate::SET_NOT_ASSEMBLED,
+        Storage::UnitFailed => &crate::UNIT_FAILED,
+        Storage::ResyncStarted => &crate::RESYNC_STARTED,
+        Storage::ResyncFinished => &crate::RESYNC_FINISHED,
+        Storage::RebuildStarted => &crate::REBUILD_STARTED,
+        Storage::RebuildFinished => &crate::REBUILD_FINISHED,
+        Storage::RebuildFailed => &crate::REBUILD_FAILED,
+        Storage::ProtectionStarted => &crate::PROTECTION_STARTED,
+        Storage::BootEntriesNotWritten => &crate::INSTALL_BOOT_NOT_WRITTEN,
     }
 }
 
@@ -58,6 +75,14 @@ mod tests {
         assert_eq!(
             code.text_with(&detail),
             "No management interface: no interface eth7"
+        );
+        let (code, detail) = code_of(&Event::Storage {
+            what: Storage::UnitFailed,
+            detail: "unit 2: missing",
+        });
+        assert_eq!(
+            (code.code, detail.as_str()),
+            ("A2003020", "unit 2: missing")
         );
     }
 }

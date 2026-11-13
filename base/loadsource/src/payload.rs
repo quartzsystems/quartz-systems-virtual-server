@@ -10,9 +10,12 @@
 //!
 //! The manifest is text, a word and its values a line:
 //!
+//! The first word is the appliance's vendor name, which is also the
+//! payload's directory on the media.
+//!
 //! ```text
-//! QSVS-PAYLOAD 1
-//! product QS/VS
+//! QSDEMO-PAYLOAD 1
+//! product QS/DEMO
 //! release V1R0M0
 //! build a1b2c3d
 //! file SLOTA.EFI 12837888 7824c4c3...
@@ -24,19 +27,26 @@
 
 use std::fmt::Write as _;
 
-/// The directory of the payload on the media.
-pub const DIR: &str = "QSVS";
-/// Slot A's UKI in [`DIR`].
+use appliance::LoadSourceNames;
+
+/// Slot A's UKI in the payload's directory.
 pub const SLOT_A: &str = "SLOTA.EFI";
-/// Slot B's UKI in [`DIR`].
+/// Slot B's UKI there.
 pub const SLOT_B: &str = "SLOTB.EFI";
-/// The manifest in [`DIR`].
+/// The manifest there.
 pub const MANIFEST: &str = "PAYLOAD.TXT";
-/// The manifest's signature in [`DIR`]: ed25519, 128 hex digits.
+/// The manifest's signature there: ed25519, 128 hex digits.
 pub const SIGNATURE: &str = "PAYLOAD.SIG";
 
+/// The directory of the payload on the media.
+pub fn dir(names: &LoadSourceNames) -> &'static str {
+    names.vendor
+}
+
 /// The manifest's first line.
-const HEAD: &str = "QSVS-PAYLOAD 1";
+pub fn head(names: &LoadSourceNames) -> String {
+    format!("{}-PAYLOAD 1", names.vendor)
+}
 
 /// The ISO volume identifier of a product's media at a release.
 pub fn volume_id(vendor: &str, release: &str) -> String {
@@ -46,7 +56,7 @@ pub fn volume_id(vendor: &str, release: &str) -> String {
 /// One file of the payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct File {
-    /// Its name in [`DIR`].
+    /// Its name in the payload's directory.
     pub name: String,
     /// Its length.
     pub bytes: u64,
@@ -69,10 +79,13 @@ pub struct Manifest {
 
 impl Manifest {
     /// The manifest's text: what is signed.
-    pub fn render(&self) -> String {
+    pub fn render(&self, names: &LoadSourceNames) -> String {
         let mut out = format!(
-            "{HEAD}\nproduct {}\nrelease {}\nbuild {}\n",
-            self.product, self.release, self.build
+            "{}\nproduct {}\nrelease {}\nbuild {}\n",
+            head(names),
+            self.product,
+            self.release,
+            self.build
         );
         for file in &self.files {
             let _ = writeln!(out, "file {} {} {}", file.name, file.bytes, file.sha256);
@@ -81,10 +94,11 @@ impl Manifest {
     }
 
     /// The manifest of `text`, or why it is not one.
-    pub fn parse(text: &str) -> Result<Self, String> {
+    pub fn parse(names: &LoadSourceNames, text: &str) -> Result<Self, String> {
+        let head = head(names);
         let mut lines = text.lines();
-        if lines.next() != Some(HEAD) {
-            return Err(format!("the manifest does not start with `{HEAD}`"));
+        if lines.next() != Some(head.as_str()) {
+            return Err(format!("the manifest does not start with `{head}`"));
         }
         let mut manifest = Manifest {
             product: String::new(),
@@ -136,9 +150,11 @@ impl Manifest {
 mod tests {
     use super::*;
 
+    const NAMES: &LoadSourceNames = &LoadSourceNames::DEMO;
+
     fn manifest() -> Manifest {
         Manifest {
-            product: "QS/VS (test image)".into(),
+            product: "QS/DEMO (test image)".into(),
             release: "V1R0M0".into(),
             build: "a1b2c3d".into(),
             files: vec![
@@ -159,25 +175,25 @@ mod tests {
     #[test]
     fn the_manifest_round_trips() {
         let m = manifest();
-        let text = m.render();
-        assert!(text.starts_with("QSVS-PAYLOAD 1\nproduct QS/VS (test image)\n"));
-        assert_eq!(Manifest::parse(&text), Ok(m.clone()));
+        let text = m.render(NAMES);
+        assert!(text.starts_with("QSDEMO-PAYLOAD 1\nproduct QS/DEMO (test image)\n"));
+        assert_eq!(Manifest::parse(NAMES, &text), Ok(m.clone()));
         assert_eq!(m.file(SLOT_B).unwrap().sha256.len(), 64);
         assert!(m.file("OTHER").is_none());
-        assert_eq!(volume_id("QSVS", "V1R0M0"), "QSVS_V1R0M0");
+        assert_eq!(volume_id(dir(NAMES), "V1R0M0"), "QSDEMO_V1R0M0");
     }
 
     #[test]
     fn what_is_not_a_manifest_is_refused() {
-        let text = manifest().render();
+        let text = manifest().render(NAMES);
         for bad in [
-            text.replacen("QSVS-PAYLOAD 1", "QSVS-PAYLOAD 2", 1),
+            text.replacen("QSDEMO-PAYLOAD 1", "QSDEMO-PAYLOAD 2", 1),
             text.replacen("file SLOTA.EFI 12837888", "file SLOTA.EFI many", 1),
             format!("{text}extra line\n"),
-            text.replacen("product QS/VS (test image)\n", "", 1),
+            text.replacen("product QS/DEMO (test image)\n", "", 1),
             text.replacen(&"7824c4c3".repeat(8), "abc", 1),
         ] {
-            assert!(Manifest::parse(&bad).is_err(), "{bad}");
+            assert!(Manifest::parse(NAMES, &bad).is_err(), "{bad}");
         }
     }
 }

@@ -12,25 +12,26 @@ use std::fs;
 use std::path::Path;
 
 use abrec::Slot;
+use appliance::LoadSourceNames;
 use diskimg::efi::{self, EspLocation};
 
-use crate::layout::{SLOT_A_PATH, SLOT_B_PATH};
+use crate::layout::SLOT_A_PATH;
 use crate::record::{letter, other};
 
 /// Where efivarfs is mounted.
 pub const EFIVARS: &str = "/sys/firmware/efi/efivars";
 
 /// A slot's UKI on the ESP.
-fn uki(slot: Slot) -> &'static str {
+fn uki(names: &LoadSourceNames, slot: Slot) -> &'static str {
     match slot {
         Slot::A => SLOT_A_PATH,
-        Slot::B => SLOT_B_PATH,
+        Slot::B => names.slot_b_path,
     }
 }
 
 /// The path as a load option has it: backslashes, one leading.
-fn option_path(slot: Slot) -> String {
-    format!("\\{}", uki(slot).replace('/', "\\"))
+fn option_path(names: &LoadSourceNames, slot: Slot) -> String {
+    format!("\\{}", uki(names, slot).replace('/', "\\"))
 }
 
 /// The number in a `Boot####-<guid>` file name.
@@ -97,13 +98,14 @@ fn on(option: &[u8], esp: &EspLocation) -> bool {
 /// a new one.
 fn entry(
     vars: &Path,
+    names: &LoadSourceNames,
     name: &str,
     disk: usize,
     esp: &EspLocation,
     slot: Slot,
 ) -> Result<u16, String> {
     let all = entries(vars);
-    let wanted = option_path(slot);
+    let wanted = option_path(names, slot);
     let found = all.iter().find(|f| {
         on(&f.option, esp)
             && f.path
@@ -121,7 +123,7 @@ fn entry(
     } else {
         format!("{name} slot {}, disk {}", letter(slot), disk + 1)
     };
-    let option = efi::load_option(&description, esp, uki(slot));
+    let option = efi::load_option(&description, esp, uki(names, slot));
     write(vars, &efi::boot_name(number), &option)?;
     Ok(number)
 }
@@ -131,6 +133,7 @@ fn entry(
 /// `slot`'s entries, then the other slot's. The new order.
 pub fn make_default(
     vars: &Path,
+    names: &LoadSourceNames,
     name: &str,
     esps: &[EspLocation],
     slot: Slot,
@@ -144,7 +147,7 @@ pub fn make_default(
     let mut front = Vec::new();
     for slot in [slot, other(slot)] {
         for (disk, esp) in esps.iter().enumerate() {
-            front.push(entry(vars, name, disk, esp, slot)?);
+            front.push(entry(vars, names, name, disk, esp, slot)?);
         }
     }
     let current = fs::read(vars.join(efi::var_name("BootOrder")))
@@ -162,26 +165,29 @@ mod tests {
     use super::*;
     use uuid::Uuid;
 
-    const NAME: &str = "QS/VS";
+    const NAME: &str = "QS/DEMO";
+    const NAMES: &LoadSourceNames = &LoadSourceNames::DEMO;
+    const SLOT_B_PATH: &str = LoadSourceNames::DEMO.slot_b_path;
 
     fn esp() -> EspLocation {
         EspLocation {
             index: 1,
             first_lba: 2048,
             sectors: 524_288,
-            guid: crate::layout::fixed_guids().parts[0],
+            guid: crate::layout::fixed_guids(NAMES).parts[0],
         }
     }
 
     fn second() -> EspLocation {
         EspLocation {
-            guid: Uuid::from_u128(0x5153_5653_0000_4000_8000_0000_0000_00aa),
+            guid: Uuid::from_u128(0x5153_444d_0000_4000_8000_0000_0000_00aa),
             ..esp()
         }
     }
 
     fn scratch(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("hostdisk-efi-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("loadsource-efi-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -201,13 +207,19 @@ mod tests {
     #[test]
     fn a_disk_with_no_entries_gets_both_and_the_order() {
         let vars = scratch("new");
-        assert_eq!(make_default(&vars, NAME, &[esp()], Slot::B), Ok(vec![0, 1]));
+        assert_eq!(
+            make_default(&vars, NAMES, NAME, &[esp()], Slot::B),
+            Ok(vec![0, 1])
+        );
         assert_eq!(order(&vars), [0, 1]);
         let found = paths(&vars);
-        assert_eq!(found[0], (0, Some("\\EFI\\QSVS\\B.EFI".into())));
+        assert_eq!(found[0], (0, Some("\\EFI\\QSDEMO\\B.EFI".into())));
         assert_eq!(found[1], (1, Some("\\EFI\\BOOT\\BOOTX64.EFI".into())));
         // Confirming the other slot later only turns the order round.
-        assert_eq!(make_default(&vars, NAME, &[esp()], Slot::A), Ok(vec![1, 0]));
+        assert_eq!(
+            make_default(&vars, NAMES, NAME, &[esp()], Slot::A),
+            Ok(vec![1, 0])
+        );
         assert_eq!(entries(&vars).len(), 2);
         fs::remove_dir_all(&vars).unwrap();
     }
@@ -223,16 +235,16 @@ mod tests {
         put("Boot0000", b"\x01\x00\x00\x00\x00\x00U\x00\x00\x00");
         put(
             "Boot0003",
-            &efi::load_option("QS/VS slot A", &esp(), SLOT_A_PATH),
+            &efi::load_option("QS/DEMO slot A", &esp(), SLOT_A_PATH),
         );
         put(
             "Boot0007",
-            &efi::load_option("QS/VS slot B", &esp(), SLOT_B_PATH),
+            &efi::load_option("QS/DEMO slot B", &esp(), SLOT_B_PATH),
         );
         put("BootOrder", &efi::numbers(&[3, 7, 0]));
         put("BootNext", &efi::numbers(&[7]));
         assert_eq!(
-            make_default(&vars, NAME, &[esp()], Slot::B),
+            make_default(&vars, NAMES, NAME, &[esp()], Slot::B),
             Ok(vec![7, 3, 0])
         );
         assert_eq!(order(&vars), [7, 3, 0]);
@@ -245,7 +257,7 @@ mod tests {
         let vars = scratch("two");
         let both = [esp(), second()];
         assert_eq!(
-            make_default(&vars, NAME, &both, Slot::A),
+            make_default(&vars, NAMES, NAME, &both, Slot::A),
             Ok(vec![0, 1, 2, 3])
         );
         let found = entries(&vars);
@@ -253,10 +265,10 @@ mod tests {
         // Slot A on the first disk, slot A on the second, then slot B.
         assert!(on(&found[0].option, &esp()) && on(&found[1].option, &second()));
         assert_eq!(found[1].path.as_deref(), Some("\\EFI\\BOOT\\BOOTX64.EFI"));
-        assert_eq!(found[3].path.as_deref(), Some("\\EFI\\QSVS\\B.EFI"));
+        assert_eq!(found[3].path.as_deref(), Some("\\EFI\\QSDEMO\\B.EFI"));
         // Slot B confirmed: its two entries lead, nothing is added.
         assert_eq!(
-            make_default(&vars, NAME, &both, Slot::B),
+            make_default(&vars, NAMES, NAME, &both, Slot::B),
             Ok(vec![2, 3, 0, 1])
         );
         assert_eq!(entries(&vars).len(), 4);
@@ -266,7 +278,7 @@ mod tests {
             ..esp()
         };
         assert_eq!(
-            make_default(&vars, NAME, &[esp(), third], Slot::B),
+            make_default(&vars, NAMES, NAME, &[esp(), third], Slot::B),
             Ok(vec![2, 4, 0, 5, 3, 1])
         );
         fs::remove_dir_all(&vars).unwrap();
@@ -274,8 +286,14 @@ mod tests {
 
     #[test]
     fn no_efivarfs_is_an_error_with_its_reason() {
-        let e =
-            make_default(Path::new("/nonexistent/efivars"), NAME, &[esp()], Slot::A).unwrap_err();
+        let e = make_default(
+            Path::new("/nonexistent/efivars"),
+            NAMES,
+            NAME,
+            &[esp()],
+            Slot::A,
+        )
+        .unwrap_err();
         assert!(e.contains("not there"), "{e}");
         assert_eq!(boot_number(&efi::var_name("Boot001F")), Some(0x1f));
         assert_eq!(boot_number(&efi::var_name("BootOrder")), None);

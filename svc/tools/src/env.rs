@@ -16,8 +16,8 @@ use netd::control::{Calls as _, Client as NetClient, TRIAL_KEPT, TRIAL_RESTORED,
 use panels::Named;
 use panels::forms::{LinkChoice, TimeChoice};
 use panels::tools::{Host, LogLine, Trial};
-use qsvsstgd::{Calls as _, Client as StorageClient};
 use state::{Host as HostFile, Inventory, Network, Store};
+use stgd::{Calls as _, Client as StorageClient};
 use supervise::control::{Calls as _, Client, HostStatus};
 use svcusers::FileStore;
 use users::Users;
@@ -68,7 +68,7 @@ impl Env {
             users,
             control: Client::new(appliance.control_socket()),
             net: NetClient::new(appliance.net_socket()),
-            storage: StorageClient::default(),
+            storage: StorageClient::of(&appliance),
             store: Store::at(appliance.state_dir()),
             name: release::NAME.into(),
         }
@@ -84,7 +84,7 @@ impl Env {
     }
 
     /// The storage service's status; `None` when it does not answer.
-    pub fn storage(&mut self) -> Option<qsvsstgd::Status> {
+    pub fn storage(&mut self) -> Option<stgd::Status> {
         self.storage.status().ok()
     }
 

@@ -82,21 +82,30 @@ pub fn entries<D: Read + Seek>(dev: &mut D) -> io::Result<Vec<Entry>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::{self, DATA_TYPE_GUID, RECORD_TYPE_GUID};
+    use crate::layout;
+    use appliance::LoadSourceNames;
     use diskimg::layout::{ESP_TYPE_GUID, Layout};
     use std::io::Cursor;
 
     #[test]
     fn a_written_table_reads_back() {
-        let bytes = diskimg::layout::min_bytes(&layout::install_parts());
-        let table = Layout::for_bytes(&layout::install_parts(), bytes).unwrap();
-        let guids = layout::fixed_guids();
+        let names = &LoadSourceNames::DEMO;
+        let bytes = diskimg::layout::min_bytes(&layout::install_parts(names));
+        let table = Layout::for_bytes(&layout::install_parts(names), bytes).unwrap();
+        let guids = layout::fixed_guids(names);
         let esp = vec![0u8; usize::try_from(layout::ESP_BYTES).unwrap()];
         let mut disk = Cursor::new(vec![0u8; usize::try_from(bytes).unwrap()]);
         diskimg::write_layout(&mut disk, &table, &guids, &[(1, &esp)], &mut |_, _| {}).unwrap();
         let found = entries(&mut disk).unwrap();
         let types: Vec<Uuid> = found.iter().map(|e| e.type_guid).collect();
-        assert_eq!(types, [ESP_TYPE_GUID, RECORD_TYPE_GUID, DATA_TYPE_GUID]);
+        assert_eq!(
+            types,
+            [
+                ESP_TYPE_GUID,
+                layout::record_type(names),
+                layout::data_type(names)
+            ]
+        );
         assert_eq!(found[2].guid, guids.parts[2]);
         assert_eq!(found[0].offset(), table.parts[0].part.offset());
         assert_eq!(found[1].bytes(), layout::RECORD_BYTES);

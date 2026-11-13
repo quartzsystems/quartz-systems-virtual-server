@@ -5,7 +5,7 @@
 //! The installation media: the boot image with the media UKI, the same
 //! UKI loose in the tree, and the payload the installer writes a load
 //! source from: the two slots' UKIs and a manifest of them, signed
-//! with the build's key (`hostdisk::payload`). The installer's
+//! with the build's key (`loadsource::payload`). The installer's
 //! initramfs holds the public key, so media and installer of one build
 //! trust each other and nothing else does.
 
@@ -17,7 +17,8 @@ use buildkit::host::paths::read_pointer;
 use buildkit::image::iso::{Item, Media};
 use buildkit::{Ctx, UkiKind};
 use ed25519_dalek::Signer;
-use hostdisk::payload::{self, File, Manifest};
+use loadsource::payload::{self, File, Manifest};
+use release::LOAD_SOURCE;
 use tracing::info;
 
 /// A slot's UKI and its entry in the manifest.
@@ -43,7 +44,7 @@ pub fn media(ctx: &Ctx, _uki: &[u8]) -> Result<Media> {
         build: ctx.product.build_id.clone(),
         files: vec![entry_a, entry_b],
     };
-    let text = manifest.render();
+    let text = manifest.render(&LOAD_SOURCE);
     let key = buildkit::image::manifest::signing_key(ctx)?;
     let signature = hex::encode(key.sign(text.as_bytes()).to_bytes());
     info!(
@@ -52,7 +53,9 @@ pub fn media(ctx: &Ctx, _uki: &[u8]) -> Result<Media> {
         manifest.release,
         hex::encode(key.verifying_key().to_bytes())
     );
-    let file = |name: &str, bytes: Vec<u8>| Item::File(format!("{}/{name}", payload::DIR), bytes);
+    let file = |name: &str, bytes: Vec<u8>| {
+        Item::File(format!("{}/{name}", payload::dir(&LOAD_SOURCE)), bytes)
+    };
     Ok(Media {
         volume_id: payload::volume_id(ctx.product.vendor, &ctx.product.release),
         tree: vec![

@@ -31,7 +31,7 @@ mod on_host {
     use abrec::Slot;
     use appliance::Appliance;
     use appliance::time::Zone;
-    use hostdisk::disks::{self, LoadSource};
+    use loadsource::disks::{self, LoadSource};
     use rustix::system::{RebootCommand, reboot};
     use state::Store;
     use supervise::run::Supervisor;
@@ -112,14 +112,14 @@ mod on_host {
     /// or, when it named nothing and the load source is not mirrored,
     /// the data partition itself.
     fn data_device(sources: &[LoadSource]) -> Result<PathBuf, String> {
-        let named = std::fs::read_to_string(qsvsstgd::DATA_DEVICE)
+        let named = std::fs::read_to_string(stgd::data_device(&APPLIANCE))
             .ok()
             .map(|d| d.trim().to_string())
             .filter(|d| !d.is_empty());
         if let Some(device) = named {
             return Ok(PathBuf::from(device));
         }
-        if disks::label(sources).is_some() {
+        if disks::label(APPLIANCE.load_source, sources).is_some() {
             return Err("the storage service does not serve the mirrored load source".into());
         }
         sources
@@ -240,7 +240,7 @@ mod on_host {
             clock(&mut host);
             install::run(host);
         }
-        let sources = disks::load_sources_within(DISK_WAIT);
+        let sources = disks::load_sources_within(APPLIANCE.load_source, DISK_WAIT);
         record(&mut host, source, &sources);
         storage(&mut host);
         data(&mut host, &sources);

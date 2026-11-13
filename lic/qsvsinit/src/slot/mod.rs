@@ -20,10 +20,10 @@ mod on_host {
 
     use abrec::Slot;
     use diskimg::efi::EspLocation;
-    use hostdisk::boot::{self, EFIVARS};
-    use hostdisk::disks::{self, LoadSource};
-    use hostdisk::multi::{At, Copies};
-    use hostdisk::record::{self, HostRecord, Ipl, letter};
+    use loadsource::boot::{self, EFIVARS};
+    use loadsource::disks::{self, LoadSource};
+    use loadsource::multi::{At, Copies};
+    use loadsource::record::{self, HostRecord, Ipl, letter};
     use refcode::RefCode;
 
     /// The record and what this IPL is by it.
@@ -56,7 +56,7 @@ mod on_host {
             part: None,
             esps: sources.iter().map(|s| s.esp_at).collect(),
         };
-        let mut part = match disks::records(sources) {
+        let mut part = match disks::records(&release::LOAD_SOURCE, sources) {
             Ok(part) => part,
             Err(e) => {
                 post(&refcode::RECORD_INVALID, &format!("not read: {e}"));
@@ -131,8 +131,13 @@ mod on_host {
                 return;
             }
             self.ipl = Ipl::Normal;
-            let order =
-                boot::make_default(Path::new(EFIVARS), release::NAME, &self.esps, self.booted);
+            let order = boot::make_default(
+                Path::new(EFIVARS),
+                &release::LOAD_SOURCE,
+                release::NAME,
+                &self.esps,
+                self.booted,
+            );
             match order {
                 Ok(order) => {
                     let list: Vec<String> = order.iter().map(|n| format!("{n:04X}")).collect();

@@ -221,7 +221,7 @@ impl Host {
                     );
                     self.say(Severity::Warning, &format!("{service}: {how}; {next}"));
                 }
-                Occurrence::GaveUp { service } if service == qsvsstgd::NAME && self.served => {
+                Occurrence::GaveUp { service } if service == stgd::NAME && self.served => {
                     // The kernel holds every request to /data for a
                     // server that will not come: the host cannot go on.
                     self.storage_lost = true;

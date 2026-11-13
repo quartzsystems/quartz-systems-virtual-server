@@ -14,9 +14,10 @@
 //! under way (two copies).
 
 use abrec::{SLOT_BYTES, Spec};
+use appliance::LoadSourceNames;
 use uuid::Uuid;
 
-use crate::layout::RECORD_TYPE_GUID;
+use crate::layout::record_type;
 
 /// Where the label's copies start in the record partition.
 pub const LABEL_OFFSET: u64 = 2 * SLOT_BYTES as u64;
@@ -26,25 +27,27 @@ pub const RESUME_OFFSET: u64 = 4 * SLOT_BYTES as u64;
 pub const RESUME_SLOT_BYTES: usize = 384 * 1024;
 
 /// The label as `abrec` sees it.
-pub const LABEL_SPEC: Spec = Spec {
-    magic: *b"QSVSSET\0",
-    version: 1,
-    type_guid: RECORD_TYPE_GUID,
-    slot_bytes: SLOT_BYTES,
-    min_payload: HEAD_LEN,
-};
+pub fn label_spec(names: &LoadSourceNames) -> Spec {
+    Spec {
+        magic: names.label_magic,
+        version: 1,
+        type_guid: record_type(names),
+        slot_bytes: SLOT_BYTES,
+        min_payload: HEAD_LEN,
+    }
+}
 
-/// The resume map as `abrec` sees it; the payload is `protect`'s.
-pub const RESUME_SPEC: Spec = Spec {
-    magic: *b"QSVSRSM\0",
-    version: 1,
-    type_guid: RECORD_TYPE_GUID,
-    slot_bytes: RESUME_SLOT_BYTES,
-    min_payload: 56,
-};
-
-/// The magic `protect` encodes its resume map under.
-pub const RESUME_MAGIC: [u8; 8] = *b"QSVSRMAP";
+/// The resume map as `abrec` sees it; the payload is `protect`'s,
+/// encoded under the appliance's `resume_map_magic`.
+pub fn resume_spec(names: &LoadSourceNames) -> Spec {
+    Spec {
+        magic: names.resume_magic,
+        version: 1,
+        type_guid: record_type(names),
+        slot_bytes: RESUME_SLOT_BYTES,
+        min_payload: 56,
+    }
+}
 
 /// Bytes a block of the set has.
 pub const BLOCK: u64 = 4096;
@@ -206,7 +209,7 @@ mod tests {
                 Member {
                     partition: Uuid::from_u128(1),
                     state: MemberState::Active,
-                    serial: "QSVSHD0".into(),
+                    serial: "DEMOHD0".into(),
                     location: "P0000-B00-D05-F0-U0".into(),
                 },
                 Member {
@@ -248,11 +251,16 @@ mod tests {
 
     #[test]
     fn the_three_records_fit_the_partition_side_by_side() {
-        assert_eq!(LABEL_OFFSET, 2 * crate::record::SPEC.slot_bytes as u64);
+        let names = &LoadSourceNames::DEMO;
+        assert_eq!(
+            LABEL_OFFSET,
+            2 * crate::record::spec(names).slot_bytes as u64
+        );
         assert_eq!(
             RESUME_OFFSET,
-            LABEL_OFFSET + 2 * LABEL_SPEC.slot_bytes as u64
+            LABEL_OFFSET + 2 * label_spec(names).slot_bytes as u64
         );
+        assert_eq!(resume_spec(names).slot_bytes, RESUME_SLOT_BYTES);
         assert_eq!(
             RESUME_OFFSET + 2 * RESUME_SLOT_BYTES as u64,
             crate::layout::RECORD_BYTES

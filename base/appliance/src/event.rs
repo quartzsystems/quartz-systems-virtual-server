@@ -5,6 +5,31 @@
 //! What the base crates report. The product decides which reference
 //! code each one is.
 
+/// What the storage service has to say of the load source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Storage {
+    /// The mirrored set was assembled and is served.
+    SetAssembled,
+    /// The mirrored set could not be assembled.
+    SetNotAssembled,
+    /// A unit is missing or failed.
+    UnitFailed,
+    /// A unit is being brought back in step.
+    ResyncStarted,
+    /// The unit is in step again.
+    ResyncFinished,
+    /// A replacement unit is being rebuilt.
+    RebuildStarted,
+    /// The replacement unit is in step.
+    RebuildFinished,
+    /// A resynchronization or a rebuild ended before the unit was in step.
+    RebuildFailed,
+    /// Mirrored protection was started; it takes effect at the next IPL.
+    ProtectionStarted,
+    /// The firmware's boot entries could not be written for a new unit.
+    BootEntriesNotWritten,
+}
+
 /// Something a base crate has to say.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event<'a> {
@@ -53,5 +78,12 @@ pub enum Event<'a> {
     TimeSynchronized {
         /// The server.
         server: &'a str,
+    },
+    /// The storage service says something of the load source.
+    Storage {
+        /// What.
+        what: Storage,
+        /// The units, sizes and reasons of this occurrence.
+        detail: &'a str,
     },
 }

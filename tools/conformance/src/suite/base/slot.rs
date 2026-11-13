@@ -13,9 +13,10 @@ use std::time::{Duration, Instant};
 
 use abrec::Slot;
 use diskimg::efi;
-use hostdisk::layout::{SLOT_A_PATH, SLOT_B_PATH};
-use hostdisk::record::HostRecord;
+use loadsource::layout::SLOT_A_PATH;
+use loadsource::record::HostRecord;
 use qsvshook::proto::command;
+use release::SLOT_B_PATH;
 use release::fact;
 
 use super::{Run, base_ready, channel, fact_of, posted};

@@ -14,7 +14,7 @@ path = "src/main.rs"
 buildkit.workspace = true
 diskimg.workspace = true
 release = { path = "../../lic/release", version = "0.1.0" }
-hostdisk = { path = "../../lic/hostdisk", version = "0.1.0" }
+loadsource = { path = "../../base/loadsource", version = "0.1.0" }
 conformance = { path = "../conformance", version = "0.1.0" }
 anyhow.workspace = true
 clap.workspace = true

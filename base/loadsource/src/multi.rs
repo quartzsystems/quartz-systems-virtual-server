@@ -136,7 +136,7 @@ mod tests {
     use std::io::Cursor;
 
     const SPEC: Spec = Spec {
-        magic: *b"QSVSTEST",
+        magic: *b"QSDMTEST",
         version: 1,
         type_guid: uuid::Uuid::nil(),
         slot_bytes: 4096,
@@ -185,6 +185,6 @@ mod tests {
         one.write(b"here").unwrap();
         let bytes = one.parts.pop().unwrap().into_device().dev.into_inner();
         assert!(bytes[..8192].iter().all(|b| *b == 0));
-        assert_eq!(&bytes[8192..8200], b"QSVSTEST");
+        assert_eq!(&bytes[8192..8200], b"QSDMTEST");
     }
 }

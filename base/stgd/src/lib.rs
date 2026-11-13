@@ -2,22 +2,59 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The storage service's socket: one request and one answer per
-//! connection, each an `ipc` frame, as PID 1's control socket. The
-//! service itself is the binary; this is what its callers need.
+//! An appliance's storage service. PID 1 starts it before the data
+//! file system is mounted and stops it after that is unmounted. With a
+//! mirrored load source it serves the protected set to the kernel
+//! through ublk; the device outlives the process, so a restart loses
+//! nothing.
+//!
+//! - [`serve`]: the service itself (Linux).
+//! - The rest is its socket: one request and one answer per
+//!   connection, each an `ipc` frame, as PID 1's control socket.
 
 #![forbid(unsafe_code)]
 
-#[cfg(unix)]
-use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
+pub mod serve;
 
-/// The service's socket.
-pub const SOCKET: &str = "/run/qsvsstgd.sock";
-/// Where the service says what `/data` is to be mounted from, before
-/// it says it is ready: a device node, or nothing when it has none.
-pub const DATA_DEVICE: &str = "/run/qsvsstgd.data";
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
+
+use appliance::Appliance;
+
 /// The service's name in the service table.
 pub const NAME: &str = "stgd";
+
+/// The service's socket.
+pub fn socket(appliance: &Appliance) -> PathBuf {
+    appliance.storage_file("sock")
+}
+
+/// Where the service says what the data file system is to be mounted
+/// from, before it says it is ready: a device node, or nothing when it
+/// has none.
+pub fn data_device(appliance: &Appliance) -> PathBuf {
+    appliance.storage_file("data")
+}
+
+/// One disk of the machine, as the appliance's inventory has it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DiskIdentity {
+    /// The disk's kernel name.
+    pub name: String,
+    /// Its serial number.
+    pub serial: String,
+    /// Its location code.
+    pub location: String,
+}
+
+/// What the service asks of the appliance it runs as.
+#[derive(Clone, Copy, Debug)]
+pub struct Host {
+    /// The machine's disks, read now.
+    pub inventory: fn() -> Vec<DiskIdentity>,
+}
 
 /// `protection` of a load source with one disk.
 pub const NONE: &str = "none";
@@ -120,16 +157,14 @@ impl Client {
         Self { path: path.into() }
     }
 
+    /// A client of the storage service of `appliance`.
+    pub fn of(appliance: &Appliance) -> Self {
+        Self::new(socket(appliance))
+    }
+
     /// The socket's path.
     pub fn path(&self) -> &Path {
         &self.path
-    }
-}
-
-#[cfg(unix)]
-impl Default for Client {
-    fn default() -> Self {
-        Self::new(SOCKET)
     }
 }
 
@@ -149,7 +184,7 @@ mod tests {
         let unit = |number, state: &str| Unit {
             number,
             disk: "vda".into(),
-            serial: "QSVSHD0".into(),
+            serial: "DEMOHD0".into(),
             location: "P0000-B00-D05-F0-U0".into(),
             bytes: 1 << 30,
             state: state.into(),

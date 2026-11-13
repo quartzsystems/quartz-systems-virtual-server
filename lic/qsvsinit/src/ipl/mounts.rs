@@ -27,7 +27,7 @@ fn nodev() -> MountFlags {
     plain().union(MountFlags::NODEV)
 }
 
-use hostdisk::boot::EFIVARS;
+use loadsource::boot::EFIVARS;
 
 fn kernel_table() -> [Mount; 5] {
     [

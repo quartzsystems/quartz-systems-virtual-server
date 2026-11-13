@@ -20,7 +20,7 @@ use rustix::termios::{OptionalActions, tcgetattr, tcsetattr};
 use state::Store;
 use supervise::control::{Calls as _, Client};
 
-use qsvsstgd::Calls as _;
+use stgd::Calls as _;
 
 use crate::proto::{END, PORT, command, parse_status, status_lines, storage_lines, word};
 
@@ -136,7 +136,7 @@ fn kmsg(text: &str) -> Vec<String> {
 }
 
 fn storage() -> Vec<String> {
-    qsvsstgd::Client::default()
+    stgd::Client::of(&release::appliance(|_| {}, |_, _| {}))
         .status()
         .map_or_else(error, |status| storage_lines(&status))
 }

@@ -15,7 +15,7 @@ const READY_WITHIN: Duration = Duration::from_secs(10);
 /// The storage service: the load source, served before `/data` is
 /// mounted and until it is unmounted.
 pub const STGD: Service = Service {
-    name: qsvsstgd::NAME,
+    name: stgd::NAME,
     binary: "/qsvs/bin/qsvsstgd",
     args: &[],
     order: 5,

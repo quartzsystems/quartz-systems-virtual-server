@@ -2,12 +2,14 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The disks a QS/VS host boots from. A load-source disk is a GPT with
-//! the ESP (both slots' UKIs), the record partition and `QSVSDATA`.
-//! There is one, or two when the load source is mirrored: then each
-//! disk has its own ESP and record partition, and `QSVSDATA` is one
-//! xfs on a protected set over the two data partitions. Storage pools
-//! are on other disks.
+//! The disks an appliance starts from. A load-source disk is a GPT
+//! with the ESP (both slots' UKIs), the record partition and the data
+//! partition. There is one, or two when the load source is mirrored:
+//! then each disk has its own ESP and record partition, and the data
+//! file system is one xfs on a protected set over the two data
+//! partitions. The partition types, the names and the records' magics
+//! are the appliance's (`appliance::LoadSourceNames`), so no appliance
+//! takes another's disk for its own.
 //!
 //! - [`layout`]: the partitions, their types and names.
 //! - [`record`]: the A/B record, version 2, and the slot rule.

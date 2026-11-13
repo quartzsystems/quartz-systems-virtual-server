@@ -7,7 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-qsvsstgd = { path = "../qsvsstgd", version = "0.1.0" }
+stgd = { path = "../../base/stgd", version = "0.1.0" }
 release = { path = "../release", version = "0.1.0" }
 hostinv = { path = "../hostinv", version = "0.1.0" }
 state = { path = "../../base/state", version = "0.1.0" }

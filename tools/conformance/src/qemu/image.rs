@@ -12,8 +12,9 @@ use std::path::Path;
 use diskimg::efi::EspLocation;
 use diskimg::layout::ESP_TYPE_GUID;
 use diskimg::{SECTOR, fat};
-use hostdisk::layout::RECORD_TYPE_GUID;
-use hostdisk::record::{self, HostRecord};
+use loadsource::layout::record_type;
+use loadsource::record::{self, HostRecord};
+use release::LOAD_SOURCE;
 use uuid::Uuid;
 
 /// The chunk a copy is made in; one that is all zero is left a hole.
@@ -64,7 +65,7 @@ fn partition(file: &mut File, ty: Uuid) -> Result<(u32, u64, u64), String> {
 /// fixed GUIDs, an installed disk its own.
 pub fn esp(image: &Path) -> Result<EspLocation, String> {
     let mut file = File::open(image).map_err(text)?;
-    let entry = hostdisk::gpt::entries(&mut file)
+    let entry = loadsource::gpt::entries(&mut file)
         .map_err(text)?
         .into_iter()
         .find(|e| e.type_guid == ESP_TYPE_GUID)
@@ -84,8 +85,8 @@ pub fn set_record(image: &Path, record: HostRecord) -> Result<(), String> {
         .write(true)
         .open(image)
         .map_err(text)?;
-    let (_, start, _) = partition(&mut file, RECORD_TYPE_GUID)?;
-    let bytes = record::initial_bytes(record).map_err(text)?;
+    let (_, start, _) = partition(&mut file, record_type(&LOAD_SOURCE))?;
+    let bytes = record::initial_bytes(&LOAD_SOURCE, record).map_err(text)?;
     file.seek(SeekFrom::Start(start)).map_err(text)?;
     file.write_all(&bytes).map_err(text)?;
     file.sync_all().map_err(text)
@@ -94,11 +95,11 @@ pub fn set_record(image: &Path, record: HostRecord) -> Result<(), String> {
 /// The A/B record of `image` and its sequence.
 pub fn record_of(image: &Path) -> Result<(HostRecord, u64), String> {
     let mut file = File::open(image).map_err(text)?;
-    let (_, start, _) = partition(&mut file, RECORD_TYPE_GUID)?;
-    let mut bytes = vec![0u8; 2 * record::SPEC.slot_bytes];
+    let (_, start, _) = partition(&mut file, record_type(&LOAD_SOURCE))?;
+    let mut bytes = vec![0u8; 2 * record::spec(&LOAD_SOURCE).slot_bytes];
     file.seek(SeekFrom::Start(start)).map_err(text)?;
     file.read_exact(&mut bytes).map_err(text)?;
-    record::read_bytes(&bytes).map_err(text)
+    record::read_bytes(&LOAD_SOURCE, &bytes).map_err(text)
 }
 
 /// Write a seed volume to `path`: a FAT file system labelled `label`
