@@ -29,14 +29,8 @@ type Step = PanelFlow<Env, Outcome>;
 
 /// The options that are not there yet, and what brings them.
 const LATER: [(u8, &str); 2] = [
-    (
-        4,
-        "Management console pairing comes with QSI, in a later phase.",
-    ),
-    (
-        8,
-        "Service functions come with code update, in a later phase.",
-    ),
+    (4, "It comes with Phase 8, the QSI host server."),
+    (8, "It comes with Phase 9, service and code update."),
 ];
 
 /// The main menu.
@@ -57,14 +51,14 @@ impl Panel<Env, Outcome> for MainMenu {
                 (3, "Configure management network"),
                 (
                     4,
-                    "Management console pairing  (not yet available: comes with QSI)",
+                    "Management console pairing  (not yet available: comes with Phase 8)",
                 ),
                 (5, "Work with service tools user IDs"),
                 (6, "Date and time"),
                 (7, "Display logs"),
                 (
                     8,
-                    "Service functions  (not yet available: comes with code update)",
+                    "Service functions  (not yet available: comes with Phase 9)",
                 ),
                 (9, "Power off or restart"),
             ],

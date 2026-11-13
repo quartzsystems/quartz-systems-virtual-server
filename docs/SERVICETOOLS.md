@@ -7,7 +7,9 @@ management console, QS/MC, in a later phase.
 
 The panels every Quartz appliance has are `base/panels` (shared with
 QS/MC); QS/VS's menu, its system status and its disk units are
-`svc/tools`, the service `tools` of PID 1's table. Every panel's screen
+`svc/tools`, the service `tools` of PID 1's table. Options 4 and 8 of
+the menu come with later phases: 4 with Phase 8, the QSI host server,
+and 8 with Phase 9, service and code update. Every panel's screen
 is a golden file under `tools/conformance/golden/`.
 
 ## The two sessions
@@ -58,6 +60,46 @@ sensitive; passwords are. The password is not shown.
 The count of wrong passwords is kept with the users; the five minutes
 are counted in memory, so a restart of the console service ends them.
 
+## Before any session: the unit to keep
+
+One panel is shown without a sign-on, in place of everything above,
+and only when the two units of a mirrored load source each ran without
+the other (`A2003040`, `docs/REFCODES.md`). The host has then mounted
+no `/data` and started no service but the storage service, so there
+are no users to sign on as: the users are on `/data`, and which `/data`
+is the question. Being at the machine's display or serial port is the
+authority, as it is for the installer. PID 1 runs the console for this
+one panel, on the display and the serial port at once, with the same
+screen on both.
+
+```
+                        Select Load-Source Unit to Keep
+ Each unit ran without the other. Type 1 by the unit to keep.
+
+ Opt Unit  Location                Serial              Last written
+        1  P0000-B00-D10-F0        QSVSHD0             2026-11-12 10:22 UTC
+        2  P0000-B00-D11-F0        QSVSHD1             2026-11-12 10:31 UTC
+
+ The host has started nothing and waits for this choice. The unit
+ that is not kept is written again from the one that is: whatever
+ was written to it while it ran alone is lost.
+```
+
+Each unit has its location code, its disk's serial number and the time
+its disk was last written, in UTC (the display zone is on `/data`
+too); `not known` for a disk last written by a build before the label
+held the time. Type 1 by a unit and press Enter; `Confirm Unit to
+Keep` names the unit kept and the one that is written again, and F10
+does it. F3 and F12 do nothing here: the host cannot go on without a
+choice, and waits as long as it takes.
+
+The console asks the storage service, which writes the kept unit's
+label to both disks with the other unit stale, posts `C2003050` and
+assembles the set. The IPL then goes on as any other, and the other
+unit is written from the one kept while the host runs (`C2003020`,
+`C2003025`). To look at what a unit holds before choosing, power the
+machine off and start it with that disk alone.
+
 ## Service tools user IDs and passwords
 
 The users are kept in `/data/state/users.db`, through QS/400's
@@ -79,16 +121,17 @@ everything in Service Tools; there is one kind of user in this release.
       1. Work with system status
       2. Work with disk units
       3. Configure management network
-      4. Management console pairing  (not yet available: comes with QSI)
+      4. Management console pairing  (not yet available: comes with Phase 8)
       5. Work with service tools user IDs
       6. Date and time
       7. Display logs
-      8. Service functions  (not yet available: comes with code update)
+      8. Service functions  (not yet available: comes with Phase 9)
       9. Power off or restart
 ```
 
 Options 4 and 8 are on the menu and cannot be selected: the message
-line says what brings each.
+line says which phase brings each (`It comes with Phase 8, the QSI
+host server.`, `It comes with Phase 9, service and code update.`).
 
 ### 1. Work with system status
 
@@ -205,6 +248,7 @@ The console edits no state file itself.
 | the host name, the display zone, the time servers | PID 1 | writes `host.toml`, takes the name and the zone into use; the network service then reads the time servers again |
 | power off, restart | PID 1 | the orderly shutdown |
 | a disk added or replaced | the storage service | prepares the disk, keeps the set's label, rebuilds |
+| the unit to keep, of two that ran apart | the storage service | writes the kept unit's label to both disks, assembles the set |
 | service tools users | the console service's own users' store | `users.db`, written beside and renamed, as `svcusers` does |
 
 The users have no other owner: nothing but the local console signs

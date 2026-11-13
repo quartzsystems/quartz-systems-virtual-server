@@ -18,15 +18,24 @@ So are what the installer and the local console are made of: `console`,
 
 | Phase | What it builds | Record |
 |---|---|---|
-| 0 | the toolchain: a clean clone builds a reproducible, bootable image whose Rust PID 1 prints a banner and proves KVM is usable | `docs/PHASE0.md` |
-| 1 | PID 1 and the base system: the supervised service table, state, logging, the management network and time, the host inventory, the A/B record with slot confirmation, the orderly shutdown | `docs/PHASE1.md` |
-| **2 (current)** | the installer and its ISO, the mirrored load source with its storage service, the Service Tools console | `docs/PHASE2.md` |
-| 3 | the VMM (`qsvmm`) | |
+| 0 | Toolchain and build: a clean clone builds a reproducible, bootable image whose Rust PID 1 prints a banner and proves KVM is usable | `docs/PHASE0.md` |
+| 1 | PID 1 and base system: the supervised service table, state, logging, the management network and time, the host inventory, the A/B record with slot confirmation, the orderly shutdown | `docs/PHASE1.md` |
+| 2 | Installer, ISO and Service Tools: the installer and its ISO, the mirrored load source with its storage service, the Service Tools console | `docs/PHASE2.md` |
+| **3 (current)** | VMM core: `qsvmm`, and one QS/400 system taken from a disk image to a completed IPL in a partition | `docs/PHASE3.md` |
+| 4 | Partition manager, profiles, processors and memory | |
+| 5 | Virtual storage, optical and tape | |
+| 6 | Virtual Ethernet | |
+| 7 | Partition service interface | |
+| 8 | QSI host server and QS/MC integration | |
+| 9 | Service, dumps and code update | |
+| 10 | Physical I/O and tape pass-through | |
+| 11 | Release engineering and hardening | |
 
 Work that is not done is listed in the current phase's record,
-`docs/PHASE2.md`. Code and documents mark it `BLOCKED(phase2): reason`
+`docs/PHASE3.md`. Code and documents mark it `BLOCKED(phase3): reason`
 (one line) or `NEEDS-CODY` (Cody's hardware or sign-off). No other
-marker form.
+marker form. The records of earlier phases keep the markers they were
+written with.
 
 ## Ground rules
 
@@ -57,11 +66,16 @@ marker form.
 - Everything under `base/` is product-neutral: QS/MC will pin those
   crates from this repository. What QS/MC's installer and local console
   will also need goes there: the installer's screens, the common
-  panels, service tools users. Only QS/VS's menu and its host-specific
-  panels are under `svc/`. A `base/` crate takes an `Appliance`
-  description from its caller, has no `qsvs` or `QSVS` in its code
-  outside tests and comments, and depends on no crate of `lic/`.
-  `build doctor` and a unit test fail otherwise.
+  panels, service tools users. So does the load source and its
+  storage service: QS/MC has the same mirrored load source. Only
+  QS/VS's menu and its host-specific panels are under `svc/`. A `base/`
+  crate takes an `Appliance` description from its caller, has no
+  `qsvs` or `QSVS` in its code outside tests and comments, and depends
+  on no crate of `lic/`. `build doctor` and a unit test fail otherwise.
+- What is on an installed disk and is QS/VS's own (the partition
+  types and names, the records' magics, the set's label) is
+  `release::LOAD_SOURCE`. None of it may change: a test there holds
+  each value.
 - The local console edits no state file. It asks: the network service
   to apply and keep a network change, PID 1 for the host's settings
   and for power, the storage service for the disks. PID 1's loop never
@@ -72,7 +86,7 @@ marker form.
   release artifact; the userland and manifest steps check.
 - No IBM text, product names or marks anywhere. The names in use are
   QS/VS, QS/MC and QS/400.
-- Anything not done is listed in `docs/PHASE2.md`.
+- Anything not done is listed in `docs/PHASE3.md`.
 
 ## Locked decisions
 
@@ -105,6 +119,11 @@ See `docs/ARCHITECTURE.md`. Short form:
   which starts before `/data` is mounted and outlives its own restart.
   The set's label and its resume map are beside the A/B record. Parity
   is for storage pools.
+- **Units that ran apart.** When each disk of a mirrored pair ran
+  without the other, the host picks no winner: it posts `A2003040`,
+  mounts no `/data`, starts nothing else and asks at the console which
+  unit to keep; the other is written again from it. `NEEDS-CODY` to
+  confirm the rule (`docs/OPEN_QUESTIONS.md` item 20).
 - **The slot rule.** A slot is chosen by firmware boot entry; there is
   one for each slot of each load-source disk. The A/B record
   (version 2) holds the default slot, the pending slot, the attempts
@@ -119,9 +138,11 @@ See `docs/ARCHITECTURE.md`. Short form:
   an `[install]` table of a seed file.
 - **Local console.** Service Tools: sign-on with a service tools user
   ID, a session each for the display and the serial port. The serial
-  port is PID 1's, in lines, while nobody is signed on there.
+  port is PID 1's, in lines, while nobody is signed on there. Options
+  4 and 8 of its menu come with Phase 8 and Phase 9.
 - **Time zones.** Fixed UTC offsets only, in V1.
-- **Base crates.** `base/` is product-neutral and shared with QS/MC.
+- **Base crates.** `base/` is product-neutral and shared with QS/MC,
+  the load source and its storage service included.
 - **Identity.** Release `V1R0M0` from `VERSION` (`1.0.0`). Fixes
   `QVnnnnn`. Message prefix `QVS`. Environment prefix `QSVS_`. Kernel
   command-line keys `qsvs.`.
@@ -145,22 +166,24 @@ tools/          host tools
     src/host/       doctor rows, the license header check, the neutrality check of base/, `test`
   conformance/    the QEMU harness
     src/qemu/       launch, OVMF, serial capture, the serial port as a 24x80 grid, typed keys, golden files, firmware variables, image copies, the test hooks' channel
-    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fourteen of Phase 2
+    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions
     golden/         every installer and Service Tools screen, as text
 base/           what every Quartz appliance needs; product-neutral
-  appliance/      the Appliance description, events, civil time, the Ethernet links
+  appliance/      the Appliance description with its load-source names, events, civil time, the Ethernet links
   state/          typed TOML state files: schema versions, migration, atomic writes
   supervise/      the service table, restart policy, the runner, the control protocol, signals
   logd/           the NDJSON system log, the reference code history, the kernel log per boot
   netd/           the management interface (DHCP or static, VLAN, carrier, reload, a change on trial) and NTP
   seed/           seed.toml on a labelled FAT volume, with the [install] table
   users/          service tools user IDs: the password rules and the sign-on rule over QS/400's svcusers
-  panels/         panels with help, the console on display and serial, the common forms and Service Tools panels
+  panels/         panels with help, the console on display and serial, the common forms and Service Tools panels, the unit to keep
   install/        the installer's screens and the answers of an unattended installation
   identity/       the host's key pair and self-signed certificate
+  loadsource/     the load-source disks: the GPT layout, the A/B record and the set's label on every disk, units that ran apart, the boot entries, the media's payload
+  stgd/           the storage service: the mirrored load source assembled, served through ublk, resynchronized, rebuilt; its socket
 lic/            PID 1, release, installer, base services
   qsvsinit/       PID 1
-    src/ipl/        the IPL in order: mounts, the command line, the storage step, the clock, the state step; the hand-off to the installer
+    src/ipl/        the IPL in order: mounts, the command line, the storage step and the unit to keep, the clock, the state step; the hand-off to the installer
     src/host/       the running host: the loop, the service table, the control socket, shutdown
     src/slot/       the slot rule: the A/B record at IPL, confirmation, the firmware boot entries
     src/console/    /dev/console and /dev/ttyS0, the status screen
@@ -169,22 +192,22 @@ lic/            PID 1, release, installer, base services
     src/hooks.rs    PID 1's test hooks, cfg(test_hooks) only
   qsvslogd/       base/logd run as QS/VS
   qsvsnetd/       base/netd run as QS/VS
-  qsvsstgd/       the storage service: the mirrored load source assembled, served through ublk, resynchronized, rebuilt
+  qsvsstgd/       base/stgd run as QS/VS, with QS/VS's inventory
   qsvsinstall/    the installer: base/install over QS/VS's media, disks and state
   qsvshook/       the test hooks' binary: the harness's channel, a failing service, the state churn
-  release/        V1R0M0 over QS/400's vrm, the banner, the prefixes, the Appliance description
+  release/        V1R0M0 over QS/400's vrm, the banner, the prefixes, the Appliance description, QS/VS's load-source names
   refcode/        host reference codes (docs/REFCODES.md), the code of each base event, the poster
-  hostdisk/       the load-source disks: the GPT layout, the A/B record and the set's label on every disk, the boot entries, the media's payload
   hostinv/        the host inventory and the location codes (docs/LOCATION.md)
 svc/            Service Tools
-  tools/          qsvstools: QS/VS's menu, system status and disk units over base/panels; the two sessions
-docs/           ARCHITECTURE, PHASE0, PHASE1, PHASE2, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
+  tools/          qsvstools: QS/VS's menu, system status and disk units over base/panels; the two sessions; the one panel PID 1 runs it for
+docs/           ARCHITECTURE, PHASE0, PHASE1, PHASE2, PHASE3, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
 ```
 
 Category folders are created as phases need them. The full set: `tools/`
 (host tools), `base/` (shared with QS/MC), `lic/` (PID 1, release,
 installer, base services), `vmm/`, `stg/`, `net/`, `qsi/`, `svc/`
-(Service Tools). Phase 2 has `tools/`, `base/`, `lic/` and `svc/`.
+(Service Tools). Phase 2 has `tools/`, `base/`, `lic/` and `svc/`;
+Phase 3 adds `vmm/`.
 
 ## Commands
 
@@ -195,7 +218,7 @@ with `QSVS_TARGET_DIR`.
 cargo run -p build -- doctor          host prerequisites, the license headers, base/ neutral
 cargo run -p build -- all             fetch, kernel, userland, initramfs, uki, disk, iso, manifest
 cargo run -p build -- all --test-image   the same with the test hooks, under <target>/test-image/
-cargo run -p build -- test            Phase 0's suite on the release image, the ten base suites and the fourteen of Phase 2 on the test image
+cargo run -p build -- test            Phase 0's suite on the release image, the ten base suites and the fifteen of Phase 2 on the test image
 cargo run -p build -- test --suite dhcp  one suite alone (--suite list names them)
 cargo run -p build -- test --media iso   boot the installation ISO to the installer's first screen
 QSVS_GOLDEN=update cargo run -p build -- test --suite install-serial   write the golden screens instead of comparing
@@ -228,7 +251,9 @@ a test image and off for a release image, whatever the caller has.
 - `docs/PHASE2.md`: the installer, the mirrored load source and Service
   Tools: what exists, how to run it, the pin, kernel additions, hashes,
   the acceptance table, the checklist for the first real machine, what
-  is not done.
+  was not done then.
+- `docs/PHASE3.md`: the VMM core, and before it the answers to Phase
+  2's questions as they were applied; what is not done.
 - `docs/INSTALL.md`: the operator's guide to installing, attended and
   unattended.
 - `docs/SERVICETOOLS.md`: every panel of the local console.

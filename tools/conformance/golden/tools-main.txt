@@ -6,11 +6,11 @@
       1. Work with system status
       2. Work with disk units
       3. Configure management network
-      4. Management console pairing  (not yet available: comes with QSI)
+      4. Management console pairing  (not yet available: comes with Phase 8)
       5. Work with service tools user IDs
       6. Date and time
       7. Display logs
-      8. Service functions  (not yet available: comes with code update)
+      8. Service functions  (not yet available: comes with Phase 9)
       9. Power off or restart
 
 
