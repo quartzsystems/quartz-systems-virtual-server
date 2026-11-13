@@ -51,6 +51,19 @@ fn state_file(channel: &mut Channel, name: &str) -> Result<Option<String>, Strin
     }
 }
 
+/// Wait for the churn's first `host.toml`. The churn starts as the
+/// channel does, so on an IPL of a disk it never ran on its first
+/// write may not be there yet.
+pub fn await_churn(channel: &mut Channel, deadline: Instant) -> Result<(), String> {
+    while state_file(channel, "host.toml")?.is_none() {
+        if Instant::now() >= deadline {
+            return Err("the churn never wrote host.toml".into());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Ok(())
+}
+
 /// Every state file parses and is a complete old or new version. The
 /// generation of `host.toml`, if the churn has written it.
 pub fn verify(channel: &mut Channel) -> Result<Option<u64>, String> {
@@ -99,6 +112,9 @@ pub fn power_pull(run: &Run<'_>) -> Result<String, String> {
         guest
             .expect(&posted(&refcode::SERVICES_STARTED, ""), deadline)
             .map_err(at)?;
+        if cut == 0 {
+            await_churn(guest.channel(deadline).map_err(at)?, deadline).map_err(at)?;
+        }
         let generation = verify(guest.channel(deadline).map_err(at)?).map_err(at)?;
         for code in [&refcode::STATE_INVALID, &refcode::DATA_NOT_MOUNTED] {
             if guest.said(&code.tag()) {

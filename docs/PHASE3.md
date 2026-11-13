@@ -326,6 +326,8 @@ socket `/tmp/p/run/partitions/<name>/console.sock`.
 then the fuzz targets. QEMU stands in for the machine, the QS/VS test
 image is the host in it, and the partition is a guest of that host:
 three levels deep on a build host that is itself a virtual machine.
+The QEMU machines that run a partition have their memory allocated
+before they start ("Found while testing" says why).
 
 | # | Suite | What it asserts |
 |---|---|---|
@@ -416,6 +418,11 @@ the host, and suites 3 to 9 on block devices.
 - **The suites looked for an answer at the start of a line.** QS/400's
   service console writes its prompt before an answer, so `QGPL/KILLED
   *DTAARA exists.` is mid-line. Suites 6 and 7 look for the text.
+- **Phase 1's power-pull suite read a file before it was written.** On
+  a disk the churn never ran on, its first `host.toml` is written as
+  the hooks' channel becomes ready; the acceptance run's first attempt
+  asked for it a moment sooner and stopped with `host.toml is gone`
+  after 0 power cuts. The suite waits for that first write.
 
 ## Not done
 
