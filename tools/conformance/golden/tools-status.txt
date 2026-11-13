@@ -14,9 +14,9 @@
    stgd     ready                       logd     ready
    netd     ready                       tools    ready
    flaky    ready                       hook     ready
+   partition ready
 
  Partitions are managed from the management console, QS/MC.
-
 
 
 
