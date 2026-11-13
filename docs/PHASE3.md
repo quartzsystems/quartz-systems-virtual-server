@@ -363,6 +363,88 @@ image wrapped in a megabyte of zeros and the host copies it into a
 file on `/data`; suites 1, 2 and 10 so run a partition on a file of
 the host, and suites 3 to 9 on block devices.
 
+## Acceptance evidence
+
+One run on 2026-11-13, in a fresh `git clone` on ext4 at commit
+`c8687bd`, with `QSVS_BUILD_ID=phase3`, a fixed signing key and
+`QSVS_QS400_IMAGE` at the image of "The QS/400 guest image": two
+release builds each from an empty target (463 s and 461 s), the test
+image (405 s), the checks, `build test` (2544 s), `build test --media
+iso`. Every command ended with status 0. The host is that of
+`docs/PHASE1.md` (WSL Ubuntu, kernel 6.18.33.2, Intel, `kvm_intel`
+nested = Y; QEMU 10.2.1 and cargo-deny 0.20.2 by `doctor`). A first run
+the same day, at `e30dce9`, built the same files to the same hashes
+but for the manifest, passed the checks, and stopped in Phase 1's
+`power-pull` suite ("Found while testing"); `c8687bd` differs from it
+in that suite alone.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | The answers to questions 16, 18 and 20 are applied | pass: "Before the VMM" above; in this run `install-serial` matched the main menu's golden file with `Phase 8` and `Phase 9`, `doctor` found 12 crates of `base/` neutral, and `mirror-split` passed |
+| 2 | Suites 1, 2, 6, 8, 9, 10, 11 and 12 pass | pass: the table below |
+| 3 | Suites 3, 4, 5 and 7 pass, or are blocked by a named finding about QS/400 | pass, all four; none is blocked |
+| 4 | `docs/QS400_GUEST.md` answers every question of Section 5 from an actual run | each answer quotes the guest's serial port from a run, but for two paths it says were read in QS/400's source and not run (a pending LIC PTF at IPL, and the registration at an installation: they need a PTF and an IPL from media). Its first answer on a restart was wrong and is corrected ("Found while testing") |
+| 5 | Two clean builds are byte-identical; `build deny` and `build doctor` pass | pass: the seventeen files below have the same SHA-256 after each of the two builds; `cargo deny check`, then 211 crates compiled for the host and for musl with no `links` key and no C build helper; `doctor` all rows ok, 246 `.rs` files start with the header |
+| 6 | Every QS/400 crate, `licpart` included, is pinned at one commit; no QS/400 source is copied | pass: fifteen `rev =` values in `Cargo.toml`, all `03d64929`; `deny.toml` allows that one git source. Two constants of QS/400's are restated in `vmm/ipl` (`docs/OPEN_QUESTIONS.md` item 24) |
+| 7 | The release image starts no partition and has no listening socket | pass for the first: the release image's `IPL slot A`, through two heartbeats, and the release installation of `installed-base` post no code of the partition block. For the second: `sockets`, on the test image and again on a test installation, finds no TCP socket and one UDP socket, the DHCP client's; the release image has the same services less the hooks, and nothing in it starts `qsvmm`, whose console socket is a Unix socket. No suite counts the sockets of a release image itself: it has no channel to ask through |
+
+Also status 0 in the run: `build notices --check`, `cargo fmt --all
+--check`, `cargo clippy --workspace --all-targets --locked -- -D
+warnings`, the same for the eight image binaries on the musl target,
+for PID 1, Service Tools and the hooks' binary with
+`QSVS_TEST_HOOKS=1`, and `cargo test --workspace --locked` (374 tests).
+
+### The two builds
+
+The same after both, under `target/`:
+
+| SHA-256 | File | Bytes |
+|---|---|---|
+| `b892d45e4e7a2353116901552f9da84db330794318d73becb0d2dcf174c12208` | `images/initramfs.cpio` | 6081072 |
+| `995cc494e775026cc0c5344f59b0539c13bdb25820149f7fff0117e2fd4b7073` | `images/initramfs-media.cpio` | 2898688 |
+| `7263076b845e4c3b539944b54c8038126d7a8faae776d684f073a540842e1e1f` | `images/qsvs-V1R0M0-a-7263076b845e.efi` | 13497344 |
+| `a0087c6d6ebafbb07df697556e57352b0b270feb5a2ff21485269f0795f77c7e` | `images/qsvs-V1R0M0-b-a0087c6d6eba.efi` | 13497344 |
+| `c91f5c84d15db8ca4eb0a10f0a14c2b13054138386692e0ce9237759cacc7130` | `images/qsvs-V1R0M0-d-c91f5c84d15d.efi` | 13038592 |
+| `a981b6418ec6f44b96a7f380f9feecd3d208210819d769c6aa383540989efeee` | `images/qsvs-V1R0M0-7263076b845e.img` | 1073741824 |
+| `bc78c4b7496c32d4ae687279a67791a435a9d105ef1df49a71e50f66b43051ec` | `images/QSVS-V1R0M0-c91f5c84d15d.iso` | 72632320 |
+| `ad0dd643ac29a77e452cd01563f5e5d2e354eb06b4aed80316fd9c702f96f348` | `x86_64-unknown-linux-musl/release/qsvsinit` | 1302504 |
+| `2d0e4cd15f5112f0d2c85b0a18d7bfcb39bf25c8a2505b8043cd92f0cc5f4552` | `x86_64-unknown-linux-musl/release/qsvsstgd` | 966184 |
+| `a71ee12f7f4f2d030403e8c3cb4224f912edabb69c995a93feef0f3252607dce` | `x86_64-unknown-linux-musl/release/qsvslogd` | 445528 |
+| `5b8fb63251da173593647da3f5699a347df674e592e28d144362b02de1388def` | `x86_64-unknown-linux-musl/release/qsvsnetd` | 1009928 |
+| `3e05c6613ef0a3ef134202623876641fbba1aebd8bc73c1617fb4822e3aa4e69` | `x86_64-unknown-linux-musl/release/qsvstools` | 1345256 |
+| `31edcec7aa75b73810c81818b41c3bdc57a5aaf6ab5292df9bd1894c651bb50b` | `x86_64-unknown-linux-musl/release/qsvmm` | 1009448 |
+| `6854ca78dfe70eadf52e5f20d09fe0f113ded095ab7a78738aed95b4719b2de1` | `x86_64-unknown-linux-musl/release/qsvsinstall` | 1594472 |
+| `c91ab3ec89479b44e49728c6ff0477d9185b0155687b477984c10c4f143f5bfa` | `kernel/build/.config` | 139046 |
+| `5d25e13257404f759352b78db8f1cc7a82e75a4dce62b4e37dc9232be4a4bf0f` | `images/manifest.json` | 3884 |
+| `c1a66716245bf5a7ccd581721c6439547daefb58733e98b0551bb75c312849fd` | `images/manifest.sig` | 349 |
+
+### The suites of Phase 3 in that run
+
+Before them in the same `build test` (`test: PASS, 37 step(s), media
+disk`): `IPL slot A`, `IPL slot B`, the ten base suites (`power-pull`
+with 50 cuts), the fifteen of Phase 2 and of its answers
+(`install-serial` to `mirror-split`), all pass.
+
+| # | Suite | Time | What was seen |
+|---|---|---|---|
+| 1 | `partition-boot` | 23.7 s | the QS/VS image, as a file of the host, IPLed with 1, 2 and 4 processors, 3.0 s, 2.9 s and 2.8 s to its base ready; the guest's inventory counts as many each time |
+| 2 | `partition-scsi` | 15.2 s | 85 reads, 31 writes, 33 flushes carried out on the host, 3 commands refused; the host reads the guest's `state/` from its own file, the guest's disk a `QUARTZ VIRTUAL DISK` serial `TESTLPAR-0`; the probe of `/dev/vdc`: 13 checks, 6 requests refused, no write reached the unit, the last block unchanged |
+| 3 | `partition-ipl-a` | 43.3 s | QS/400 from side A with 2 processors: the 16 codes in order to `C6001090`, 23.1 s from the activation; `PN01`, `PN02` and the virtio SCSI controller; powered off, exit 0 |
+| 4 | `partition-ipl-b` | 56.5 s | from side B with 4 processors: 34.9 s from the activation; `PN01` to `PN04`; powered off, exit 0 |
+| 5 | `partition-attributes` | 81.5 s | manual and serial written by the host: `mode Manual from LIC override`, `Serial console (ttyS0)`, the IPL menu on the serial port, completed when answered; then normal and local: unattended, `Local console`, `A6005008` |
+| 6 | `partition-kill` | 68.4 s | killed during the IPL and again while it ran: `A2005150` with signal 9 both times, the host's base ready throughout; the IPL after each completed, the first noting the abnormal end (`C1002000`); the object created before the second kill is there |
+| 7 | `partition-power-pull` | 569.5 s | 20 cuts (seed 990240455) while the guest created objects: the object store recovered at each of 21 IPLs, transactions replayed at 20; all 2265 objects acknowledged before a cut are there; 20 more were being created when the power went. QS/400 posted `C1002000` at none of them: each cut came after an IPL had completed |
+| 8 | `partition-end` | 75.5 s | power off: `C2005100`, exit 0; restart: `C2005110`, exit 10, and no activation followed by itself; `SIGTERM`: `A2005140`, exit 50 |
+| 9 | `partition-damaged` | 7.5 s | seven damaged load sources: `A2005020`, `A2005021`, `A2005022`, `A2005030`, `A2005041`, `A2005031`, `A2005050`, each with exit 30 and the host's base ready after |
+| 10 | `partition-privilege` | 13.1 s | `qsvmm` and its 11 threads run as user and group 23000 with no supplementary group, no capability in any set and `NoNewPrivs` set |
+| 11 | `fuzz` | 8 x 60 s | no finding: `gpt` 568939 runs, `fat` 1235642, `lic` 236116, `disk` 411719, `bzimage` 1261573, `scsi` 1528658, `virtqueue` 672520, `devices` 1300286 |
+| 12 | every earlier suite | | above |
+| | `IPL from media` | 2.4 s | `build test --media iso`: PID 1's lines, then the installer's welcome, on the release ISO |
+
+The partition suites passed here with the QEMU host's memory allocated
+first; without that about half of the partition starts fail on this
+build host ("Found while testing").
+
 ## Found while testing
 
 - **The clock was read 6 years wrong.** x86 Linux reads the CMOS

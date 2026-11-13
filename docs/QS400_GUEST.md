@@ -10,9 +10,10 @@ change: a list a QS/400 handoff can be written from.
 `SRC C6001090 IPL complete` in a partition, from either side, with one
 to four processors, finds its disks on virtio-scsi, takes its time from
 the clock, powers off through ACPI, restarts by the reset vector, and
-recovers its object store after the VMM is killed under it. Nothing in QS/400 blocks
-a suite of Phase 3. What does not work is everything QS/400 does
-through firmware variables: choosing the side of the next IPL.
+recovers its object store after the VMM is killed under it. Nothing in
+QS/400 blocks a suite of Phase 3. What does not work is everything
+QS/400 does through firmware variables: choosing the side of the next
+IPL.
 
 ## How it was run
 
