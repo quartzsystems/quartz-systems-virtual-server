@@ -2,10 +2,12 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The load-source disks of a running host: every whole disk whose GPT
-//! has the appliance's three partitions. There is one, or two when the load
-//! source is mirrored; each has its own ESP and its own record
-//! partition, so the firmware and PID 1 can start from either alone.
+//! The load-source disks of a running host: of the whole disks whose
+//! GPT has the appliance's three partitions, the one the host started
+//! from and the members its label names ([`crate::own`]). There is
+//! one, or two when the load source is mirrored; each has its own ESP
+//! and its own record partition, so the firmware and PID 1 can start
+//! from either alone.
 
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -20,6 +22,7 @@ use uuid::Uuid;
 use crate::gpt::{self, Entry};
 use crate::layout::{data_type, record_type};
 use crate::multi::{At, Copies};
+use crate::own::{self, Booted, Candidate};
 use crate::record::{self, HostRecord};
 use crate::set::{self, SetLabel};
 
@@ -117,11 +120,46 @@ pub fn load_source(names: &LoadSourceNames, disk: &str) -> Option<LoadSource> {
     })
 }
 
-/// Every load-source disk, in name order.
-pub fn load_sources(names: &LoadSourceNames) -> Vec<LoadSource> {
+/// Every disk that has the appliance's three partitions, in name
+/// order: the host's own, and any that only look like them.
+pub fn candidates(names: &LoadSourceNames) -> Vec<LoadSource> {
     whole_disks()
         .iter()
         .filter_map(|d| load_source(names, d))
+        .collect()
+}
+
+/// The newest label on `source` itself, read without opening the disk
+/// for writing: it may be a partition's.
+fn own_label(names: &LoadSourceNames, source: &LoadSource) -> Option<SetLabel> {
+    let record = File::open(&source.record).ok()?;
+    let mut copies = Copies::new(
+        set::label_spec(names),
+        vec![At::new(record, set::LABEL_OFFSET)],
+    );
+    SetLabel::decode(&copies.read().ok()?.payload)
+}
+
+/// The host's load-source disks, in name order: the disk of the IPL
+/// and the members its label names. A disk that only has the three
+/// partitions is not one.
+pub fn load_sources(names: &LoadSourceNames) -> Vec<LoadSource> {
+    let found = candidates(names);
+    let described: Vec<Candidate> = found
+        .iter()
+        .map(|source| Candidate {
+            pci: fs::canonicalize(Path::new(SYS_BLOCK).join(&source.disk))
+                .map(|path| own::pci_chain(&path))
+                .unwrap_or_default(),
+            esp: source.esp_at.guid,
+            data: source.data_guid,
+            label: own_label(names, source),
+        })
+        .collect();
+    let booted = Booted::current(Path::new(crate::boot::EFIVARS));
+    own::own(&described, booted.as_ref())
+        .into_iter()
+        .map(|i| found[i].clone())
         .collect()
 }
 

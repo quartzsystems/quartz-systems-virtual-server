@@ -16,6 +16,7 @@
 //! - [`set`]: the label of a mirrored load source.
 //! - [`multi`]: one record kept on every load-source disk.
 //! - [`gpt`], [`disks`]: finding the load-source disks of a running host.
+//! - [`own`]: which of the disks that look like one are the host's.
 //! - [`boot`]: the firmware's boot entries.
 //! - [`prepare`]: writing a load-source disk.
 //! - [`payload`]: what the installation media carries to write it from.
@@ -30,6 +31,7 @@ pub mod disks;
 pub mod gpt;
 pub mod layout;
 pub mod multi;
+pub mod own;
 pub mod payload;
 pub mod prepare;
 pub mod record;
