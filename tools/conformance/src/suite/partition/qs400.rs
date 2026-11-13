@@ -121,6 +121,113 @@ pub fn ipl_b(run: &Run<'_>) -> Result<String, String> {
     ipl_from(run, 'B', 4)
 }
 
+/// One activation with the profile's side, to the guest's service
+/// console: the side `qsvmm` loaded and what it read in the record.
+fn activation(
+    run: &Run<'_>,
+    guest: &mut Session,
+    side: Option<&str>,
+) -> Result<(char, String), String> {
+    if let Some(side) = side {
+        let ipl = format!("side = \"{side}\"");
+        start(guest, Some(&profile(2, QS400_MEMORY_MIB, &ipl, UNIT)))?;
+    }
+    let deadline = patience(run);
+    let started = expect_started(guest, deadline)?;
+    let mark = crate::suite::base::posted(&refcode::PARTITION_RECORD_READ, "");
+    let read = guest
+        .log
+        .rfind(&mark)
+        .and_then(|at| guest.log[at + mark.len()..].lines().next())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let loaded = ['A', 'B']
+        .into_iter()
+        .find(|s| started.contains(&format!("side {s}")))
+        .ok_or_else(|| format!("no side in `{started}`"))?;
+    ipl_complete(guest, deadline)?;
+    // The side the guest itself says it runs from.
+    guest.seen(&guest_line(&format!("slic: slot {loaded}")), deadline)?;
+    console_ready(guest, deadline)?;
+    Ok((loaded, read))
+}
+
+/// Power the guest down with `command`, typed at its service console.
+fn power_down_with(run: &Run<'_>, guest: &mut Session, command: &str) -> Result<(), String> {
+    let deadline = patience(run);
+    send(guest, command)?;
+    expect_guest(guest, POWER_DOWN_COMPLETE, deadline)?;
+    let how = ended(guest, deadline)?;
+    expect_code(guest, &refcode::PARTITION_POWERED_OFF, deadline)?;
+    if how == "exit 0" {
+        Ok(())
+    } else {
+        Err(format!("`{command}`: qsvmm gave `{how}`"))
+    }
+}
+
+/// Step 0's suite: `side = "recorded"` is what the partition itself
+/// asked for. `IPLSRC(B)` at a power down in the guest IPLs side B
+/// once; an explicit side overrides the request and leaves it.
+pub fn recorded(run: &Run<'_>) -> Result<String, String> {
+    const ASK_B: &str = "pwrdwnsys OPTION(*IMMED) IPLSRC(B)";
+    let armed = guest_line("slic: next IPL from slot B");
+    // The side loaded, and what the record asked for as it was read.
+    let want = |n: u32, got: &(char, String), side: char, asked: &str| {
+        if got.0 == side && got.1.starts_with(&format!("{asked} keylock")) {
+            Ok(())
+        } else {
+            Err(format!(
+                "IPL {n}: side {side} wanted with the record asking `{asked}`: side {} 
+                 loaded, the record read as `{}`",
+                got.0, got.1
+            ))
+        }
+    };
+
+    // Nothing asked yet: side A.
+    let mut guest = qs400(run, 2, "side = \"recorded\"")?;
+    let first = activation(run, &mut guest, None)?;
+    want(1, &first, 'A', "side A")?;
+    power_down_with(run, &mut guest, ASK_B)?;
+    if !guest.said(&armed) {
+        return Err("the guest did not say `next IPL from slot B`".into());
+    }
+
+    // The request is taken: side B, and the record written without it.
+    let second = activation(run, &mut guest, Some("recorded"))?;
+    want(2, &second, 'B', "side B once")?;
+    if !guest.said(&crate::suite::base::posted(
+        &refcode::PARTITION_RECORD_WRITTEN,
+        "",
+    )) {
+        return Err("the once-only side was not cleared in the record".into());
+    }
+    power_down_with(run, &mut guest, "pwrdwn")?;
+
+    // It was for one IPL only.
+    let third = activation(run, &mut guest, Some("recorded"))?;
+    want(3, &third, 'A', "side A")?;
+    power_down_with(run, &mut guest, ASK_B)?;
+
+    // An explicit side overrides the request and leaves it standing.
+    let fourth = activation(run, &mut guest, Some("a"))?;
+    want(4, &fourth, 'A', "side B once")?;
+    power_down_with(run, &mut guest, "pwrdwn")?;
+    let fifth = activation(run, &mut guest, Some("recorded"))?;
+    want(5, &fifth, 'B', "side B once")?;
+    power_down_with(run, &mut guest, "pwrdwn")?;
+    host_unaffected(&mut guest)?;
+    Ok(format!(
+        "recorded with nothing asked: side A; `{ASK_B}` in the guest, then recorded: `{}`, side \
+         B, the guest names slot B; the IPL after it: `{}`, side A; asked again, then an \
+         activation with side a: side A and the request left (`{}`); the next recorded \
+         activation: side B",
+        second.1, third.1, fourth.1
+    ))
+}
+
 /// Press Enter on the guest's console, through its service console.
 fn enter(guest: &mut Session) -> Result<(), String> {
     send(guest, "key enter")

@@ -49,6 +49,7 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("partition-end", qs400::end),
     ("partition-damaged", damaged::damaged),
     ("partition-privilege", devices::privilege),
+    ("partition-recorded", qs400::recorded),
 ];
 
 /// The environment variable that names the QS/400 disk image.
