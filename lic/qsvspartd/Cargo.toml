@@ -1,0 +1,17 @@
+[package]
+name = "qsvspartd"
+description = "QS/VS's partition manager: the part crate's service, run as QS/VS"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+release = { path = "../release", version = "0.1.0" }
+hostinv = { path = "../hostinv", version = "0.1.0" }
+partd = { path = "../../part/partd", version = "0.1.0" }
+resource = { path = "../../part/resource", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+
+[lints]
+workspace = true

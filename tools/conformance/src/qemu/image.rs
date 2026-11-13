@@ -114,49 +114,6 @@ pub fn seed_volume(path: &Path, label: &str, seed_toml: &str) -> Result<(), Stri
     fs::write(path, volume).map_err(text)
 }
 
-/// Write a partition volume to `path`: a FAT file system labelled for
-/// the partition hook, holding the profile.
-pub fn partition_volume(path: &Path, profile: &str) -> Result<(), String> {
-    let spec = fat::Spec {
-        label: fat::label(qsvshook::partition::VOLUME_LABEL).map_err(text)?,
-        volume_id: SEED_VOLUME_ID + 1,
-        ..fat::MEDIA_ESP
-    };
-    let files = [(qsvshook::partition::PROFILE_FILE, profile.as_bytes())];
-    let volume = fat::build(&spec, &files).map_err(text)?;
-    fs::write(path, volume).map_err(text)
-}
-
-/// Bytes of zeros before a wrapped image.
-pub const WRAP: u64 = 1 << 20;
-
-/// Write `to` as [`WRAP`] bytes of zeros and then `from`. A disk like
-/// that has no partition table where one is looked for, so a host it
-/// is attached to does not take it for a disk of its own; the image
-/// is copied out of it on the host. Its length without the zeros.
-pub fn wrapped(from: &Path, to: &Path) -> Result<u64, String> {
-    let run = || -> std::io::Result<u64> {
-        let mut source = File::open(from)?;
-        let mut copy = File::create(to)?;
-        let len = source.metadata()?.len();
-        copy.set_len(WRAP + len)?;
-        let mut chunk = vec![0u8; CHUNK];
-        let mut at = 0u64;
-        while at < len {
-            let n = usize::try_from((len - at).min(CHUNK as u64)).unwrap_or(CHUNK);
-            source.read_exact(&mut chunk[..n])?;
-            if chunk[..n].iter().any(|b| *b != 0) {
-                copy.seek(SeekFrom::Start(WRAP + at))?;
-                copy.write_all(&chunk[..n])?;
-            }
-            at += n as u64;
-        }
-        copy.sync_all()?;
-        Ok(len)
-    };
-    run().map_err(|e| format!("wrapping {} as {}: {e}", from.display(), to.display()))
-}
-
 /// Where the data partition of a host disk image is: its offset and
 /// its length, in bytes.
 pub fn data_partition(image: &Path) -> Result<(u64, u64), String> {

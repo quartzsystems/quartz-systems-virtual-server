@@ -14,6 +14,7 @@
 //! | `scsi` | a SCSI command and its data |
 //! | `virtqueue` | guest memory with the virtio-scsi queues and the virtio-rng queue in it |
 //! | `devices` | reads and writes of the I/O ports, PCI configuration space and the virtio BARs |
+//! | `report` | what a VMM writes on its standard error, where text of the guest's can end up, as the partition manager reads it |
 
 use std::fs::File;
 use std::io::{self, Cursor};
@@ -112,6 +113,7 @@ fn lic_seeds() -> Vec<Vec<u8>> {
             let mut set = Cursor::new(record.clone());
             let settings = Settings {
                 keylock: Some(Keylock::Manual),
+                ipl_type: None,
                 console: Some(ConsoleMode::Serial),
             };
             let _ = ipl::lic::prepare(&mut set, settings, false, 1);
@@ -136,6 +138,7 @@ fn lic_partition(data: &[u8]) {
         Settings::default(),
         Settings {
             keylock: Some(Keylock::Secure),
+            ipl_type: None,
             console: Some(ConsoleMode::Local),
         },
     ] {
@@ -476,6 +479,36 @@ fn devices_target(data: &[u8]) {
     }
 }
 
+fn report_seeds() -> Vec<Vec<u8>> {
+    vec![
+        b"REF C2005000 Partition activation started: PROD\n\
+          REF C2005090 Partition started: PROD, side A\n\
+          qsvmm: unit 0 reads 1 writes 2 flushes 3 refused 4\n\
+          REF A2005010 Partition disk unit cannot be read: PROD, slot 2 unit 0\n\
+          END 30\n"
+            .to_vec(),
+    ]
+}
+
+/// A VMM's report, read as the partition manager reads it: a line at
+/// a time, bounded, a reference code taken only when the host's table
+/// has it, and the line that says how the VMM ended.
+fn report(data: &[u8]) {
+    let text = String::from_utf8_lossy(data);
+    for line in text.lines() {
+        let bounded: String = line.chars().take(partd::manager::MAX_LINE).collect();
+        if let Some((code, said)) = partd::manager::code_of(&bounded) {
+            assert!(refcode::find(code).is_some());
+            assert!(said.len() < bounded.len());
+        }
+    }
+    #[cfg(target_os = "linux")]
+    if let partd::manager::Ended::Exit(code) = partd::serve::ended(&text) {
+        // The number the last such line has, and nothing made up.
+        assert!(text.contains(&code.to_string()));
+    }
+}
+
 /// Every target.
 pub const TARGETS: &[Target] = &[
     Target {
@@ -525,6 +558,12 @@ pub const TARGETS: &[Target] = &[
         about: "accesses to the I/O ports, PCI configuration space and the virtio BARs",
         seeds: devices_seeds,
         run: devices_target,
+    },
+    Target {
+        name: "report",
+        about: "what a VMM reports, as the partition manager reads it",
+        seeds: report_seeds,
+        run: report,
     },
 ];
 

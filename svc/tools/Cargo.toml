@@ -18,9 +18,14 @@ supervise = { path = "../../base/supervise", version = "0.1.0" }
 netd = { path = "../../base/netd", version = "0.1.0" }
 users = { path = "../../base/users", version = "0.1.0" }
 panels = { path = "../../base/panels", version = "0.1.0" }
+partd = { path = "../../part/partd", version = "0.1.0" }
+resource = { path = "../../part/resource", version = "0.1.0" }
 console.workspace = true
 svcusers.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+model = { path = "../../part/model", version = "0.1.0" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix.workspace = true

@@ -17,6 +17,7 @@ mod disks;
 mod env;
 mod keep;
 mod menu;
+mod partitions;
 
 #[cfg(target_os = "linux")]
 mod on_host {

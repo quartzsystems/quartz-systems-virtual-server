@@ -14,8 +14,16 @@ fn main() {
             eprintln!("the channel did not start: {e}");
         }
         Some("flaky") => qsvshook::flaky::run(),
+        Some(qsvshook::TRY) => {
+            let mut args = std::env::args().skip(2);
+            let (verb, what) = (
+                args.next().unwrap_or_default(),
+                args.next().unwrap_or_default(),
+            );
+            std::process::exit(qsvshook::channel::try_it(&verb, &what));
+        }
         Some("partition") => {
-            let Err(e) = qsvshook::partition::runner::run();
+            let Err(e) = qsvshook::partition::relay::run();
             eprintln!("the partition hook did not start: {e}");
         }
         other => eprintln!("qsvshook channel | flaky | partition, not {other:?}"),

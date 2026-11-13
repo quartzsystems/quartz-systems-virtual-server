@@ -11,9 +11,12 @@
 //! - [`regs`]: the registers of the boot processor.
 //! - [`zeropage`]: the boot parameters.
 //! - [`reset`]: the reset vector, for a guest that restarts by it.
+//! - [`smbios`]: the SMBIOS tables: what the machine is, and its serial
+//!   number.
 
 pub mod regs;
 pub mod reset;
+pub mod smbios;
 pub mod tables;
 pub mod zeropage;
 

@@ -53,14 +53,15 @@ impl Keylock {
         .into_iter()
         .find(|k| k.attribute() == value)
     }
+}
 
-    /// The mode the IPL runs in.
-    fn mode(self) -> IplMode {
-        match self {
-            Keylock::Manual => IplMode::Manual,
-            _ => IplMode::Normal,
-        }
-    }
+/// Whether an IPL stops for an operator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IplKind {
+    /// It runs through, unless the keylock is in the manual position.
+    Unattended,
+    /// It stops at the IPL menu.
+    Attended,
 }
 
 /// A console mode's name, as a profile has it.
@@ -76,6 +77,8 @@ pub fn console_name(mode: ConsoleMode) -> &'static str {
 pub struct Settings {
     /// The keylock position.
     pub keylock: Option<Keylock>,
+    /// The IPL type, for this IPL only.
+    pub ipl_type: Option<IplKind>,
     /// The console mode.
     pub console: Option<ConsoleMode>,
 }
@@ -83,7 +86,7 @@ pub struct Settings {
 impl Settings {
     /// Whether anything is to be written.
     pub fn any(&self) -> bool {
-        self.keylock.is_some() || self.console.is_some()
+        self.keylock.is_some() || self.ipl_type.is_some() || self.console.is_some()
     }
 }
 
@@ -116,12 +119,16 @@ pub enum RecordError {
     Device(String),
 }
 
-fn recorded(record: &Record) -> Recorded {
-    let attributes = IplAttrs::of(record);
-    let position = attributes
+/// The keylock position the record's attribute has.
+fn position(record: &Record) -> Keylock {
+    IplAttrs::of(record)
         .get("KEYLCKPOS")
         .and_then(Keylock::from_attribute)
-        .unwrap_or(Keylock::Normal);
+        .unwrap_or(Keylock::Normal)
+}
+
+fn recorded(record: &Record) -> Recorded {
+    let position = position(record);
     // The one-time override decides between attended and not, as it
     // does in the guest's own IPL; the attribute says the rest.
     let keylock = match (record.header.next_mode, position) {
@@ -145,9 +152,19 @@ fn apply(record: &mut Record, settings: Settings) -> Result<(), LicError> {
         let mut attributes = IplAttrs::of(record);
         attributes.set("KEYLCKPOS", keylock.attribute())?;
         attributes.store(record)?;
-        // The guest takes this first and clears it; the attribute says
+    }
+    if settings.keylock.is_some() || settings.ipl_type.is_some() {
+        // Whether this IPL stops for an operator: an attended IPL was
+        // asked for, or the keylock is in the manual position. The
+        // guest takes this first and clears it; the attribute says
         // what `DSPIPLA` then shows.
-        record.header.next_mode = Some(keylock.mode());
+        let attended =
+            settings.ipl_type == Some(IplKind::Attended) || position(record) == Keylock::Manual;
+        record.header.next_mode = Some(if attended {
+            IplMode::Manual
+        } else {
+            IplMode::Normal
+        });
     }
     if let Some(console) = settings.console {
         console.store(record)?;
@@ -253,6 +270,7 @@ mod tests {
         let mut dev = installed();
         let settings = Settings {
             keylock: Some(Keylock::Manual),
+            ipl_type: None,
             console: Some(ConsoleMode::Serial),
         };
         let got = prepare(&mut dev, settings, false, 0).unwrap().unwrap();
@@ -272,6 +290,7 @@ mod tests {
         let mut dev = part.into_device();
         let settings = Settings {
             keylock: Some(Keylock::Secure),
+            ipl_type: None,
             console: None,
         };
         let got = prepare(&mut dev, settings, false, 0).unwrap().unwrap();
@@ -281,6 +300,46 @@ mod tests {
         );
         let record = LicPart::open(dev).read().unwrap();
         assert_eq!(IplAttrs::of(&record).get("KEYLCKPOS"), Some("*SECURE"));
+    }
+
+    #[test]
+    fn the_ipl_type_is_for_one_ipl_and_the_manual_position_is_always_attended() {
+        let mode = |keylock, ipl_type| {
+            let mut dev = installed();
+            let settings = Settings {
+                keylock,
+                ipl_type,
+                console: None,
+            };
+            prepare(&mut dev, settings, false, 0).unwrap();
+            let record = LicPart::open(dev).read().unwrap();
+            (
+                record.header.next_mode,
+                IplAttrs::of(&record).get("KEYLCKPOS").map(str::to_string),
+            )
+        };
+        let normal = Some("*NORMAL".to_string());
+        assert_eq!(
+            mode(Some(Keylock::Normal), Some(IplKind::Attended)),
+            (Some(IplMode::Manual), normal.clone())
+        );
+        assert_eq!(
+            mode(Some(Keylock::Normal), Some(IplKind::Unattended)),
+            (Some(IplMode::Normal), normal)
+        );
+        assert_eq!(
+            mode(Some(Keylock::Manual), Some(IplKind::Unattended)).0,
+            Some(IplMode::Manual)
+        );
+        // The type alone leaves the position the record has.
+        assert_eq!(
+            mode(None, Some(IplKind::Attended)),
+            (Some(IplMode::Manual), Some("*NORMAL".to_string()))
+        );
+        assert_eq!(
+            mode(None, Some(IplKind::Unattended)).0,
+            Some(IplMode::Normal)
+        );
     }
 
     #[test]
@@ -294,6 +353,7 @@ mod tests {
         assert!(dev.get_ref().iter().all(|b| *b == 0));
         let settings = Settings {
             keylock: None,
+            ipl_type: None,
             console: Some(ConsoleMode::Serial),
         };
         let got = prepare(&mut dev, settings, false, 77).unwrap().unwrap();
@@ -316,6 +376,7 @@ mod tests {
         let mut dev = installed();
         let settings = Settings {
             keylock: Some(Keylock::Auto),
+            ipl_type: None,
             console: None,
         };
         prepare(&mut dev, settings, false, 0).unwrap();

@@ -19,6 +19,8 @@ seed = { path = "../../base/seed", version = "0.1.0" }
 identity = { path = "../../base/identity", version = "0.1.0" }
 loadsource = { path = "../../base/loadsource", version = "0.1.0" }
 stgd = { path = "../../base/stgd", version = "0.1.0" }
+resource = { path = "../../part/resource", version = "0.1.0" }
+partd = { path = "../../part/partd", version = "0.1.0" }
 abrec.workspace = true
 diskimg.workspace = true
 

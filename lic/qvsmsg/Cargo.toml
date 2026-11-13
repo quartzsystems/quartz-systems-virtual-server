@@ -1,0 +1,13 @@
+[package]
+name = "qvsmsg"
+description = "QS/VS's message catalogue: QVS messages with first-level and second-level text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ipc.workspace = true
+
+[lints]
+workspace = true

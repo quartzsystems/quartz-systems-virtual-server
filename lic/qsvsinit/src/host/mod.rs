@@ -7,6 +7,7 @@
 //! longer than a client of the control socket is given.
 
 mod control;
+mod partitions;
 mod shutdown;
 pub mod table;
 
@@ -97,6 +98,8 @@ pub struct Host {
     /// A Service Tools session has the serial port.
     serial_busy: bool,
     shutdown: Option<Kind>,
+    /// The shutdown waits for the partitions to have ended.
+    partitions: Option<std::sync::mpsc::Receiver<partitions::Outcome>>,
     /// The shutdown has unmounted `/data` and is ending the storage service.
     unmounted: bool,
     heartbeat_at: Instant,
@@ -135,6 +138,7 @@ impl Host {
             storage_lost: false,
             serial_busy: false,
             shutdown: None,
+            partitions: None,
             unmounted: false,
             heartbeat_at: Instant::now() + HEARTBEAT,
             drawn: Vec::new(),

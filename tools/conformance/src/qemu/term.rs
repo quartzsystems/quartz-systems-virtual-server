@@ -31,6 +31,8 @@ pub mod key {
     pub const F8: &str = "\x1b[19~";
     /// F10.
     pub const F10: &str = "\x1b[21~";
+    /// F11.
+    pub const F11: &str = "\x1b[23~";
     /// F12.
     pub const F12: &str = "\x1b[24~";
 }

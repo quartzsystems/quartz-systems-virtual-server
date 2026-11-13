@@ -2,23 +2,24 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! A partition from its profile to its end, in order:
+//! A partition from its configuration to its end, in order:
 //!
-//! 1. The profile is read.
+//! 1. The configuration is read: from standard input, where the
+//!    partition manager writes it, or from a file a developer names.
 //! 2. As root: KVM is opened, the log and the console socket are
 //!    made, the disk units and the random source are opened, the
 //!    guest's memory is mapped, the IPL loader reads the load source
 //!    and loads the side's kernel, the devices and processors are
 //!    built.
-//! 3. The process becomes the unprivileged user. Nothing is opened
-//!    after this but generations of the serial log, in a directory
-//!    that is that user's.
+//! 3. The process becomes the partition's own unprivileged user.
+//!    Nothing is opened after this but generations of the serial log,
+//!    in a directory that is that user's and no other partition's.
 //! 4. The threads are started and the processors run until one of
 //!    them, a device or a signal ends the partition.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Seek, SeekFrom};
-use std::os::unix::fs::chown;
+use std::io::{self, Read, Seek, SeekFrom};
+use std::os::unix::fs::{PermissionsExt, chown};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,17 +35,17 @@ use ipl::{Fault, Step};
 use refcode::RefCode;
 use vmm_sys_util::signal::Killable;
 
+use crate::config::{self, Partition};
 use crate::end::End;
 use crate::machine::{self, Hypervisor, vcpu};
-use crate::profile::{self, Profile};
 use crate::serial::{self, Clients, console, log::Log};
-use crate::{PARTITION_ID, post, sys};
+use crate::{post, sys};
 
 /// Where the partition's files go.
 #[derive(Clone, Debug)]
 pub struct Options {
-    /// The profile.
-    pub profile: PathBuf,
+    /// The configuration's file; standard input when there is none.
+    pub config: Option<PathBuf>,
     /// The data directory: the serial log is under it.
     pub data_dir: PathBuf,
     /// The run directory: the console socket is under it.
@@ -52,14 +53,14 @@ pub struct Options {
 }
 
 impl Options {
-    /// `<data>/log/partitions/<name>`.
-    pub fn log_dir(&self, name: &str) -> PathBuf {
-        self.data_dir.join("log").join("partitions").join(name)
+    /// `<data>/log/partitions/<id>`.
+    pub fn log_dir(&self, id: u32) -> PathBuf {
+        crate::log_dir(&self.data_dir, id)
     }
 
-    /// `<run>/partitions/<name>`.
-    pub fn socket_dir(&self, name: &str) -> PathBuf {
-        self.run_dir.join("partitions").join(name)
+    /// `<run>/partitions/<id>`.
+    pub fn socket_dir(&self, id: u32) -> PathBuf {
+        crate::socket_dir(&self.run_dir, id)
     }
 }
 
@@ -133,7 +134,7 @@ fn fault_stop(fault: &Fault) -> Stop {
 struct Running {
     ends: mpsc::Receiver<(End, String)>,
     tap: serial::Tap,
-    luns: Arc<Vec<Lun>>,
+    luns: Vec<Arc<Vec<Lun>>>,
 }
 
 fn now() -> u64 {
@@ -142,41 +143,81 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-fn open_units(profile: &Profile) -> Result<Vec<Lun>, Stop> {
-    let mut luns = Vec::with_capacity(profile.disks.len());
-    for (unit, disk) in profile.disks.iter().enumerate() {
-        let unreadable = |why: String| Stop {
-            code: &refcode::PARTITION_DISK_UNREADABLE,
-            detail: format!("unit {unit} {}: {why}", disk.backing.display()),
-        };
-        let store = HostStore::open(&disk.backing).map_err(|e| unreadable(e.to_string()))?;
-        let lun = Lun::new(Box::new(store), &disk.serial)
-            .ok_or_else(|| unreadable("not a disk unit".into()))?;
-        luns.push(lun);
+/// The units of every adapter, opened.
+fn open_units(partition: &Partition) -> Result<Vec<Vec<Lun>>, Stop> {
+    let mut adapters = Vec::with_capacity(partition.adapters.len());
+    for adapter in &partition.adapters {
+        let mut luns = Vec::with_capacity(adapter.units.len());
+        for unit in &adapter.units {
+            let unreadable = |why: String| Stop {
+                code: &refcode::PARTITION_DISK_UNREADABLE,
+                detail: format!(
+                    "slot {} unit {} {}: {why}",
+                    adapter.slot,
+                    unit.lun,
+                    unit.backing.display()
+                ),
+            };
+            let store = HostStore::open(&unit.backing).map_err(|e| unreadable(e.to_string()))?;
+            let lun = Lun::new(Box::new(store), &unit.serial)
+                .ok_or_else(|| unreadable("not a disk unit".into()))?;
+            luns.push(lun);
+        }
+        adapters.push(luns);
     }
-    Ok(luns)
+    Ok(adapters)
 }
 
-/// The serial log, in a directory the unprivileged user rotates it in.
-fn open_log(options: &Options, profile: &Profile, root: bool) -> Result<Log, Stop> {
-    let log_dir = options.log_dir(&profile.name);
+/// Make `dir` the partition's own: its user's, and nobody else's to
+/// look into.
+fn own(dir: &Path, user: u32) -> io::Result<()> {
+    chown(dir, Some(user), Some(user))?;
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
+}
+
+/// The serial log, in a directory the partition's user rotates it in.
+fn open_log(options: &Options, partition: &Partition, root: bool) -> Result<Log, Stop> {
+    let log_dir = options.log_dir(partition.config.id);
     let log = Log::open(&log_dir, serial::log::LIMIT_BYTES).map_err(not_built("the serial log"))?;
     if root {
-        let own = |path: &Path| chown(path, Some(PARTITION_ID), Some(PARTITION_ID));
-        own(&log_dir)
-            .and_then(|()| own(&log_dir.join(serial::log::FILE)))
+        let user = partition.user();
+        own(&log_dir, user)
+            .and_then(|()| {
+                // Every generation left by an earlier activation too.
+                for entry in fs::read_dir(&log_dir)?.flatten() {
+                    chown(entry.path(), Some(user), Some(user))?;
+                }
+                Ok(())
+            })
             .map_err(not_built("the serial log"))?;
     }
     Ok(log)
 }
 
+/// The console socket, the partition's user's as its directory is.
+fn open_console(
+    options: &Options,
+    partition: &Partition,
+    root: bool,
+) -> Result<std::os::unix::net::UnixListener, Stop> {
+    let dir = options.socket_dir(partition.config.id);
+    let listener = console::bind(&dir).map_err(not_built("the console socket"))?;
+    if root {
+        let user = partition.user();
+        own(&dir, user)
+            .and_then(|()| chown(dir.join(console::FILE), Some(user), Some(user)))
+            .map_err(not_built("the console socket"))?;
+    }
+    Ok(listener)
+}
+
 /// The IPL: the load source read through the page cache, and what the
 /// loader wrote made durable before the guest's first direct read.
-fn load(profile: &Profile, memory: &devices::Memory, ram: &Ram) -> Result<ipl::Ipl, Stop> {
-    let load_source = &profile.disks[0].backing;
+fn load(partition: &Partition, memory: &devices::Memory, ram: &Ram) -> Result<ipl::Ipl, Stop> {
+    let load_source = partition.load_source();
     let unreadable = |e: io::Error| Stop {
         code: &refcode::PARTITION_DISK_UNREADABLE,
-        detail: format!("unit 0 {}: {e}", load_source.display()),
+        detail: format!("the load source {}: {e}", load_source.display()),
     };
     let mut disk = OpenOptions::new()
         .read(true)
@@ -187,8 +228,8 @@ fn load(profile: &Profile, memory: &devices::Memory, ram: &Ram) -> Result<ipl::I
     let loaded = ipl::ipl(
         &mut disk,
         disk_bytes,
-        profile.side,
-        profile.settings,
+        partition.side,
+        partition.settings,
         now(),
         memory,
         ram,
@@ -199,39 +240,94 @@ fn load(profile: &Profile, memory: &devices::Memory, ram: &Ram) -> Result<ipl::I
     Ok(loaded)
 }
 
+/// The guest's memory with everything the kernel starts from in it:
+/// the kernel itself, the ACPI tables, the reset vector, the SMBIOS
+/// tables.
+fn load_memory(
+    partition: &Partition,
+    hypervisor: &Hypervisor,
+    ram: &Ram,
+) -> Result<(Arc<devices::Memory>, ipl::Ipl), Stop> {
+    let config = &partition.config;
+    // Huge pages that are not there are not a fault of the machine:
+    // the partition was promised memory the host does not have.
+    let memory = machine::memory(&hypervisor.vm, ram, config.huge_pages).map_err(|e| Stop {
+        code: if config.huge_pages {
+            &refcode::PARTITION_NO_MEMORY
+        } else {
+            &refcode::PARTITION_NOT_BUILT
+        },
+        detail: format!("{} MiB: {e}", config.memory_mib),
+    })?;
+    let loaded = load(partition, &memory, ram)?;
+    machine::write_acpi(&memory, config.vcpus).map_err(not_built("ACPI"))?;
+    let identity = arch::boot::smbios::Identity {
+        serial: &config.serial,
+        release: &release::RELEASE.to_string(),
+    };
+    arch::boot::smbios::write(&memory, identity)
+        .map_err(|e| not_built("SMBIOS")(io::Error::other(e)))?;
+    Ok((memory, loaded))
+}
+
+/// Say the machine is built, and give the process its core scheduling
+/// cookie: before any thread exists, so every thread shares it, and no
+/// other partition's thread runs beside one of these on a core.
+fn machine_built(partition: &Partition) -> Result<(), Stop> {
+    let config = &partition.config;
+    post(
+        &refcode::PARTITION_MACHINE_BUILT,
+        &format!(
+            "{} processor(s) of {} thread(s), {} MiB{}, {} disk unit(s)",
+            config.vcpus / config.threads_per_core,
+            config.threads_per_core,
+            config.memory_mib,
+            if config.huge_pages {
+                " in huge pages"
+            } else {
+                ""
+            },
+            partition.units()
+        ),
+    );
+    match sys::own_core_cookie() {
+        Ok(true) => eprintln!("qsvmm: core scheduling: a cookie of its own"),
+        Ok(false) => eprintln!("qsvmm: core scheduling: the host has none to do"),
+        Err(e) => return Err(not_built("core scheduling")(e)),
+    }
+    Ok(())
+}
+
 /// The steps as root, the drop, and the start.
-fn activate(options: &Options, profile: &Profile) -> Result<Running, Stop> {
+fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     let root = sys::is_root();
-    let ram = Ram::for_bytes(profile.memory_bytes).map_err(|e| Stop {
+    let config = &partition.config;
+    let ram = Ram::for_bytes(partition.memory_bytes).map_err(|e| Stop {
         code: &refcode::PARTITION_PROFILE_INVALID,
         detail: e.to_string(),
     })?;
     let hypervisor = Hypervisor::open().map_err(not_built("KVM"))?;
-    if profile.processors as usize > hypervisor.max_vcpus() {
+    if config.vcpus as usize > hypervisor.max_vcpus() {
         return stop(
             &refcode::PARTITION_NOT_BUILT,
             format!("KVM gives {} processors at most", hypervisor.max_vcpus()),
         );
     }
 
-    let log = open_log(options, profile, root)?;
-    let listener = console::bind(&options.socket_dir(&profile.name))
-        .map_err(not_built("the console socket"))?;
+    let log = open_log(options, partition, root)?;
+    let listener = open_console(options, partition, root)?;
 
-    let luns = open_units(profile)?;
+    let adapters = open_units(partition)?;
     post(
         &refcode::PARTITION_DISKS_OPENED,
         &format!(
             "{} unit(s), load source {} blocks",
-            luns.len(),
-            luns[0].blocks()
+            partition.units(),
+            adapters[0][0].blocks()
         ),
     );
     let entropy = File::open("/dev/urandom").map_err(not_built("/dev/urandom"))?;
-    let memory = machine::memory(&hypervisor.vm, &ram).map_err(not_built("memory"))?;
-    let loaded = load(profile, &memory, &ram)?;
-
-    machine::write_acpi(&memory, profile.processors).map_err(not_built("ACPI"))?;
+    let (memory, loaded) = load_memory(partition, &hypervisor, &ram)?;
     let (ends, ended) = mpsc::channel::<(End, String)>();
     let (tap, queue) = serial::queue();
     let requests: Requests = {
@@ -249,36 +345,29 @@ fn activate(options: &Options, profile: &Profile) -> Result<Running, Stop> {
         &memory,
         Box::new(tap.clone()),
         requests,
-        luns,
+        adapters,
         entropy,
     )
     .map_err(not_built("devices"))?;
-    let mut vcpus = Vec::with_capacity(profile.processors as usize);
-    for index in 0..profile.processors {
+    let mut vcpus = Vec::with_capacity(config.vcpus as usize);
+    for index in 0..config.vcpus {
         let created = vcpu::create(
             &hypervisor.kvm,
             &hypervisor.vm,
             index,
-            profile.processors,
+            config.vcpus,
+            config.threads_per_core,
             loaded.entry,
         )
         .map_err(not_built("processors"))?;
         vcpus.push(created);
     }
-    post(
-        &refcode::PARTITION_MACHINE_BUILT,
-        &format!(
-            "{} processor(s), {} MiB, {} disk unit(s)",
-            profile.processors,
-            profile.memory_bytes >> 20,
-            built.luns.len()
-        ),
-    );
+    machine_built(partition)?;
 
     // From here on nothing needs root, and no thread exists yet.
     sys::block_termination().map_err(not_built("signals"))?;
     if root {
-        sys::drop_privileges(PARTITION_ID).map_err(not_built("dropping privileges"))?;
+        sys::drop_privileges(partition.user()).map_err(not_built("dropping privileges"))?;
     } else {
         eprintln!("qsvmm: not started as root: running as the user it was started by");
     }
@@ -287,12 +376,12 @@ fn activate(options: &Options, profile: &Profile) -> Result<Running, Stop> {
     serial::spawn(queue, log, clients.clone()).map_err(not_built("threads"))?;
     console::spawn(listener, built.serial.clone(), clients).map_err(not_built("threads"))?;
     vcpu::install_kick().map_err(not_built("signals"))?;
-    let processors =
-        start_processors(vcpus, &built, &ends, &memory).map_err(not_built("threads"))?;
+    let processors = start_processors(vcpus, &built, &ends, &memory, &config.pin)
+        .map_err(not_built("threads"))?;
     spawn_signal_watch(ends.clone(), processors).map_err(not_built("threads"))?;
     post(
         &refcode::PARTITION_STARTED,
-        &format!("{} side {}", profile.name, ipl::side_letter(loaded.side)),
+        &format!("side {}", ipl::side_letter(loaded.side)),
     );
     // The VM and the memory live as long as the process does.
     std::mem::forget(hypervisor);
@@ -313,6 +402,7 @@ fn start_processors(
     built: &machine::Devices,
     ends: &Sender<(End, String)>,
     memory: &Arc<devices::Memory>,
+    pin: &[u32],
 ) -> io::Result<Vec<Processor>> {
     let mut processors = Vec::with_capacity(vcpus.len());
     for (index, created) in (0u32..).zip(vcpus) {
@@ -323,6 +413,7 @@ fn start_processors(
             ends: ends.clone(),
             report: report.clone(),
             memory: memory.clone(),
+            pin: pin.get(index as usize).copied(),
         };
         processors.push((vcpu::spawn(created, index, wiring)?, report));
     }
@@ -369,27 +460,45 @@ fn spawn_signal_watch(ends: Sender<(End, String)>, processors: Vec<Processor>) -
     Ok(())
 }
 
+/// The configuration's text: the file's, or what standard input has
+/// to its end. Bounded either way.
+fn read_config(options: &Options) -> io::Result<String> {
+    let mut text = String::new();
+    match &options.config {
+        Some(path) => File::open(path)?
+            .take(config::MAX_BYTES)
+            .read_to_string(&mut text)?,
+        None => io::stdin()
+            .lock()
+            .take(config::MAX_BYTES)
+            .read_to_string(&mut text)?,
+    };
+    Ok(text)
+}
+
 /// Run the partition of `options` to its end.
 pub fn run(options: &Options) -> End {
-    let text = match fs::read_to_string(&options.profile) {
+    let text = match read_config(options) {
         Ok(text) => text,
         Err(e) => {
             post(
                 &refcode::PARTITION_PROFILE_INVALID,
-                &format!("{}: {e}", options.profile.display()),
+                &format!("the configuration: {e}"),
             );
             return End::NotIpled;
         }
     };
-    let profile = match profile::parse(&text) {
-        Ok(profile) => profile,
+    let partition = match config::parse(&text) {
+        Ok(partition) => partition,
         Err(e) => {
             post(&refcode::PARTITION_PROFILE_INVALID, &e.0);
             return End::NotIpled;
         }
     };
-    post(&refcode::PARTITION_ACTIVATING, &profile.name);
-    let running = match activate(options, &profile) {
+    let name = partition.config.name.clone();
+    crate::name_partition(&name);
+    post(&refcode::PARTITION_ACTIVATING, "");
+    let running = match activate(options, &partition) {
         Ok(running) => running,
         Err(stopped) => {
             post(stopped.code, &stopped.detail);
@@ -402,13 +511,17 @@ pub fn run(options: &Options) -> End {
         .unwrap_or((End::VmmError, "every thread ended".into()));
     // What the guest said last is in the log before the process goes.
     running.tap.drain(Duration::from_secs(2));
-    for (unit, lun) in running.luns.iter().enumerate() {
-        let c = lun.counts();
-        eprintln!(
-            "qsvmm: unit {unit} reads {} writes {} flushes {} refused {}",
-            c.reads, c.writes, c.flushes, c.refused
-        );
+    let mut unit = 0;
+    for luns in &running.luns {
+        for lun in luns.iter() {
+            let c = lun.counts();
+            eprintln!(
+                "qsvmm: unit {unit} reads {} writes {} flushes {} refused {}",
+                c.reads, c.writes, c.flushes, c.refused
+            );
+            unit += 1;
+        }
     }
-    eprintln!("qsvmm: {} ended: {why}", profile.name);
+    eprintln!("qsvmm: {name} ended: {why}");
     end
 }

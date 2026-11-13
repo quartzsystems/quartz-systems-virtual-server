@@ -39,16 +39,24 @@ fn kvm_error(what: &'static str) -> impl Fn(kvm_ioctls::Error) -> io::Error {
     }
 }
 
-/// Make processor `index` of `count` and set what it starts with;
-/// processor 0 enters the kernel at `entry`.
-pub fn create(kvm: &Kvm, vm: &VmFd, index: u32, count: u32, entry: u64) -> io::Result<VcpuFd> {
+/// Make virtual CPU `index` of `count`, `threads` of them to a core,
+/// and set what it starts with; the first enters the kernel at `entry`.
+pub fn create(
+    kvm: &Kvm,
+    vm: &VmFd,
+    index: u32,
+    count: u32,
+    threads: u32,
+    entry: u64,
+) -> io::Result<VcpuFd> {
     let vcpu = vm
         .create_vcpu(u64::from(index))
         .map_err(kvm_error("a processor"))?;
     let supported = kvm
         .get_supported_cpuid(KVM_MAX_CPUID_ENTRIES)
         .map_err(kvm_error("the supported CPUID"))?;
-    let entries = cpuid::for_vcpu(supported.as_slice(), index, count).map_err(io::Error::other)?;
+    let entries =
+        cpuid::for_vcpu(supported.as_slice(), index, count, threads).map_err(io::Error::other)?;
     let cpuid = CpuId::from_entries(&entries).map_err(|_| io::Error::other("the CPUID table"))?;
     vcpu.set_cpuid2(&cpuid).map_err(kvm_error("the CPUID"))?;
 
@@ -85,6 +93,8 @@ pub struct Wiring {
     pub report: Arc<AtomicBool>,
     /// The guest's memory, for the code a report shows.
     pub memory: Arc<Memory>,
+    /// The host thread a dedicated processor's thread stays on.
+    pub pin: Option<u32>,
 }
 
 /// The signal that brings a processor's thread out of the guest. Its
@@ -246,6 +256,14 @@ fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
     let end = |end: End, why: String| {
         let _ = wiring.ends.send((end, format!("processor {index}: {why}")));
     };
+    if let Some(cpu) = wiring.pin
+        && let Err(e) = crate::sys::pin_this_thread(cpu)
+    {
+        return end(
+            End::VmmError,
+            format!("not pinned to host thread {cpu}: {e}"),
+        );
+    }
     loop {
         match vcpu.run() {
             Ok(VcpuExit::IoIn(port, data)) => {

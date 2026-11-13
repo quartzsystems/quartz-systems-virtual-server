@@ -4,7 +4,8 @@
 
 //! A partition's CPUID: every feature KVM supports on this host, with
 //! the topology leaves saying what the partition has: one package of
-//! as many cores as it has processors, one thread a core. The
+//! cores, each of one thread or of two sibling threads when a
+//! partition's processor is a host core with SMT. The
 //! hypervisor leaves are KVM's own, so the guest uses its clock. One
 //! thing the host has is withheld: hardware virtualization. A
 //! partition does not run a hypervisor of its own.
@@ -40,11 +41,16 @@ pub fn core_bits(count: u32) -> u32 {
     count.next_power_of_two().trailing_zeros()
 }
 
-fn topology(leaf: u32, level: u32, apic_id: u32, count: u32) -> kvm_cpuid_entry2 {
-    // Level 0 is the thread (one a core), level 1 the core, beyond is none.
+/// Bits of an APIC id that tell the threads of a core apart.
+pub fn thread_bits(threads: u32) -> u32 {
+    threads.next_power_of_two().trailing_zeros()
+}
+
+fn topology(leaf: u32, level: u32, apic_id: u32, count: u32, threads: u32) -> kvm_cpuid_entry2 {
+    // Level 0 is the thread, level 1 the core, beyond is none.
     let (eax, ebx, kind) = match level {
-        0 => (0, 1, 1),
-        1 => (core_bits(count), count, 2),
+        0 => (thread_bits(threads), threads, 1),
+        1 => (thread_bits(threads) + core_bits(count / threads), count, 2),
         _ => (0, 0, 0),
     };
     kvm_cpuid_entry2 {
@@ -59,15 +65,22 @@ fn topology(leaf: u32, level: u32, apic_id: u32, count: u32) -> kvm_cpuid_entry2
     }
 }
 
-/// The CPUID of processor `index` of `count`, from what KVM supports.
+/// The CPUID of virtual CPU `index` of `count`, `threads` of which are
+/// the sibling threads of each core, from what KVM supports. The APIC
+/// id is the index: a core's threads are next to each other.
 pub fn for_vcpu(
     supported: &[kvm_cpuid_entry2],
     index: u32,
     count: u32,
+    threads: u32,
 ) -> Result<Vec<kvm_cpuid_entry2>, Error> {
     if count == 0 || count > MAX_VCPUS || index >= count {
         return Err(Error::Processors(count));
     }
+    if !(1..=2).contains(&threads) || !count.is_multiple_of(threads) {
+        return Err(Error::Processors(count));
+    }
+    let cores = count / threads;
     let apic_id = index;
     let mut out: Vec<kvm_cpuid_entry2> = Vec::with_capacity(supported.len() + 8);
     let mut extended_topology = Vec::new();
@@ -85,9 +98,10 @@ pub fn for_vcpu(
                 }
             }
             LEAF_CACHE => {
-                // No thread shares a cache; `count` cores in the package.
+                // A core's threads share its caches; `cores` cores in
+                // the package.
                 if e.eax & 0x1F != 0 {
-                    e.eax = (e.eax & 0x0000_3FFF) | ((count - 1) << 26);
+                    e.eax = (e.eax & 0x0000_3FFF) | ((threads - 1) << 14) | ((cores - 1) << 26);
                 }
             }
             LEAF_TOPOLOGY | LEAF_TOPOLOGY_V2 => {
@@ -102,7 +116,9 @@ pub fn for_vcpu(
             }
             LEAF_AMD_TOPOLOGY => {
                 e.eax = apic_id;
-                e.ebx = (e.ebx & !0xFFFF) | apic_id;
+                // The core's id, and its threads less one.
+                e.ebx =
+                    (e.ebx & !0xFFFF) | (apic_id >> thread_bits(threads)) | ((threads - 1) << 8);
                 e.ecx &= !0x7FF;
             }
             _ => {}
@@ -114,7 +130,7 @@ pub fn for_vcpu(
     }
     for leaf in extended_topology {
         for level in 0..3 {
-            out.push(topology(leaf, level, apic_id, count));
+            out.push(topology(leaf, level, apic_id, count, threads));
         }
     }
     if !out.iter().any(|e| e.function == KVM_SIGNATURE_LEAF) {
@@ -164,7 +180,7 @@ mod tests {
 
     #[test]
     fn each_processor_has_its_own_apic_id_and_the_package_s_count() {
-        let cpuid = for_vcpu(&host(), 2, 4).unwrap();
+        let cpuid = for_vcpu(&host(), 2, 4, 1).unwrap();
         let features = cpuid.iter().find(|e| e.function == 1).unwrap();
         assert_eq!(features.ebx >> 24, 2);
         assert_eq!((features.ebx >> 16) & 0xFF, 4);
@@ -183,7 +199,7 @@ mod tests {
 
     #[test]
     fn the_topology_leaf_is_one_thread_a_core() {
-        let cpuid = for_vcpu(&host(), 3, 4).unwrap();
+        let cpuid = for_vcpu(&host(), 3, 4, 1).unwrap();
         let levels: Vec<_> = cpuid.iter().filter(|e| e.function == 0xB).collect();
         assert_eq!(levels.len(), 3);
         assert_eq!((levels[0].eax, levels[0].ebx, levels[0].ecx), (0, 1, 0x100));
@@ -196,8 +212,31 @@ mod tests {
     }
 
     #[test]
+    fn a_core_of_two_threads_has_them_as_siblings() {
+        // Four cores of two threads: virtual CPU 5 is the second
+        // thread of core 2.
+        let cpuid = for_vcpu(&host(), 5, 8, 2).unwrap();
+        let features = cpuid.iter().find(|e| e.function == 1).unwrap();
+        assert_eq!(features.ebx >> 24, 5);
+        assert_eq!((features.ebx >> 16) & 0xFF, 8);
+        assert_ne!(features.edx & EDX_HTT, 0);
+        let cache = cpuid.iter().find(|e| e.function == 4).unwrap();
+        assert_eq!(cache.eax >> 26, 3);
+        assert_eq!((cache.eax >> 14) & 0xFFF, 1);
+        let levels: Vec<_> = cpuid.iter().filter(|e| e.function == 0xB).collect();
+        assert_eq!((levels[0].eax, levels[0].ebx, levels[0].ecx), (1, 2, 0x100));
+        assert_eq!((levels[1].eax, levels[1].ebx, levels[1].ecx), (3, 8, 0x201));
+        assert!(levels.iter().all(|l| l.edx == 5));
+        assert_eq!((thread_bits(1), thread_bits(2)), (0, 1));
+        // An odd count cannot be whole cores of two threads.
+        assert!(for_vcpu(&host(), 0, 3, 2).is_err());
+        assert!(for_vcpu(&host(), 0, 4, 3).is_err());
+        assert!(for_vcpu(&host(), 0, 4, 0).is_err());
+    }
+
+    #[test]
     fn one_processor_is_not_hyperthreaded_and_kvm_is_named() {
-        let cpuid = for_vcpu(&host(), 0, 1).unwrap();
+        let cpuid = for_vcpu(&host(), 0, 1, 1).unwrap();
         let features = cpuid.iter().find(|e| e.function == 1).unwrap();
         assert_eq!(features.edx & EDX_HTT, 0);
         let kvm = cpuid
@@ -213,8 +252,8 @@ mod tests {
 
     #[test]
     fn a_count_out_of_range_is_refused() {
-        assert_eq!(for_vcpu(&host(), 0, 0), Err(Error::Processors(0)));
-        assert!(for_vcpu(&host(), 4, 4).is_err());
-        assert!(for_vcpu(&host(), 0, 241).is_err());
+        assert_eq!(for_vcpu(&host(), 0, 0, 1), Err(Error::Processors(0)));
+        assert!(for_vcpu(&host(), 4, 4, 1).is_err());
+        assert!(for_vcpu(&host(), 0, 241, 1).is_err());
     }
 }

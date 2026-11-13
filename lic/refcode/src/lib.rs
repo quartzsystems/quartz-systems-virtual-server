@@ -99,6 +99,8 @@ pub const SEED_CHECKED: RefCode = progress("C2001060", "Seed checked");
 pub const SEED_APPLIED: RefCode = progress("C2001061", "Seed applied");
 /// The state files were read and the inventory written.
 pub const STATE_LOADED: RefCode = progress("C2001070", "State loaded");
+/// The memory partitions can be given is set aside as huge pages.
+pub const MEMORY_RESERVED: RefCode = progress("C2001072", "Partition memory reserved");
 /// The service table was started.
 pub const SERVICES_STARTED: RefCode = progress("C2001080", "Services started");
 /// Every base service is ready.
@@ -174,6 +176,8 @@ pub const CLOCK_NOT_SET: RefCode = attention("A2001050", "Clock not set from the
 pub const SEED_INVALID: RefCode = attention("A2001060", "Seed not valid");
 /// A state file was refused; its defaults are in use.
 pub const STATE_INVALID: RefCode = attention("A2001070", "State file not valid");
+/// The kernel gave fewer huge pages than the settings ask for.
+pub const MEMORY_SHORT: RefCode = attention("A2001072", "Partition memory not reserved in full");
 /// A service failed five times in ten minutes and is not restarted.
 pub const SERVICE_STOPPED: RefCode = attention("A2001080", "Service stopped");
 /// The slot was confirmed in the record but not in the firmware.
@@ -243,6 +247,18 @@ pub const PARTITION_POWERED_OFF: RefCode = progress("C2005100", "Partition power
 /// The guest asked for a restart; the VMM ended for it.
 pub const PARTITION_RESTART: RefCode = progress("C2005110", "Partition ended for a restart");
 
+// C2006xxx: the partition manager.
+
+/// The partition manager is ready, with what it found.
+pub const PARTD_STARTED: RefCode = progress("C2006000", "Partition manager started");
+/// A partition that ran while the partition manager did not is
+/// watched again.
+pub const PARTITION_ADOPTED: RefCode = progress("C2006010", "Partition found running");
+/// The partitions flagged to start with the host are being activated.
+pub const AUTO_START_STARTED: RefCode = progress("C2006020", "Partition auto start started");
+/// Every one of them was tried.
+pub const AUTO_START_DONE: RefCode = progress("C2006030", "Partition auto start complete");
+
 // A2005xxx: a partition that cannot IPL, and one that ended badly.
 
 /// The profile is not one a partition can be made from.
@@ -277,6 +293,8 @@ pub const PARTITION_NOT_KERNEL: RefCode =
     attention("A2005050", "Partition IPL image is not a kernel");
 /// The machine could not be built.
 pub const PARTITION_NOT_BUILT: RefCode = attention("A2005060", "Partition machine not built");
+/// The huge pages the partition was to have are not there.
+pub const PARTITION_NO_MEMORY: RefCode = attention("A2005065", "Partition memory not available");
 /// The VMM ended before the partition ran.
 pub const PARTITION_NOT_IPLED: RefCode = attention("A2005100", "Partition did not IPL");
 /// The guest faulted: a triple fault or a failed entry.
@@ -288,6 +306,19 @@ pub const PARTITION_VMM_ERROR: RefCode = attention("A2005130", "Partition ended 
 pub const PARTITION_ENDED: RefCode = attention("A2005140", "Partition ended by the host");
 /// The VMM was killed.
 pub const PARTITION_KILLED: RefCode = attention("A2005150", "Partition VMM killed");
+
+// A2006xxx: attention from the partition manager.
+
+/// An activation failed before the VMM ran, with the message.
+pub const PARTITION_NOT_ACTIVATED: RefCode = attention("A2006010", "Partition not activated");
+/// A partition flagged to start with the host could not be.
+pub const AUTO_START_FAILED: RefCode = attention("A2006020", "Partition not started automatically");
+/// A definition, a profile or the settings were refused.
+pub const PARTITION_STATE_INVALID: RefCode = attention("A2006030", "Partition state not valid");
+/// A control group could not be made or set.
+pub const CONTROLS_NOT_SET: RefCode = attention("A2006040", "Resource controls not set");
+/// The partitions did not all end before the host's shutdown went on.
+pub const PARTITIONS_NOT_ENDED: RefCode = attention("A2006090", "Partitions not ended in time");
 
 /// PID 1 panicked and parked.
 pub const PANIC: RefCode = RefCode {
@@ -306,6 +337,8 @@ pub const STORAGE_LOST: RefCode = RefCode {
 
 /// The orderly shutdown began.
 pub const SHUTDOWN_STARTED: RefCode = power_down("D2001000", "Host shutdown started");
+/// Every partition has ended; the services are stopped next.
+pub const PARTITIONS_ENDED: RefCode = power_down("D2001010", "Partitions ended");
 /// Services are stopped and `/data` unmounted: power off follows.
 pub const POWER_OFF: RefCode = power_down("D2001090", "Host powering off");
 /// Services are stopped and `/data` unmounted: a restart follows.
@@ -323,6 +356,7 @@ pub const ALL: &[&RefCode] = &[
     &SEED_CHECKED,
     &SEED_APPLIED,
     &STATE_LOADED,
+    &MEMORY_RESERVED,
     &SERVICES_STARTED,
     &BASE_READY,
     &SLOT_CONFIRMED,
@@ -360,12 +394,17 @@ pub const ALL: &[&RefCode] = &[
     &PARTITION_STARTED,
     &PARTITION_POWERED_OFF,
     &PARTITION_RESTART,
+    &PARTD_STARTED,
+    &PARTITION_ADOPTED,
+    &AUTO_START_STARTED,
+    &AUTO_START_DONE,
     &RECORD_INVALID,
     &SLOT_FELL_BACK,
     &DATA_NOT_MOUNTED,
     &CLOCK_NOT_SET,
     &SEED_INVALID,
     &STATE_INVALID,
+    &MEMORY_SHORT,
     &SERVICE_STOPPED,
     &BOOT_ORDER_NOT_WRITTEN,
     &NO_INTERFACE,
@@ -391,14 +430,21 @@ pub const ALL: &[&RefCode] = &[
     &PARTITION_BAD_RECORD,
     &PARTITION_NOT_KERNEL,
     &PARTITION_NOT_BUILT,
+    &PARTITION_NO_MEMORY,
     &PARTITION_NOT_IPLED,
     &PARTITION_GUEST_FAULT,
     &PARTITION_VMM_ERROR,
     &PARTITION_ENDED,
     &PARTITION_KILLED,
+    &PARTITION_NOT_ACTIVATED,
+    &AUTO_START_FAILED,
+    &PARTITION_STATE_INVALID,
+    &CONTROLS_NOT_SET,
+    &PARTITIONS_NOT_ENDED,
     &PANIC,
     &STORAGE_LOST,
     &SHUTDOWN_STARTED,
+    &PARTITIONS_ENDED,
     &POWER_OFF,
     &RESTART,
 ];

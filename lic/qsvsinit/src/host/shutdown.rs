@@ -2,8 +2,9 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The orderly shutdown: the services end in reverse order, each with
-//! a timeout, down to the storage service; then sync and `/data`
+//! The orderly shutdown: the partitions are ended first, by the
+//! partition manager; then the services end in reverse order, each
+//! with a timeout, down to the storage service; then sync and `/data`
 //! unmounted; then the storage service, which marks its set clean; the
 //! `D2` code, and power off or restart.
 
@@ -15,7 +16,7 @@ use rustix::system::{RebootCommand, reboot};
 
 use supervise::run::Supervisor;
 
-use super::{Host, STOP_GRACE, table};
+use super::{Host, STOP_GRACE, partitions, table};
 use crate::ipl::mounts;
 
 /// How long the shutdown waits for the log service to take what PID 1
@@ -52,18 +53,52 @@ impl Host {
         while !self.log.flush() && Instant::now() < give_up {
             std::thread::sleep(Duration::from_millis(5));
         }
-        // Everything but the storage service: it serves /data until
-        // that is unmounted.
+        // The partitions first: no service is stopped under one.
+        if self.sup.is_some() {
+            let socket = partd::proto::socket(release::RUN_DIR);
+            self.partitions = Some(partitions::end_all(socket));
+        } else {
+            self.stop_services();
+        }
+    }
+
+    /// Stop everything but the storage service: it serves /data until
+    /// that is unmounted.
+    fn stop_services(&mut self) {
         if let Some(sup) = &mut self.sup {
             let occurrences = sup.begin_stop_above(table::STGD.order, STOP_GRACE, Instant::now());
             self.occurred(occurrences);
         }
     }
 
+    /// Whether the partitions have ended, or will not in time: the
+    /// services are stopped then.
+    fn partitions_ended(&mut self) -> bool {
+        use std::sync::mpsc::TryRecvError;
+        let Some(ending) = &self.partitions else {
+            return true;
+        };
+        match ending.try_recv() {
+            Err(TryRecvError::Empty) => return false,
+            // Said only when there were any.
+            Ok(Ok(0)) | Err(TryRecvError::Disconnected) => {}
+            Ok(Ok(count)) => {
+                self.post(&refcode::PARTITIONS_ENDED, &format!("{count} partition(s)"));
+            }
+            Ok(Err(why)) => self.post(&refcode::PARTITIONS_NOT_ENDED, &why),
+        }
+        self.partitions = None;
+        self.stop_services();
+        true
+    }
+
     /// Carry the shutdown on: when the services above the storage
     /// service are gone `/data` is unmounted and the storage service
     /// ended; when that is gone too the host stops.
     pub(super) fn advance_shutdown(&mut self) {
+        if !self.partitions_ended() {
+            return;
+        }
         let above_gone = self
             .sup
             .as_ref()

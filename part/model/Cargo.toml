@@ -1,0 +1,19 @@
+[package]
+name = "model"
+description = "The partition model: a partition's definition and its profiles, as state files and on the wire, with validation that gives every error at once"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+ipc.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+toml.workspace = true
+
+[lints]
+workspace = true

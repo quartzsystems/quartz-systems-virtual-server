@@ -43,6 +43,17 @@ const NETD: Service = Service {
     ready_within: READY_WITHIN,
 };
 
+/// The partition manager: it owns every partition's VMM. Its
+/// partitions go on when it is started again.
+pub const PARTD: Service = Service {
+    name: partd::proto::NAME,
+    binary: "/qsvs/bin/qsvspartd",
+    args: &[],
+    order: 25,
+    needs: &[],
+    ready_within: Duration::from_secs(30),
+};
+
 /// The Service Tools console, on the display and the serial port.
 pub const TOOLS: Service = Service {
     name: "tools",
@@ -55,7 +66,7 @@ pub const TOOLS: Service = Service {
 
 /// The base services.
 #[cfg(not(test_hooks))]
-pub static TABLE: &[Service] = &[STGD, LOGD, NETD, TOOLS];
+pub static TABLE: &[Service] = &[STGD, LOGD, NETD, PARTD, TOOLS];
 
 /// The base services and, in a test image, the test hooks' two.
 #[cfg(test_hooks)]
@@ -63,6 +74,7 @@ pub static TABLE: &[Service] = &[
     STGD,
     LOGD,
     NETD,
+    PARTD,
     TOOLS,
     crate::hooks::FLAKY,
     crate::hooks::CHANNEL,
@@ -82,10 +94,10 @@ mod tests {
         for service in TABLE {
             assert!(service.binary.starts_with(release::BIN_DIR));
         }
-        // Nothing of a release image starts the VMM: only the test
-        // hooks' partition service does.
-        #[cfg(not(test_hooks))]
+        // No service is the VMM: the partition manager starts one
+        // for each partition it activates, and nothing else does.
         assert!(TABLE.iter().all(|s| !s.binary.ends_with("qsvmm")));
+        assert_eq!(TABLE[order[3]].name, "partd");
         assert!(
             TABLE
                 .iter()

@@ -209,18 +209,37 @@ fn sum(path: &str) -> Vec<String> {
     }
 }
 
-/// The partition hook's commands.
+/// One request to the partition manager, as the harness encoded it.
+fn partd_request(rest: &str) -> Vec<String> {
+    let Ok(request) = hex::decode(rest.trim()) else {
+        return error("partd <hex>");
+    };
+    crate::partition::relay::client()
+        .exchange(&request)
+        .map_or_else(error, |answer| {
+            vec![format!("{} {}", word::HEX, hex::encode(answer))]
+        })
+}
+
+/// The partition hook's commands: what the harness does to a VMM
+/// that no request to the partition manager does.
 fn partition(rest: &str) -> Vec<String> {
-    use crate::partition::{END_FILE, PID_FILE, START_FILE, runner};
-    let (verb, argument) = rest.split_once(' ').unwrap_or((rest, ""));
+    use crate::partition::relay;
+    use partd::Calls as _;
+    let mut words = rest.splitn(3, ' ');
+    let (verb, id) = (words.next().unwrap_or(""), words.next().unwrap_or(""));
+    let argument = words.next().unwrap_or("");
+    let Ok(id) = id.parse::<u32>() else {
+        return error("partition pid|kill|send <id> ...");
+    };
     let pid = || -> Option<Pid> {
-        let text = fs::read_to_string(PID_FILE).ok()?;
-        Pid::from_raw(text.trim().parse().ok()?)
+        let all = relay::client().list().ok()?;
+        let pid = all.iter().find(|p| p.id == id)?.pid;
+        Pid::from_raw(i32::try_from(pid).ok()?)
     };
     match verb {
-        "start" => done(fs::write(START_FILE, b"")),
         "pid" => pid().map_or_else(
-            || error("no partition is running"),
+            || error("the partition has no VMM"),
             |pid| vec![format!("{} {}", word::OK, pid.as_raw_nonzero())],
         ),
         "kill" => {
@@ -229,32 +248,18 @@ fn partition(rest: &str) -> Vec<String> {
                 "KILL" => Signal::KILL,
                 // Has `qsvmm` say what state its processors are in.
                 "USR1" => Signal::USR1,
-                other => return error(format!("partition kill TERM|KILL|USR1, not {other}")),
+                other => return error(format!("partition kill <id> TERM|KILL|USR1, not {other}")),
             };
             match pid() {
                 Some(pid) => done(kill_process(pid, signal)),
-                None => error("no partition is running"),
+                None => error("the partition has no VMM"),
             }
         }
-        "send" => {
-            let socket = runner::console_socket(&runner::profile_name());
-            done(
-                std::os::unix::net::UnixStream::connect(socket).and_then(|mut console| {
-                    console.write_all(
-                        format!(
-                            "{argument}
-"
-                        )
-                        .as_bytes(),
-                    )
-                }),
-            )
-        }
-        "end" => fs::read_to_string(END_FILE).map_or_else(
-            |_| error("the partition has not ended"),
-            |how| vec![format!("{} {}", word::OK, how.trim())],
+        "send" => done(
+            std::os::unix::net::UnixStream::connect(relay::console_socket(id))
+                .and_then(|mut console| console.write_all(format!("{argument}\n").as_bytes())),
         ),
-        other => error(format!("partition start|pid|kill|send|end, not {other}")),
+        other => error(format!("partition pid|kill|send, not {other}")),
     }
 }
 
@@ -331,6 +336,169 @@ fn scsi_probe(device: &str) -> Vec<String> {
     }
 }
 
+/// A field of a `/proc/<pid>/status`.
+fn status_field<'t>(status: &'t str, name: &str) -> &'t str {
+    status
+        .lines()
+        .find_map(|l| l.strip_prefix(name)?.strip_prefix(':'))
+        .map_or("", str::trim)
+}
+
+/// The state and the processor last run on, from a task's `stat`: the
+/// first and the thirty-seventh field after the name, and its user and
+/// system ticks, the twelfth and thirteenth.
+fn stat_fields(stat: &str) -> (String, String, u64) {
+    let rest: Vec<&str> = stat
+        .rsplit(')')
+        .next()
+        .unwrap_or("")
+        .split_ascii_whitespace()
+        .collect();
+    let field = |i: usize| rest.get(i).copied().unwrap_or("?").to_string();
+    let ticks = |i: usize| rest.get(i).and_then(|t| t.parse::<u64>().ok()).unwrap_or(0);
+    (field(0), field(36), ticks(11) + ticks(12))
+}
+
+/// The threads of a process: `line <tid> <state> <processor> <ticks>
+/// <allowed> <name>` for each.
+fn threads(rest: &str) -> Vec<String> {
+    let dir = format!("/proc/{}/task", rest.trim());
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return error(format!("{dir}: no such process"));
+    };
+    let mut lines = Vec::new();
+    for entry in entries.flatten() {
+        let tid = entry.file_name().to_string_lossy().into_owned();
+        let status = fs::read_to_string(entry.path().join("status")).unwrap_or_default();
+        let stat = fs::read_to_string(entry.path().join("stat")).unwrap_or_default();
+        let (state, processor, ticks) = stat_fields(&stat);
+        lines.push(format!(
+            "{} {tid} {state} {processor} {ticks} {} {}",
+            word::LINE,
+            status_field(&status, "Cpus_allowed_list"),
+            status_field(&status, "Name"),
+        ));
+    }
+    lines.extend(ok());
+    lines
+}
+
+/// Every process of the host: `line <pid> <kthread> <processor>
+/// <allowed> <cgroup> <name>` for each.
+fn tasks() -> Vec<String> {
+    let mut lines = Vec::new();
+    for entry in fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let pid = entry.file_name().to_string_lossy().into_owned();
+        if !pid.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(status) = fs::read_to_string(entry.path().join("status")) else {
+            continue;
+        };
+        let stat = fs::read_to_string(entry.path().join("stat")).unwrap_or_default();
+        let cgroup = fs::read_to_string(entry.path().join("cgroup")).unwrap_or_default();
+        let (_, processor, _) = stat_fields(&stat);
+        lines.push(format!(
+            "{} {pid} {} {processor} {} {} {}",
+            word::LINE,
+            u8::from(status_field(&status, "Kthread") == "1"),
+            status_field(&status, "Cpus_allowed_list"),
+            cgroup.trim().rsplit("::").next().unwrap_or("?"),
+            status_field(&status, "Name"),
+        ));
+    }
+    lines.extend(ok());
+    lines
+}
+
+/// What each processor is running now, by the scheduler's own account
+/// in debugfs: `line <cpu> <pid>` for each.
+fn curr() -> Vec<String> {
+    use rustix::mount::{MountFlags, mount};
+    const DEBUG: &str = "/sys/kernel/debug";
+    let file = Path::new(DEBUG).join("sched/debug");
+    if !file.exists() {
+        let _ = mount("debugfs", DEBUG, "debugfs", MountFlags::empty(), None);
+    }
+    let Ok(text) = fs::read_to_string(&file) else {
+        return error(format!("{}: not there", file.display()));
+    };
+    let mut lines = Vec::new();
+    let mut cpu = None;
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("cpu#") {
+            cpu = rest
+                .split(|c: char| !c.is_ascii_digit())
+                .next()
+                .map(str::to_string);
+        } else if let Some((key, value)) = line.split_once(':')
+            && key.trim() == ".curr->pid"
+            && let Some(cpu) = cpu.take()
+        {
+            lines.push(format!("{} {cpu} {}", word::LINE, value.trim()));
+        }
+    }
+    lines.extend(ok());
+    lines
+}
+
+/// `as <uid> kill <pid>` and `as <uid> read <path>`: whether the user
+/// may signal the process, or read the file. A process of that user
+/// tries it: this binary, started as the user, with `try`.
+fn as_user(rest: &str) -> Vec<String> {
+    use std::os::unix::process::CommandExt;
+    let mut words = rest.splitn(3, ' ');
+    let (uid, verb, what) = (
+        words.next().unwrap_or(""),
+        words.next().unwrap_or(""),
+        words.next().unwrap_or(""),
+    );
+    let Ok(uid) = uid.parse::<u32>() else {
+        return error("as <uid> kill|read <what>");
+    };
+    let tried = std::process::Command::new("/proc/self/exe")
+        .args([crate::TRY, verb, what])
+        .uid(uid)
+        .gid(uid)
+        .output();
+    match tried {
+        Ok(output) => {
+            let said = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if output.status.success() {
+                ok()
+            } else {
+                error(said)
+            }
+        }
+        Err(e) => error(e),
+    }
+}
+
+/// `qsvshook try kill <pid>` and `qsvshook try read <path>`: try it as
+/// whoever this process is, say why not, and exit 0 when it could.
+pub fn try_it(verb: &str, what: &str) -> i32 {
+    let result: Result<(), String> = match verb {
+        "kill" => what
+            .parse::<i32>()
+            .ok()
+            .and_then(Pid::from_raw)
+            .ok_or_else(|| "no process".to_string())
+            .and_then(|pid| rustix::process::test_kill_process(pid).map_err(|e| e.to_string())),
+        "read" => File::open(what)
+            .and_then(|mut file| file.read(&mut [0u8; 1]))
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+        other => Err(format!("try kill|read, not {other}")),
+    };
+    match result {
+        Ok(()) => 0,
+        Err(why) => {
+            println!("{why}");
+            1
+        }
+    }
+}
+
 /// The answer to one command line.
 fn answer(line: &str) -> Vec<String> {
     let (name, rest) = line.split_once(' ').unwrap_or((line, ""));
@@ -345,6 +513,11 @@ fn answer(line: &str) -> Vec<String> {
         command::STORAGE => storage(),
         command::LOAD => load(rest),
         command::SUM => sum(rest),
+        command::PARTD => partd_request(rest),
+        command::THREADS => threads(rest),
+        command::TASKS => tasks(),
+        command::CURR => curr(),
+        command::AS => as_user(rest),
         command::PARTITION => partition(rest),
         command::MOUNT => mount_ro(rest),
         command::UNMOUNT => done(rustix::mount::unmount(

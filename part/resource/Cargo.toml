@@ -1,0 +1,17 @@
+[package]
+name = "resource"
+description = "A host's resources for its partitions: cores and memory counted as installed, configurable and available, what an activation gets, the shared processor pools, and the cgroup tree as a plan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+model = { path = "../model", version = "0.1.0" }
+qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+ipc.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

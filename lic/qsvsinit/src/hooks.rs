@@ -38,8 +38,7 @@ pub const CHANNEL: Service = Service {
     ready_within: Duration::from_secs(10),
 };
 
-/// The one partition a test image starts: for the profile on a volume
-/// of its own, when there is one.
+/// What the partitions say, relayed to the serial port for the harness.
 pub const PARTITION: Service = Service {
     name: "partition",
     binary: BINARY,

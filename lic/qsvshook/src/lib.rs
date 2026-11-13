@@ -12,8 +12,8 @@
 //! - [`churn`]: the state churn of the power-pull test, and the check
 //!   of what it left.
 //! - [`channel`], [`flaky`]: two of the services (Linux).
-//! - [`partition`]: the third: the one partition a test image starts,
-//!   for the profile on a volume of its own.
+//! - [`partition`]: the third: the harness's requests to the partition
+//!   manager, and what the partitions say relayed to the serial port.
 //!
 //! A hook is switched on for one IPL by an SMBIOS OEM string the
 //! harness gives QEMU, [`oem_string`].
@@ -28,6 +28,9 @@ pub mod flaky;
 pub mod partition;
 pub mod proto;
 
+/// The first argument of the binary when the channel has it try
+/// something as another user.
+pub const TRY: &str = "try";
 /// The hook that keeps a slot on trial from confirming (PID 1's).
 pub const REFUSE_CONFIRM: &str = "refuse-confirm";
 /// The hook that makes the `flaky` service fail every time it starts.

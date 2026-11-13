@@ -98,6 +98,15 @@ pub fn cgroups() -> Vec<(&'static str, String)> {
     }])
 }
 
+/// The control group of PID 1 and of everything it starts:
+/// `qsvs/host`. PID 1 joins it here; the partition manager later
+/// keeps it to the cores reserved for the host.
+pub fn host_group() -> Result<(), String> {
+    let dir = Path::new("/sys/fs/cgroup").join(resource::cgroup::HOST);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    std::fs::write(dir.join("cgroup.procs"), "1").map_err(|e| format!("{}: {e}", dir.display()))
+}
+
 /// Mount the xfs on `device` at `at`.
 pub fn data(device: &Path, at: &str) -> Result<(), String> {
     let _ = std::fs::create_dir_all(at);

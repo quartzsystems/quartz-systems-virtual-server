@@ -324,14 +324,19 @@ dependencies = [
  "appliance",
  "diskimg",
  "hex",
+ "ipc",
  "ipl",
  "loadsource",
+ "model",
  "netlink",
  "ntp",
+ "partd",
  "qsvmm",
  "qsvshook",
+ "qvsmsg",
  "refcode",
  "release",
+ "resource",
  "seed",
  "state",
  "stgd",
@@ -646,6 +651,8 @@ dependencies = [
  "arch",
  "devices",
  "ipl",
+ "partd",
+ "refcode",
  "virtio-queue",
  "vm-memory",
  "vmm-sys-util",
@@ -1205,6 +1212,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "model"
+version = "0.1.0"
+dependencies = [
+ "ipc",
+ "qvsmsg",
+ "serde",
+ "state",
+ "toml",
+]
+
+[[package]]
 name = "netd"
 version = "0.1.0"
 dependencies = [
@@ -1282,6 +1300,22 @@ dependencies = [
  "scrkit",
  "state",
  "users",
+]
+
+[[package]]
+name = "partd"
+version = "0.1.0"
+dependencies = [
+ "ipc",
+ "libc",
+ "model",
+ "qsvmm",
+ "qvsmsg",
+ "refcode",
+ "resource",
+ "rustix",
+ "state",
+ "supervise",
 ]
 
 [[package]]
@@ -1365,11 +1399,11 @@ dependencies = [
  "hex",
  "hostinv",
  "netd",
+ "partd",
  "qsvmm",
  "refcode",
  "release",
  "rustix",
- "seed",
  "state",
  "stgd",
  "supervise",
@@ -1390,8 +1424,10 @@ dependencies = [
  "kvm-ioctls",
  "loadsource",
  "logd",
+ "partd",
  "refcode",
  "release",
+ "resource",
  "rustix",
  "seed",
  "state",
@@ -1444,6 +1480,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "qsvspartd"
+version = "0.1.0"
+dependencies = [
+ "hostinv",
+ "partd",
+ "release",
+ "resource",
+ "supervise",
+]
+
+[[package]]
 name = "qsvsstgd"
 version = "0.1.0"
 dependencies = [
@@ -1460,10 +1507,13 @@ dependencies = [
  "appliance",
  "console",
  "hostinv",
+ "model",
  "netd",
  "panels",
+ "partd",
  "refcode",
  "release",
+ "resource",
  "rustix",
  "serde_json",
  "state",
@@ -1480,6 +1530,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "qvsmsg"
+version = "0.1.0"
+dependencies = [
+ "ipc",
 ]
 
 [[package]]
@@ -1570,6 +1627,17 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "resource"
+version = "0.1.0"
+dependencies = [
+ "ipc",
+ "model",
+ "qvsmsg",
+ "serde",
+ "state",
 ]
 
 [[package]]

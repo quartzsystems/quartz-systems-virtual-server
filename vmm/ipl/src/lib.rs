@@ -334,6 +334,7 @@ mod tests {
         let mut disk = Cursor::new(build_disk(&[(SIDE_A_PATH, &a)], true));
         let settings = Settings {
             keylock: Some(Keylock::Manual),
+            ipl_type: None,
             console: Some(ConsoleMode::Serial),
         };
         let (result, steps) = run(&mut disk, Side::A, settings);
@@ -427,6 +428,7 @@ mod tests {
         assert!(matches!(result, Err(Fault::NoLic)));
         let settings = Settings {
             keylock: Some(Keylock::Normal),
+            ipl_type: None,
             console: None,
         };
         let (result, _) = run(&mut Cursor::new(image), Side::A, settings);

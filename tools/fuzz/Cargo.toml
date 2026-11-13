@@ -17,6 +17,9 @@ path = "src/main.rs"
 ipl = { path = "../../vmm/ipl", version = "0.1.0" }
 devices = { path = "../../vmm/devices", version = "0.1.0" }
 arch = { path = "../../vmm/arch", version = "0.1.0" }
+# What a VMM reports, which a guest can put text into.
+partd = { path = "../../part/partd", version = "0.1.0" }
+refcode = { path = "../../lic/refcode", version = "0.1.0" }
 vm-memory.workspace = true
 virtio-queue.workspace = true
 vmm-sys-util.workspace = true

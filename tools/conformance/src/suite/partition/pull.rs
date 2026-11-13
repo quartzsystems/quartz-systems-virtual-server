@@ -9,14 +9,16 @@
 //! IPL after, the guest's object store must recover, and every object
 //! the guest had acknowledged before a cut must be there: the guest
 //! acknowledges after its flush, so one that is missing was a flush
-//! `qsvmm` answered without carrying it out.
+//! `qsvmm` answered without carrying it out. The partition is flagged
+//! to start with the host: after each cut the partition manager
+//! activates it again by itself.
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::qs400::{console_ready, ipl_complete, patience};
 use super::{
-    QS400_MEMORY_MIB, UNIT, expect_guest, fresh_host, guest_line, host, launch, profile,
-    qs400_image, send, unit,
+    ID, NAME, QS400_MEMORY_MIB, UNIT, expect_guest, fresh_host, guest_line, host, launch, manager,
+    profile, qs400_image, send, start, unit,
 };
 use crate::qemu::session::Session;
 use crate::suite::base::Run;
@@ -79,8 +81,8 @@ pub fn power_pull(run: &Run<'_>) -> Result<String, String> {
     let image = qs400_image()?;
     fresh_host(run)?;
     let disk = unit(run, &image)?;
-    let text = profile(2, QS400_MEMORY_MIB, "side = \"a\"", UNIT);
-    let l = launch(run, &[disk], &text)?;
+    let spec = profile(2, QS400_MEMORY_MIB, "side a", UNIT);
+    let l = launch(run, &[disk])?;
     let seed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(1, |d| u64::from(d.subsec_nanos()) | 1);
@@ -91,6 +93,16 @@ pub fn power_pull(run: &Run<'_>) -> Result<String, String> {
     for cut in 0..=CUTS {
         let at = |e: String| format!("after {cut} power cuts: {e}");
         let mut guest = host(run, &l).map_err(at)?;
+        if cut == 0 {
+            // The partition is defined once, to start with the host:
+            // after a power cut it is the host that brings it back.
+            let id = manager::partition(&mut guest, NAME).map_err(at)?;
+            if id != ID {
+                return Err(at(format!("the first partition has the ID {id}")));
+            }
+            start(&mut guest, Some(&spec)).map_err(at)?;
+            manager::auto_start(&mut guest, ID, 1, 0).map_err(at)?;
+        }
         let deadline = patience(run);
         ipl_complete(&mut guest, deadline).map_err(at)?;
         if guest.said(&guest_line("SRC C6001008")) {

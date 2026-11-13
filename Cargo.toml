@@ -11,12 +11,15 @@ members = [
     "lic/qsvslogd",
     "lic/qsvsnetd",
     "lic/qsvsstgd",
+    "lic/qsvspartd",
     "lic/qsvsinstall",
     # The test hooks: built into a test image only.
     "lic/qsvshook",
     "lic/release",
     "lic/refcode",
     "lic/hostinv",
+    # The message catalogue: QVS messages.
+    "lic/qvsmsg",
     # Service Tools: QS/VS's menu and its host-specific panels.
     "svc/tools",
     # Base: what every Quartz appliance needs, product-neutral. QS/MC pins
@@ -39,6 +42,10 @@ members = [
     "vmm/devices",
     "vmm/ipl",
     "vmm/qsvmm",
+    # The partition manager: the model, the resources, the service.
+    "part/model",
+    "part/resource",
+    "part/partd",
 ]
 
 [workspace.package]

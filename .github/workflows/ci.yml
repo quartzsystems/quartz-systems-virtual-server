@@ -55,7 +55,7 @@ jobs:
           key: clippy-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       # The image's binaries are cfg(target_os = "linux") and built for musl.
-      - run: cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvstools -p qsvsinstall -p qsvshook -p qsvmm --all-targets --locked --target x86_64-unknown-linux-musl -- -D warnings
+      - run: cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvspartd -p qsvstools -p qsvsinstall -p qsvshook -p qsvmm --all-targets --locked --target x86_64-unknown-linux-musl -- -D warnings
       # PID 1 and Service Tools as a test image has them: the code under
       # cfg(test_hooks).
       - run: cargo clippy -p qsvsinit -p qsvstools --locked --target x86_64-unknown-linux-musl -- -D warnings

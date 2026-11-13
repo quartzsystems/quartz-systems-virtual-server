@@ -437,8 +437,8 @@ mod tests {
     fn there_are_phase_0_s_suite_and_those_of_each_phase_since() {
         // Phase 0's, Phase 1's ten, Phase 2's thirteen and the two
         // beside them, Phase 3's ten (its eleventh, the fuzz targets,
-        // is the build tool's), and the one of Phase 4's new pin.
-        assert_eq!(names().len(), 1 + 10 + 13 + 2 + 10 + 1);
+        // is the build tool's), and Phase 4's sixteen.
+        assert_eq!(names().len(), 1 + 10 + 13 + 2 + 10 + 16);
         assert_eq!(
             names()[26..],
             [
@@ -452,7 +452,22 @@ mod tests {
                 "partition-end",
                 "partition-damaged",
                 "partition-privilege",
-                "partition-recorded"
+                "partition-recorded",
+                "partition-define",
+                "partition-three",
+                "partition-minimum",
+                "partition-dedicated",
+                "partition-capped",
+                "partition-uncapped",
+                "partition-core-sched",
+                "partition-huge-pages",
+                "partition-auto-start",
+                "partition-killed",
+                "partition-manager-restart",
+                "partition-identity",
+                "partition-isolation",
+                "partition-own-disks",
+                "partition-tools"
             ]
         );
         assert_eq!(

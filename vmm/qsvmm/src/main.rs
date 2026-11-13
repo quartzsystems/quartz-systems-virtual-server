@@ -2,9 +2,11 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! `qsvmm --profile <file> [--data <dir>] [--run <dir>]`: run the
-//! partition of the profile until it ends, and exit with the code
-//! that says why (`qsvmm::end`).
+//! `qsvmm [--config <file>] [--data <dir>] [--run <dir>]`: run the
+//! partition of the configuration until it ends, and exit with the
+//! code that says why (`qsvmm::end`). The configuration is read from
+//! standard input, where the partition manager writes it, unless a
+//! file is named.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -16,30 +18,35 @@ const USAGE: u8 = 2;
 fn main() -> ExitCode {
     use qsvmm::run::{Options, run};
 
-    let mut profile = None;
+    let mut config = None;
+    let mut usage = false;
     let mut data_dir = PathBuf::from(release::DATA_DIR);
     let mut run_dir = PathBuf::from(release::RUN_DIR);
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         let value = args.next().map(PathBuf::from);
         match (arg.to_str(), value) {
-            (Some("--profile"), Some(value)) => profile = Some(value),
+            (Some("--config"), Some(value)) => config = Some(value),
             (Some("--data"), Some(value)) => data_dir = value,
             (Some("--run"), Some(value)) => run_dir = value,
-            _ => profile = None,
+            _ => usage = true,
         }
     }
-    let Some(profile) = profile else {
-        eprintln!("usage: qsvmm --profile <file> [--data <dir>] [--run <dir>]");
+    if usage {
+        eprintln!("usage: qsvmm [--config <file>] [--data <dir>] [--run <dir>]");
         return ExitCode::from(USAGE);
-    };
+    }
     let end = run(&Options {
-        profile,
+        config,
         data_dir,
         run_dir,
     });
     // A process that was killed has no exit code to give.
-    ExitCode::from(end.exit_code().unwrap_or(USAGE))
+    let code = end.exit_code().unwrap_or(USAGE);
+    // The report's last line, for whoever could not wait for the
+    // process.
+    eprintln!("{} {code}", qsvmm::END_WORD);
+    ExitCode::from(code)
 }
 
 #[cfg(not(target_os = "linux"))]

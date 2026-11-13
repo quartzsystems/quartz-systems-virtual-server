@@ -8,7 +8,9 @@
 //! |---|---|---|
 //! | `0` | `9FC00` | RAM: the boot structures |
 //! | `9FC00` | `A0000` | reserved |
-//! | `E0000` | `100000` | the ACPI tables |
+//! | `E0000` | `F0000` | the ACPI tables |
+//! | `F0000` | `FF000` | the SMBIOS tables |
+//! | `FF000` | `100000` | the reset vector's page |
 //! | `100000` | 3 GiB at most | RAM |
 //! | `C0000000` | `E8000000` | PCI memory space |
 //! | `E8000000` | `E8100000` | PCI configuration space (bus 0) |
@@ -27,8 +29,12 @@ pub const LOW_RAM_END: u64 = 0x9_FC00;
 pub const HIGH_RAM_START: u64 = 0x10_0000;
 /// The ACPI tables: the root pointer first, where a scan finds it.
 pub const ACPI_START: u64 = 0xE_0000;
-/// Bytes kept for the ACPI tables: up to the page of the reset vector.
-pub const ACPI_BYTES: u64 = 0x1_F000;
+/// Bytes kept for the ACPI tables: up to the SMBIOS tables.
+pub const ACPI_BYTES: u64 = 0x1_0000;
+/// The SMBIOS tables: the entry point first, where a scan finds it.
+pub const SMBIOS_START: u64 = 0xF_0000;
+/// Bytes kept for them: up to the page of the reset vector.
+pub const SMBIOS_BYTES: u64 = 0xF000;
 /// The last page of the first megabyte, where the reset vector is.
 pub const RESET_PAGE_START: u64 = 0xF_F000;
 /// Where a processor starts after a reset, and where a kernel that
@@ -179,6 +185,11 @@ impl Ram {
                 kind: Kind::Acpi,
             },
             Range {
+                start: SMBIOS_START,
+                bytes: SMBIOS_BYTES,
+                kind: Kind::Reserved,
+            },
+            Range {
                 start: RESET_PAGE_START,
                 bytes: HIGH_RAM_START - RESET_PAGE_START,
                 kind: Kind::Reserved,
@@ -214,8 +225,8 @@ mod tests {
         let ram = Ram::for_bytes(512 * MIB).unwrap();
         assert_eq!(ram.regions(), [(0, 512 * MIB)]);
         let map = ram.e820();
-        assert_eq!(map.len(), 6);
-        assert_eq!(map[4].start + map[4].bytes, 512 * MIB);
+        assert_eq!(map.len(), 7);
+        assert_eq!(map[5].start + map[5].bytes, 512 * MIB);
     }
 
     #[test]

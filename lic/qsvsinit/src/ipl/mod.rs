@@ -3,9 +3,10 @@
 // root directory of this project.
 
 //! The host IPL, in order. Each step posts its reference code: the
-//! kernel's file systems, cgroup2, the A/B record, the storage service
-//! and `QSVSDATA` at `/data`, the clock from the RTC, the seed, the
-//! state, the services. "Base ready" is posted by the loop, when every
+//! kernel's file systems, cgroup2 and the host's control group, the A/B
+//! record, the storage service and `QSVSDATA` at `/data`, the clock
+//! from the RTC, the seed, the state, the partitions' memory, the
+//! services. "Base ready" is posted by the loop, when every
 //! service has said so. On installation media the installer runs in
 //! place of all that follows the clock.
 
@@ -16,6 +17,7 @@ mod clock;
 pub mod cmdline;
 #[cfg(target_os = "linux")]
 mod install;
+pub mod memory;
 #[cfg(target_os = "linux")]
 pub mod mounts;
 #[cfg(target_os = "linux")]
@@ -40,7 +42,7 @@ mod on_host {
     use supervise::signal::{CHLD, INT, Signals, TERM};
 
     use super::cmdline::{self, Source};
-    use super::{choose, clock, install, mounts, state as state_step};
+    use super::{choose, clock, install, memory, mounts, state as state_step};
     use crate::console::Console;
     use crate::host::{Host, table};
     use crate::{kvm, slot, sys};
@@ -194,6 +196,19 @@ mod on_host {
         host.facts.serial = loaded.serial;
     }
 
+    /// The memory step: what partitions can be given is set aside as
+    /// huge pages, before anything has fragmented memory.
+    fn partition_memory(host: &mut Host, store: &Store) {
+        let installed = hostinv::memory_mib(&hostinv::Roots::default());
+        let reserved = memory::reserve(store, installed, Path::new(memory::NR_HUGEPAGES));
+        let code = if reserved.given < reserved.wanted {
+            &refcode::MEMORY_SHORT
+        } else {
+            &refcode::MEMORY_RESERVED
+        };
+        host.post(code, &reserved.detail());
+    }
+
     /// The host's identity: made at the first IPL that has a data
     /// file system to keep it on, and never again.
     fn identity(host: &mut Host) {
@@ -249,6 +264,10 @@ mod on_host {
 
         host.post(&refcode::MOUNTED, &join(&failed));
         host.post(&refcode::CGROUPS, &join(&mounts::cgroups()));
+        // Before any service exists, so each is born in the group.
+        if let Err(e) = mounts::host_group() {
+            host.line(&format!("the host's control group: {e}"));
+        }
         if source == Source::Install {
             clock(&mut host);
             install::run(host);
@@ -261,6 +280,7 @@ mod on_host {
         let store = Store::at(APPLIANCE.state_dir());
         seed(&mut host, &store);
         state(&mut host, &store);
+        partition_memory(&mut host, &store);
         identity(&mut host);
         services(&mut host);
         host.run()

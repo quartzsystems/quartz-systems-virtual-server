@@ -109,14 +109,22 @@ impl Hypervisor {
 }
 
 /// The guest's memory: an anonymous shared mapping for each region,
-/// given to KVM.
-pub fn memory(vm: &VmFd, ram: &Ram) -> io::Result<Arc<Memory>> {
+/// given to KVM. With `huge`, of the 2 MiB pages the host reserved at
+/// its IPL, and reserved for this mapping here: when they are not
+/// there the mapping fails now, not the guest later.
+pub fn memory(vm: &VmFd, ram: &Ram, huge: bool) -> io::Result<Arc<Memory>> {
+    let flags = if huge {
+        libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_HUGETLB | libc::MAP_HUGE_2MB
+    } else {
+        libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_NORESERVE
+    };
     let mut regions = Vec::new();
     for (start, bytes) in ram.regions() {
         let bytes = usize::try_from(bytes).map_err(io::Error::other)?;
         let mapping = MmapRegionBuilder::new(bytes)
             .with_mmap_prot(libc::PROT_READ | libc::PROT_WRITE)
-            .with_mmap_flags(libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_NORESERVE)
+            .with_mmap_flags(flags)
+            .with_hugetlbfs(huge)
             .build()
             .map_err(|e| io::Error::other(format!("guest memory: {e}")))?;
         let region = GuestRegionMmap::new(mapping, GuestAddress(start))
@@ -153,8 +161,8 @@ pub struct Devices {
     pub pci: Arc<Mutex<PciBus>>,
     /// The serial port, for the console's input.
     pub serial: Arc<Mutex<Serial>>,
-    /// The disk LUNs, for the counts at the end.
-    pub luns: Arc<Vec<Lun>>,
+    /// The disk LUNs of each adapter, for the counts at the end.
+    pub luns: Vec<Arc<Vec<Lun>>>,
 }
 
 fn put(
@@ -175,14 +183,14 @@ fn put(
 
 /// Build the devices: the serial port writing to `output`, the clock,
 /// the reset line and the power-off register telling `requests`, and
-/// on the PCI bus virtio-scsi with `luns` and virtio-rng reading
-/// `entropy`.
+/// on the PCI bus a virtio-scsi function for each of `adapters`, with
+/// its units, and after them virtio-rng reading `entropy`.
 pub fn devices(
     vm: &Arc<VmFd>,
     memory: &Arc<Memory>,
     output: Output,
     requests: Requests,
-    luns: Vec<Lun>,
+    adapters: Vec<Vec<Lun>>,
     entropy: File,
 ) -> io::Result<Devices> {
     let platform: Arc<dyn Platform> = Arc::new(KvmPlatform::new(vm.clone()));
@@ -205,9 +213,14 @@ pub fn devices(
     let power = Arc::new(Mutex::new(Power::new(requests)));
     put(&mut io, SLEEP_PORT, 2, power, "the sleep register")?;
 
-    let scsi = Scsi::new(luns).ok_or_else(|| io::Error::other("the number of disk units"))?;
-    let luns = scsi.luns();
-    let functions: Vec<Box<dyn VirtioDevice>> = vec![Box::new(scsi), Box::new(Rng::new(entropy))];
+    let mut luns = Vec::with_capacity(adapters.len());
+    let mut functions: Vec<Box<dyn VirtioDevice>> = Vec::with_capacity(adapters.len() + 1);
+    for units in adapters {
+        let scsi = Scsi::new(units).ok_or_else(|| io::Error::other("the number of disk units"))?;
+        luns.push(scsi.luns());
+        functions.push(Box::new(scsi));
+    }
+    functions.push(Box::new(Rng::new(entropy)));
     let mut pci = PciBus::new();
     #[allow(clippy::cast_possible_truncation)] // 3 GiB
     let mut base = PCI_MEM_START as u32;

@@ -14,6 +14,7 @@ use supervise::control::HostStatus;
 
 use crate::disks::DiskUnits;
 use crate::env::Env;
+use crate::partitions::{self, Partitions};
 
 /// The title of the console.
 pub const TITLE: &str = "QS/VS Service Tools";
@@ -191,8 +192,13 @@ fn uptime() -> String {
     )
 }
 
-/// The lines of the system status.
-pub fn status_lines(status: &HostStatus, uptime: &str) -> Vec<String> {
+/// The lines of the system status. `partitions` is every partition,
+/// or `None` when the partition manager does not answer.
+pub fn status_lines(
+    status: &HostStatus,
+    uptime: &str,
+    partitions: Option<&[partd::Status]>,
+) -> Vec<String> {
     let of = |key: &str| status.fact(key).unwrap_or("").to_string();
     let row = |label: &str, value: &str| format!("{} {value}", kit::dotted(label, 19));
     let state = if of(fact::READY) == "yes" {
@@ -220,6 +226,12 @@ pub fn status_lines(status: &HostStatus, uptime: &str) -> Vec<String> {
         row("Data", &of(fact::DATA)),
         row("KVM", &kit::fit(&of(fact::KVM), 56)),
         row("Uptime", uptime),
+        row(
+            "Partitions",
+            &kit::fit(&partitions::summary(partitions), 56),
+        )
+        .trim_end()
+        .to_string(),
         String::new(),
         "Services:".to_string(),
     ];
@@ -237,8 +249,6 @@ pub fn status_lines(status: &HostStatus, uptime: &str) -> Vec<String> {
             .collect();
         lines.push(format!("  {}", cells.join(" ")).trim_end().to_string());
     }
-    lines.push(String::new());
-    lines.push("Partitions are managed from the management console, QS/MC.".into());
     lines
 }
 
@@ -252,16 +262,26 @@ impl Panel<Env, Outcome> for SystemStatus {
 
     fn render(&self, env: &mut Env) -> Screen {
         let status = env.status();
+        let partitions = partitions::list();
         kit::page(
             "Work with System Status",
             &env.system(),
-            &status_lines(&status, &uptime()),
-            "F1=Help   F3=Exit   F12=Cancel",
+            &status_lines(&status, &uptime(), partitions.as_deref()),
+            "F1=Help   F3=Exit   F11=Display partitions   F12=Cancel",
         )
     }
 
     fn enter(&mut self, _fields: &[String], _env: &mut Env) -> Step {
         Flow::Stay
+    }
+
+    fn function(&mut self, key: u8, _fields: &[String], _env: &mut Env) -> Step {
+        match key {
+            11 => Flow::Push(Box::new(Partitions::default())),
+            3 => Flow::PopAll,
+            12 => Flow::Pop,
+            _ => Flow::Stay,
+        }
     }
 
     fn help(&self) -> Help {
@@ -276,6 +296,8 @@ impl Panel<Env, Outcome> for SystemStatus {
                 "code posted last. Management is the management address, or why",
                 "there is none. Data is what the host's own file system is",
                 "mounted from. KVM says whether partitions can run here.",
+                "Partitions counts the partitions defined and what they are",
+                "doing; F11 lists them. They are managed from QS/MC.",
                 "",
                 "Services lists each service of the host with its state, and",
                 "how often it has failed if it has.",
@@ -351,7 +373,7 @@ mod tests {
 
     #[test]
     fn the_system_status_names_every_fact_and_service() {
-        let lines = status_lines(&status(), "0 days 00:03:12");
+        let lines = status_lines(&status(), "0 days 00:03:12", Some(&[]));
         assert_eq!(
             lines[0],
             "Host state . . . . : Running; every service has been ready"
@@ -365,10 +387,12 @@ mod tests {
             "Slot . . . . . . . : A (default A, nothing pending)"
         );
         assert_eq!(lines[7], "Uptime . . . . . . : 0 days 00:03:12");
-        assert!(lines[10].starts_with("  stgd     ready"));
-        assert!(lines[10].contains("logd     ready"));
-        assert_eq!(lines[11], "  netd     ready (1 failed)");
-        assert!(lines.last().unwrap().contains("QS/MC"));
+        assert_eq!(lines[8], "Partitions . . . . : none defined");
+        assert!(lines[11].starts_with("  stgd     ready"));
+        assert!(lines[11].contains("logd     ready"));
+        assert_eq!(lines[12], "  netd     ready (1 failed)");
+        let unanswered = status_lines(&status(), "", None);
+        assert!(unanswered[8].contains("does not answer"));
         // It fits a text display.
         assert!(lines.len() <= 16);
     }

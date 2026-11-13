@@ -10,12 +10,15 @@
 
 use std::time::{Duration, Instant};
 
+use partd::{Calls as _, State};
+
+use super::manager::{self, partd, said};
 use super::{
-    NAME, QS400_MEMORY_MIB, UNIT, ended, expect_code, expect_guest, expect_started, fresh_host,
-    guest_line, host, host_unaffected, launch, profile, qs400_image, send, signal, start, unit,
+    ID, NAME, QS400_MEMORY_MIB, UNIT, ended, expect_code, expect_guest, expect_started, fresh_host,
+    guest_line, host_unaffected, hosted, launch, profile, qs400_image, send, signal, start, unit,
 };
 use crate::qemu::session::Session;
-use crate::suite::base::{Guest, Run};
+use crate::suite::base::{Guest, Run, posted};
 
 /// The codes of a normal IPL of QS/400, in the order its own
 /// conformance wants them. Others may come between.
@@ -41,13 +44,13 @@ pub fn patience(run: &Run<'_>) -> Instant {
 }
 
 /// Boot a host with a copy of the QS/400 image as the partition's
-/// load source; the hook starts the partition.
+/// load source, and activate the partition.
 pub fn qs400<'a>(run: &Run<'a>, processors: u32, ipl: &str) -> Result<Guest<'a>, String> {
     let image = qs400_image()?;
     fresh_host(run)?;
     let disk = unit(run, &image)?;
-    let text = profile(processors, QS400_MEMORY_MIB, ipl, UNIT);
-    host(run, &launch(run, &[disk], &text)?)
+    let spec = profile(processors, QS400_MEMORY_MIB, ipl, UNIT);
+    hosted(run, &launch(run, &[disk])?, &spec)
 }
 
 /// The guest's IPL codes in order, to "IPL complete".
@@ -70,16 +73,16 @@ pub fn console_ready(guest: &mut Session, deadline: Instant) -> Result<(), Strin
     expect_guest(guest, CONSOLE_READY, deadline)
 }
 
-/// Have the guest power down, or restart, and wait for `qsvmm` to end.
-fn power_down(guest: &mut Session, restart: bool, deadline: Instant) -> Result<String, String> {
-    send(guest, if restart { "pwrdwn restart" } else { "pwrdwn" })?;
+/// Have the guest power down and wait for `qsvmm` to end.
+fn power_down(guest: &mut Session, deadline: Instant) -> Result<String, String> {
+    send(guest, "pwrdwn")?;
     expect_guest(guest, POWER_DOWN_COMPLETE, deadline)?;
     ended(guest, deadline)
 }
 
 fn ipl_from(run: &Run<'_>, side: char, processors: u32) -> Result<String, String> {
     let lower = side.to_ascii_lowercase();
-    let mut guest = qs400(run, processors, &format!("side = \"{lower}\""))?;
+    let mut guest = qs400(run, processors, &format!("side {lower}"))?;
     let deadline = patience(run);
     let began = Instant::now();
     let started = expect_started(&mut guest, deadline)?;
@@ -97,7 +100,7 @@ fn ipl_from(run: &Run<'_>, side: char, processors: u32) -> Result<String, String
         expect_guest(&mut guest, &format!("PN{n:02} "), deadline)?;
     }
     guest.expect("1af4:1048 virtio SCSI", deadline)?;
-    let how = power_down(&mut guest, false, deadline)?;
+    let how = power_down(&mut guest, deadline)?;
     expect_code(&mut guest, &refcode::PARTITION_POWERED_OFF, deadline)?;
     if how != "exit 0" {
         return Err(format!("the guest powered off; qsvmm gave `{how}`"));
@@ -111,38 +114,34 @@ fn ipl_from(run: &Run<'_>, side: char, processors: u32) -> Result<String, String
     ))
 }
 
-/// Suite 3: QS/400 IPLs from side A.
+/// QS/400 IPLs from side A.
 pub fn ipl_a(run: &Run<'_>) -> Result<String, String> {
     ipl_from(run, 'A', 2)
 }
 
-/// Suite 4: the same from side B, and with four processors.
+/// The same from side B, and with four processors.
 pub fn ipl_b(run: &Run<'_>) -> Result<String, String> {
     ipl_from(run, 'B', 4)
 }
 
-/// One activation with the profile's side, to the guest's service
+/// One activation with `ipl` when it is given, to the guest's service
 /// console: the side `qsvmm` loaded and what it read in the record.
 fn activation(
     run: &Run<'_>,
     guest: &mut Session,
-    side: Option<&str>,
+    ipl: Option<&str>,
 ) -> Result<(char, String), String> {
-    if let Some(side) = side {
-        let ipl = format!("side = \"{side}\"");
-        start(guest, Some(&profile(2, QS400_MEMORY_MIB, &ipl, UNIT)))?;
+    if let Some(ipl) = ipl {
+        start(guest, Some(&profile(2, QS400_MEMORY_MIB, ipl, UNIT)))?;
     }
     let deadline = patience(run);
     let started = expect_started(guest, deadline)?;
-    let mark = crate::suite::base::posted(&refcode::PARTITION_RECORD_READ, "");
+    let mark = posted(&refcode::PARTITION_RECORD_READ, "");
     let read = guest
         .log
         .rfind(&mark)
         .and_then(|at| guest.log[at + mark.len()..].lines().next())
-        .unwrap_or("")
-        // What a posting adds follows its code's text and a colon.
-        .trim_start_matches(':')
-        .trim()
+        .map_or("", super::detail_of)
         .to_string();
     let loaded = ['A', 'B']
         .into_iter()
@@ -169,7 +168,7 @@ fn power_down_with(run: &Run<'_>, guest: &mut Session, command: &str) -> Result<
     }
 }
 
-/// Step 0's suite: `side = "recorded"` is what the partition itself
+/// Step 0's suite: the recorded side is what the partition itself
 /// asked for. `IPLSRC(B)` at a power down in the guest IPLs side B
 /// once; an explicit side overrides the request and leaves it.
 pub fn recorded(run: &Run<'_>) -> Result<String, String> {
@@ -181,49 +180,38 @@ pub fn recorded(run: &Run<'_>) -> Result<String, String> {
             Ok(())
         } else {
             Err(format!(
-                "IPL {n}: side {side} wanted with the record asking `{asked}`: side {} 
+                "IPL {n}: side {side} wanted with the record asking `{asked}`: side {} \
                  loaded, the record read as `{}`",
                 got.0, got.1
             ))
         }
     };
 
-    // Nothing asked yet, and no record to ask through: a disk that
-    // has never IPLed. Side A.
-    let mut guest = qs400(run, 2, "side = \"recorded\"")?;
+    // Nothing asked yet: side A. The keylock the host writes makes the
+    // record, on a disk that has never IPLed.
+    let mut guest = qs400(run, 2, "side recorded")?;
     let first = activation(run, &mut guest, None)?;
-    if first.0 != 'A' || !first.1.is_empty() {
-        return Err(format!(
-            "IPL 1, of a disk that has never IPLed: side {} loaded, the record read as `{}`",
-            first.0, first.1
-        ));
-    }
+    want(1, &first, 'A', "side A")?;
     power_down_with(run, &mut guest, ASK_B)?;
     if !guest.said(&armed) {
         return Err("the guest did not say `next IPL from slot B`".into());
     }
 
     // The request is taken: side B, and the record written without it.
-    let second = activation(run, &mut guest, Some("recorded"))?;
+    let second = activation(run, &mut guest, Some("side recorded"))?;
     want(2, &second, 'B', "side B once")?;
-    if !guest.said(&crate::suite::base::posted(
-        &refcode::PARTITION_RECORD_WRITTEN,
-        "",
-    )) {
-        return Err("the once-only side was not cleared in the record".into());
-    }
     power_down_with(run, &mut guest, "pwrdwn")?;
 
     // It was for one IPL only.
-    let third = activation(run, &mut guest, Some("recorded"))?;
+    let third = activation(run, &mut guest, Some("side recorded"))?;
     want(3, &third, 'A', "side A")?;
     power_down_with(run, &mut guest, ASK_B)?;
 
     // An explicit side overrides the request and leaves it standing.
-    let fourth = activation(run, &mut guest, Some("a"))?;
+    let fourth = activation(run, &mut guest, Some("side a"))?;
     want(4, &fourth, 'A', "side B once")?;
     power_down_with(run, &mut guest, "pwrdwn")?;
-    let fifth = activation(run, &mut guest, Some("recorded"))?;
+    let fifth = activation(run, &mut guest, Some("side recorded"))?;
     want(5, &fifth, 'B', "side B once")?;
     power_down_with(run, &mut guest, "pwrdwn")?;
     host_unaffected(&mut guest)?;
@@ -241,11 +229,11 @@ fn enter(guest: &mut Session) -> Result<(), String> {
     send(guest, "key enter")
 }
 
-/// Suite 5: the keylock position and the console mode the host writes
-/// are the ones the guest reports.
+/// The keylock position and the console mode the host writes are the
+/// ones the guest reports; and the keylock is the host's: what the
+/// guest set for itself lasts until the next activation.
 pub fn attributes(run: &Run<'_>) -> Result<String, String> {
-    let manual = "side = \"a\"\nkeylock = \"manual\"\nconsole = \"serial\"";
-    let mut guest = qs400(run, 2, manual)?;
+    let mut guest = qs400(run, 2, "side a keylock manual console serial")?;
     let deadline = patience(run);
     expect_code(&mut guest, &refcode::PARTITION_RECORD_WRITTEN, deadline)?;
     expect_code(&mut guest, &refcode::PARTITION_STARTED, deadline)?;
@@ -256,7 +244,7 @@ pub fn attributes(run: &Run<'_>) -> Result<String, String> {
     // An attended IPL stops at its menu, drawn as text on the serial port.
     guest.expect("IPL or Install the System", deadline)?;
     guest.expect(" Selection", deadline)?;
-    if guest.said(&guest_line(super::qs400::IPL_COMPLETE)) {
+    if guest.said(&guest_line(IPL_COMPLETE)) {
         return Err("an attended IPL completed without its menu being answered".into());
     }
     std::thread::sleep(Duration::from_secs(1));
@@ -272,14 +260,18 @@ pub fn attributes(run: &Run<'_>) -> Result<String, String> {
     std::thread::sleep(Duration::from_secs(3));
     send(&mut guest, "lic")?;
     expect_guest(&mut guest, "last_ipl_mode   Manual", deadline)?;
-    power_down(&mut guest, false, deadline)?;
+    power_down(&mut guest, deadline)?;
     expect_code(&mut guest, &refcode::PARTITION_POWERED_OFF, deadline)?;
 
     // Back to unattended and the display: the guest says so too.
-    let normal = "side = \"a\"\nkeylock = \"normal\"\nconsole = \"local\"";
     start(
         &mut guest,
-        Some(&profile(2, QS400_MEMORY_MIB, normal, UNIT)),
+        Some(&profile(
+            2,
+            QS400_MEMORY_MIB,
+            "side a keylock normal console local",
+            UNIT,
+        )),
     )?;
     let deadline = patience(run);
     let read = expect_code(&mut guest, &refcode::PARTITION_RECORD_READ, deadline)?;
@@ -297,21 +289,36 @@ pub fn attributes(run: &Run<'_>) -> Result<String, String> {
     if guest.log.matches(&guest_line("slic: mode Manual")).count() != 1 {
         return Err("the second IPL was attended too".into());
     }
-    power_down(&mut guest, false, deadline)?;
+
+    // The guest asks for a manual IPL itself; the host's keylock, in
+    // the normal position, is written at the next activation.
+    send(&mut guest, "mode manual")?;
+    std::thread::sleep(Duration::from_secs(2));
+    power_down(&mut guest, deadline)?;
+    start(&mut guest, None)?;
+    let deadline = patience(run);
+    expect_code(&mut guest, &refcode::PARTITION_STARTED, deadline)?;
+    expect_guest(&mut guest, IPL_COMPLETE, deadline)?;
+    console_ready(&mut guest, deadline)?;
+    if guest.log.matches(&guest_line("slic: mode Manual")).count() != 1 {
+        return Err("the guest's own `mode manual` outlasted an activation".into());
+    }
+    power_down(&mut guest, deadline)?;
     host_unaffected(&mut guest)?;
     Ok(format!(
         "keylock manual and console serial, written by the host: {NAME} says `mode Manual from \
          LIC override` and `Serial console (ttyS0)`, stops at its IPL menu on the serial port \
          and completes when answered; then normal and local: an unattended IPL, `Local console`, \
-         A6005008 for the display a partition has not"
+         A6005008 for the display a partition has not; then `mode manual` in the guest, and the \
+         next activation is unattended: the keylock is the host's"
     ))
 }
 
-/// Suite 6: `qsvmm` killed during the guest's IPL and again while the
-/// guest runs. The host stays up, each end is posted with its signal,
-/// and the guest's disk IPLs afterwards.
+/// `qsvmm` killed during the guest's IPL and again while the guest
+/// runs. The partition goes to Error with its code, the host stays
+/// up, and the partition activates again: its disk IPLs.
 pub fn kill(run: &Run<'_>) -> Result<String, String> {
-    let mut guest = qs400(run, 2, "side = \"a\"")?;
+    let mut guest = qs400(run, 2, "side a")?;
     let deadline = patience(run);
     expect_started(&mut guest, deadline)?;
     expect_guest(&mut guest, UNITS_LOCATED, deadline)?;
@@ -320,7 +327,26 @@ pub fn kill(run: &Run<'_>) -> Result<String, String> {
     if !first.contains("signal 9") || ended(&mut guest, deadline)? != "signal 9" {
         return Err(format!("killed during the IPL: `{first}`"));
     }
+    let status = manager::status(&mut guest, ID)?;
+    let message = status.message.map(|m| m.to_string()).unwrap_or_default();
+    if status.state != State::Error
+        || status.code != refcode::PARTITION_KILLED.code
+        || status.current.is_some()
+        || !message.contains("A2005150")
+    {
+        return Err(format!(
+            "after the kill the partition is {} with `{}`, holding {:?}: {message}",
+            status.state.word(),
+            status.code,
+            status.current
+        ));
+    }
     host_unaffected(&mut guest)?;
+    // Nothing starts it again by itself.
+    std::thread::sleep(Duration::from_secs(3));
+    if manager::status(&mut guest, ID)?.state != State::Error {
+        return Err("a partition in error was started again by itself".into());
+    }
 
     // The IPL after it completes, and says the one before did not.
     start(&mut guest, None)?;
@@ -340,6 +366,7 @@ pub fn kill(run: &Run<'_>) -> Result<String, String> {
     if !second.contains("signal 9") {
         return Err(format!("killed while it ran: `{second}`"));
     }
+    ended(&mut guest, deadline)?;
     host_unaffected(&mut guest)?;
 
     start(&mut guest, None)?;
@@ -350,10 +377,11 @@ pub fn kill(run: &Run<'_>) -> Result<String, String> {
     // What the guest had acknowledged before the kill is there.
     send(&mut guest, "CHKOBJ OBJ(QGPL/KILLED) OBJTYPE(*DTAARA)")?;
     guest.expect("QGPL/KILLED *DTAARA exists.", deadline)?;
-    let how = power_down(&mut guest, false, deadline)?;
+    let how = power_down(&mut guest, deadline)?;
     host_unaffected(&mut guest)?;
     Ok(format!(
         "killed during the IPL and again while it ran: A2005150 with signal 9 both times, the \
+         partition in Error holding nothing ({message}), not started again by itself, the \
          host's base ready throughout; the IPL after each kill completed{}, an object created \
          before the second kill is there after it; then powered off, {how}",
         if noticed {
@@ -364,58 +392,184 @@ pub fn kill(run: &Run<'_>) -> Result<String, String> {
     ))
 }
 
-/// Suite 8: a guest's power off and a guest's restart each end
-/// `qsvmm` with their own code; a restart is not done in place.
+/// How many activations the host has posted.
+fn activations(guest: &mut Session) -> usize {
+    guest.drain();
+    guest
+        .log
+        .matches(&posted(&refcode::PARTITION_ACTIVATING, ""))
+        .count()
+}
+
+/// The lifecycle: a guest's power off, a guest's restart, and the
+/// partition manager's immediate shut down and restart each end in
+/// the documented state.
 pub fn end(run: &Run<'_>) -> Result<String, String> {
-    let mut guest = qs400(run, 2, "side = \"a\"")?;
+    let mut guest = qs400(run, 2, "side a")?;
     let deadline = patience(run);
     expect_started(&mut guest, deadline)?;
+    manager::until(&mut guest, ID, State::Running, deadline)?;
     expect_guest(&mut guest, IPL_COMPLETE, deadline)?;
     console_ready(&mut guest, deadline)?;
-    let off = power_down(&mut guest, false, deadline)?;
+    let held = manager::status(&mut guest, ID)?.current;
+
+    // The guest powers off: Not activated, holding nothing.
+    let off = power_down(&mut guest, deadline)?;
     expect_code(&mut guest, &refcode::PARTITION_POWERED_OFF, deadline)?;
-    if off != "exit 0" {
-        return Err(format!("the guest powered off; qsvmm gave `{off}`"));
+    let status = manager::status(&mut guest, ID)?;
+    if off != "exit 0" || status.state != State::NotActivated || status.current.is_some() {
+        return Err(format!(
+            "the guest powered off: qsvmm gave `{off}`, the partition is {} holding {:?}",
+            status.state.word(),
+            status.current
+        ));
     }
 
+    // The guest asks for a restart: activated again at once, with
+    // what it held, from the side it asked for.
     start(&mut guest, None)?;
     let deadline = patience(run);
     expect_started(&mut guest, deadline)?;
     expect_guest(&mut guest, IPL_COMPLETE, deadline)?;
     console_ready(&mut guest, deadline)?;
-    let activations = |guest: &mut Session| {
-        guest.drain();
-        guest
-            .log
-            .matches(refcode::PARTITION_ACTIVATING.code)
-            .count()
-    };
     let before = activations(&mut guest);
-    let restart = power_down(&mut guest, true, deadline)?;
+    send(&mut guest, "pwrdwn restart")?;
+    expect_guest(&mut guest, POWER_DOWN_COMPLETE, deadline)?;
     expect_code(&mut guest, &refcode::PARTITION_RESTART, deadline)?;
-    if restart != "exit 10" {
-        return Err(format!("the guest restarted; qsvmm gave `{restart}`"));
-    }
-    // Nothing starts it again: that is whoever started it's to decide.
-    std::thread::sleep(Duration::from_secs(5));
-    if activations(&mut guest) != before {
-        return Err("the partition was started again by itself".into());
+    let again = expect_started(&mut guest, deadline)?;
+    expect_guest(&mut guest, IPL_COMPLETE, deadline)?;
+    console_ready(&mut guest, deadline)?;
+    let status = manager::status(&mut guest, ID)?;
+    if activations(&mut guest) != before + 1
+        || status.state != State::Running
+        || status.current != held
+    {
+        return Err(format!(
+            "after the guest's restart the partition is {} holding {:?}, {} activation(s) on",
+            status.state.word(),
+            status.current,
+            activations(&mut guest) - before
+        ));
     }
 
-    // And an end the host asks for.
+    // Shut down at once by the partition manager.
+    said(partd(&mut guest)?.shut_down(ID))?;
+    expect_code(&mut guest, &refcode::PARTITION_ENDED, deadline)?;
+    let asked = ended(&mut guest, deadline)?;
+    let status = manager::status(&mut guest, ID)?;
+    if asked != "exit 50" || status.state != State::NotActivated {
+        return Err(format!(
+            "shut down by the partition manager: qsvmm gave `{asked}`, the partition is {}",
+            status.state.word()
+        ));
+    }
+    let refused = partd(&mut guest)?
+        .shut_down(ID)
+        .map_err(|e| e.to_string())?
+        .err()
+        .map(|errors| manager::refused(&errors))
+        .unwrap_or_default();
+    if !refused.starts_with(qvsmsg::PARTITION_NOT_ACTIVE.id) {
+        return Err(format!(
+            "a shut down of a partition that is not activated answered `{refused}`"
+        ));
+    }
+
+    // Restarted at once by the partition manager: ended, and
+    // activated anew with the profile it had.
     start(&mut guest, None)?;
     let deadline = patience(run);
     expect_started(&mut guest, deadline)?;
     expect_guest(&mut guest, UNITS_LOCATED, deadline)?;
-    signal(&mut guest, "TERM")?;
+    let before = activations(&mut guest);
+    said(partd(&mut guest)?.restart(ID))?;
     expect_code(&mut guest, &refcode::PARTITION_ENDED, deadline)?;
-    let asked = ended(&mut guest, deadline)?;
-    if asked != "exit 50" {
-        return Err(format!("ended by the host; qsvmm gave `{asked}`"));
+    expect_started(&mut guest, deadline)?;
+    expect_guest(&mut guest, IPL_COMPLETE, deadline)?;
+    console_ready(&mut guest, deadline)?;
+    if activations(&mut guest) != before + 1
+        || manager::status(&mut guest, ID)?.state != State::Running
+    {
+        return Err("a restart by the partition manager did not activate it again once".into());
+    }
+    power_down(&mut guest, deadline)?;
+    host_unaffected(&mut guest)?;
+    Ok(format!(
+        "guest power off: C2005100, {off}, Not activated holding nothing; guest restart: \
+         C2005110, activated again at once with what it held (`{again}`), Running; immediate \
+         shut down: A2005140, {asked}, Not activated, and a second one refused ({refused}); \
+         immediate restart: ended and activated again, Running"
+    ))
+}
+
+/// Identity: each partition reports its own serial number, the same
+/// at every activation, and QS/400 names its hypervisor.
+pub fn identity(run: &Run<'_>) -> Result<String, String> {
+    let image = qs400_image()?;
+    fresh_host(run)?;
+    let first = unit(run, &image)?;
+    let second = run.file("unit2.img");
+    crate::qemu::image::sparse_copy(&image, &second)?;
+    let mut guest = super::host(run, &launch(run, &[first, second])?)?;
+    let mut seen = Vec::new();
+    for (name, device) in [(NAME, UNIT), ("OTHER", "/dev/vdc")] {
+        let id = manager::partition(&mut guest, name)?;
+        let serial = said(partd(&mut guest)?.definition(id))?.serial;
+        let spec = profile(2, QS400_MEMORY_MIB, "side a", device);
+        // `slic` says it as it loads its system values, in a line of
+        // its own partition.
+        let said_serial = format!("QSRLNBR {serial},");
+        for activation in 1..=2usize {
+            manager::activate(&mut guest, id, &spec).map_err(|errors| manager::refused(&errors))?;
+            let deadline = patience(run);
+            let at = |e: String| format!("{name}, activation {activation}: {e}");
+            guest
+                .expect(&super::relayed(name, "SRC C6001010"), deadline)
+                .map_err(at)?;
+            // Once for each activation so far: the same every time.
+            guest.drain();
+            let times = guest.log.matches(&said_serial).count();
+            if times != activation {
+                return Err(at(format!(
+                    "the guest said `QSRLNBR {serial}` {times} time(s) in {activation} \
+                     activation(s)"
+                )));
+            }
+            guest
+                .expect(&super::relayed(name, IPL_COMPLETE), deadline)
+                .map_err(at)?;
+            guest
+                .expect(&super::relayed(name, CONSOLE_READY), deadline)
+                .map_err(at)?;
+            if activation == 1 {
+                super::send_to(&mut guest, id, "qshwqual")?;
+                guest
+                    .expect("Quartz Systems QS/VS partition", deadline)
+                    .map_err(at)?;
+                guest
+                    .expect("Hypervisor . . . . . :   QS/VS", deadline)
+                    .map_err(at)?;
+                guest
+                    .expect("No firmware: a partition of QS/VS", deadline)
+                    .map_err(at)?;
+            }
+            std::thread::sleep(Duration::from_secs(1));
+            super::send_to(&mut guest, id, "pwrdwn")?;
+            manager::ended(&mut guest, id, deadline).map_err(at)?;
+        }
+        seen.push(format!("{name} (partition {id}) {serial}"));
+    }
+    let serials: Vec<&str> = seen.iter().filter_map(|s| s.rsplit(' ').next()).collect();
+    if serials[0] == serials[1] || serials[0][..5] != serials[1][..5] {
+        return Err(format!(
+            "two partitions of one host have the serial numbers {serials:?}"
+        ));
     }
     host_unaffected(&mut guest)?;
     Ok(format!(
-        "power off: C2005100, {off}; restart: C2005110, {restart}, and no activation followed \
-         by itself; SIGTERM from the host: A2005140, {asked}"
+        "{}: each guest says its own `QSRLNBR` at two activations; QSHWQUAL names the machine \
+         `Quartz Systems QS/VS partition`, the hypervisor `QS/VS`, and passes the firmware \
+         check as a partition of QS/VS",
+        seen.join(", ")
     ))
 }

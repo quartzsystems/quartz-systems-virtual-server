@@ -5,7 +5,9 @@
 //! Load sources a partition cannot IPL from. Each is a small disk the
 //! harness writes with one thing wrong; each must give the `A2` code
 //! that names what is missing, `qsvmm` must end in order (exit 30, not
-//! a signal and not a panic's code), and the host must not notice.
+//! a signal and not a panic's code), the partition must be Not
+//! activated with the message that names the code, and the host must
+//! not notice.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -13,13 +15,16 @@ use std::time::Instant;
 use ipl::{ESP_TYPE, LIC_TYPE, SIDE_A_PATH, SIDE_B_PATH};
 use refcode::RefCode;
 
-use super::{ended, expect_code, fresh_host, host, host_unaffected, launch, profile, start};
+use super::{
+    ID, NAME, ended, expect_code, fresh_host, host, host_unaffected, launch, manager, profile,
+    start,
+};
 use crate::suite::base::Run;
 
 /// Bytes of a sector.
 const SECTOR: usize = 512;
 /// The memory of a partition that will not get as far as using it.
-const MEMORY_MIB: u32 = 256;
+const MEMORY_MIB: u64 = 256;
 
 /// One damaged load source.
 struct Case {
@@ -143,17 +148,17 @@ pub fn damaged(run: &Run<'_>) -> Result<String, String> {
         std::fs::write(&path, &case.disk).map_err(|e| e.to_string())?;
         disks.push(path);
     }
-    let text = |i: usize| {
-        let side = format!("side = \"{}\"", cases[i].side);
+    let spec = |i: usize| {
+        let side = format!("side {}", cases[i].side);
         profile(1, MEMORY_MIB, &side, &device(i))
     };
-    let mut guest = host(run, &launch(run, &disks, &text(0))?)?;
+    let mut guest = host(run, &launch(run, &disks)?)?;
+    manager::partition(&mut guest, NAME)?;
     let mut seen = Vec::new();
     for (i, case) in cases.iter().enumerate() {
-        // The hook started the first by itself.
-        if i > 0 {
-            start(&mut guest, Some(&text(i)))?;
-        }
+        // The activation itself is taken: it is the VMM that finds
+        // the load source wanting.
+        start(&mut guest, Some(&spec(i)))?;
         let deadline = Instant::now() + run.timeout;
         let at = |e: String| format!("{}: {e}", case.what);
         let detail = expect_code(&mut guest, case.code, deadline).map_err(at)?;
@@ -162,6 +167,18 @@ pub fn damaged(run: &Run<'_>) -> Result<String, String> {
         if how != "exit 30" {
             return Err(at(format!("qsvmm gave `{how}`, not `exit 30`")));
         }
+        let status = manager::status(&mut guest, ID).map_err(at)?;
+        let message = status.message.map(|m| m.to_string()).unwrap_or_default();
+        if status.state != partd::State::NotActivated
+            || status.current.is_some()
+            || !message.starts_with(qvsmsg::DID_NOT_IPL.id)
+            || !message.contains(case.code.code)
+        {
+            return Err(at(format!(
+                "the partition is {} with the message `{message}`",
+                status.state.word()
+            )));
+        }
         host_unaffected(&mut guest).map_err(at)?;
         seen.push(format!("{}: {}{detail}", case.what, case.code.code));
     }
@@ -169,8 +186,8 @@ pub fn damaged(run: &Run<'_>) -> Result<String, String> {
         return Err("a partition started from a damaged load source".into());
     }
     Ok(format!(
-        "{} damaged load sources, each refused with its code and exit 30, the host's base \
-         ready after each: {}",
+        "{} damaged load sources, each refused with its code and exit 30, the partition Not \
+         activated with QVS2108 naming the code, the host's base ready after each: {}",
         cases.len(),
         seen.join("; ")
     ))

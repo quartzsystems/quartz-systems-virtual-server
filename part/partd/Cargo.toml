@@ -1,0 +1,25 @@
+[package]
+name = "partd"
+description = "The partition manager: definitions and profiles in state, activation with resource accounting, the state machine of each partition, the VMM processes and their control groups, auto start, and the local socket it is driven over"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+model = { path = "../model", version = "0.1.0" }
+resource = { path = "../resource", version = "0.1.0" }
+qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+refcode = { path = "../../lic/refcode", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+# The configuration a VMM is started with, and what its exit codes mean.
+qsvmm = { path = "../../vmm/qsvmm", version = "0.1.0" }
+ipc.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix.workspace = true
+libc.workspace = true
+
+[lints]
+workspace = true

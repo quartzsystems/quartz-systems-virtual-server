@@ -134,6 +134,24 @@ pub fn build(payload: usize) -> Vec<u8> {
     image
 }
 
+/// A file the loader takes whose entry is `code`: for a suite that
+/// needs a guest it can say everything about.
+pub fn build_with(code: &[u8]) -> Vec<u8> {
+    let entry = usize::try_from(ENTRY_OFFSET).unwrap_or(0x200);
+    let mut image = build((entry + code.len()).max(4096));
+    image[1024 + entry..1024 + entry + code.len()].copy_from_slice(code);
+    image
+}
+
+/// A guest that does nothing but run: its boot processor jumps to
+/// itself for ever, with interrupts off, and its other processors are
+/// never started. It is busy from its first instruction, which is what
+/// a suite that measures processor time wants of a guest.
+pub fn spinner() -> Vec<u8> {
+    // `jmp $`.
+    build_with(&[0xEB, 0xFE])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,6 +182,17 @@ mod tests {
         assert_eq!(magic, HEADER_MAGIC);
         let pml4: u64 = mem.read_obj(GuestAddress(PML4_START)).unwrap();
         assert_ne!(pml4, 0);
+    }
+
+    #[test]
+    fn the_spinner_is_a_kernel_whose_entry_jumps_to_itself() {
+        let image = spinner();
+        assert!(check(&image).is_ok());
+        let (mem, ram) = memory(128 << 20);
+        let entry = load(&mem, &ram, &image).unwrap();
+        let mut code = [0u8; 2];
+        mem.read_slice(&mut code, GuestAddress(entry)).unwrap();
+        assert_eq!(code, [0xEB, 0xFE]);
     }
 
     #[test]

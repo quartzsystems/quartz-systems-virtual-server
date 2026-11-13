@@ -47,6 +47,12 @@ pub const REQUIRED_Y: &[&str] = &[
     "HUGETLB_PAGE",
     "SECCOMP",
     "SECCOMP_FILTER",
+    // Partitions' processors and memory (Phase 4): a processor is a
+    // core, two partitions never share one at a time, and a VMM maps
+    // no more huge pages than its partition was given.
+    "SCHED_SMT",
+    "SCHED_CORE",
+    "CGROUP_HUGETLB",
     // Storage.
     "XFS_FS",
     "BLK_DEV_UBLK",

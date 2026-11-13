@@ -125,6 +125,57 @@ pub fn drop_privileges(id: u32) -> io::Result<()> {
     Ok(())
 }
 
+/// `prctl`'s core scheduling request and its two arguments used here.
+const PR_SCHED_CORE: libc::c_int = 62;
+const PR_SCHED_CORE_CREATE: libc::c_ulong = 1;
+const PR_SCHED_CORE_SCOPE_THREAD_GROUP: libc::c_ulong = 1;
+
+/// Give this process a core scheduling cookie of its own, which every
+/// thread started after shares: the kernel then never runs a thread of
+/// another process on the sibling thread of a core one of these runs
+/// on. `Ok(false)` when the host has no SMT or its kernel no core
+/// scheduling: there is then nothing to keep apart.
+pub fn own_core_cookie() -> io::Result<bool> {
+    // SAFETY: the request takes plain integers; process 0 is the
+    // caller's own.
+    let result = unsafe {
+        libc::prctl(
+            PR_SCHED_CORE,
+            PR_SCHED_CORE_CREATE,
+            0,
+            PR_SCHED_CORE_SCOPE_THREAD_GROUP,
+            0,
+        )
+    };
+    if result == 0 {
+        return Ok(true);
+    }
+    let error = io::Error::last_os_error();
+    match error.raw_os_error() {
+        Some(libc::ENODEV | libc::EINVAL) => Ok(false),
+        _ => Err(error),
+    }
+}
+
+/// Keep the calling thread on the host thread `cpu`.
+pub fn pin_this_thread(cpu: u32) -> io::Result<()> {
+    let cpu = cpu as usize;
+    // SAFETY: the set is a local of the type the calls take, zeroed
+    // and then written by `CPU_SET` within its size, which is checked;
+    // thread 0 is the caller's own.
+    unsafe {
+        let mut set = std::mem::zeroed::<libc::cpu_set_t>();
+        if cpu >= 8 * std::mem::size_of::<libc::cpu_set_t>() {
+            return Err(io::Error::from_raw_os_error(libc::EINVAL));
+        }
+        libc::CPU_SET(cpu, &mut set);
+        last_error(
+            libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &raw const set),
+            (),
+        )
+    }
+}
+
 /// Whether the process is root.
 pub fn is_root() -> bool {
     // SAFETY: `geteuid` takes nothing and cannot fail.

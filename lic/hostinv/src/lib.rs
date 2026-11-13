@@ -9,6 +9,7 @@
 //! - [`read`]: the whole inventory, for `inventory.toml`.
 //! - [`dmi_serial`], [`derived_serial`]: the system serial number.
 //! - [`oem_strings`]: the SMBIOS OEM strings.
+//! - [`threads`], [`memory_mib`]: what partitions are given resources by.
 //! - [`location`]: the location code format.
 //! - [`smbios`]: the SMBIOS structure table.
 //!
@@ -67,6 +68,27 @@ pub fn dmi_serial(roots: &Roots) -> Option<String> {
 /// case.
 pub fn derived_serial(mac: [u8; 6]) -> String {
     system::serial::derived(mac)
+}
+
+/// One thread of a processor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CpuThread {
+    /// The kernel's number for it, `cpuN`.
+    pub cpu: u32,
+    /// Its socket.
+    pub socket: u32,
+    /// Its core's number within the socket.
+    pub core: u32,
+}
+
+/// The processors' threads that are online, in the kernel's order.
+pub fn threads(roots: &Roots) -> Vec<CpuThread> {
+    read::threads::read(&roots.sys)
+}
+
+/// The memory the kernel has, in MiB.
+pub fn memory_mib(roots: &Roots) -> u64 {
+    read(roots, None).memory.total_bytes >> 20
 }
 
 /// The SMBIOS OEM strings (type 11), in order; empty when the table is

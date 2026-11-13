@@ -7,6 +7,7 @@
 //! - [`cpu`], [`memory`]: `/proc/cpuinfo`, `/proc/meminfo` and the huge
 //!   page sizes.
 //! - [`disks`], [`net`], [`pci`]: the devices of sysfs.
+//! - [`threads`]: the processors' threads, each with its socket and core.
 //! - [`place`]: the slots and the PCI functions on the way to a device,
 //!   which a location code is made of.
 
@@ -16,6 +17,7 @@ mod memory;
 mod net;
 mod pci;
 mod place;
+pub(crate) mod threads;
 
 use state::Inventory;
 

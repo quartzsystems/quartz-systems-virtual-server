@@ -49,12 +49,28 @@ pub mod command {
     /// `sum <path>`: a file's length and the sum of its bytes, which
     /// is enough to tell a file the load wrote from one that is torn.
     pub const SUM: &str = "sum";
-    /// `partition start`: start the partition again, for the profile
-    /// at `/run/partition.toml`. `partition kill <TERM|KILL>`: signal
-    /// `qsvmm`. `partition pid`: its process id. `partition send
-    /// <text>`: type a line at the partition's console. `partition
-    /// end`: how the last run ended.
+    /// `partd <hex>`: one request to the partition manager's socket,
+    /// encoded as its client encodes it; the answer comes back as
+    /// `hex`. The harness decodes it.
+    pub const PARTD: &str = "partd";
+    /// `partition pid <id>`: the process of the partition's VMM.
+    /// `partition kill <id> <TERM|KILL|USR1>`: signal it. `partition
+    /// send <id> <text>`: type a line at the partition's console.
     pub const PARTITION: &str = "partition";
+    /// `threads <pid>`: the threads of a process, a `line` each: its
+    /// id, state, the processor it last ran on, its user and system
+    /// ticks, the processors it is allowed, its name.
+    pub const THREADS: &str = "threads";
+    /// `tasks`: every process of the host, a `line` each: its id,
+    /// whether it is a kernel thread, the processor it last ran on,
+    /// the processors it is allowed, its control group, its name.
+    pub const TASKS: &str = "tasks";
+    /// `curr`: what each processor runs now, by the scheduler's own
+    /// account: a `line` of the processor and the process each.
+    pub const CURR: &str = "curr";
+    /// `as <uid> kill <pid>`: whether that user may signal the
+    /// process. `as <uid> read <path>`: whether it may read the file.
+    pub const AS: &str = "as";
     /// `mount <device> <directory>`: mount an xfs file system read-only.
     pub const MOUNT: &str = "mount";
     /// `umount <directory>`: unmount it.
