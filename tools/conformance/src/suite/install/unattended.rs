@@ -96,10 +96,22 @@ pub fn mirrored(run: &Run<'_>) -> Result<String, String> {
     let status = channel(&mut guest)?.status()?;
     all_ready(&status)?;
     let state = channel(&mut guest)?.ls(STATE_DIR)?;
-    for file in ["host.toml", "network.toml", users::FILE] {
+    // What the installer wrote, and the identity this first IPL made.
+    for file in [
+        "host.toml",
+        "network.toml",
+        users::FILE,
+        "identity.key",
+        "identity.crt",
+    ] {
         if !state.iter().any(|f| f == file) {
             return Err(format!("{STATE_DIR} has no {file}: {state:?}"));
         }
+    }
+    guest.seen(&posted(&refcode::IDENTITY_GENERATED, ""), run.deadline())?;
+    let certificate = channel(&mut guest)?.text(&format!("{STATE_DIR}/identity.crt"))?;
+    if !certificate.starts_with("-----BEGIN CERTIFICATE-----") {
+        return Err("identity.crt is not a PEM certificate".into());
     }
     power_off(&mut guest)?;
     drop(guest);
@@ -122,8 +134,8 @@ pub fn mirrored(run: &Run<'_>) -> Result<String, String> {
         .collect();
     Ok(format!(
         "installed from the ISO as a USB stick with no key pressed; both disks hold both UKIs \
-         ({} and {} bytes), record sequence {} and the set label; first IPL: /data on {data}, {}; \
-         powered off clean",
+         ({} and {} bytes), record sequence {} and the set label; first IPL: /data on {data}, {}, \
+         the host's identity made; powered off clean",
         ukis.0.len(),
         ukis.1.len(),
         found[0].record.1,

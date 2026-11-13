@@ -13,12 +13,14 @@ use std::time::{Duration, Instant};
 use release::{fact, screen};
 
 use super::{
-    HOST, INSTALL_WITHIN, INSTALLER_ENDED, MAIN_MENU, PASSWORD, USER, blank_disks, boot, golden,
-    golden_frame, machine, option, power_off, sign_on, titled, with_media,
+    HOST, INSTALL_WITHIN, INSTALLER_ENDED, MAIN_MENU, PASSWORD, USER, blank_disks, boot, fill,
+    golden, golden_frame, machine, option, power_off, sign_on, titled, with_media,
 };
 use crate::qemu::Launch;
 use crate::qemu::term::key;
-use crate::suite::base::{DHCP_ADDRESS, Guest, MAC, Run, all_ready, channel, fact_of};
+use crate::suite::base::{
+    DHCP_ADDRESS, Guest, MAC, Run, STATE_DIR, all_ready, channel, fact_of, posted,
+};
 
 /// The installer's title.
 const TITLE: &str = "Install QS/VS";
@@ -90,6 +92,7 @@ fn installed<'a>(run: &Run<'a>, disk: &Path) -> Result<Guest<'a>, String> {
     let mut launch = machine(run, &[Some(disk)]);
     launch.nic = Some(MAC.into());
     launch.keys = true;
+    launch.monitor = Some(run.file("monitor.sock"));
     let mut guest = boot(run, &launch)?;
     let deadline = run.deadline();
     let status = channel(&mut guest)?.until("the management address", deadline, |s| {
@@ -147,6 +150,7 @@ pub fn serial(run: &Run<'_>) -> Result<String, String> {
     let menu = sign_on(&mut guest, USER, PASSWORD, deadline)?;
     golden("tools-main", &menu)?;
     let toured = tour(&mut guest, deadline)?;
+    let clock = set_time(&mut guest, deadline)?;
     guest.type_keys(key::F3)?;
     // Signed off: the port is PID 1's again and shows the status.
     let after = guest.log.len();
@@ -156,12 +160,50 @@ pub fn serial(run: &Run<'_>) -> Result<String, String> {
     if guest.log.contains(PASSWORD) {
         return Err("the password is in the serial log".into());
     }
-    power_off(&mut guest)?;
+    // Signed on again, and the host powered off from option 9.
+    sign_on(&mut guest, USER, PASSWORD, deadline)?;
+    option(&mut guest, 9, "Power Off or Restart", deadline)?;
+    option(&mut guest, 1, "Confirm Power Off", deadline)?;
+    guest.type_keys(key::F10)?;
+    let stopped = posted(
+        &refcode::SHUTDOWN_STARTED,
+        "power off, by the control socket",
+    );
+    guest.seen(&stopped, deadline)?;
+    guest.seen(&refcode::POWER_OFF.tag(), deadline)?;
+    guest.wait_exit(deadline)?;
     Ok(format!(
         "{seen} screens of the installer matched their golden files, typed at the serial port; \
          the installed host is {HOST} at {DHCP_ADDRESS} from slot A, base ready; {USER} signed \
-         on to Service Tools, {toured} of its panels matched theirs, and signed off"
+         on to Service Tools, {toured} of its panels matched theirs; option 6 set the zone and \
+         the clock ({clock}); signed off, and on again; option 9 powered the host off: `{stopped}`"
     ))
+}
+
+/// Option 6: the display zone and the clock, set by hand. The date and
+/// time the status shows afterwards.
+fn set_time(guest: &mut Guest<'_>, deadline: Instant) -> Result<String, String> {
+    option(guest, 6, "Date and Time", deadline)?;
+    // The offset, no time servers, a date and a time in that offset.
+    let typed = fill(
+        &[Some("+02:00"), None, Some("2030-01-02"), Some("03:04")],
+        &[6, 48, 10, 8],
+    );
+    guest.type_keys(&format!("{typed}{}", key::ENTER))?;
+    guest.screen("the word of the time change", deadline, |grid| {
+        grid.message() == "Date and time settings changed."
+    })?;
+    let status = channel(guest)?.until("the clock as it was set", deadline, |s| {
+        s.fact(fact::DATE)
+            .is_some_and(|d| d.starts_with("2030-01-02 03:0") && d.ends_with("UTC+02:00"))
+    })?;
+    let host = channel(guest)?.text(&format!("{STATE_DIR}/host.toml"))?;
+    if !host.contains("time_zone = \"UTC+02:00\"") || !host.contains(HOST) {
+        return Err(format!("host.toml after the time change:\n{host}"));
+    }
+    guest.type_keys(key::F12)?;
+    titled(guest, MAIN_MENU, deadline)?;
+    Ok(fact_of(&status, fact::DATE)?.to_string())
 }
 
 /// Through the panels of Service Tools the other suites do not visit,
@@ -335,14 +377,47 @@ pub fn display(run: &Run<'_>) -> Result<String, String> {
 
     // Judged by what was installed: the host, its network, its user.
     let mut guest = installed(run, &disks[0])?;
+    // The display has a session of its own: Enter, the user, the
+    // password, typed at its keyboard. The log says who signed on where.
+    guest.send_keys(&["ret".to_string()])?;
+    std::thread::sleep(Duration::from_millis(700));
+    guest.send_keys(&display_keys(&format!(
+        "{}{}{PASSWORD}{}",
+        USER.to_lowercase(),
+        key::TAB,
+        key::ENTER
+    ))?)?;
+    let logged = |guest: &mut Guest<'_>, wanted: &str| -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            let log = channel(guest)?.text("/data/log/system.ndjson")?;
+            if log.contains(wanted) {
+                return Ok(());
+            }
+            if Instant::now() > deadline {
+                return Err(format!("the system log lacks `{wanted}`"));
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+    };
+    logged(
+        &mut guest,
+        &format!("service tools user {USER} signed on at the display"),
+    )?;
+    // The serial port has its own meanwhile, and the display's goes on.
     let deadline = run.deadline();
     sign_on(&mut guest, USER, PASSWORD, deadline)?;
     guest.type_keys(key::F3)?;
-    std::thread::sleep(Duration::from_millis(300));
+    guest.send_keys(&["f3".to_string()])?;
+    logged(
+        &mut guest,
+        &format!("service tools user {USER} signed off at the display"),
+    )?;
     power_off(&mut guest)?;
     Ok(format!(
         "{typed} keys typed at the display's keyboard through the monitor installed the same \
-         host: {HOST} at {DHCP_ADDRESS}, base ready, and {USER} signs on with the password typed"
+         host: {HOST} at {DHCP_ADDRESS}, base ready; {USER} signs on at the display with the \
+         password typed there, and at the serial port in a session of its own"
     ))
 }
 
