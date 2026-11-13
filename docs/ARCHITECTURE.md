@@ -15,7 +15,7 @@ a side effect of other work.
 | Storage | Storage pools are xfs file systems; virtual disks are raw files; software RAID as on QS/400, presented through a ublk block device |
 | Virtual Ethernet | VLAN-aware kernel bridges, tap devices with vhost-net |
 | Management | QSI server on TCP 2300 with mutual TLS; Service Tools console locally; nothing else listens |
-| Disk layout | A load-source disk is GPT: ESP (slot A and B UKIs), a record partition, `QSVSDATA`. One disk, or two mirrored: each then has its own ESP and record, and `QSVSDATA` is one xfs on a protected set over the two. Storage pools on other disks |
+| Disk layout | A load-source disk is GPT: ESP (slot A and B UKIs), a record partition, `QSVSDATA`. One disk, or two mirrored: each then has its own ESP and record, and `QSVSDATA` is one xfs on a protected set over the two. Two units that each ran without the other are not reconciled by the host: the operator chooses. Storage pools on other disks |
 | Local console | Service Tools on the display and the serial port, each its own session; the installer on both at once. QS/400's `console` and screen kit |
 | Identity | Release `V1R0M0` from `VERSION` (`1.0.0`). Fixes `QVnnnnn`. Message prefix `QVS`. Environment prefix `QSVS_`. Kernel command-line keys `qsvs.` |
 
@@ -98,10 +98,10 @@ it:
 
 `protect` keeps nothing on a member that says what it is, so the host
 records the set itself, in the record partition of every disk and
-outside the set (`lic/hostdisk/src/set.rs`): the set's identity and
+outside the set (`base/loadsource/src/set.rs`): the set's identity and
 size, each member by the GUID of its data partition with its state and
-the location code and serial number its disk had, and whether the set
-was stopped in order. Beside it is the map of a resynchronization under
+the location code and serial number its disk had, whether the set
+was stopped in order, and when the copy was written. Beside it is the map of a resynchronization under
 way, so a power loss does not start one over. The record partition so
 holds three records, each as two copies under `abrec`: the A/B record,
 the set's label, the resume map.
@@ -129,10 +129,29 @@ restarts, `/data` has no server: that is the fatal code `B2003000`
 
 Two things follow that an operator should know. After a power loss the
 whole data partition is written again, not only what was in flight:
-there is no write-intent bitmap. And a mirrored pair has no third
-party: if each disk is started alone in turn, each records the other as
-missing, and when both are back the one whose record is newer wins and
-the other is written from it.
+there is no write-intent bitmap (storage pools will need one in
+`protect` before Phase 5). And a mirrored pair has no third party: if
+each disk is started alone in turn, each records the other as missing
+and goes on, and when both are back nothing on them says which the
+operator wants.
+
+**Units that ran apart.** The host does not pick a winner. Each disk
+holds its own copy of the set's label; when one disk's copy has its
+own unit in step and the other's not, and the other disk's copy says
+the reverse, the storage service assembles nothing, is not ready, and
+posts `A2003040`. PID 1 then mounts no `/data` and starts no other
+service. It runs the Service Tools console for one panel, on the
+display and the serial port at once and without a sign-on (the users
+are on `/data`), which names both units with their location codes,
+serial numbers and the times their disks were last written, and asks
+which to keep. The console asks the storage service; that writes the
+kept unit's label to both disks with the other unit stale
+(`C2003050`), assembles the set, and the IPL goes on as any other,
+the other unit being written again from the one kept. Nothing bounds
+the wait. A unit that ran alone while the other never started is no
+such case: only one copy then says the other was missing, and it is
+the newer. The rule waits for Cody to confirm it
+(`docs/OPEN_QUESTIONS.md` item 20).
 
 **The slot rule.** A slot is chosen by firmware boot entry, as QS/400
 chooses its own: there is a `Boot####` entry for each slot's UKI,
@@ -150,7 +169,7 @@ gets that one trial: the attempts left are 1 when it is set and 0 after. Writing
 slot is the update phase's.
 
 **The A/B record, version 2.** The payload is sixteen bytes
-(`lic/hostdisk/src/record.rs`): the default slot; the pending slot, 0
+(`base/loadsource/src/record.rs`): the default slot; the pending slot, 0
 for none; the attempts left; a reserved byte; the release last confirmed
 in slot A and in slot B, four bytes each (a flag, then V, R and M); four
 reserved bytes. Version 1 was Phase 0's four bytes, which nothing ever
@@ -182,21 +201,29 @@ the first IPL of what was installed.
 
 **The base crates.** What every Quartz appliance needs under its own
 services is in `base/`: the appliance description, state, supervision,
-logging, the management network with time, the seed, and since Phase 2
+logging, the management network with time, the seed, since Phase 2
 the installer's screens, the panels every service console has, service
-tools users and the host's identity. These were to
+tools users and the host's identity, and since Phase 3 the load source
+and the storage service that protects it: QS/MC is an appliance with a
+load source too, and gets the same mirrored one. These were to
 live in the QS/MC repository; that repository is still empty, so they
 are written here and QS/MC will pin them from this repository, as this
 repository pins QS/400's. Everything under `base/` is therefore
 product-neutral. It takes an `Appliance` description from its caller
 (the product identifier, the data and run directories, how to post a
-reference code, the release banner, the seed label) and contains no
-QS/VS name outside its tests and comments, and no `base/` crate depends
-on a crate of `lic/`. A test fails the build otherwise
+reference code, the release banner, the seed label, and what its load
+source carries that is its own: the GPT types and names of its
+partitions, the ESP's vendor directory, the magics of its records) and
+contains no QS/VS name outside its tests and comments, and no `base/`
+crate depends on a crate of `lic/`. So a QS/VS disk and a QS/MC disk
+have the same layout and neither appliance takes the other's for its
+own. A test fails the build otherwise
 (`tools/build/src/host/neutral.rs`, also a row of `build doctor`). The
-QS/VS side is thin: `lic/release` has the description, `lic/refcode`
-says which reference code each base event is, `qsvslogd` and
-`qsvsnetd` are the base services run as QS/VS, `lic/qsvsinstall` is the
+QS/VS side is thin: `lic/release` has the description and QS/VS's
+load-source names, `lic/refcode` says which reference code each base
+event is, `qsvsstgd`, `qsvslogd` and `qsvsnetd` are the base services
+run as QS/VS (the first with QS/VS's inventory, for the disks' serial
+numbers and location codes), `lic/qsvsinstall` is the
 installer's disks, media and state under the base screens, and
 `svc/tools` is QS/VS's menu, system status and disk units over the
 base panels.

@@ -5,7 +5,10 @@ references still point somewhere. Phase 0's questions 1 to 5 were
 answered with the Phase 1 handoff. Questions 7 to 15 were settled on
 2026-11-12, when Cody had Claude's recommendation taken for each; the
 entry says what that was and what changed. The Phase 2 handoff decided
-9 and 13 again, and Phase 2 raised 16 to 22.
+9 and 13 again, and Phase 2 raised 16 to 22. The Phase 3 handoff
+answered those: 16, 18 and 21 are closed below, 20 was decided and
+built and waits for Cody to confirm the rule, 17 and 22 are decided in
+Phase 8, and 19 stays open.
 
 ## Open
 
@@ -19,39 +22,16 @@ on the first push; the job fails with a message that says which when
 images and runs every suite: two kernel builds, and about five minutes
 for the power-pull suite. Nothing here can be decided before a push.
 
-### 16. What brings menu options 4 and 8 (NEEDS-CODY)
-
-The handoff has Service Tools show options 4 (management console
-pairing) and 8 (service functions) as not yet available, "with the
-phase that brings them". This repository numbers phases 0 to 3 only,
-and neither is in those. The menu says what brings each instead:
-`comes with QSI` and `comes with code update`. If the phases have
-numbers, they go on the menu and in `docs/SERVICETOOLS.md`; and if
-service functions come with something other than code update, the
-wording is wrong.
-
 ### 17. The host identity's key
 
 The identity made at the first IPL is an Ed25519 key pair and a
 self-signed X.509 certificate, written field by field in `base/identity`
 (some eighty bytes of DER around the key and the signature), with
 QS/400's own `ed25519-dalek` version: no further dependency, pure
-Rust. Nothing uses it yet. The QSI phase chooses a TLS stack; if that
-stack does not take Ed25519 certificates, the identity has to be a
-P-256 one and hosts installed before then make a new one. Recommended:
-decide with the QSI phase, before any host is paired.
-
-### 18. Whose the load source is
-
-The handoff puts the load-source layout and its protection in
-`lic/hostdisk` and `lic/qsvsstgd`, and they are QS/VS's: the partition
-types, the record's magic, the set label `QSVSSET`. QS/MC is an
-appliance with a load source too. If it is to have the same mirrored
-load source, those two crates move to `base/` with their names taken
-from the `Appliance` description, as the base services have them.
-Related, and QS/400's question (`docs/BUILDKIT.md` section 10 there):
-whether the appliances should share one on-disk member label written
-by `protect`. QS/VS keeps its own, beside the A/B record.
+Rust. Nothing uses it yet. If the TLS stack of QSI does not take
+Ed25519 certificates, the identity has to be a P-256 one and hosts
+installed before then make a new one. The Phase 3 handoff: decide in
+Phase 8, with the TLS stack. Nothing changed.
 
 ### 19. Resynchronization after a power loss is the whole partition
 
@@ -61,30 +41,55 @@ cannot know which megabytes were in flight. The map of the copy
 survives a further power loss, the host runs meanwhile, and the copy
 gives way to the host's own I/O. On a load source of several hundred
 gigabytes that is still a long time without protection. A bitmap in the
-record partition would bound it to what was being written. Recommended:
-decide when the first real machine shows how long it takes.
+record partition would bound it to what was being written. The Phase 3
+handoff: it stays open until a real machine shows how long it takes.
 
-### 20. A pair with no third party
+Storage pools (Phase 5) cannot wait for that answer: a pool is far
+larger than a load source, and writing a whole unit of it again after
+every power loss is not acceptable. They need a write-intent bitmap in
+QS/400's `protect` before Phase 5, which is a change in QS/400's
+repository and a new pin here; the load source then takes it too.
+
+### 20. A pair with no third party (NEEDS-CODY, to confirm the rule)
 
 If each disk of a mirrored pair is started alone in turn, each records
-the other as missing. When both are back, the record with the higher
-sequence wins and the other disk is written from it: what the loser
-alone had written is lost. Two disks cannot settle that between
-themselves. The operator's rule is in `docs/ARCHITECTURE.md`: do not
-start the host from a disk that was pulled while the other ran.
-Whether to refuse the IPL instead, when both labels say the other is
-missing, is a decision: refusing is safer and leaves a host that will
-not start until someone chooses.
+the other as missing and goes on. Until Phase 3 the record with the
+higher sequence won when both were back, and the other disk was
+written from it: what the loser alone had written was lost, silently.
 
-### 21. PID 1 does not supervise during its own IPL steps
+The Phase 3 handoff decided: no winner is picked. The rule, as built
+(`base/loadsource/src/set.rs`, `apart`): the copies of the set's label
+are read from each disk by itself; when one disk's copy has its own
+unit in step and another's not, and that other disk's copy says the
+reverse, the units ran apart. The storage service then posts `A2003040`
+and assembles nothing; PID 1 mounts no `/data` and starts no other
+service; the display and the serial port show `Select Load-Source Unit
+to Keep` with each unit's location code, serial number and the time
+its disk was last written (`docs/SERVICETOOLS.md`). The operator's
+choice is recorded by the storage service in the label on both disks
+(`C2003050`), the IPL goes on from the unit kept, and the other is
+written again from it. The host waits for the choice without limit.
+The suite `mirror-split` shows all of it.
 
-The storage service is started first and the loop is turned until it
-is ready. The steps that follow (`/data` mounted, the clock, the seed,
-the state, the identity) run one after another without the loop: a
-storage service that ended exactly then would not be started again
-until they are done, and they wait on `/data`. The window is a second
-at an IPL. Closing it means turning the loop from inside each step;
-left as it is.
+What Cody is asked to confirm:
+
+- The rule itself, and that the host waits for ever: a host that was
+  split and then loses power comes back to a screen, not to service,
+  until someone is at the console (or at its serial port through a
+  BMC).
+- That the screen needs no sign-on. The users are on `/data`, and
+  which `/data` is the question; being at the console is the
+  authority, as for the installer.
+- That a disk which ran alone while the other was merely away, and
+  never started, is still taken as the newer one without a question
+  (it is: only one side then says the other was missing).
+- That the A/B record, which is read before the storage service
+  starts, still follows the highest sequence of the two disks. It
+  holds the default slot and the releases confirmed, not data.
+- The label's version 2 (the time written). A release from before it
+  does not read a version 2 label: a host that goes back to such a
+  release in its other slot would find its set not assembled. No such
+  release has shipped.
 
 ### 22. Who owns the service tools users
 
@@ -93,7 +98,9 @@ The users have no service but the console itself: nothing else signs
 anyone on. So `svc/tools` keeps them, through the users' store of
 `base/users` (QS/400's `svcusers` file store), and the two sessions
 share one copy in memory. If QSI is to manage them from QS/MC, they
-need an owner both can ask: PID 1, or a service of their own.
+need an owner both can ask: PID 1, or a service of their own. The
+Phase 3 handoff: decide in Phase 8, when QSI may need to manage them.
+Nothing changed.
 
 ## Closed
 
@@ -166,3 +173,32 @@ need an owner both can ask: PID 1, or a service of their own.
     keys pressed at the wrong keyboard should not end them all. The
     shutdown triggers are the handoff's three: the control socket,
     `SIGTERM` to PID 1 and the power button.
+
+16. **What brings menu options 4 and 8.** The phases have numbers now
+    (`CLAUDE.md` has the table, 0 to 11). Option 4, management console
+    pairing, comes with Phase 8, the QSI host server; option 8, service
+    functions, with Phase 9, service and code update. The menu and its
+    message lines say `Phase 8` and `Phase 9`, and so does
+    `docs/SERVICETOOLS.md`.
+18. **Whose the load source is.** Every appliance's: QS/MC gets the
+    same mirrored load source. The layout moved from `lic/hostdisk` to
+    `base/loadsource` and the storage service's engine from
+    `lic/qsvsstgd` to `base/stgd`. What is an appliance's own (the GPT
+    types and names of the record and data partitions, the ESP's vendor
+    directory, label and volume id, the magics of the A/B record, of
+    the set's label and of the resume map, the seed of a built image's
+    GUIDs) is `appliance::LoadSourceNames`, part of the `Appliance`
+    description; QS/VS's values are `release::LOAD_SOURCE`, the bytes
+    they were, and a test holds them there. `lic/qsvsstgd` is the
+    binary that runs the engine as QS/VS, with QS/VS's inventory for
+    the disks' serial numbers and location codes; `lic/hostdisk` is
+    gone. The storage service's reference codes go through
+    `appliance::Event` like the other base services'. Each appliance
+    keeps its own member label, under its own magic: there is no
+    shared on-disk label written by `protect`.
+21. **PID 1 does not supervise during its own IPL steps.** Left as it
+    is: the steps between the storage service being ready and the
+    services being started (`/data` mounted, the clock, the seed, the
+    state, the identity) run without the loop, for about a second at
+    an IPL. A storage service that ended exactly then is started again
+    when they are done.

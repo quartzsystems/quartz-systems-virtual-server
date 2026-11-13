@@ -46,6 +46,7 @@ suites need, under `target/test-image/`; it is never shipped.
 - `docs/PHASE0.md`: what Phase 0 built, and the evidence.
 - `docs/PHASE1.md`: what Phase 1 built, and the evidence.
 - `docs/PHASE2.md`: what Phase 2 built, and the evidence.
+- `docs/PHASE3.md`: Phase 3, the VMM core, as far as it is.
 - `docs/INSTALL.md`: installing a host, attended and unattended.
 - `docs/SERVICETOOLS.md`: the Service Tools console, panel by panel.
 - `docs/REFCODES.md`: host reference codes.
