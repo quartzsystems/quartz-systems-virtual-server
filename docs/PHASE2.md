@@ -234,61 +234,79 @@ the media no longer runs the service table.
 
 ## Acceptance evidence
 
-**The acceptance run did not complete.** It was started on 2026-11-12
-in a fresh `git clone` on ext4 at commit `cf15e92`, as Phase 1's was:
-two release builds each from an empty target, the test image, the
-checks, `build test`, `build test --media iso`. The first release build
-finished (497 s). During the second, the Windows volume that holds the
-WSL virtual disk ran out of space and WSL failed with I/O errors. So
-two rows of the table have no evidence yet, and say so. Everything
-else below was measured the same day on the same host, suite by suite,
-from the working tree, on the host of `docs/PHASE1.md` (WSL Ubuntu,
-Intel, `kvm_intel` nested = Y; QEMU 10.2.1 and cargo-deny 0.20.2 by
-`doctor`).
+One run on 2026-11-12, in a fresh `git clone` on ext4 at commit
+`f4e2177`, as Phase 1's was, with `QSVS_BUILD_ID=phase2` and a fixed
+signing key: two release builds each from an empty target (432 s and
+453 s), the test image (416 s), the checks, `build test` (1498 s),
+`build test --media iso`. Every command ended with status 0. The host
+is that of `docs/PHASE1.md` (WSL Ubuntu, Intel, `kvm_intel` nested = Y;
+QEMU 10.2.1 and cargo-deny 0.20.2 by `doctor`). A first attempt the
+same day, at `cf15e92`, was lost when the Windows volume that holds
+the WSL virtual disk ran out of space.
 
 | # | Check | Result |
 |---|---|---|
-| 1 | Suites 1 to 13 pass under `build test` | **not shown in one run.** Each of the thirteen passed by itself with `build test --suite <name>` on the final code or within two commits of it (below); the whole of `build test` was last run at the pin move, before Phase 2's code |
-| 2 | Two clean builds produce byte-identical UKIs, disk image and ISO | **not measured.** The second clean build did not finish. Nothing in the build is known to vary: the payload's manifest is text with the fixed build ID, and an ed25519 signature is a function of the key and the text |
-| 3 | `build deny` and `build doctor` pass, including the license-header check | pass, at `746ef13`: `cargo deny check`, then 195 crates compiled for the host and for musl with no `links` key and no C build helper; `doctor` all rows ok, 172 `.rs` files start with the header |
+| 1 | Suites 1 to 13 pass under `build test` | pass: `test: PASS, 26 step(s), media disk`: Phase 0's two IPLs, the ten base suites, the thirteen, and `mirror-start` (below) |
+| 2 | Two clean builds produce byte-identical UKIs, disk image and ISO | pass: the sixteen files below have the same SHA-256 after each of the two builds |
+| 3 | `build deny` and `build doctor` pass, including the license-header check | pass: `cargo deny check`, then 195 crates compiled for the host and for musl with no `links` key and no C build helper; `doctor` all rows ok, 172 `.rs` files start with the header |
 | 4 | The `base/` neutrality test passes with the installer flow, common panels and users code under `base/` | pass: `doctor`'s row, 10 crates name no product and depend on nothing of `lic/` (`appliance`, `state`, `supervise`, `logd`, `netd`, `seed`, `users`, `panels`, `install`, `identity`), and the unit test `host::neutral` in the 255 |
 | 5 | Every QS/400 crate is pinned at the one new commit; no QS/400 source is copied | pass: fourteen `rev =` values in `Cargo.toml`, all `03d64929`; `deny.toml` allows that one git source. One ioctl wrapper is the same call as QS/400's (above) |
 | 6 | No listening socket exists on the installed system | pass: Phase 1's `sockets` suite on a disk the installer wrote, in suite 13: no TCP socket listens, and no socket is bound off loopback but the DHCP client's |
 | 7 | No password appears in any log, screen capture or state file in clear | pass: suite 10 reads the system log, the reference code history, the users' file and the serial port's whole output for the four passwords it typed; suite 1 does the same for its serial output; none of the 39 golden files has one |
 
-Also clean at the last code change (`cf15e92`): `cargo fmt --all`,
-`cargo clippy --workspace --all-targets -- -D warnings`, the same for
-the seven image binaries on the musl target, for PID 1 and Service
-Tools with `QSVS_TEST_HOOKS=1` (at `746ef13`), and `cargo test
---workspace` (255 tests). `build notices` was written at `746ef13`.
+Also status 0 in the run: `build notices --check`, `cargo fmt --all
+--check`, `cargo clippy --workspace --all-targets --locked -- -D
+warnings`, the same for the seven image binaries on the musl target,
+for PID 1 and Service Tools with `QSVS_TEST_HOOKS=1`, and `cargo test
+--workspace --locked` (255 tests).
 
-### The suites, one at a time
+### The two builds
 
-Each line is the last run of that suite. "Final" is the code of
-`cf15e92`; the storage service changed once after the runs marked
-`746ef13` (it waits for a set member that is late to appear), and
-suites 4 and 13 ran after that change.
+The same after both, under `target/`:
 
-| # | Suite | Code | Time | What was seen |
-|---|---|---|---|---|
-| 1 | `install-serial` | `66136b8` | 30.5 s | 10 screens of the installer and 11 panels of Service Tools matched their golden files; the installed host `vs-test` at `10.0.2.15/24` from slot A; option 6 set `2030-01-02 03:04 UTC+02:00`; option 9: `REF D2001000 Host shutdown started: power off, by the control socket` |
-| 2 | `install-display` | `66136b8` | 31.3 s | 59 keys through the monitor installed the same host; `ADMIN` signed on at the display and, beside it, at the serial port |
-| 3 | `install-unattended` | `66136b8` | 30.9 s | from the ISO as a USB stick; both disks hold both UKIs (13 390 848 bytes each), record sequence 1, the label; `/data` on `/dev/ublkb0`; the identity made; both units Active; powered off clean |
-| 4 | `mirror-degraded` | final | 52.2 s | `REF A2003020 Load-source unit failed: unit 2 at P0000-B00-D11-F0`, and the same for unit 1 at `P0000-B00-D10-F0`; the unit Missing in Service Tools |
-| 5 | `mirror-replace` | `746ef13` | 32.4 s | rebuilt to `Both units are in step`; `C2003030` and `C2003035` in the history; the host IPLs from the new disk alone and reads what was written before |
-| 6 | `install-power-pull` | `b01daf1` | 191.8 s | 20 cuts (seed 388535741): 4 before the first step, 11 spread over 0 to 8 steps done, 5 after the last; the installer started over each time; the last installation good |
-| 7 | `mirror-power-pull` | `746ef13` | 320.9 s | 20 cuts (seed 969018185): `/data` from the set at every IPL, a resynchronization started after each, the last to its end; `host.toml` generation 32 to 3108; both labels clean |
-| 8 | `storage-kill` | `746ef13` | 36.3 s | killed three times (process 79 to 110, to 115, to 120) under 4 MiB writes; 38 files written, the last 3 read back whole; no resynchronization |
-| 9 | `tools-network` | `746ef13` | 39.1 s | DHCP to static and back, kept at once, the same `netd` process; VLAN 100 taken back after 32 s, `network.toml` untouched, `eth0.100` gone |
-| 10 | `tools-sign-on` | `746ef13` | 42.6 s | the rules of the suite's row above; signed off after 15 s (the test image's short idle) |
-| 11 | `media-refused` | `746ef13` | 5.1 s | refused; every byte of the disk zero |
-| 12 | `answers-invalid` | `746ef13` | 9.2 s | stopped on both kinds of answers; the disk untouched |
-| 13 | `installed-base` | final | 366.0 s | on a release installation: `IPL slot A`, two heartbeats, and `IPL slot B` by a boot entry; on a test installation: `status`, `dhcp`, `static-vlan`, `time`, `inventory`, `supervision`, `power-pull`, `slot-confirm`, `shutdown`, `sockets` |
-| | `mirror-start` | `746ef13` | 27.8 s | `REF C2003040 Mirrored protection started`; at the next IPL `/data` on `/dev/ublkb0`, unit 2 written, both Active |
-| | `IPL from media` | final | 2.8 s | PID 1's lines, then the installer's welcome, on the release ISO |
+| SHA-256 | File | Bytes |
+|---|---|---|
+| `a87ddebc37a88893fab1fa38a151ca5be6e1fdfae73308806e708ba65d29188b` | `images/initramfs.cpio` | 5012456 |
+| `ca1ff492f20be0a237db6013ca6ceb906e9fb225dc98a1a1c349be24ab6abe53` | `images/initramfs-media.cpio` | 2883392 |
+| `bf1f95ce9af8f18022a091e4382c1247b0c84b3b0fbd55e698418aaa44c467cb` | `images/qsvs-V1R0M0-a-bf1f95ce9af8.efi` | 13300736 |
+| `5e86cd6d69e96a678bcbff291c8932d20b96cd3cb0e193e1d59c19bbfd728539` | `images/qsvs-V1R0M0-b-5e86cd6d69e9.efi` | 13300736 |
+| `eb03ead2738e24ee59c5a91c4c01d6dba938db622bff1a92a579ef3948b3e2c0` | `images/qsvs-V1R0M0-d-eb03ead2738e.efi` | 13034496 |
+| `33c199b58ff6a2f6266816b948df7c5cd56985e4c9daee7301cab6ea958d3c1d` | `images/qsvs-V1R0M0-bf1f95ce9af8.img` | 1073741824 |
+| `30aae96c773c1752d0ec09ba9aca3e64e81e922b9e5dc6cb643cf563d2cdfe4b` | `images/QSVS-V1R0M0-eb03ead2738e.iso` | 72235008 |
+| `3978ce3ad5256afc73cb70668dee624ee318ff5cb33224b9e90c692737d4c64e` | `x86_64-unknown-linux-musl/release/qsvsinit` | 1293032 |
+| `51a5251b53727fee0982e60e1815c298b9fde31a87fd03f4e3c9825045bcd81b` | `x86_64-unknown-linux-musl/release/qsvsstgd` | 940104 |
+| `a71ee12f7f4f2d030403e8c3cb4224f912edabb69c995a93feef0f3252607dce` | `x86_64-unknown-linux-musl/release/qsvslogd` | 445528 |
+| `2f8d8b899cf25964ee7822d2499d2f82b51d919c285b97e86517f242d6908eed` | `x86_64-unknown-linux-musl/release/qsvsnetd` | 1007656 |
+| `342acddfa36bda55b6741be16acbf691880f01daa2643988f67402a39204c56a` | `x86_64-unknown-linux-musl/release/qsvstools` | 1324040 |
+| `e921be17d34c949aff11f9aa91abebad60499888819301390cf847dc0bdfbb3b` | `x86_64-unknown-linux-musl/release/qsvsinstall` | 1588648 |
+| `b85c26477a38f97de9444f57ada46974362f88635b98bd2b59092018323a5724` | `kernel/build/.config` | 139046 |
+| `e19e3a7d994b6419902b41027cc138b692333e6c4c716562c89c44229fef3158` | `images/manifest.json` | 3685 |
+| `00aee5b83ef3041ced7a4b6436219483c08ccc3f9aeb89af60326270e14f575e` | `images/manifest.sig` | 349 |
 
-The time of a suite includes making the kept installation it starts
-from when the ISO had changed (some 20 s).
+### The suites of Phase 2 in that run
+
+Before them in the same `build test`: `IPL slot A`, `IPL slot B`,
+`status`, `dhcp`, `static-vlan`, `time`, `inventory`, `supervision`,
+`power-pull` (50 cuts), `slot-confirm`, `shutdown`, `sockets`, all
+pass.
+
+| # | Suite | Time | What was seen |
+|---|---|---|---|
+| 1 | `install-serial` | 24.1 s | 10 screens of the installer and 11 panels of Service Tools matched their golden files; the installed host `vs-test` at `10.0.2.15/24` from slot A; option 6 set `2030-01-02 03:04 UTC+02:00`; option 9: `REF D2001000 Host shutdown started: power off, by the control socket` |
+| 2 | `install-display` | 25.5 s | 59 keys through the monitor installed the same host; `ADMIN` signed on at the display and, in a session of its own, at the serial port |
+| 3 | `install-unattended` | 21.4 s | from the ISO as a USB stick with no key pressed; both disks hold both UKIs (13 390 848 bytes each), record sequence 1, the label; `/data` on `/dev/ublkb0`; the identity made; both units Active; powered off clean |
+| 4 | `mirror-degraded` | 52.4 s | `REF A2003020 Load-source unit failed: unit 2 at P0000-B00-D11-F0`, and the same for unit 1 at `P0000-B00-D10-F0`; the unit Missing in Service Tools |
+| 5 | `mirror-replace` | 33.7 s | rebuilt to `Both units are in step`; `REF C2003030 Rebuild started` and `REF C2003035 Rebuild finished` posted; the host IPLs from the new disk alone and reads what was written before |
+| 6 | `install-power-pull` | 230.5 s | 20 cuts (seed 430030527): 3 before the first step, 13 with 2 to 8 steps done, 4 after the last; the installer started over each time; the installation then let finish IPLs and its two units came in step |
+| 7 | `mirror-power-pull` | 356.9 s | 20 cuts (seed 421921197): `/data` from the set at every IPL, a resynchronization started after each, the last to its end; `host.toml` generation 75 to 3104; powered off clean with both units active |
+| 8 | `storage-kill` | 17.2 s | killed three times (process 80 to 111, to 116, to 121) under 4 MiB writes; 68 files written, the last 3 read back whole; no resynchronization |
+| 9 | `tools-network` | 55.1 s | DHCP to static and back, each kept at once, the same `netd` process; VLAN 100 taken back after 32 s, `network.toml` untouched, `eth0.100` gone |
+| 10 | `tools-sign-on` | 24.2 s | a wrong password and an unknown user ID refused alike; `OPER` added, `ADMIN` removed, the last user ID kept; signed off after 15 s (the test image's short idle); five wrong passwords disable `OPER`; no password in a log, the users' file or the serial output |
+| 11 | `media-refused` | 5.2 s | refused on a screen that says so; every byte of the disk zero |
+| 12 | `answers-invalid` | 9.3 s | stopped on both kinds of answers; the disk untouched |
+| 13 | `installed-base` | 328.9 s | on a release installation: `IPL slot A`, two heartbeats, and `IPL slot B` by a boot entry; on a test installation: `status`, `dhcp`, `static-vlan`, `time`, `inventory`, `supervision`, `power-pull`, `slot-confirm`, `shutdown`, `sockets` |
+| | `mirror-start` | 12.7 s | `REF C2003040 Mirrored protection started`; at the next IPL `/data` on `/dev/ublkb0`, unit 2 written from unit 1, both Active; what was on `/data` before is there |
+| | `IPL from media` | 2.6 s | `build test --media iso`: PID 1's lines, then the installer's welcome, on the release ISO |
 
 ## Found while testing
 
@@ -325,7 +343,6 @@ fixed before the evidence below:
 
 ## Not done
 
-- `BLOCKED(phase2)`: the acceptance run in a fresh clone did not complete: the build host's disk filled. Rows 1 and 2 of the table have no evidence; run `build all` twice from empty targets and `build test` once.
 - **NEEDS-CODY: the first installation on real hardware.** The
   checklist is below. Everything in this record ran under QEMU.
 - **NEEDS-CODY: the QEMU job in CI** has still not run on GitHub
