@@ -21,8 +21,9 @@ use std::io::{self, Seek, SeekFrom};
 use std::os::unix::fs::chown;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use arch::layout::Ram;
@@ -31,6 +32,7 @@ use devices::virtio::scsi::backing::HostStore;
 use devices::virtio::scsi::lun::Lun;
 use ipl::{Fault, Step};
 use refcode::RefCode;
+use vmm_sys_util::signal::Killable;
 
 use crate::end::End;
 use crate::machine::{self, Hypervisor, vcpu};
@@ -283,15 +285,10 @@ fn activate(options: &Options, profile: &Profile) -> Result<Running, Stop> {
     let clients = Clients::default();
     serial::spawn(queue, log, clients.clone()).map_err(not_built("threads"))?;
     console::spawn(listener, built.serial.clone(), clients).map_err(not_built("threads"))?;
-    spawn_signal_watch(ends.clone()).map_err(not_built("threads"))?;
-    for (index, created) in (0u32..).zip(vcpus) {
-        let wiring = vcpu::Wiring {
-            io: built.io.clone(),
-            pci: built.pci.clone(),
-            ends: ends.clone(),
-        };
-        vcpu::spawn(created, index, wiring).map_err(not_built("threads"))?;
-    }
+    vcpu::install_kick().map_err(not_built("signals"))?;
+    let processors =
+        start_processors(vcpus, &built, &ends, &memory).map_err(not_built("threads"))?;
+    spawn_signal_watch(ends.clone(), processors).map_err(not_built("threads"))?;
     post(
         &refcode::PARTITION_STARTED,
         &format!("{} side {}", profile.name, ipl::side_letter(loaded.side)),
@@ -306,13 +303,65 @@ fn activate(options: &Options, profile: &Profile) -> Result<Running, Stop> {
     })
 }
 
-fn spawn_signal_watch(ends: Sender<(End, String)>) -> io::Result<()> {
+/// A processor's thread and the flag that has it report its state.
+type Processor = (JoinHandle<()>, Arc<AtomicBool>);
+
+/// Start a thread for each processor.
+fn start_processors(
+    vcpus: Vec<kvm_ioctls::VcpuFd>,
+    built: &machine::Devices,
+    ends: &Sender<(End, String)>,
+    memory: &Arc<devices::Memory>,
+) -> io::Result<Vec<Processor>> {
+    let mut processors = Vec::with_capacity(vcpus.len());
+    for (index, created) in (0u32..).zip(vcpus) {
+        let report = Arc::new(AtomicBool::new(false));
+        let wiring = vcpu::Wiring {
+            io: built.io.clone(),
+            pci: built.pci.clone(),
+            ends: ends.clone(),
+            report: report.clone(),
+            memory: memory.clone(),
+        };
+        processors.push((vcpu::spawn(created, index, wiring)?, report));
+    }
+    Ok(processors)
+}
+
+/// Have every processor say what state it is in. A thread is brought
+/// out of the guest by a signal, which it may miss on its way in: it
+/// is sent again until the thread has answered.
+fn report_processors(processors: &[Processor]) {
+    for (_, report) in processors {
+        report.store(true, Ordering::Relaxed);
+    }
+    for _ in 0..40 {
+        let waiting: Vec<&Processor> = processors
+            .iter()
+            .filter(|(_, report)| report.load(Ordering::Relaxed))
+            .collect();
+        if waiting.is_empty() {
+            return;
+        }
+        for (thread, _) in waiting {
+            let _ = thread.kill(vcpu::kick_signal());
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// The thread that takes the signals: one asks for a report of the
+/// processors, any other ends the partition.
+fn spawn_signal_watch(ends: Sender<(End, String)>, processors: Vec<Processor>) -> io::Result<()> {
     thread::Builder::new()
         .name("signals".into())
         .spawn(move || {
-            let why = match sys::wait_for_termination() {
-                Ok(signal) => format!("signal {signal}"),
-                Err(e) => format!("waiting for a signal: {e}"),
+            let why = loop {
+                match sys::wait_for_termination() {
+                    Ok(sys::REPORT) => report_processors(&processors),
+                    Ok(signal) => break format!("signal {signal}"),
+                    Err(e) => break format!("waiting for a signal: {e}"),
+                }
             };
             let _ = ends.send((End::Ended, why));
         })?;

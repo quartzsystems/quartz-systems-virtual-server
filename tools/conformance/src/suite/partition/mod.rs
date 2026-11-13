@@ -305,8 +305,23 @@ pub fn diagnosis(guest: &mut Session) -> String {
         }
         None => found.push("qsvmm is not running".into()),
     }
-    if let Ok(lines) = channel.kmsg("kvm") {
-        found.push(format!("the host's kernel on kvm: {lines:?}"));
+    // What the processors are doing: `qsvmm` says so on a signal, on
+    // its standard error, which the host relays.
+    let asked = pid.is_some()
+        && channel
+            .ask(&format!("{} kill USR1", command::PARTITION))
+            .is_ok();
+    if asked {
+        std::thread::sleep(Duration::from_secs(3));
+        guest.drain();
+        let mark = vmm_line("qsvmm: vcpu");
+        let states: Vec<&str> = guest
+            .log
+            .lines()
+            .filter(|l| l.contains(&mark))
+            .map(str::trim)
+            .collect();
+        found.push(format!("its processors: {states:?}"));
     }
     found.join("; ")
 }

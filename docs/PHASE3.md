@@ -320,6 +320,69 @@ The guest's serial output is in
 `/tmp/p/data/log/partitions/<name>/serial.log`, and its console is the
 socket `/tmp/p/run/partitions/<name>/console.sock`.
 
+## The suites
+
+`build test` runs every earlier suite, then these on the test image,
+then the fuzz targets. QEMU stands in for the machine, the QS/VS test
+image is the host in it, and the partition is a guest of that host:
+three levels deep on a build host that is itself a virtual machine.
+
+| # | Suite | What it asserts |
+|---|---|---|
+| 1 | `partition-boot` | the release image's UKI IPLs in a partition with 1, 2 and 4 processors: `C2005060` names the count, the guest's PID 1 posts its own `C2001000`, its banner and `C2001090` on the partition's serial port, and the guest's inventory, read back by the host from the guest's disk, counts as many processors as it was given. A first start whose unit is not there yet gives `A2005010` and `A2005100` |
+| 2 | `partition-scsi` | the guest mounts its data file system and writes its state: the unit counts reads, writes and flushes carried out on the host; the host reads the guest's `state/inventory.toml` from its own file, and in it the guest's disk is `QUARTZ VIRTUAL DISK` with the profile's serial number. Then, of a host block device through the virtio-scsi device itself: a read, a write and a verify past the end, a write across the end, a read at the largest address, an unknown command, a LUN that is not there, and four chains that are no request, are each refused, and the last block is unchanged |
+| 3 | `partition-ipl-a` | QS/400 IPLs from side A: the activation's codes in order, then the sixteen codes QS/400's own conformance wants, in order, to `SRC C6001090`; the guest names slot A, its processors and the virtio SCSI controller; `pwrdwn` ends it with `C2005100` and exit 0 |
+| 4 | `partition-ipl-b` | the same from side B, with four processors |
+| 5 | `partition-attributes` | keylock manual and console serial in the profile: `C2005035`, the guest says `mode Manual from LIC override` and `Serial console (ttyS0)`, posts `C1001050`, stops at its IPL menu drawn on the serial port, completes when answered, and its record says the IPL was Manual. Then normal and local: `C2005030` shows them, the guest says `Local console`, posts `A6005008`, IPLs unattended |
+| 6 | `partition-kill` | `qsvmm` killed (`SIGKILL`) after the guest located its units, and again after an IPL completed and an object was created: `A2005150` with signal 9 each time, the host's base ready after each; the IPL after each kill completes, and the object is there |
+| 7 | `partition-power-pull` | QEMU killed at 20 random moments while the guest creates objects; at each of 21 IPLs the guest's object store recovers and the IPL completes, and every object the guest acknowledged before a cut is there |
+| 8 | `partition-end` | guest power off: `C2005100`, exit 0; guest restart: `C2005110`, exit 10, and nothing starts it again; `SIGTERM`: `A2005140`, exit 50 |
+| 9 | `partition-damaged` | seven load sources with one thing wrong each (no table, no ESP, an ESP that is no volume, no UKI for the side, a corrupt LIC record, a truncated UKI, a UKI that is no bzImage): each its own `A2005` code, `A2005100`, exit 30, the host's base ready after each |
+| 10 | `partition-privilege` | `qsvmm` and every one of its threads run as user and group 23000 with no supplementary group, no capability in any set and `NoNewPrivs` set |
+| 11 | `fuzz` | the eight fuzz targets build with coverage counters and each runs 60 s without a finding |
+| 12 | | every earlier suite: `build test` runs them first |
+
+Suites 3 to 8 need `QSVS_QS400_IMAGE`. None is blocked: QS/400 IPLs
+(`docs/QS400_GUEST.md`).
+
+**What suite 7 shows, and what it cannot.** Killing QEMU takes the
+host's memory with it: anything `qsvmm` had taken from the guest and
+not yet handed to the host's disk is gone, and a flush `qsvmm`
+answered without carrying it out would show as an acknowledged object
+that is missing. It does not show what a real power loss adds: QEMU
+keeps every write it had taken, flushed or not, so a guest that
+acknowledged before its own flush would pass here too. That part is
+the first real machine's.
+
+**The cheap guest is not on a block device.** The host takes any disk
+with QS/VS's three partition types for a load-source disk of its own
+(`docs/OPEN_QUESTIONS.md` item 26), so the harness gives it the QS/VS
+image wrapped in a megabyte of zeros and the host copies it into a
+file on `/data`; suites 1, 2 and 10 so run a partition on a file of
+the host, and suites 3 to 9 on block devices.
+
+## Found while testing
+
+- **The clock was read 6 years wrong.** x86 Linux reads the CMOS
+  clock's registers as BCD whatever the mode bit says. The first run
+  had them in binary and QS/400 set its clock to 2020. The clock is
+  BCD now (`vmm/devices/src/legacy/cmos.rs`).
+- **A guest could have panicked the VMM by moving a BAR.** The offset
+  of a memory access into a BAR was computed before the check that the
+  address is not below it. The `devices` fuzz target found it in seven
+  runs (`vmm/devices/src/pci/config.rs`, with a unit test).
+- **A partition saw the host's VMX.** KVM's supported CPUID has it when
+  the host allows nested virtualization, and the cheap guest's KVM
+  probe said `KVM usable`. It is withheld now (`vmm/arch/src/cpu/cpuid.rs`).
+- **The test image is no guest.** Its hooks' channel wants a second
+  serial port; in a partition that service fails until PID 1 gives it
+  up, and the guest's base is never ready. The cheap guest is the
+  release image.
+- **The partition hook's relay gave up.** It tried the console socket
+  for five seconds; on a busy host `qsvmm` had not bound it by then and
+  the partition ran with nothing relayed. It tries for as long as the
+  run lasts.
+
 ## Not done
 
 - **NEEDS-CODY: the rule for units that ran apart** is built as the
@@ -330,3 +393,61 @@ socket `/tmp/p/run/partitions/<name>/console.sock`.
 - `BLOCKED(phase3)`: a disk of another host's pair, put in beside this host's, is not units that ran apart: the label with the higher sequence is still taken, as before.
 - What Phase 2 left undone and this did not touch is still as
   `docs/PHASE2.md` lists it.
+
+Of the VMM:
+
+- **NEEDS-CODY: a QS/400 handoff.** A partition cannot be told the
+  side of its next IPL: QS/400 asks firmware it does not have, and the
+  LIC record has no field for it that `licpart` owns. Two constants of
+  QS/400's are restated in `vmm/ipl` until QS/400 exports them.
+  `docs/QS400_GUEST.md` ends with the list; `docs/OPEN_QUESTIONS.md`
+  items 23 to 25.
+- **NEEDS-CODY: the first partition on real hardware.** Everything in
+  this record ran three levels deep, under QEMU, on a build host that
+  is itself a virtual machine. On the Dell test machine a partition is
+  one level deep: note how long an IPL of QS/400 takes there, and pull
+  the machine's power under a guest that writes (below).
+- **NEEDS-CODY: the QEMU job in CI** (`docs/OPEN_QUESTIONS.md` item 6)
+  now also builds QS/400's image at the pin, and has still not run.
+- `BLOCKED(phase3)`: a power loss that loses writes the host's disk had taken and not flushed cannot be made under QEMU; suite 7 shows what it can (above).
+- `BLOCKED(phase3)`: what QS/400 does without firmware at a LIC PTF's IPL and at install registration was read in its source, not run: one needs a LIC PTF, the other an IPL from media (Phase 5).
+- `BLOCKED(phase3)`: the system calls `qsvmm` may make are not filtered; the seccomp filter is Phase 11, and the place for it is after the privilege drop.
+- `BLOCKED(phase3)`: virtio-scsi carries out one request at a time, with a synchronous read or write on the host; a controller's throughput is one thread's. Asynchronous I/O comes with storage pools (Phase 5).
+- `BLOCKED(phase3)`: a guest that sets its clock keeps it for one activation; nothing of a partition is kept between activations before Phase 4.
+- `BLOCKED(phase3)`: the loader reads the primary GPT only; a load source whose primary table is damaged is refused though its backup may be whole.
+- `BLOCKED(phase3)`: a unit on a host device with 4096-byte logical sectors is given to the guest with that block size, and the loader reads its table at 512: it would be refused with `A2005020`. No such device was tried.
+- `BLOCKED(phase3)`: the fuzzer keeps no corpus between runs: each run starts from the seeds built into its targets.
+- Codes posted in no suite, only in unit tests or by reading the code:
+  `A2005000` (a profile that is refused), `A2005040` (no LIC
+  partition), `A2005060` (the machine not built), `A2005120` (a guest
+  fault), `A2005130` (a VMM error).
+- The virtio PCI configuration access capability
+  (`VIRTIO_PCI_CAP_PCI_CFG`) is not there; a Linux guest does not use
+  it (`docs/VMM.md`).
+
+Not in Phase 3, and not started: the partition manager and real
+profiles, processor pinning and shares, huge pages, storage pools and
+virtual disks, optical and tape, virtio-net, the service channel and
+console attach, QSI.
+
+## The first partition on real hardware (NEEDS-CODY)
+
+On the Dell test machine, with a test image installed and a QS/400
+disk image written to a second disk.
+
+- [ ] A profile on a `QSVSPART` stick naming that disk: `C2005000` to
+      `C2005090` on the host's serial port, then the guest's
+      `SRC C1001000` to `SRC C6001090` after `TESTLPAR| `. How long
+      from `C2005000` to `C6001090`.
+- [ ] `hw` at the guest's service console lists as many `PN` resources
+      as the profile has processors.
+- [ ] Service Tools option 1 on the host still shows every service
+      ready while the partition runs.
+- [ ] `pwrdwn` at the guest: `C2005100`. `pwrdwn restart`: `C2005110`.
+- [ ] The machine's power pulled while the guest creates objects, a
+      few times: at each IPL after, the guest's `Storage management
+      recovery` and `IPL complete`, and every object it had
+      acknowledged is there. This is the part suite 7 cannot show.
+- [ ] The partition's `serial.log` under
+      `/data/log/partitions/TESTLPAR/` is owned by user 23000 and
+      rotates at 4 MiB.

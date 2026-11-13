@@ -100,21 +100,16 @@ fn follow_reports(name: String, stderr: impl Read + Send + 'static) -> thread::J
 fn follow_serial(name: String, over: Arc<AtomicBool>) {
     thread::spawn(move || {
         let socket = console_socket(&name);
-        let mut console = None;
-        for _ in 0..200 {
+        // The socket is there a moment after `qsvmm` starts; on a busy
+        // host that moment may be long.
+        let console = loop {
             if over.load(Ordering::Relaxed) {
                 return;
             }
             match UnixStream::connect(&socket) {
-                Ok(stream) => {
-                    console = Some(stream);
-                    break;
-                }
+                Ok(stream) => break stream,
                 Err(_) => thread::sleep(Duration::from_millis(25)),
             }
-        }
-        let Some(console) = console else {
-            return;
         };
         let mut line = Vec::new();
         let mut reader = BufReader::new(console);

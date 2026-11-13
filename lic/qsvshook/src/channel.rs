@@ -227,7 +227,9 @@ fn partition(rest: &str) -> Vec<String> {
             let signal = match argument {
                 "TERM" => Signal::TERM,
                 "KILL" => Signal::KILL,
-                other => return error(format!("partition kill TERM|KILL, not {other}")),
+                // Has `qsvmm` say what state its processors are in.
+                "USR1" => Signal::USR1,
+                other => return error(format!("partition kill TERM|KILL|USR1, not {other}")),
             };
             match pid() {
                 Some(pid) => done(kill_process(pid, signal)),

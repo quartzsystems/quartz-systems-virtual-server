@@ -47,22 +47,25 @@ fn last_error<T>(result: libc::c_int, value: T) -> io::Result<T> {
     }
 }
 
+/// The signal that asks for the processors' state to be reported.
+pub const REPORT: i32 = libc::SIGUSR1;
+
 fn termination_signals() -> io::Result<libc::sigset_t> {
     // SAFETY: `sigemptyset` and `sigaddset` write only the set they
     // are given, which is a local of the right type.
     unsafe {
         let mut set = std::mem::zeroed::<libc::sigset_t>();
         last_error(libc::sigemptyset(&raw mut set), ())?;
-        for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+        for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP, REPORT] {
             last_error(libc::sigaddset(&raw mut set, signal), ())?;
         }
         Ok(set)
     }
 }
 
-/// Block the signals that ask the process to end, in this thread and
-/// every thread started after: they are taken by
-/// [`wait_for_termination`] instead of ending the process at once.
+/// Block the signals that ask the process to end, and the one that
+/// asks for a report, in this thread and every thread started after:
+/// they are taken by [`wait_for_termination`] instead of acting at once.
 pub fn block_termination() -> io::Result<()> {
     let set = termination_signals()?;
     // SAFETY: the set is initialized, and no old set is asked for.

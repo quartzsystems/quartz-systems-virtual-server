@@ -219,6 +219,16 @@ the guest's input. A client that does not take the output is dropped;
 when the queue is full the guest waits, as on a slow line. A later
 phase attaches a console there.
 
+## Asking a partition what it is doing
+
+`SIGUSR1` has `qsvmm` write one line for each processor on its
+standard error: where it is (`rip`), whether it takes interrupts,
+whether it is halted or was never started, what its local APIC's
+timer is armed for beside what the TSC reads now, and the eight bytes
+it is about to run. A partition that has gone quiet is either running
+somewhere or waiting for an interrupt that does not come, and this
+says which. The process goes on.
+
 ## The threat model for guest-controlled input
 
 The guest is hostile. Everything it can write is taken for an attempt:

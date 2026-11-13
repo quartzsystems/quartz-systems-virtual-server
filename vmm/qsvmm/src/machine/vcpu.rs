@@ -11,19 +11,22 @@
 //! leaves them, for the kernel on processor 0 to start them.
 
 use std::io;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 use arch::boot::regs;
 use arch::cpu::{cpuid, lapic, msr};
+use devices::Memory;
 use devices::bus::Bus;
 use devices::pci::PciBus;
 use kvm_bindings::{
     CpuId, KVM_MAX_CPUID_ENTRIES, KVM_SYSTEM_EVENT_CRASH, KVM_SYSTEM_EVENT_RESET,
-    KVM_SYSTEM_EVENT_SHUTDOWN, Msrs,
+    KVM_SYSTEM_EVENT_SHUTDOWN, Msrs, kvm_msr_entry,
 };
 use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
+use vm_memory::{Bytes, GuestAddress};
 
 use crate::end::End;
 
@@ -78,6 +81,148 @@ pub struct Wiring {
     pub pci: Arc<Mutex<PciBus>>,
     /// Where an end is told.
     pub ends: Sender<(End, String)>,
+    /// Set to have the processor say what state it is in.
+    pub report: Arc<AtomicBool>,
+    /// The guest's memory, for the code a report shows.
+    pub memory: Arc<Memory>,
+}
+
+/// The signal that brings a processor's thread out of the guest. Its
+/// handler does nothing: coming out is the point.
+pub fn kick_signal() -> i32 {
+    vmm_sys_util::signal::SIGRTMIN()
+}
+
+extern "C" fn kicked(_: libc::c_int, _: *mut libc::siginfo_t, _: *mut libc::c_void) {}
+
+/// Have [`kick_signal`] interrupt a thread and do nothing else.
+pub fn install_kick() -> io::Result<()> {
+    vmm_sys_util::signal::register_signal_handler(kick_signal(), kicked)
+        .map_err(|e| io::Error::from_raw_os_error(e.errno()))
+}
+
+/// The local APIC's timer registers.
+const LVT_TIMER: usize = 0x320;
+const TIMER_INITIAL: usize = 0x380;
+const TIMER_CURRENT: usize = 0x390;
+/// The TSC, and the deadline the timer is armed for.
+const IA32_TSC: u32 = 0x10;
+const IA32_TSC_DEADLINE: u32 = 0x6E0;
+
+/// Read guest memory at a virtual address of the processor's.
+fn read_virtual(vcpu: &VcpuFd, memory: &Memory, address: u64, bytes: &mut [u8]) -> bool {
+    vcpu.translate_gva(address)
+        .ok()
+        .filter(|t| t.valid != 0)
+        .is_some_and(|t| {
+            memory
+                .read_slice(bytes, GuestAddress(t.physical_address))
+                .is_ok()
+        })
+}
+
+/// The text a processor that takes no interrupts has on its stack:
+/// what the words there point at, near the code, when it is printable.
+/// A kernel that stopped itself early names its reason this way and no
+/// other. Everything read is the guest's: bounded, and only shown.
+fn said(vcpu: &VcpuFd, memory: &Memory, rsp: u64, rip: u64) -> Vec<String> {
+    const WORDS: u64 = 512;
+    const NEAR: u64 = 16 << 20;
+    const MOST: usize = 6;
+    let mut found: Vec<String> = Vec::new();
+    for word in 0..WORDS {
+        let mut raw = [0u8; 8];
+        if !read_virtual(vcpu, memory, rsp.wrapping_add(word * 8), &mut raw) {
+            break;
+        }
+        let pointer = u64::from_le_bytes(raw);
+        if pointer.abs_diff(rip) > NEAR {
+            continue;
+        }
+        let mut text = [0u8; 96];
+        if !read_virtual(vcpu, memory, pointer, &mut text) {
+            continue;
+        }
+        let printable: String = text
+            .iter()
+            .take_while(|b| (0x20..0x7f).contains(*b))
+            .map(|b| char::from(*b))
+            .collect();
+        let words = printable.split(' ').filter(|w| w.len() > 2).count();
+        if printable.len() >= 12 && words >= 2 && !found.contains(&printable) {
+            found.push(printable);
+            if found.len() == MOST {
+                break;
+            }
+        }
+    }
+    found
+}
+
+/// What state a processor is in, in a line: where it is, whether it
+/// takes interrupts, whether it is halted, what its timer is armed
+/// for, and the bytes it is about to run. For a partition that has
+/// gone quiet.
+fn state(vcpu: &VcpuFd, index: u32, memory: &Memory) -> String {
+    let mut parts = vec![format!("qsvmm: vcpu{index}")];
+    if let Ok(r) = vcpu.get_regs() {
+        let interrupts = if r.rflags & 0x200 == 0 { "off" } else { "on" };
+        parts.push(format!(
+            "rip {:#x} rsp {:#x} rflags {:#x} interrupts {interrupts}",
+            r.rip, r.rsp, r.rflags
+        ));
+        let mut bytes = [0u8; 8];
+        if read_virtual(vcpu, memory, r.rip, &mut bytes) {
+            parts.push(format!("code {bytes:02x?}"));
+        } else {
+            parts.push("code not mapped".into());
+        }
+        if r.rflags & 0x200 == 0 {
+            let said = said(vcpu, memory, r.rsp, r.rip);
+            if !said.is_empty() {
+                parts.push(format!("stack names {said:?}"));
+            }
+        }
+    }
+    if let Ok(s) = vcpu.get_sregs() {
+        parts.push(format!(
+            "cr0 {:#x} cr2 {:#x} cr3 {:#x} cr4 {:#x} efer {:#x}",
+            s.cr0, s.cr2, s.cr3, s.cr4, s.efer
+        ));
+    }
+    if let Ok(mp) = vcpu.get_mp_state() {
+        let name = match mp.mp_state {
+            0 => "runnable",
+            1 => "not started",
+            2 => "init received",
+            3 => "halted",
+            4 => "sipi received",
+            _ => "other",
+        };
+        parts.push(format!("state {name}"));
+    }
+    if let Ok(apic) = vcpu.get_lapic() {
+        parts.push(format!(
+            "timer lvt {:#x} initial {:#x} current {:#x}",
+            lapic::register(&apic, LVT_TIMER),
+            lapic::register(&apic, TIMER_INITIAL),
+            lapic::register(&apic, TIMER_CURRENT)
+        ));
+    }
+    let wanted = [IA32_TSC, IA32_TSC_DEADLINE].map(|index| kvm_msr_entry {
+        index,
+        ..Default::default()
+    });
+    if let Ok(mut msrs) = Msrs::from_entries(&wanted)
+        && vcpu.get_msrs(&mut msrs).is_ok()
+    {
+        let values = msrs.as_slice();
+        parts.push(format!(
+            "tsc {:#x} deadline {:#x}",
+            values[0].data, values[1].data
+        ));
+    }
+    parts.join(" ")
 }
 
 fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
@@ -123,7 +268,11 @@ fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
             }
             Ok(VcpuExit::InternalError) => return end(End::VmmError, "KVM internal error".into()),
             Ok(other) => return end(End::VmmError, format!("unexpected exit {other:?}")),
-            Err(e) if matches!(e.errno(), libc::EINTR | libc::EAGAIN) => {}
+            Err(e) if matches!(e.errno(), libc::EINTR | libc::EAGAIN) => {
+                if wiring.report.swap(false, Ordering::Relaxed) {
+                    eprintln!("{}", state(&vcpu, index, &wiring.memory));
+                }
+            }
             Err(e) => {
                 return end(
                     End::VmmError,

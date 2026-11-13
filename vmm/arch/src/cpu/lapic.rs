@@ -13,7 +13,8 @@ const MODE_MASK: u32 = 0x700;
 const MODE_EXTINT: u32 = 0x700;
 const MODE_NMI: u32 = 0x400;
 
-fn register(state: &kvm_lapic_state, at: usize) -> u32 {
+/// The register at byte `at` of the APIC page.
+pub fn register(state: &kvm_lapic_state, at: usize) -> u32 {
     let mut bytes = [0u8; 4];
     for (b, r) in bytes.iter_mut().zip(&state.regs[at..at + 4]) {
         *b = r.to_ne_bytes()[0];
