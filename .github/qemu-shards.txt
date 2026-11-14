@@ -9,3 +9,5 @@ mirror: mirror-power-pull storage-kill tools-network tools-sign-on media-refused
 vmm: installed-base partition-boot partition-scsi partition-ipl-a partition-ipl-b partition-attributes partition-kill
 qs400: partition-power-pull partition-end partition-damaged partition-privilege partition-recorded
 partd: partition-define partition-three partition-minimum partition-dedicated partition-capped partition-uncapped partition-core-sched partition-huge-pages partition-auto-start partition-killed partition-manager-restart partition-identity partition-isolation partition-own-disks partition-tools
+pools: pool-create pool-thin-thick pool-full pool-pulled-mirrored pool-pulled-raid5 pool-pulled-raid6 pool-lost pool-power-pull pool-kill
+media: pool-install pool-vdisk-rules pool-optical pool-tape pool-media-damaged pool-upload pool-foreign pool-tools

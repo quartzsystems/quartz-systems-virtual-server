@@ -243,23 +243,14 @@ removable volume. `BLK_DEV_UBLK`, `XFS_FS`, `BLK_DEV_SR`,
 ## The QS/400 guest media
 
 `pool-install` installs QS/400 from its installation ISO, which has to
-carry a response file to install unattended. At the pin, in a clone at
-`0fc8afa5055d1dee0a05cf35edb58760f10607ab`, with `pool-install.rsp`:
+carry a response file to install unattended:
+`tools/conformance/qs400/pool-install.rsp` (one disk, the LIC and the
+operating system, no licensed programs). At the pin, in a clone at
+`0fc8afa5055d1dee0a05cf35edb58760f10607ab`:
 
 ```
-QS400-INSTALL-RSP 1
-lic-option = 2
-load-source = *FIRST
-language = 2924
-system-name = QSPOOL
-qsecofr-password = Quartz1
-licpgm = *NONE
-```
-
-then
-
-```
-QS400_TARGET_DIR=$HOME/qs400-0fc8-target QS400_INSTALL_RSP=$PWD/pool-install.rsp \
+QS400_TARGET_DIR=$HOME/qs400-0fc8-target \
+  QS400_INSTALL_RSP=<this repository>/tools/conformance/qs400/pool-install.rsp \
   cargo run -p build -- iso
 export QSVS_QS400_ISO=$HOME/qs400-0fc8-target/images/QS400-V1R1M0-c1c9ff9f691a.iso
 ```
@@ -451,6 +442,13 @@ the key and is left out.
 - `BLOCKED(phase5)`: an import into the library from the host's own optical drive or a USB volume was shown in unit tests, not under QEMU with a real disc.
 - What Phase 4 left undone and this did not touch is still as `docs/PARTD.md`, `docs/PROFILE.md` and `docs/RESOURCES.md` list it.
 
+The questions still open at the end of the phase were settled on
+2026-11-14 with Claude's recommendation for each
+(`docs/OPEN_QUESTIONS.md`): 17, 22, 31 and 34 closed; 32, 35 and 36
+decided and waiting on a change in QS/400; 6 waiting on the first
+push, with the CI job now carrying Phase 5's suites and QS/400's
+installation ISO built with `tools/conformance/qs400/pool-install.rsp`.
+
 Not in Phase 5, and not started: virtual Ethernet, the service
 channel, QSI, physical I/O, any change to a running partition's
 resources.
@@ -466,6 +464,4 @@ resources.
 - [ ] NEEDS-CODY: QS/400 installed from a real disc in the host's
       drive imported into the library (option 7, F7), then from IPL
       source D.
-- [ ] NEEDS-CODY: `docs/OPEN_QUESTIONS.md` item 34: whether QS/MC
-      should see a held partition as Running with `A2005160`.
 - Phase 4's list for a real machine (`docs/PHASE4.md`) still stands.

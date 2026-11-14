@@ -83,19 +83,26 @@ jobs:
           rev=$(sed -n 's/^buildkit = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
           test -n "$rev"
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
+      # And its installation ISO with pool-install's response file
+      # (docs/PHASE5.md), which installs it unattended.
       - name: QS/400 guest image (cache)
         id: guest
         uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/qs400-guest.img
-          key: qs400-guest-${{ steps.pin.outputs.rev }}
+          path: |
+            ${{ runner.temp }}/qs400-guest.img
+            ${{ runner.temp }}/qs400-install.iso
+          key: qs400-guest-${{ steps.pin.outputs.rev }}-${{ hashFiles('tools/conformance/qs400/pool-install.rsp') }}
       - name: QS/400 guest image (build)
         if: steps.guest.outputs.cache-hit != 'true'
         run: |
           git clone -q https://github.com/quartzsystems/quartz-systems-400 "$RUNNER_TEMP/qs400"
           git -C "$RUNNER_TEMP/qs400" checkout -q "${{ steps.pin.outputs.rev }}"
-          (cd "$RUNNER_TEMP/qs400" && QS400_TARGET_DIR="$RUNNER_TEMP/qs400-target" cargo run -q -p build -- all)
+          (cd "$RUNNER_TEMP/qs400" && QS400_TARGET_DIR="$RUNNER_TEMP/qs400-target" \
+            QS400_INSTALL_RSP="$GITHUB_WORKSPACE/tools/conformance/qs400/pool-install.rsp" \
+            cargo run -q -p build -- all)
           cp --sparse=always "$(cat "$RUNNER_TEMP/qs400-target/images/disk.path")" "$RUNNER_TEMP/qs400-guest.img"
+          cp "$(cat "$RUNNER_TEMP/qs400-target/images/iso.path")" "$RUNNER_TEMP/qs400-install.iso"
           rm -rf "$RUNNER_TEMP/qs400" "$RUNNER_TEMP/qs400-target"
 
       - run: cargo run -q -p build -- all
@@ -111,8 +118,9 @@ jobs:
             cat "$kind"/*.path | sed "s|^$PWD/||"
           done | sort -u)
           cp --sparse=always "$RUNNER_TEMP/qs400-guest.img" qs400-guest.img
-          tar --sparse -cf - $files qs400-guest.img | zstd -T0 -3 -o "$RUNNER_TEMP/images.tar.zst"
-          rm qs400-guest.img
+          cp "$RUNNER_TEMP/qs400-install.iso" qs400-install.iso
+          tar --sparse -cf - $files qs400-guest.img qs400-install.iso | zstd -T0 -3 -o "$RUNNER_TEMP/images.tar.zst"
+          rm qs400-guest.img qs400-install.iso
           ls -lh "$RUNNER_TEMP/images.tar.zst"
       - uses: actions/upload-artifact@v4
         with:
@@ -179,7 +187,9 @@ jobs:
         run: |
           zstd -dc "$RUNNER_TEMP/images.tar.zst" | tar --sparse -xf -
           mv qs400-guest.img "$RUNNER_TEMP/qs400-guest.img"
+          mv qs400-install.iso "$RUNNER_TEMP/qs400-install.iso"
           echo "QSVS_QS400_IMAGE=$RUNNER_TEMP/qs400-guest.img" >> "$GITHUB_ENV"
+          echo "QSVS_QS400_ISO=$RUNNER_TEMP/qs400-install.iso" >> "$GITHUB_ENV"
           rm "$RUNNER_TEMP/images.tar.zst"
           df -h /
       - name: The suites

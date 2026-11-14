@@ -14,77 +14,49 @@ closed below, and left 6, 17, 19 and 22 as they were. Phase 4 raised
 30 to 33. Step 0 of Phase 5 closed 19 with QS/400's handoff 15; the
 Phase 5 handoff confirmed 30 and 33 as built, left 31 as it is, put 32
 with the kernel pin's next change, and left 6, 17 and 22 unchanged.
-Phase 5 raised 34 to 36.
+Phase 5 raised 34 to 36. On 2026-11-14, at the end of Phase 5, Cody
+had Claude's recommendation taken for every question still open: 17,
+22, 31 and 34 are closed below; 32, 35 and 36 are decided and wait on
+a change in QS/400; 6 waits on the first push.
 
 ## Open
 
 ### 6. The QEMU job in CI (NEEDS-CODY)
 
-Unchanged from Phase 0: `.github/workflows/qemu.yml` has not run on
-GitHub, because nothing is pushed. Whether the hosted runners offer
-nested virtualization, or a self-hosted runner is needed, is to be seen
-on the first push; the job fails with a message that says which when
-`/dev/kvm` or nested virtualization is missing. The job builds both
-images and runs every suite: two kernel builds, and about five minutes
-for the power-pull suite. Nothing here can be decided before a push.
+`.github/workflows/qemu.yml` has not run on GitHub, because nothing is
+pushed. Recommended, and done as far as it can be without a push: the
+job as it is, on GitHub-hosted runners, with Phase 5's suites in two
+shards of their own (`pools`, `media` in `.github/qemu-shards.txt`) and
+QS/400's installation ISO built beside its guest image with
+`tools/conformance/qs400/pool-install.rsp`, cached by the pin and the
+response file. The partition suites run a partition three levels deep;
+should the hosted runners not nest that far, the `vmm`, `qs400`,
+`partd`, `pools` and `media` shards move to a self-hosted runner on
+the Dell machine and the rest stay hosted. Nothing more can be seen
+before the first push, which is Cody's.
 
-### 17. The host identity's key
-
-The identity made at the first IPL is an Ed25519 key pair and a
-self-signed X.509 certificate, written field by field in `base/identity`
-(some eighty bytes of DER around the key and the signature), with
-QS/400's own `ed25519-dalek` version: no further dependency, pure
-Rust. Nothing uses it yet. If the TLS stack of QSI does not take
-Ed25519 certificates, the identity has to be a P-256 one and hosts
-installed before then make a new one. The Phase 3 handoff: decide in
-Phase 8, with the TLS stack. Nothing changed.
-
-### 22. Who owns the service tools users
-
-The handoff has the console ask the owning service for every change.
-The users have no service but the console itself: nothing else signs
-anyone on. So `svc/tools` keeps them, through the users' store of
-`base/users` (QS/400's `svcusers` file store), and the two sessions
-share one copy in memory. If QSI is to manage them from QS/MC, they
-need an owner both can ask: PID 1, or a service of their own. The
-Phase 3 handoff: decide in Phase 8, when QSI may need to manage them.
-Nothing changed.
-
-### 31. A VMM ended by a signal that the partition manager did not send
-
-`qsvmm` that takes `SIGTERM` ends in order with exit code 50, "ended by
-the host". When the partition manager sent it, the partition is Not
-activated. When something else did, the partition manager cannot tell
-an operator's act from an accident, and leaves the partition Not
-activated too, not in Error (`docs/PARTD.md`). Nothing in a release
-image sends that signal but the partition manager, so the case is the
-test hooks' alone. Left as it is (Phase 5 handoff).
+## Decided, waiting on QS/400
 
 ### 32. The kernel is built for 64 threads
 
 `NR_CPUS=64` is what the pinned kernel configuration gives, here as in
 QS/400. A host with more threads than that shows 64 of them, and its
-partitions can be given no others. Not a matter of this phase, and the
-kernel pin is QS/400's: a larger value is a change to the fragment
-there and here, in a commit of its own. Not now (Phase 5 handoff): it
-moves with the kernel pin's next change, in QS/400 and here together.
-
-### 34. A held partition's state for QS/MC (NEEDS-CODY)
-
-A partition whose thin virtual disk found its pool full is held: its
-processors are stopped, it stays Running, and its current reference
-code is `A2005160` until it goes on by itself (`docs/STORAGE.md`). The
-handoff decided this and asks Cody to confirm that Running with an
-attention code is how QS/MC should see it, rather than a state of its
-own.
+partitions can be given no others. Decided: `NR_CPUS=512`, enough for a
+two-socket host of 128 cores a socket with SMT, set in QS/400's kernel
+fragment and in `kernel/config/qsvs.config` together, with the kernel
+pin's next change (the Phase 5 handoff), each in a commit of its own.
+QS/400 needs it too: a partition's guest kernel is QS/400's, and it
+sees no more processors than its own `NR_CPUS`.
 
 ### 35. A copy of a virtual disk
 
 QS/400's `xfsfmt` makes a pool's xfs without reflink, so a copy of a
 virtual disk would be a whole copy of its bytes. It is left out
-(`docs/PHASE5.md`). Recommended: when QS/MC's template partitions need
-it, have `xfsfmt` gain the reflink feature (and the reverse mapping it
-takes) in QS/400, and copy by `FICLONE` here.
+(`docs/PHASE5.md`). Decided: `xfsfmt` gains the reflink feature, and
+the reverse mapping it takes, in QS/400; QS/VS then copies a virtual
+disk by `FICLONE`, a request of the pool service's, when QS/MC's
+template partitions need it. A pool made before that has no reflink
+and copies by bytes.
 
 ### 36. Tape from QS/400
 
@@ -94,9 +66,10 @@ QS/400 to it and a restore to another partition were not run: QS/400's
 tape code has never met a drive, real or virtual (its `docs/INSTALL.md`
 says so), and its handling of the early warning (a block written again
 after `ENOSPC`, then `EOV1` labels) needs `st`'s own behaviour past the
-warning, which this drive gives as SSC has it. Recommended: run
-QS/400's `INZTAP`, `SAVLIB` and `RSTLIB` against this drive as the
-first thing of Phase 10, beside the pass-through to a real one.
+warning, which this drive gives as SSC has it. Decided: QS/400's
+`INZTAP`, `SAVLIB` and `RSTLIB` against this drive are the first thing
+of Phase 10, beside the pass-through to a real one; what QS/400's tape
+code needs to change for it is QS/400's, found then.
 
 ## Closed
 
@@ -275,3 +248,24 @@ first thing of Phase 10, beside the pass-through to a real one.
     its units times two in thread time, exact under full load.
     `docs/RESOURCES.md` says what a load that keeps one thread busy
     gets.
+17. **The host identity's key.** Decided on 2026-11-14: it stays
+    Ed25519. QSI's TLS stack (Phase 8) is to take Ed25519 certificates:
+    TLS 1.3 has the scheme, a pure-Rust provider has it, and QS/MC, the
+    only peer, is Quartz's own. A host installed now keeps the identity
+    it made. Were the stack chosen in Phase 8 not to take it after all,
+    the fallback is as before: a P-256 identity, made again at the next
+    IPL of every host.
+22. **Who owns the service tools users.** Decided on 2026-11-14: PID 1,
+    as it owns the host's settings. The console and, in Phase 8, the
+    QSI host server ask it to add, change and remove a user and to
+    check a sign-on; nothing else opens the users' store, and the rule
+    that the local console edits no state file then holds for the users
+    too. Built with the QSI host server in Phase 8, which is the first
+    second client; until then `svc/tools` keeps them as now.
+31. **A VMM ended by a signal the partition manager did not send.** Left
+    as it is (Phase 5 handoff): Not activated, as for its own request.
+    Nothing in a release image sends that signal.
+34. **A held partition's state for QS/MC.** Confirmed on 2026-11-14:
+    Running, with `A2005160` as its current reference code until it goes
+    on by itself, as built (`docs/STORAGE.md`). QSI carries the state
+    and the code; QS/MC shows the code beside the state.

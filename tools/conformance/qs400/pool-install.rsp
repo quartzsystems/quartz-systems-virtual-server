@@ -1,0 +1,8 @@
+QS400-INSTALL-RSP 1
+# pool-install: one virtual disk, the LIC and the operating system.
+lic-option = 2
+load-source = *FIRST
+language = 2924
+system-name = QSPOOL
+qsecofr-password = Quartz1
+licpgm = *NONE

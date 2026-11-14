@@ -188,8 +188,8 @@ posts `A2007050` at 80% allocated and `A2007051` at 90%.
 reach the guest as an error. The partition is held: its processors
 stop, it stays Running, and `A2005160` is posted. The write is tried
 again each second; when it is done, `C2005160` and the partition goes
-on. `NEEDS-CODY`: confirm that Running with an attention code is how
-QS/MC should see a held partition.
+on. QS/MC sees a held partition as Running with that attention code
+(`docs/OPEN_QUESTIONS.md` item 34, confirmed).
 
 **No copy.** A copy of a virtual disk, for a template partition, would
 be a reflink; QS/400's `xfsfmt` makes xfs with CRCs, ftype, finobt,
