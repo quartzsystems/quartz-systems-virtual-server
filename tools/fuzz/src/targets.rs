@@ -15,6 +15,7 @@
 //! | `virtqueue` | guest memory with the virtio-scsi queues and the virtio-rng queue in it |
 //! | `devices` | reads and writes of the I/O ports, PCI configuration space and the virtio BARs |
 //! | `report` | what a VMM writes on its standard error, where text of the guest's can end up, as the partition manager reads it |
+//! | `netctrl` | guest memory with the virtio-net control queue in it, and a control request's bytes |
 
 use std::fs::File;
 use std::io::{self, Cursor};
@@ -318,6 +319,53 @@ fn virtqueue(data: &[u8]) {
     if let (Some(mut queue), Ok(source)) = (queue_at(&memory, 64), File::open("/dev/zero")) {
         rng::fill(&mut queue, &memory, &source);
     }
+}
+
+fn netctrl_seeds() -> Vec<Vec<u8>> {
+    // One request: its bytes in one descriptor, room for the answer in
+    // the next; made available.
+    let mut m = vec![0u8; 0x1_0000];
+    let mut descriptor = |index: usize, addr: u64, len: u32, flags: u16, next: u16| {
+        let at = DESC as usize + index * 16;
+        m[at..at + 8].copy_from_slice(&addr.to_le_bytes());
+        m[at + 8..at + 12].copy_from_slice(&len.to_le_bytes());
+        m[at + 12..at + 14].copy_from_slice(&flags.to_le_bytes());
+        m[at + 14..at + 16].copy_from_slice(&next.to_le_bytes());
+    };
+    descriptor(0, 0x8000, 64, 1, 1);
+    descriptor(1, 0x9000, 1, 2, 0);
+    m[AVAIL as usize + 2] = 1;
+    let mut table = vec![1u8, 0];
+    table.extend_from_slice(&1u32.to_le_bytes());
+    table.extend_from_slice(&[2, 0, 0, 0, 0, 1]);
+    table.extend_from_slice(&1u32.to_le_bytes());
+    table.extend_from_slice(&[1, 0, 0x5E, 0, 0, 1]);
+    let mut seeds = Vec::new();
+    for request in [&[1u8, 1, 2, 0x5A, 0, 0, 0, 9][..], &[0, 0, 1], &table] {
+        let mut seed = m.clone();
+        seed[0x8000..0x8000 + request.len()].copy_from_slice(request);
+        seeds.push(seed);
+    }
+    seeds
+}
+
+/// Guest memory whose first bytes are the input, with the control queue
+/// in it; and the input itself as one request.
+fn netctrl(data: &[u8]) {
+    use devices::virtio::net::ctrl;
+    let mut asked = ctrl::Asked::default();
+    let _ = ctrl::command(&mut asked, data);
+    let Ok(memory) = Memory::from_ranges(&[(GuestAddress(0), QUEUE_MEMORY)]) else {
+        return;
+    };
+    let _ = memory.write_slice(&data[..data.len().min(QUEUE_MEMORY)], GuestAddress(0));
+    if let Some(mut queue) = queue_at(&memory, 64) {
+        ctrl::serve(&mut queue, &memory, &mut asked, &mut |_| ());
+    }
+    if let Some(mut queue) = queue_at(&memory, 64) {
+        ctrl::drain(&mut queue, &memory);
+    }
+    assert!(asked.unicast.len() <= ctrl::MAX_TABLE && asked.multicast.len() <= ctrl::MAX_TABLE);
 }
 
 /// A platform that grants everything and does nothing.
@@ -748,6 +796,12 @@ pub const TARGETS: &[Target] = &[
         about: "what a VMM reports, as the partition manager reads it",
         seeds: report_seeds,
         run: report,
+    },
+    Target {
+        name: "netctrl",
+        about: "the virtio-net control queue and its requests",
+        seeds: netctrl_seeds,
+        run: netctrl,
     },
 ];
 

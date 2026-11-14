@@ -185,16 +185,26 @@ fn put(
     }
 }
 
+/// One PCI function, in the order of the partition's slots.
+pub enum Function {
+    /// A virtio-scsi function with these units: a disk adapter's, or an
+    /// optical or tape drive alone.
+    Scsi(Vec<Arc<dyn Unit>>),
+    /// A virtual Ethernet adapter.
+    Net(Box<devices::virtio::net::Net>),
+}
+
 /// Build the devices: the serial port writing to `output`, the clock,
 /// the reset line and the power-off register telling `requests`, and
-/// on the PCI bus a virtio-scsi function for each of `adapters`, with
-/// its units, and after them virtio-rng reading `entropy`.
+/// on the PCI bus a function for each of `adapters`, a virtio-scsi one
+/// with its units or a virtio-net one, and after them virtio-rng
+/// reading `entropy`.
 pub fn devices(
     vm: &Arc<VmFd>,
     memory: &Arc<Memory>,
     output: Output,
     requests: Requests,
-    adapters: Vec<Vec<Arc<dyn Unit>>>,
+    adapters: Vec<Function>,
     entropy: File,
 ) -> io::Result<Devices> {
     let platform: Arc<dyn Platform> = Arc::new(KvmPlatform::new(vm.clone()));
@@ -220,11 +230,17 @@ pub fn devices(
     let mut luns = Vec::with_capacity(adapters.len());
     let mut managed = Vec::with_capacity(adapters.len());
     let mut functions: Vec<Box<dyn VirtioDevice>> = Vec::with_capacity(adapters.len() + 1);
-    for units in adapters {
-        let scsi = Scsi::new(units).ok_or_else(|| io::Error::other("the number of disk units"))?;
-        luns.push(scsi.luns());
-        managed.push(scsi.managed());
-        functions.push(Box::new(scsi));
+    for function in adapters {
+        match function {
+            Function::Scsi(units) => {
+                let scsi =
+                    Scsi::new(units).ok_or_else(|| io::Error::other("the number of disk units"))?;
+                luns.push(scsi.luns());
+                managed.push(scsi.managed());
+                functions.push(Box::new(scsi));
+            }
+            Function::Net(net) => functions.push(net),
+        }
     }
     functions.push(Box::new(Rng::new(entropy)));
     let mut pci = PciBus::new();

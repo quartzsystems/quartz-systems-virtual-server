@@ -2,8 +2,9 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The two ioctls this crate makes, both on a block device a LUN is
-//! kept in: give a range back, and make a range read as zeros.
+//! The ioctls this crate makes: two on a block device a LUN is kept
+//! in, to give a range back and to make a range read as zeros; and
+//! vhost-net's, with the tap's offloads ([`vhost`]).
 
 #![allow(unsafe_code)]
 
@@ -11,6 +12,8 @@ use std::fs::File;
 use std::io;
 
 use rustix::ioctl::{Opcode, Setter, ioctl, opcode};
+
+pub mod vhost;
 
 /// `_IO(0x12, 119)`: `BLKDISCARD`.
 const BLKDISCARD: Opcode = opcode::none(0x12, 119);

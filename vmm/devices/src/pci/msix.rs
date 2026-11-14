@@ -187,6 +187,14 @@ impl Msix {
         }
     }
 
+    /// The eventfd that raises vector `index`, for a device whose
+    /// interrupts the kernel raises itself (vhost-net). It is routed once
+    /// the guest has enabled and unmasked the vector; a mask the guest
+    /// sets afterwards does not hold back what is raised through it.
+    pub fn vector_fd(&self, index: u16) -> Option<EventFd> {
+        self.vectors.get(usize::from(index))?.fd.try_clone().ok()
+    }
+
     /// Raise vector `index`, or leave it pending while it is masked.
     /// A vector the table does not have is the guest's "none".
     pub fn signal(&mut self, index: u16) {

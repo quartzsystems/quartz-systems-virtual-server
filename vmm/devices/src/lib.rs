@@ -11,14 +11,15 @@
 //!   reset line, the ACPI sleep register.
 //! - [`pci`]: the host bridge, configuration space, MSI-X.
 //! - [`virtio`]: the virtio-pci transport (modern, version 1),
-//!   virtio-scsi and virtio-rng.
+//!   virtio-scsi, virtio-net over vhost-net, and virtio-rng.
 //!
 //! Every byte a guest controls is taken for hostile: a register write,
 //! a descriptor, a SCSI command. Nothing here panics on one, reads or
 //! writes outside what the guest was given, or allocates by a length
 //! the guest names (`docs/VMM.md`).
 //!
-//! `unsafe` lives only in `sys` (two block-device ioctls).
+//! `unsafe` lives only in `sys`: two block-device ioctls and
+//! vhost-net's.
 
 #![deny(unsafe_code)]
 

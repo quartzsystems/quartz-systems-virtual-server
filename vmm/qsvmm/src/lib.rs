@@ -27,6 +27,7 @@
 pub mod config;
 pub mod end;
 pub mod media;
+pub mod net;
 
 #[cfg(target_os = "linux")]
 pub mod machine;

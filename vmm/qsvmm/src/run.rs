@@ -185,25 +185,29 @@ fn open_units(
     Ok(adapters)
 }
 
-/// One function a device, in slot order: a disk adapter's units, or an
-/// optical or tape drive alone.
+/// One function a device, in slot order: a disk adapter's units, an
+/// optical or tape drive alone, or an Ethernet adapter.
 fn functions(
     partition: &Partition,
     adapters: Vec<Vec<Arc<dyn Unit>>>,
     mut drives: media::SlotUnits,
-) -> Vec<Vec<Arc<dyn Unit>>> {
+    mut nets: Vec<(u32, devices::virtio::net::Net)>,
+) -> Vec<machine::Function> {
     let mut adapters: Vec<Option<Vec<Arc<dyn Unit>>>> = adapters.into_iter().map(Some).collect();
     let mut functions = Vec::new();
     for (slot, device) in partition.slots() {
         match device {
-            Slot::Disks(i) => functions.extend(adapters[i].take()),
+            Slot::Disks(i) => functions.extend(adapters[i].take().map(machine::Function::Scsi)),
             Slot::Optical(_) | Slot::Tape(_) => {
                 if let Some(at) = drives.iter().position(|(s, _)| *s == slot) {
-                    functions.push(vec![drives.remove(at).1]);
+                    functions.push(machine::Function::Scsi(vec![drives.remove(at).1]));
                 }
             }
-            // BLOCKED(phase6-wip): the virtio-net function is placed by the machine.
-            Slot::Net(_) => {}
+            Slot::Net(_) => {
+                if let Some(at) = nets.iter().position(|(s, _)| *s == slot) {
+                    functions.push(machine::Function::Net(Box::new(nets.remove(at).1)));
+                }
+            }
         }
     }
     functions
@@ -377,7 +381,8 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         code: &refcode::PARTITION_DISK_UNREADABLE,
         detail: format!("an optical or tape device: {e}"),
     })?;
-    let functions = functions(partition, adapters, drive_units);
+    let nets = crate::net::open(partition).map_err(not_built("an Ethernet adapter"))?;
+    let functions = functions(partition, adapters, drive_units, nets);
     post(
         &refcode::PARTITION_DISKS_OPENED,
         &format!(

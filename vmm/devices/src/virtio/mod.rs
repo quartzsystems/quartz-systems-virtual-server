@@ -10,6 +10,7 @@
 //! - [`worker`]: the thread a device's queues are served on, off the
 //!   processors' threads.
 //! - [`scsi`]: the SCSI host, with disk LUNs.
+//! - [`net`]: the network adapter, its data path vhost-net's.
 //! - [`rng`]: the entropy source.
 
 use std::io;
@@ -22,6 +23,7 @@ use vmm_sys_util::eventfd::EventFd;
 use crate::Memory;
 use crate::pci::Msix;
 
+pub mod net;
 pub mod rng;
 pub mod scsi;
 pub mod transport;
@@ -34,6 +36,8 @@ pub const FEATURE_VERSION_1: u64 = 1 << 32;
 /// `VIRTIO_F_RING_INDIRECT_DESC`.
 pub const FEATURE_INDIRECT_DESC: u64 = 1 << 28;
 
+/// The virtio device type of a network adapter.
+pub const TYPE_NET: u32 = 1;
 /// The virtio device type of an entropy source.
 pub const TYPE_RNG: u32 = 4;
 /// The virtio device type of a SCSI host.
@@ -53,6 +57,11 @@ impl Interrupt {
     /// An interrupt over `msix`, with the status byte `isr`.
     pub fn new(msix: Arc<Mutex<Msix>>, isr: Arc<AtomicU8>) -> Self {
         Self { msix, isr }
+    }
+
+    /// The eventfd that raises `vector`, for the kernel to write.
+    pub fn vector_fd(&self, vector: u16) -> Option<EventFd> {
+        self.msix.lock().ok()?.vector_fd(vector)
     }
 
     /// A queue has used buffers: raise its vector.

@@ -7,6 +7,7 @@
 
 #![allow(unsafe_code)]
 
+use std::fs::File;
 use std::io;
 
 use kvm_bindings::kvm_userspace_memory_region;
@@ -174,6 +175,32 @@ pub fn pin_this_thread(cpu: u32) -> io::Result<()> {
             (),
         )
     }
+}
+
+/// The file the partition manager gave as descriptor `fd`, taken as it
+/// is: a tap's file opened again by its `/proc/self/fd` path would be
+/// another tap. It must be a character device.
+pub fn inherited(fd: i32) -> io::Result<File> {
+    if fd < 3 {
+        return Err(io::Error::other(format!(
+            "descriptor {fd} is not one given"
+        )));
+    }
+    // SAFETY: F_GETFD reads nothing of memory; it says whether `fd` is
+    // open.
+    if unsafe { libc::fcntl(fd, libc::F_GETFD) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `fd` is open, as just seen, and is only borrowed for the
+    // length of the duplication; nothing closes it meanwhile, the
+    // process having no other thread yet.
+    let borrowed = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) };
+    let file = File::from(borrowed.try_clone_to_owned()?);
+    let kind = file.metadata()?.file_type();
+    if !std::os::unix::fs::FileTypeExt::is_char_device(&kind) {
+        return Err(io::Error::other(format!("descriptor {fd} is not a tap")));
+    }
+    Ok(file)
 }
 
 /// Whether the process is root.
