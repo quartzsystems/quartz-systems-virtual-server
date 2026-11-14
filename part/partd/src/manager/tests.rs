@@ -801,3 +801,16 @@ fn auto_start_is_in_the_order_of_the_definitions() {
         ]
     );
 }
+
+#[test]
+fn a_release_image_takes_no_host_path_as_a_backing_store() {
+    let scratch = Scratch::new("release");
+    let mut m = scratch.manager();
+    m.system.refuse_host_paths = true;
+    let id = partition(&mut m, "A");
+    let refused = m.activate(id, String::new(), None, None).unwrap_err();
+    assert_eq!(ids(&refused), [qvsmsg::BACKING_NOT_VDISK.id]);
+    assert!(refused[0].text.contains("/dev/A"));
+    assert!(m.system.launched.is_empty());
+    assert_eq!(state(&mut m, id), State::NotActivated);
+}
