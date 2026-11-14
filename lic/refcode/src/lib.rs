@@ -359,6 +359,21 @@ pub const MEDIA_IMPORTED: RefCode = progress("C2007050", "Media image imported")
 /// Every pool was stopped in order, at the host's shutdown.
 pub const POOLS_STOPPED: RefCode = progress("C2007090", "Storage pools stopped");
 
+// C2008xxx: virtual switches, the switch service.
+
+/// The switch service started, with the switches it built and the
+/// ports it found.
+pub const VSWITCHD_STARTED: RefCode = progress("C2008000", "Switch service started");
+/// A switch was made, with its name, VLANs and MTU.
+pub const SWITCH_CREATED: RefCode = progress("C2008010", "Virtual switch created");
+/// A switch's VLANs, MTU, name or uplink changed, with what.
+pub const SWITCH_CHANGED: RefCode = progress("C2008015", "Virtual switch changed");
+/// A switch was deleted.
+pub const SWITCH_DELETED: RefCode = progress("C2008016", "Virtual switch deleted");
+/// An uplink's interface has carrier again, with the switch and its
+/// location code.
+pub const UPLINK_RETURNED: RefCode = progress("C2008020", "Uplink interface has carrier again");
+
 // A2007xxx: attention from the pool service.
 
 /// A pool could not be assembled, with its name and why.
@@ -375,6 +390,18 @@ pub const POOL_FILLING: RefCode = attention("A2007050", "Storage pool 80% alloca
 pub const POOL_NEARLY_FULL: RefCode = attention("A2007051", "Storage pool 90% allocated");
 /// A media import failed, with what and why.
 pub const MEDIA_NOT_IMPORTED: RefCode = attention("A2007060", "Media image not imported");
+
+// A2008xxx: attention from the switch service.
+
+/// A switch could not be built from state, with its name and why.
+pub const SWITCH_NOT_BUILT: RefCode = attention("A2008010", "Virtual switch not built");
+/// Every interface of an uplink lost carrier: the switch's outside
+/// traffic stopped; its internal traffic goes on.
+pub const UPLINK_LOST: RefCode = attention("A2008020", "Uplink lost carrier");
+/// One interface of a bonded uplink lost carrier; the others carry it.
+pub const UPLINK_MEMBER_DOWN: RefCode = attention("A2008025", "Uplink bond member lost carrier");
+/// An uplink's interface is not on the host, with its location code.
+pub const UPLINK_MISSING: RefCode = attention("A2008030", "Uplink interface not found");
 
 /// PID 1 panicked and parked.
 pub const PANIC: RefCode = RefCode {
@@ -466,6 +493,11 @@ pub const ALL: &[&RefCode] = &[
     &POOL_SPARE_TAKEN,
     &MEDIA_IMPORTED,
     &POOLS_STOPPED,
+    &VSWITCHD_STARTED,
+    &SWITCH_CREATED,
+    &SWITCH_CHANGED,
+    &SWITCH_DELETED,
+    &UPLINK_RETURNED,
     &RECORD_INVALID,
     &SLOT_FELL_BACK,
     &DATA_NOT_MOUNTED,
@@ -520,6 +552,10 @@ pub const ALL: &[&RefCode] = &[
     &POOL_FILLING,
     &POOL_NEARLY_FULL,
     &MEDIA_NOT_IMPORTED,
+    &SWITCH_NOT_BUILT,
+    &UPLINK_LOST,
+    &UPLINK_MEMBER_DOWN,
+    &UPLINK_MISSING,
     &PANIC,
     &STORAGE_LOST,
     &SHUTDOWN_STARTED,

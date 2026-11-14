@@ -56,6 +56,7 @@ members = [
     "stg/tape",
     # Virtual Ethernet: the netlink pieces, the switches, their service.
     "net/nl",
+    "net/vswitch",
 ]
 
 [workspace.package]

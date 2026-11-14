@@ -1,0 +1,19 @@
+[package]
+name = "vswitch"
+description = "Virtual switches as the host keeps them: switches, their VLANs, MTU and uplink, the limits, a partition adapter's MAC address, and every error of each"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+state = { path = "../../base/state", version = "0.1.0" }
+qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+ipc.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+toml.workspace = true
+
+[lints]
+workspace = true

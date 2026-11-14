@@ -74,6 +74,7 @@ installed host's history starts with its first IPL.
 | `C2005xxx`, `A2005xxx` | a partition: its activation and IPL in order, what it lacked when it could not IPL, and how it ended (`qsvmm`) |
 | `C2006xxx`, `A2006xxx` | the partition manager (`partd`): its start, partitions found running, auto start, an activation that failed before a VMM ran |
 | `C2007xxx`, `A2007xxx` | storage pools and the media library (`poold`, the pool service): assembly, creation, resynchronization and rebuild, hot spares, imports, how full a pool is |
+| `C2008xxx`, `A2008xxx` | virtual switches (`vswitchd`, the switch service): its start, switches made, changed and deleted, an uplink's carrier lost and back, a switch not built |
 
 Later phases take further blocks (QSI) and record them here.
 
@@ -198,6 +199,11 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2007040` | Hot spare taken into a pool | a hot spare took a failed unit's place, with both units' location codes; its rebuild follows |
 | `C2007050` | Media image imported | an optical image is in the media library, with its name and volume identifier |
 | `C2007090` | Storage pools stopped | at the host's shutdown, after every partition ended: each pool's file system unmounted and its set stopped in order |
+| `C2008000` | Switch service started | with the switches built from state and the partitions' ports found running |
+| `C2008010` | Virtual switch created | with its name, VLANs and MTU |
+| `C2008015` | Virtual switch changed | its VLANs, MTU, name or uplink, with what changed; nothing that runs on it is stopped |
+| `C2008016` | Virtual switch deleted | with its name; no profile named it |
+| `C2008020` | Uplink interface has carrier again | with the switch and the interface's location code; outside traffic resumes |
 | `A2001030` | A/B record not valid | no copy of the record is valid; a new one is written for the slot booted |
 | `A2001035` | Pending slot not confirmed | the pending slot did not confirm on its IPL; this IPL is on the default and the pending field is cleared |
 | `A2001040` | Data file system not mounted | `/data` could not be mounted, with the reason; state is in memory only. Nothing is reformatted |
@@ -252,6 +258,10 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2007050` | Storage pool 80% allocated | a pool's allocated space passed 80% of its size, with the pool, what is allocated and what is provisioned |
 | `A2007051` | Storage pool 90% allocated | the same at 90% |
 | `A2007060` | Media image not imported | an import of an optical image failed, with the name and why; nothing of it is left |
+| `A2008010` | Virtual switch not built | a switch of the state file could not be built at the service's start, with its name and why; its partitions' required adapters cannot be given ports |
+| `A2008020` | Uplink lost carrier | every interface of a switch's uplink lost carrier, with the switch and the location codes: outside traffic stops, traffic between its partitions goes on |
+| `A2008025` | Uplink bond member lost carrier | one interface of a bonded uplink lost carrier, with the switch and its location code; the others carry the traffic |
+| `A2008030` | Uplink interface not found | an interface the state names as an uplink is not on the host, with the switch and the location code |
 | `B2001000` | Host PID 1 failed | by PID 1's panic handler, with the panic message, before it parks |
 | `B2003000` | Storage service stopped | the storage service of a mirrored load source failed five times in ten minutes; the host parks |
 | `D2001000` | Host shutdown started | an orderly shutdown began, with what asked for it |

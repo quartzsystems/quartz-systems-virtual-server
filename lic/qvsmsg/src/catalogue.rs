@@ -189,6 +189,34 @@ catalogue! {
     NO_OPTICAL = "QVS1219",
         "The profile's IPL source is D and it has no optical device.",
         "IPL source D reads the installation media in the partition's first optical device. Give the profile an [[optical]] device with the media, or choose another source.";
+    /// A tagged VLAN of an adapter that is not one.
+    TAGGED_INVALID = "QVS1220",
+        "Tagged VLAN &2 of the virtual Ethernet adapter in slot &1 is not valid.",
+        "An adapter's tagged VLANs are 1 to 4094, each listed once, none its port VLAN, 32 at most. The port VLAN is the one the guest has untagged.";
+    /// An adapter's switch that is not a name.
+    ADAPTER_SWITCH_INVALID = "QVS1221",
+        "The virtual Ethernet adapter in slot &1 names switch &2, which is not a switch's name.",
+        "Every adapter names the virtual switch it is on: 1 to 10 of A to Z, 0 to 9 and _, with a letter first.";
+    /// Too many Ethernet adapters.
+    ETHERNET_TOO_MANY = "QVS1222",
+        "The profile has &1 virtual Ethernet adapters; a partition may have &2.",
+        "The host's switch settings say how many adapters one partition may have, 8 at most.";
+    /// An adapter on a switch that is not there.
+    ADAPTER_SWITCH_MISSING = "QVS1223",
+        "The virtual Ethernet adapter in slot &1 names switch &2, which does not exist.",
+        "Make the switch in Work with virtual switches, or name one of the host's switches. An adapter that is not required comes up without link when its switch is missing at activation.";
+    /// An adapter's VLAN its switch does not carry.
+    ADAPTER_VLAN_MISSING = "QVS1224",
+        "The virtual Ethernet adapter in slot &1 uses VLAN &3, which switch &2 does not carry.",
+        "Add the VLAN to the switch first, or choose one of the VLANs it carries.";
+    /// A MAC address another partition has.
+    MAC_IN_USE = "QVS1225",
+        "MAC address &2 of the virtual Ethernet adapter in slot &1 is partition &3's.",
+        "No two partitions of a host have one MAC address. Leave the address out to have the host make one from the partition and the slot.";
+    /// An adapter with no switch.
+    ADAPTER_SWITCH_NEEDED = "QVS1226",
+        "The virtual Ethernet adapter in slot &1 names no switch.",
+        "Every adapter names the virtual switch it is on, with the key switch.";
     /// A request names a partition that does not exist.
     PARTITION_MISSING = "QVS2001",
         "Partition &1 does not exist.",
@@ -298,6 +326,14 @@ catalogue! {
     MEDIA_REFUSED = "QVS2115",
         "The medium in slot &2 of partition &1 was not changed: &3.",
         "The partition's VMM could not do what was asked of the device. The device is as it was.";
+    /// The switch service did not answer.
+    SWITCHES_UNREACHABLE = "QVS2116",
+        "Partition &1 cannot be activated: the switch service did not answer: &2.",
+        "A partition's virtual Ethernet ports are made by the switch service. Look at its state in the host's status; it is started again by itself after a fault.";
+    /// A required adapter's switch is missing at activation.
+    PORT_NOT_GIVEN = "QVS2117",
+        "Partition &1 cannot be activated: the virtual Ethernet adapter in slot &2 has no port: &3.",
+        "The adapter is required, so the partition is not activated without it. Mark it not required to have it come up without link instead.";
     /// A host setting out of range.
     SETTING_INVALID = "QVS2201",
         "Setting &1 cannot be &2.",
@@ -478,4 +514,96 @@ catalogue! {
     IMPORT_BUSY = "QVS3209",
         "An import into the media library is under way.",
         "One import from a device of the host runs at a time. The history says when it ends.";
+    /// A switch's name that is not one.
+    SWITCH_NAME_INVALID = "QVS4001",
+        "Switch name &1 is not valid.",
+        "A virtual switch's name is 1 to 10 characters: the letters A to Z, the digits 0 to 9 and the underscore, with a letter first.";
+    /// A second switch of one name.
+    SWITCH_EXISTS = "QVS4002",
+        "There is already a switch named &1.",
+        "No two switches of a host have one name. Choose another name.";
+    /// A switch that is not there.
+    SWITCH_MISSING = "QVS4003",
+        "There is no switch named &1.",
+        "The host's switches are listed in Work with virtual switches.";
+    /// A switch's VLAN that is not one.
+    SWITCH_VLAN_INVALID = "QVS4004",
+        "VLAN &1 of switch &2 is not valid.",
+        "A switch's VLANs are 1 to 4094, each listed once.";
+    /// Too many VLANs on a switch.
+    SWITCH_VLANS_TOO_MANY = "QVS4005",
+        "Switch &1 would carry &2 VLANs; a switch may carry &3.",
+        "The host's switch settings say how many VLANs one switch may carry.";
+    /// A switch's MTU out of range.
+    SWITCH_MTU_INVALID = "QVS4006",
+        "MTU &1 of switch &2 is not valid.",
+        "A switch's MTU is 1280 to 9000 bytes. Its uplink and every partition's port on it are given that MTU.";
+    /// Too many switches.
+    SWITCHES_TOO_MANY = "QVS4007",
+        "The host would have &1 switches; it may have &2.",
+        "The host's switch settings say how many switches it may have.";
+    /// A switch a profile names.
+    SWITCH_NAMED = "QVS4008",
+        "Switch &1 is named by partition &2, profile &3, slot &4.",
+        "A switch that a profile's adapter names is not deleted or renamed. Change or delete the adapter in the profile first.";
+    /// A VLAN a profile uses.
+    SWITCH_VLAN_NAMED = "QVS4009",
+        "VLAN &1 of switch &2 is used by partition &3, profile &4, slot &5.",
+        "A VLAN that a profile's adapter uses stays on its switch. Change the adapter in the profile first.";
+    /// A native VLAN the switch does not carry.
+    NATIVE_VLAN_INVALID = "QVS4010",
+        "Native VLAN &1 is not a VLAN switch &2 carries.",
+        "The native VLAN is the one carried untagged on the uplink. It is one of the switch's VLANs, or none.";
+    /// A limit out of range.
+    LIMIT_INVALID = "QVS4011",
+        "Switch setting &1 = &2 is not valid: it is &3.",
+        "The limits of the switch service are each a number in the range given.";
+    /// The kernel refused a step.
+    SWITCH_NOT_CHANGED = "QVS4012",
+        "The switch service could not &1: &2.",
+        "The host's log has more. What was there before the request is as it was.";
+    /// Too many ports on a switch.
+    SWITCH_PORTS_TOO_MANY = "QVS4013",
+        "Switch &1 has &2 partition ports; it may have &3.",
+        "The host's switch settings say how many partitions' ports one switch may have.";
+    /// Two switches of one number in the state file.
+    SWITCH_ID_TWICE = "QVS4014",
+        "Switch number &1 is not valid or is used twice.",
+        "A switch's number is given by the switch service when the switch is made. The state file was changed by something else.";
+    /// No interface at a location.
+    INTERFACE_MISSING = "QVS4101",
+        "There is no network interface at &1.",
+        "Display network hardware lists the host's interfaces with their location codes.";
+    /// The management interface named as an uplink.
+    INTERFACE_MANAGEMENT = "QVS4102",
+        "Interface &1 is the management interface.",
+        "The interface the host is managed through is never a switch's uplink. Choose another interface, or move the management network to another interface first.";
+    /// An interface another switch has.
+    INTERFACE_TAKEN = "QVS4103",
+        "Interface &1 is in the uplink of switch &2.",
+        "An interface belongs to one switch at a time. Clear that switch's uplink first.";
+    /// Several interfaces with no bond mode.
+    BOND_MODE_NEEDED = "QVS4104",
+        "An uplink of &1 interfaces needs a bond mode.",
+        "Several interfaces are bonded: active-backup, which needs nothing of the physical switch, or 802.3ad, which needs LACP on its ports. One interface takes no bond mode.";
+    /// An MTU the uplink cannot carry.
+    MTU_TOO_LARGE = "QVS4105",
+        "Interface &1 cannot carry switch &2's MTU of &3: it carries &4 at most.",
+        "A switch's uplink is given the switch's MTU. Choose a smaller MTU, or an interface that carries it.";
+    /// An uplink of no interface or too many.
+    UPLINK_INTERFACES = "QVS4106",
+        "An uplink has 1 to &1 interfaces, not &2.",
+        "Name one interface, or several to be bonded.";
+    /// An interface named twice.
+    INTERFACE_TWICE = "QVS4107",
+        "Interface &1 is named twice.",
+        "Each interface of an uplink is named once.";
+    /// A port that cannot be made.
+    PORT_NOT_MADE = "QVS4201",
+        "The port of partition &1, slot &2, on switch &3 was not made: &4.",
+        "Nothing of it was left behind. The host's log has more.";
+    /// A port's address another port has.
+    PORT_MAC_IN_USE = "QVS4202",
+        "MAC address &1 is the port of partition &2, slot &3.",
+        "No two ports of the host have one MAC address.";
 }

@@ -26,13 +26,16 @@ wording.
 |---|---|
 | `QVS10xx` | a partition's definition |
 | `QVS11xx` | a profile: processors and memory |
-| `QVS12xx` | a profile: storage, boot and the sections later phases bring |
+| `QVS12xx` | a profile: storage, virtual Ethernet, boot and the sections later phases bring |
 | `QVS20xx` | requests to the partition manager |
 | `QVS21xx` | activation and resources |
 | `QVS22xx` | shared processor pools and host settings |
 | `QVS30xx` | storage pools and their disks (the pool service) |
 | `QVS31xx` | virtual disks |
 | `QVS32xx` | the media library |
+| `QVS40xx` | virtual switches (the switch service) |
+| `QVS41xx` | uplinks and the host's interfaces |
+| `QVS42xx` | partitions' ports |
 
 ## The catalogue
 
@@ -78,6 +81,13 @@ wording.
 | `QVS1217` | The units of the virtual SCSI adapter in slot &1 are not numbered from 0 without a gap. | An adapter with &2 units has the unit numbers 0 to &3. Number the units in order from 0. |
 | `QVS1218` | The backing store of unit &2 in slot &1 is not a virtual disk: &3. | A unit's backing store is a virtual disk of a storage pool, written as the pool's name and the disk's name: POOL1/PRODLS. Make a virtual disk with the pool service and name it here. |
 | `QVS1219` | The profile's IPL source is D and it has no optical device. | IPL source D reads the installation media in the partition's first optical device. Give the profile an [[optical]] device with the media, or choose another source. |
+| `QVS1220` | Tagged VLAN &2 of the virtual Ethernet adapter in slot &1 is not valid. | An adapter's tagged VLANs are 1 to 4094, each listed once, none its port VLAN, 32 at most. The port VLAN is the one the guest has untagged. |
+| `QVS1221` | The virtual Ethernet adapter in slot &1 names switch &2, which is not a switch's name. | Every adapter names the virtual switch it is on: 1 to 10 of A to Z, 0 to 9 and _, with a letter first. |
+| `QVS1222` | The profile has &1 virtual Ethernet adapters; a partition may have &2. | The host's switch settings say how many adapters one partition may have, 8 at most. |
+| `QVS1223` | The virtual Ethernet adapter in slot &1 names switch &2, which does not exist. | Make the switch in Work with virtual switches, or name one of the host's switches. An adapter that is not required comes up without link when its switch is missing at activation. |
+| `QVS1224` | The virtual Ethernet adapter in slot &1 uses VLAN &3, which switch &2 does not carry. | Add the VLAN to the switch first, or choose one of the VLANs it carries. |
+| `QVS1225` | MAC address &2 of the virtual Ethernet adapter in slot &1 is partition &3's. | No two partitions of a host have one MAC address. Leave the address out to have the host make one from the partition and the slot. |
+| `QVS1226` | The virtual Ethernet adapter in slot &1 names no switch. | Every adapter names the virtual switch it is on, with the key switch. |
 | `QVS2001` | Partition &1 does not exist. | No partition of this host has that ID. List the partitions to see the IDs there are. |
 | `QVS2002` | Partition &1 is activated. | A partition is changed, deleted or activated only while it is not activated. Its state is &2. Shut it down first. |
 | `QVS2003` | Partition &1 is not activated. | Only an activated partition can be shut down or restarted. Its state is &2. |
@@ -104,6 +114,8 @@ wording.
 | `QVS2113` | Partition &1 has no optical or tape device in slot &2. | Media are loaded into the optical and tape devices the partition's profile gave it at its activation. |
 | `QVS2114` | Partition &1 has prevented the removal of the medium in slot &2. | The partition is using the medium. End its use in the partition, or unload it with force, which the partition sees as the medium taken out. |
 | `QVS2115` | The medium in slot &2 of partition &1 was not changed: &3. | The partition's VMM could not do what was asked of the device. The device is as it was. |
+| `QVS2116` | Partition &1 cannot be activated: the switch service did not answer: &2. | A partition's virtual Ethernet ports are made by the switch service. Look at its state in the host's status; it is started again by itself after a fault. |
+| `QVS2117` | Partition &1 cannot be activated: the virtual Ethernet adapter in slot &2 has no port: &3. | The adapter is required, so the partition is not activated without it. Mark it not required to have it come up without link instead. |
 | `QVS2201` | Setting &1 cannot be &2. | The value allowed is &3. |
 | `QVS2202` | Shared processor pool &1 already exists. | No two pools of a host have one name. Choose another name, or change the pool that is there. |
 | `QVS2203` | Core &2 cannot be in shared processor pool &1. | A pool's cores are cores of this host that are not kept back for the host itself. The host resources show which cores those are. |
@@ -149,4 +161,27 @@ wording.
 | `QVS3207` | The image &1 is not the size it was said to be, or is not whole 2048-byte blocks. | An image is uploaded whole, in one request that says its size; one that is cut off leaves nothing. |
 | `QVS3208` | Tape volume &1 cannot be made: &2. | A volume identifier is 1 to 6 of A to Z and 0 to 9; a volume's capacity is 16 MiB to 16 TiB. |
 | `QVS3209` | An import into the media library is under way. | One import from a device of the host runs at a time. The history says when it ends. |
+| `QVS4001` | Switch name &1 is not valid. | A virtual switch's name is 1 to 10 characters: the letters A to Z, the digits 0 to 9 and the underscore, with a letter first. |
+| `QVS4002` | There is already a switch named &1. | No two switches of a host have one name. Choose another name. |
+| `QVS4003` | There is no switch named &1. | The host's switches are listed in Work with virtual switches. |
+| `QVS4004` | VLAN &1 of switch &2 is not valid. | A switch's VLANs are 1 to 4094, each listed once. |
+| `QVS4005` | Switch &1 would carry &2 VLANs; a switch may carry &3. | The host's switch settings say how many VLANs one switch may carry. |
+| `QVS4006` | MTU &1 of switch &2 is not valid. | A switch's MTU is 1280 to 9000 bytes. Its uplink and every partition's port on it are given that MTU. |
+| `QVS4007` | The host would have &1 switches; it may have &2. | The host's switch settings say how many switches it may have. |
+| `QVS4008` | Switch &1 is named by partition &2, profile &3, slot &4. | A switch that a profile's adapter names is not deleted or renamed. Change or delete the adapter in the profile first. |
+| `QVS4009` | VLAN &1 of switch &2 is used by partition &3, profile &4, slot &5. | A VLAN that a profile's adapter uses stays on its switch. Change the adapter in the profile first. |
+| `QVS4010` | Native VLAN &1 is not a VLAN switch &2 carries. | The native VLAN is the one carried untagged on the uplink. It is one of the switch's VLANs, or none. |
+| `QVS4011` | Switch setting &1 = &2 is not valid: it is &3. | The limits of the switch service are each a number in the range given. |
+| `QVS4012` | The switch service could not &1: &2. | The host's log has more. What was there before the request is as it was. |
+| `QVS4013` | Switch &1 has &2 partition ports; it may have &3. | The host's switch settings say how many partitions' ports one switch may have. |
+| `QVS4014` | Switch number &1 is not valid or is used twice. | A switch's number is given by the switch service when the switch is made. The state file was changed by something else. |
+| `QVS4101` | There is no network interface at &1. | Display network hardware lists the host's interfaces with their location codes. |
+| `QVS4102` | Interface &1 is the management interface. | The interface the host is managed through is never a switch's uplink. Choose another interface, or move the management network to another interface first. |
+| `QVS4103` | Interface &1 is in the uplink of switch &2. | An interface belongs to one switch at a time. Clear that switch's uplink first. |
+| `QVS4104` | An uplink of &1 interfaces needs a bond mode. | Several interfaces are bonded: active-backup, which needs nothing of the physical switch, or 802.3ad, which needs LACP on its ports. One interface takes no bond mode. |
+| `QVS4105` | Interface &1 cannot carry switch &2's MTU of &3: it carries &4 at most. | A switch's uplink is given the switch's MTU. Choose a smaller MTU, or an interface that carries it. |
+| `QVS4106` | An uplink has 1 to &1 interfaces, not &2. | Name one interface, or several to be bonded. |
+| `QVS4107` | Interface &1 is named twice. | Each interface of an uplink is named once. |
+| `QVS4201` | The port of partition &1, slot &2, on switch &3 was not made: &4. | Nothing of it was left behind. The host's log has more. |
+| `QVS4202` | MAC address &1 is the port of partition &2, slot &3. | No two ports of the host have one MAC address. |
 <!-- end of messages -->
