@@ -234,8 +234,13 @@ fn manage(
 }
 
 /// Run the network service of `appliance`. Says it is ready once its
-/// socket is bound; an address may come later, or never.
-pub fn run(appliance: &'static Appliance) -> io::Result<Infallible> {
+/// socket is bound; an address may come later, or never. `reserved`
+/// says the hardware addresses of the links the appliance keeps for
+/// other use: none of them is taken for management.
+pub fn run(
+    appliance: &'static Appliance,
+    reserved: fn() -> Vec<[u8; 6]>,
+) -> io::Result<Infallible> {
     let (network, host) = load(appliance).unwrap_or_else(|e| {
         eprintln!("the configuration is not used, the defaults are: {e}");
         (Network::default(), Host::default())
@@ -268,7 +273,7 @@ pub fn run(appliance: &'static Appliance) -> io::Result<Infallible> {
         post: Box::new(|event| (appliance.post)(event)),
         note: Box::new(|line| (appliance.note)(NOTE_MANAGEMENT, line)),
     };
-    let kernel = Linux::open(tx, RESOLV).map_err(io::Error::other)?;
+    let kernel = Linux::open(tx, RESOLV, reserved).map_err(io::Error::other)?;
     let name = host_name(appliance, &host);
     let manager = Manager::new(kernel, report, network, name, Instant::now());
     supervise::ready::signal()?;

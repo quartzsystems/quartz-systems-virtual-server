@@ -13,6 +13,9 @@ use std::path::{Path, PathBuf};
 pub struct NetStatus {
     /// The interface, empty when there is none.
     pub interface: String,
+    /// The device it is on: the interface itself, or the link a VLAN
+    /// interface is on; empty when there is none.
+    pub device: String,
     /// Whether it has carrier.
     pub carrier: bool,
     /// `address/prefix`, empty when it has none.
@@ -24,6 +27,7 @@ pub struct NetStatus {
 }
 ipc::wire_struct!(NetStatus {
     interface,
+    device,
     carrier,
     address,
     gateway,

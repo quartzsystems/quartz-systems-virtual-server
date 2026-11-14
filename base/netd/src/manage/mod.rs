@@ -24,6 +24,8 @@ use crate::control::NetStatus;
 pub const ATTENTION_AFTER: Duration = Duration::from_secs(30);
 
 /// One link, as the machine needs to see it.
+// Each flag is a fact of its own about the link.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LinkInfo {
     /// Interface index.
@@ -38,6 +40,9 @@ pub struct LinkInfo {
     pub up: bool,
     /// Carrier present.
     pub carrier: bool,
+    /// Another's: on a bridge or a bond, or reserved by the appliance
+    /// for other use. Never the management interface.
+    pub taken: bool,
 }
 
 /// A running DHCP client.
@@ -171,6 +176,7 @@ impl<K: Kernel> Manager<K> {
                 Device::Name(n) => l.name == *n,
                 Device::Mac(m) => l.physical && l.mac == *m,
             })
+            .filter(|l| !l.taken)
             .collect();
         // Carrier shows only on a link that is up.
         for link in &candidates {
@@ -451,6 +457,10 @@ impl<K: Kernel> Manager<K> {
                 .active
                 .as_ref()
                 .map_or_else(String::new, |a| a.iface.name.clone()),
+            device: self
+                .active
+                .as_ref()
+                .map_or_else(String::new, |a| a.base.name.clone()),
             carrier: self.active.as_ref().is_some_and(|a| a.carrier),
             address: self
                 .address

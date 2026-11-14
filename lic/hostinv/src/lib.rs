@@ -58,6 +58,12 @@ pub fn read(roots: &Roots, kept_serial: Option<&str>) -> state::Inventory {
     read::inventory(roots, kept_serial)
 }
 
+/// The network interfaces, with their location codes, and nothing else
+/// of the inventory.
+pub fn interfaces(roots: &Roots) -> Vec<state::doc::inventory::Interface> {
+    read::interfaces(roots)
+}
+
 /// The serial DMI gives, when it is a real one: not empty and not a
 /// placeholder such as `Not Specified` or `To Be Filled By O.E.M.`.
 pub fn dmi_serial(roots: &Roots) -> Option<String> {

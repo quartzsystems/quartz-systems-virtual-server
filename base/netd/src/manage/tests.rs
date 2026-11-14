@@ -109,6 +109,7 @@ fn eth(index: u32, name: &str, carrier: bool) -> LinkInfo {
         physical: true,
         up: false,
         carrier,
+        taken: false,
     }
 }
 
@@ -392,4 +393,25 @@ fn a_stopped_client_s_last_word_does_not_take_a_static_address_away() {
     assert!(m.online());
     m.unbound(now);
     assert!(!m.online());
+}
+
+#[test]
+fn a_link_that_is_anothers_is_never_the_management_interface() {
+    // eth1 is on a bridge or bond, or reserved by the appliance: even
+    // with carrier, and even named, it is not taken.
+    let mut taken = eth(3, "eth1", true);
+    taken.taken = true;
+    let links = vec![eth(2, "eth0", false), taken.clone()];
+    let (mut m, log, _, now) = machine(Network::default(), links);
+    m.refresh(now);
+    assert_eq!(take(&log), ["up eth0"]);
+    assert_eq!(m.status().device, "");
+    let named = Network {
+        device: state::Device::Name("eth1".into()),
+        ..Network::default()
+    };
+    let (mut m, log, _, now) = machine(named, vec![taken]);
+    m.refresh(now);
+    assert!(take(&log).is_empty());
+    assert_eq!(m.status().interface, "");
 }

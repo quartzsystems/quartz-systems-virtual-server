@@ -24,6 +24,15 @@ use state::Inventory;
 use crate::sysfs::text;
 use crate::{Roots, smbios, system};
 
+/// The network interfaces alone, with their location codes: what a
+/// service that looks at them often reads.
+pub(crate) fn interfaces(roots: &Roots) -> Vec<state::doc::inventory::Interface> {
+    let sys = &roots.sys;
+    let table = smbios::table(sys);
+    let slots = place::slots(sys, &table);
+    net::read(sys, &slots)
+}
+
 /// The whole inventory.
 pub(crate) fn inventory(roots: &Roots, kept_serial: Option<&str>) -> Inventory {
     let sys = &roots.sys;

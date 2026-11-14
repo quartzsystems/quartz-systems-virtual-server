@@ -56,6 +56,7 @@ fn default_route(index: u32, gateway: Ipv4Addr, protocol: u8) -> Route {
 /// The kernel, and where the resolver's file is.
 pub struct Linux {
     rtnl: Rtnl,
+    reserved: fn() -> Vec<[u8; 6]>,
     tx: Sender<Msg>,
     resolv: PathBuf,
 }
@@ -63,9 +64,16 @@ pub struct Linux {
 impl Linux {
     /// Open the route socket. Leases are reported on `tx`; the name
     /// servers are written to `resolv`.
-    pub fn open(tx: Sender<Msg>, resolv: impl Into<PathBuf>) -> netlink::Result<Self> {
+    /// `reserved` says the hardware addresses of the links the
+    /// appliance keeps for other use.
+    pub fn open(
+        tx: Sender<Msg>,
+        resolv: impl Into<PathBuf>,
+        reserved: fn() -> Vec<[u8; 6]>,
+    ) -> netlink::Result<Self> {
         Ok(Self {
             rtnl: Rtnl::open()?,
+            reserved,
             tx,
             resolv: resolv.into(),
         })
@@ -75,6 +83,7 @@ impl Linux {
 impl Kernel for Linux {
     fn links(&mut self) -> Vec<LinkInfo> {
         let links = self.rtnl.links().unwrap_or_default();
+        let reserved = (self.reserved)();
         links
             .into_iter()
             .filter(|l| !l.is_loopback())
@@ -86,6 +95,8 @@ impl Kernel for Linux {
                     physical: l.link_type == ETHERNET && device.exists(),
                     up: l.is_up(),
                     carrier: l.has_carrier(),
+                    taken: l.master.is_some()
+                        || reserved.iter().any(|r| l.mac.as_slice() == r.as_slice()),
                     name: l.name,
                 })
             })
