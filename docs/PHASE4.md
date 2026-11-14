@@ -350,6 +350,70 @@ The fuzzer has a ninth target, `report`: what a VMM writes on its
 standard error, where text of the guest's can end up, read as the
 partition manager reads it.
 
+## Acceptance
+
+Taken in a fresh clone at `c4b63bb` on ext4 in WSL, every target
+empty, `QSVS_BUILD_ID=phase4`, the signing key of the reproducibility
+runs. Host: rustc 1.98.0, clang 21.1.8, QEMU 10.2.1, cargo-deny 0.20.2,
+kernel 6.18.33.2-microsoft-standard-WSL2, 12 processors.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Step 0 on its own, Phases 0 to 3 passing on the new pin its own commits, `e1ae2de` to `33af96b`, before any of the partition manager ("Step 0"); every earlier suite passed there ("The earlier suites on the new pin") and again here |
+| 2 | Suites 1 to 18 | `build test`: PASS, 53 steps, all at the first run, in 67 minutes; then the nine fuzz targets, 60 s each, no finding. `build test --media iso`: PASS |
+| 3 | Questions 23 to 28 closed | `docs/OPEN_QUESTIONS.md` |
+| 4 | Two clean builds byte for byte; `deny`, `doctor` | identical (below); `doctor`, `deny`, `notices --check`, `cargo fmt --check`, the three clippy runs and `cargo test --workspace` passed |
+| 5 | Every QS/400 crate at `e035bea`, nothing restated | one `rev` in `Cargo.toml` for all fifteen crates; `docs/PHASE0.md` |
+| 6 | The release image cannot act on a partition and listens nowhere | its initramfs has no `TEST IMAGE:`, no `qsvshook` and no `qsvs.hook=` (0, 0, 0; the test image's: 1 and 6); `sockets` passed on it; Service Tools' list has no key that acts (`partition-tools`) |
+
+The suites of Phase 4 in that run:
+
+| Suite | Time |
+|---|---|
+| `partition-recorded`, `partition-define`, `partition-three`, `partition-minimum` | 259.7, 10.3, 8.9, 19.1 s |
+| `partition-dedicated`, `partition-capped` (0.500 of a core), `partition-uncapped` (0.251 and 0.749), `partition-core-sched` (never together in 3318 looks) | 20.9, 33.7, 27.8, 26.6 s |
+| `partition-huge-pages`, `partition-auto-start`, `partition-end`, `partition-killed`, `partition-kill` | 12.9, 22.8, 198.9, 9.4, 84.3 s |
+| `partition-manager-restart`, `partition-identity`, `partition-isolation`, `partition-privilege`, `partition-own-disks`, `partition-tools` | 9.5, 115.5, 7.9, 17.0, 45.5, 18.3 s |
+
+And the earlier ones, in the same run: `IPL slot A` 12.2 s, `IPL slot B`
+2.6, `status` 2.5, `dhcp` 2.6, `static-vlan` 9.5, `time` 3.7,
+`inventory` 3.0, `supervision` 30.7, `power-pull` 186.1, `slot-confirm`
+15.8, `shutdown` 12.2, `sockets` 2.6, `install-serial` 24.8,
+`install-display` 25.9, `install-unattended` 23.3, `mirror-degraded`
+76.2, `mirror-replace` 60.6, `mirror-power-pull` 203.7, `storage-kill`
+17.5, `tools-network` 57.6, `tools-sign-on` 24.6, `media-refused` 5.0,
+`answers-invalid` 9.5, `installed-base` 530.9, `mirror-start` 99.8,
+`mirror-split` 90.8, `partition-boot` 29.3, `partition-scsi` 14.2,
+`partition-ipl-a` 47.8, `partition-ipl-b` 39.7, `partition-attributes`
+87.7, `partition-power-pull` (20 cuts, 1723 objects) 844.2,
+`partition-damaged` 13.7 s.
+
+The guest kernel's failure ("The guest's kernel, again") was not seen
+in this run, which has 40-odd QS/400 IPLs; it is not fixed by
+anything of it.
+
+### Hashes
+
+The release build at `c4b63bb`, the same in three clean builds (the
+first pair's first build stopped at a DNS failure fetching the kernel;
+the pair was built again, 517 s and 638 s, and compared identical):
+
+| File | SHA-256 |
+|---|---|
+| `images/qsvs-V1R0M0-a-dedbdabc7b2f.efi` | `dedbdabc7b2f17a493951f6b722e59481ace07faddfa3cec8312a11e51d2569b` |
+| `images/qsvs-V1R0M0-b-0aa738488b7b.efi` | `0aa738488b7bc2b27a14c76b3ef7df90af2de4d7727071f19e2c6bb683b9d65c` |
+| `images/qsvs-V1R0M0-d-147b9af793e0.efi` | `147b9af793e0c1eb1b41de7117d45fe2e2deaad93045469d02a845792e2d6999` |
+| `images/qsvs-V1R0M0-dedbdabc7b2f.img` | `3bdbb8f59a26133407285e59feda4b99724631684f5afa4763410e97aa5ae963` |
+| `images/QSVS-V1R0M0-147b9af793e0.iso` | `9df2ceb33f9f30f4afbbd4cb4fab58356ce120d1494d8404cd60038ab6f71f7a` |
+| `images/initramfs.cpio` | `c4ad5039903702e1a585f0218a2b4149dfda1cf29ff937c8556a4f6db25c4a6c` |
+| `images/initramfs-media.cpio` | `8191a9b60ae7fa57040621a08b2f1ff59f095005ba2267a5bb54627ba8985db1` |
+| `images/manifest.json` | `accfd0385dacd48349a7be8fae800389643f9d193f6161fea4aba2e1292c5ccd` |
+| `kernel/build/.config` | `dd26ff8d3bfcb04c60d23e7a439ab18b5311364d63aa091e6ce4b39c7db9ecf6` |
+| `qsvspartd` | `98aecf8fafb3c2be42c83f7002eeddb0da03c6d348f974198f453747124f5430` |
+| `qsvmm` | `1d4d630ce8afe096e0a3f79cf5490eddf2bbd6dee18f7f6443398d1f388ac851` |
+
+The manifest's signature depends on the key and is left out.
+
 ## Found while testing
 
 - **A disk with no LIC partition stopped IPLing in a partition.** Since
