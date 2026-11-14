@@ -76,15 +76,25 @@ pub fn auto_start(run: &Run<'_>) -> Result<String, String> {
             failed.state.word()
         ));
     }
-    // In order: P3 fails first, then P2, then P1.
+    // In order: P3 fails first, then P2, then P1. The first line of
+    // each is its VMM's, and two VMMs started a moment apart say it in
+    // either order: which was started first is in their process IDs.
     let third = position(
         &mut guest,
         &posted(&refcode::AUTO_START_FAILED, &name(2)),
         0,
     )?;
     let activating = |n: usize| posted(&refcode::PARTITION_ACTIVATING, &name(n));
-    let second = position(&mut guest, &activating(1), third)?;
-    let first = position(&mut guest, &activating(0), second)?;
+    position(&mut guest, &activating(1), third)?;
+    position(&mut guest, &activating(0), third)?;
+    let (pid_second, pid_first) = (pid_of(&mut guest, ids[1])?, pid_of(&mut guest, ids[0])?);
+    if pid_second >= pid_first {
+        return Err(format!(
+            "{} was started before {}: VMMs {pid_first} and {pid_second}",
+            name(0),
+            name(1)
+        ));
+    }
     if began.elapsed() < Duration::from_secs(2) {
         return Err("the delay before a partition was not waited".into());
     }
@@ -115,13 +125,14 @@ pub fn auto_start(run: &Run<'_>) -> Result<String, String> {
     Ok(format!(
         "three partitions flagged, at places 20, 10 (after 2 s) and 5, the last with a \
          backing store that is not there: after the host's restart `C2006020`, then \
-         `A2006020` for {} (`{why}`), then {} and {} activated in that order ({} bytes apart \
-         on the serial port), `C2006030 {}`; both Running; not done over when the partition \
+         `A2006020` for {} (`{why}`), then {} and {} activated in that order (VMMs {} and {}, \
+         both lines after the failure), `C2006030 {}`; both Running; not done over when the partition \
          manager was started again",
         name(2),
         name(1),
         name(0),
-        first - second,
+        pid_second,
+        pid_first,
         done.trim_start_matches(':').trim()
     ))
 }
