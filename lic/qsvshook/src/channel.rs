@@ -410,14 +410,24 @@ fn copy(rest: &str) -> Vec<String> {
             source.read_exact_at(&mut chunk[..n], skip + at)?;
             if holes {
                 // Into a file, a page of zeros is left a hole: what was
-                // never written takes no room, as in a thin disk.
+                // never written takes no room, as in a thin disk. The
+                // pages between holes go in one write.
+                let data = &chunk[..n];
+                let mut run: Option<usize> = None;
                 let mut off = 0usize;
-                for page in chunk[..n].chunks(4096) {
-                    if page.iter().any(|b| *b != 0) {
-                        target.write_all_at(page, seek + at + off as u64)?;
-                        written += page.len() as u64;
+                while off <= n {
+                    let page = &data[off..(off + 4096).min(n)];
+                    let zero = off == n || page.iter().all(|b| *b == 0);
+                    match (run, zero) {
+                        (None, false) => run = Some(off),
+                        (Some(from), true) => {
+                            target.write_all_at(&data[from..off], seek + at + from as u64)?;
+                            written += (off - from) as u64;
+                            run = None;
+                        }
+                        _ => {}
                     }
-                    off += page.len();
+                    off += 4096.min(n - off).max(1);
                 }
             } else {
                 target.write_all_at(&chunk[..n], seek + at)?;

@@ -13,10 +13,10 @@
 
  Services:
    stgd     ready                       logd     ready
-   netd     ready                       partd    ready
-   tools    ready                       flaky    ready
-   hook     ready                       partition ready
-
+   netd     ready                       poold    ready
+   partd    ready                       tools    ready
+   flaky    ready                       hook     ready
+   partition ready
 
 
 
