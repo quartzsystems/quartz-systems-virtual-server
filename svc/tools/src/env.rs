@@ -54,6 +54,7 @@ pub struct Env {
     net: NetClient,
     storage: StorageClient,
     pools: poold::proto::Client,
+    switches: vswitchd::Client,
     store: Store,
     /// The host name, as last seen in PID 1's status.
     name: String,
@@ -71,6 +72,7 @@ impl Env {
             net: NetClient::new(appliance.net_socket()),
             storage: StorageClient::of(&appliance),
             pools: poold::proto::Client::new(poold::proto::socket(release::RUN_DIR)),
+            switches: vswitchd::Client::new(vswitchd::socket(release::RUN_DIR)),
             store: Store::at(appliance.state_dir()),
             name: release::NAME.into(),
         }
@@ -98,6 +100,12 @@ impl Env {
     /// library.
     pub fn pools(&mut self) -> &mut poold::proto::Client {
         &mut self.pools
+    }
+
+    /// The switch service: the virtual switches, the network hardware,
+    /// the partitions' ports.
+    pub fn switches(&mut self) -> &mut vswitchd::Client {
+        &mut self.switches
     }
 
     /// Start mirrored protection with `disk`.

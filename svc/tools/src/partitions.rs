@@ -191,6 +191,7 @@ mod tests {
             last_end: String::new(),
             message: None,
             pid: 0,
+            ethernet: Vec::new(),
         }
     }
 

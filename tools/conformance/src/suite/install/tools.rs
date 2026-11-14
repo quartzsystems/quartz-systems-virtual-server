@@ -21,6 +21,8 @@ use crate::suite::base::{DHCP_ADDRESS, DHCP_GATEWAY, Guest, MAC, Run, STATE_DIR,
 
 /// The title of the network panel and of the trial under it.
 const NETWORK: &str = "Configure Management Network";
+/// The title of option 3, the network submenu it is under.
+const NETWORK_MENU: &str = "Network";
 /// The lengths of the network form's fields, in order.
 const NET_FIELDS: [usize; 8] = [40, 2, 1, 15, 2, 15, 4, 46];
 /// The static address the suite gives the host: the one QEMU's user
@@ -72,7 +74,7 @@ fn lost(
     before: &str,
     deadline: Instant,
 ) -> Result<(Duration, String), String> {
-    option(guest, 3, NETWORK, deadline)?;
+    option(guest, 1, NETWORK, deadline)?;
     let vlan = [None, None, None, None, None, None, Some("100"), None];
     let started = Instant::now();
     let trial = change(guest, &vlan, "is being tried", Duration::from_secs(10))?;
@@ -114,7 +116,8 @@ pub fn network(run: &Run<'_>) -> Result<String, String> {
     let dhcp_line = management(&mut guest, DHCP_ADDRESS, Duration::from_secs(30))?;
     let pid = netd_pid(&mut guest)?;
     sign_on(&mut guest, USER, PASSWORD, deadline)?;
-    let form = option(&mut guest, 3, NETWORK, deadline)?;
+    option(&mut guest, 3, NETWORK_MENU, deadline)?;
+    let form = option(&mut guest, 1, NETWORK, deadline)?;
     golden("tools-network", &form)?;
 
     // DHCP to a static address: kept as soon as it works.
@@ -140,15 +143,15 @@ pub fn network(run: &Run<'_>) -> Result<String, String> {
         ));
     }
     guest.type_keys(key::ENTER)?;
-    let menu = titled(&mut guest, MAIN_MENU, deadline)?;
+    let menu = titled(&mut guest, NETWORK_MENU, deadline)?;
     if !menu.contains("Management network configuration changed.") {
         return Err(format!(
-            "the main menu does not say the network changed:\n{menu}"
+            "the network menu does not say the network changed:\n{menu}"
         ));
     }
 
     // And back to DHCP.
-    option(&mut guest, 3, NETWORK, deadline)?;
+    option(&mut guest, 1, NETWORK, deadline)?;
     let dhcp = [
         None,
         None,
@@ -166,7 +169,7 @@ pub fn network(run: &Run<'_>) -> Result<String, String> {
         return Err(format!("network.toml after the change back:\n{before}"));
     }
     guest.type_keys(key::ENTER)?;
-    titled(&mut guest, MAIN_MENU, deadline)?;
+    titled(&mut guest, NETWORK_MENU, deadline)?;
 
     let (took, line) = lost(&mut guest, &before, deadline)?;
     let now = netd_pid(&mut guest)?;

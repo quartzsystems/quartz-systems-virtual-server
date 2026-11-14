@@ -6,7 +6,7 @@
 //! screen a console shows while nobody is signed on.
 
 use console::{Attr, Screen};
-use panels::tools::{Log, LogPanel, NetworkPanel, TimePanel, UsersPanel, power};
+use panels::tools::{Log, LogPanel, TimePanel, UsersPanel, power};
 use panels::ui;
 use panels::{Flow, Help, Named, Panel, PanelFlow, kit};
 use release::fact;
@@ -49,7 +49,7 @@ impl Panel<Env, Outcome> for MainMenu {
             &[
                 (1, "Work with system status"),
                 (2, "Work with disk units"),
-                (3, "Configure management network"),
+                (3, "Work with network"),
                 (
                     4,
                     "Management console pairing  (not yet available: comes with Phase 8)",
@@ -71,7 +71,7 @@ impl Panel<Env, Outcome> for MainMenu {
         match kit::number(fields.first()) {
             Some(1) => Flow::Push(Box::new(SystemStatus)),
             Some(2) => Flow::Push(Box::new(DiskUnits)),
-            Some(3) => Flow::Push(Box::new(NetworkPanel::new(env))),
+            Some(3) => Flow::Push(Box::new(crate::network::Network)),
             Some(5) => Flow::Push(Box::new(UsersPanel)),
             Some(6) => Flow::Push(Box::new(TimePanel::new(env))),
             Some(7) => Flow::Push(Box::new(Choice {

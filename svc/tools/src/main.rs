@@ -17,6 +17,7 @@ mod disks;
 mod env;
 mod keep;
 mod menu;
+mod network;
 mod partitions;
 mod pools;
 
