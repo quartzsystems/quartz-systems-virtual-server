@@ -54,6 +54,8 @@ members = [
     "stg/media",
     "stg/poold",
     "stg/tape",
+    # Virtual Ethernet: the netlink pieces, the switches, their service.
+    "net/nl",
 ]
 
 [workspace.package]

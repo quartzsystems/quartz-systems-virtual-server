@@ -35,6 +35,12 @@ pub const REQUIRED_Y: &[&str] = &[
     "BRIDGE_VLAN_FILTERING",
     "VLAN_8021Q",
     "BONDING",
+    // A partition port's ingress filter (Phase 6).
+    "NET_SCHED",
+    "NET_SCH_INGRESS",
+    "NET_CLS_ACT",
+    "NET_CLS_FLOWER",
+    "NET_ACT_GACT",
     // Resource control.
     "CGROUPS",
     "CPUSETS",
@@ -255,6 +261,24 @@ mod tests {
         "KEYBOARD_ATKBD",
         "USB_HID",
     ];
+
+    /// What Phase 6 needs (docs/PHASE6.md has the reason for each).
+    /// The bridge, VLANs, bonds, tun and vhost-net were Phase 0's.
+    const PHASE6: &[&str] = &[
+        "NET_SCHED",
+        "NET_SCH_INGRESS",
+        "NET_CLS_ACT",
+        "NET_CLS_FLOWER",
+        "NET_ACT_GACT",
+    ];
+
+    #[test]
+    fn every_phase_6_symbol_is_checked_and_netfilter_stays_off() {
+        for sym in PHASE6 {
+            assert!(REQUIRED_Y.contains(sym), "{sym} is not in REQUIRED_Y");
+        }
+        assert!(REQUIRED_N.contains(&"NETFILTER"));
+    }
 
     #[test]
     fn every_phase_2_symbol_is_checked() {

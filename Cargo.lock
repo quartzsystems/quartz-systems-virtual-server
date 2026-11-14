@@ -1269,6 +1269,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nl"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "netlink",
+]
+
+[[package]]
 name = "ntp"
 version = "0.1.0"
 source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=0fc8afa5055d1dee0a05cf35edb58760f10607ab#0fc8afa5055d1dee0a05cf35edb58760f10607ab"
