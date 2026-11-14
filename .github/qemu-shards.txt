@@ -1,0 +1,11 @@
+# The QEMU suites as qemu.yml runs them: one shard a line, its name and
+# then its suites, each shard on a runner of its own. Every suite that
+# `build test --suite list` names, the fuzz targets apart, is in exactly
+# one shard; the images job fails otherwise. The longest suites
+# (installed-base, the power-pull ones) are spread out.
+base: ipl status dhcp static-vlan time inventory supervision power-pull slot-confirm shutdown sockets
+install: install-serial install-display install-unattended mirror-degraded mirror-replace install-power-pull
+mirror: mirror-power-pull storage-kill tools-network tools-sign-on media-refused answers-invalid mirror-start mirror-split
+vmm: installed-base partition-boot partition-scsi partition-ipl-a partition-ipl-b partition-attributes partition-kill
+qs400: partition-power-pull partition-end partition-damaged partition-privilege partition-recorded
+partd: partition-define partition-three partition-minimum partition-dedicated partition-capped partition-uncapped partition-core-sched partition-huge-pages partition-auto-start partition-killed partition-manager-restart partition-identity partition-isolation partition-own-disks partition-tools

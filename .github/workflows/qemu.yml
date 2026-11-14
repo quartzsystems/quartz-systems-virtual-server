@@ -2,18 +2,16 @@
 # licensed under the terms of the MIT license which can be found in the
 # root directory of this project.
 #
-# The QEMU suites: build the release image and the test image, then run
-# Phase 0's suite on the release image (slot A and slot B, and the
-# installation ISO), the base system's ten on the test image, and the
-# fourteen of the installer, the mirrored load source and Service Tools,
-# which install from the test image's ISO onto blank disks.
+# The QEMU suites on GitHub-hosted runners. One job builds the release
+# image, the test image and the QS/400 guest image the partition suites
+# IPL, and runs the installation ISO to its first screen; then a job
+# for each shard of .github/qemu-shards.txt takes those images and runs
+# its suites, the shards side by side. A shard's suites run one at a
+# time: they are sensitive to load. The fuzz targets are ci.yml's.
 #
-# NEEDS-CODY: the suite boots a hypervisor, so the guest itself must see
-# VMX or SVM. That takes a runner with /dev/kvm AND nested
-# virtualization offered to its guests. The first step checks for both
-# and fails with a message when either is missing; if GitHub's hosted
-# runners do not pass it, this job needs a self-hosted runner (change
-# `runs-on`), which is Cody's to provide (docs/OPEN_QUESTIONS.md, 6).
+# By hand, for any branch: `gh workflow run qemu.yml --ref BRANCH`, or
+# with `-f suites="partition-three partition-tools"` for those alone,
+# on one runner.
 
 name: qemu
 
@@ -22,12 +20,17 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      suites:
+        description: "Suites to run, separated by spaces (empty: every one, in shards)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: qemu-${{ github.ref }}
+  group: qemu-${{ github.ref }}-${{ inputs.suites }}
   cancel-in-progress: true
 
 env:
@@ -35,61 +38,105 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
-  qemu:
-    name: build both images, test disk and iso
+  images:
+    name: build the images
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 120
+    outputs:
+      shards: ${{ steps.shards.outputs.shards }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/qsvs-host
+        with:
+          images: "true"
+      - run: cargo run -q -p build -- doctor
 
-      - name: KVM for QEMU
+      # The shards, as a matrix; or the suites named, as one shard.
+      # Every suite is in exactly one shard.
+      - name: The shards
+        id: shards
+        env:
+          NAMED: ${{ inputs.suites }}
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: KVM and nested virtualization on this runner
-        run: |
-          if ! [ -r /dev/kvm ] || ! [ -w /dev/kvm ]; then
-            echo "::error::/dev/kvm is not usable here: this job needs a self-hosted runner (NEEDS-CODY)"
+          lines=$(grep -v '^#' .github/qemu-shards.txt | grep .)
+          want=$(cargo run -q -p build -- test --suite list | grep -vx fuzz | sort)
+          have=$(echo "$lines" | cut -d: -f2 | tr ' ' '\n' | grep . | sort)
+          if [ "$want" != "$have" ]; then
+            echo "::error::.github/qemu-shards.txt and the suites differ (< a suite in no shard, > a shard's suite that is no suite, or twice):"
+            diff <(echo "$want") <(echo "$have") || true
             exit 1
           fi
-          nested=$(cat /sys/module/kvm_intel/parameters/nested /sys/module/kvm_amd/parameters/nested 2>/dev/null | head -n1)
-          case "$nested" in
-            Y|y|1) echo "nested virtualization: $nested" ;;
-            *)
-              echo "::error::nested virtualization is off here (${nested:-no kvm module}): this job needs a self-hosted runner (NEEDS-CODY)"
-              exit 1 ;;
-          esac
+          if [ -n "$NAMED" ]; then
+            lines="named: $NAMED"
+          fi
+          shards=$(echo "$lines" | jq -R -s -c 'split("\n") | map(select(length > 0) | split(": ") | {shard: .[0], suites: .[1]})')
+          echo "shards=$shards" >> "$GITHUB_OUTPUT"
+          echo "$shards"
 
-      - name: Room on the disk
+      # The guest of the partition suites that IPL QS/400: its disk
+      # image, built by QS/400's own orchestrator at the commit every
+      # QS/400 crate here is pinned to (docs/PHASE4.md), and kept by that
+      # commit: it changes only when the pin does.
+      - name: The QS/400 pin
+        id: pin
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/.ghcup
-          df -h /
-
-      - name: Packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            make flex bison bc perl xz-utils gpg gzip tar git libelf-dev libssl-dev \
-            qemu-system-x86 ovmf lsb-release wget software-properties-common gnupg
-          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          sudo bash /tmp/llvm.sh 21
-          sudo apt-get install -y --no-install-recommends lld-21 llvm-21
-          echo /usr/lib/llvm-21/bin >> "$GITHUB_PATH"
-
-      - name: Toolchain (rust-toolchain.toml)
-        run: rustup show active-toolchain || rustup toolchain install
-
-      - name: cargo-deny (prebuilt)
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny
-
-      - name: Build cache
+          rev=$(sed -n 's/^buildkit = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+          test -n "$rev"
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+      - name: QS/400 guest image (cache)
+        id: guest
         uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/qs400-guest.img
+          key: qs400-guest-${{ steps.pin.outputs.rev }}
+      - name: QS/400 guest image (build)
+        if: steps.guest.outputs.cache-hit != 'true'
+        run: |
+          git clone -q https://github.com/quartzsystems/quartz-systems-400 "$RUNNER_TEMP/qs400"
+          git -C "$RUNNER_TEMP/qs400" checkout -q "${{ steps.pin.outputs.rev }}"
+          (cd "$RUNNER_TEMP/qs400" && QS400_TARGET_DIR="$RUNNER_TEMP/qs400-target" cargo run -q -p build -- all)
+          cp --sparse=always "$(cat "$RUNNER_TEMP/qs400-target/images/disk.path")" "$RUNNER_TEMP/qs400-guest.img"
+          rm -rf "$RUNNER_TEMP/qs400" "$RUNNER_TEMP/qs400-target"
+
+      - run: cargo run -q -p build -- all
+      - run: cargo run -q -p build -- all --test-image
+      - run: cargo run -q -p build -- test --media iso
+
+      # What the shards need: the images and the files that point at
+      # them, at the paths they were built at, and the guest image.
+      - name: Pack the images
+        run: |
+          files=$(for kind in target/images target/test-image/images; do
+            ls "$kind"/*.path
+            cat "$kind"/*.path | sed "s|^$PWD/||"
+          done | sort -u)
+          cp --sparse=always "$RUNNER_TEMP/qs400-guest.img" qs400-guest.img
+          tar --sparse -cf - $files qs400-guest.img | zstd -T0 -3 -o "$RUNNER_TEMP/images.tar.zst"
+          rm qs400-guest.img
+          ls -lh "$RUNNER_TEMP/images.tar.zst"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: images
+          path: ${{ runner.temp }}/images.tar.zst
+          compression-level: 0
+          retention-days: 3
+
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-images
+          path: |
+            target/images/manifest.json
+            target/test-image/images/manifest.json
+            target/logs/
+            target/test-image/logs/
+          if-no-files-found: ignore
+
+      # Only main keeps the caches the next runs start from.
+      - name: Build cache (save, main only)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
         with:
           path: |
             ~/.cargo/registry
@@ -101,34 +148,61 @@ jobs:
             target/test-image/src
             target/test-image/kernel
             target/test-image/x86_64-unknown-linux-musl
-          key: qsvs-build-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'kernel/VERSION', 'kernel/config/**') }}
+          key: qsvs-build-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'kernel/VERSION', 'kernel/config/**') }}-${{ github.run_id }}
+      - name: Host tools cache (save, main only)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/debug
+          key: qsvs-host-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.run_id }}
 
-      # The guest of the partition suites that IPL QS/400: its disk
-      # image, built by QS/400's own orchestrator at the commit every
-      # QS/400 crate here is pinned to (docs/PHASE3.md).
-      - name: QS/400 guest image at the pinned commit
+  suites:
+    name: suites ${{ matrix.shard }}
+    needs: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.images.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/qsvs-host
+      - uses: actions/download-artifact@v4
+        with:
+          name: images
+          path: ${{ runner.temp }}
+      - name: Unpack the images
         run: |
-          pin=$(sed -n 's/^buildkit = .*rev = "([0-9a-f]*)".*//p' Cargo.toml)
-          git clone https://github.com/quartzsystems/quartz-systems-400 "$RUNNER_TEMP/qs400"
-          git -C "$RUNNER_TEMP/qs400" checkout "$pin"
-          (cd "$RUNNER_TEMP/qs400" && QS400_TARGET_DIR="$RUNNER_TEMP/qs400-target" cargo run -q -p build -- all)
-          echo "QSVS_QS400_IMAGE=$(cat "$RUNNER_TEMP/qs400-target/images/disk.path")" >> "$GITHUB_ENV"
-
-      - run: cargo run -q -p build -- doctor
-      - run: cargo run -q -p build -- all
-      - run: cargo run -q -p build -- all --test-image
-      - run: cargo run -q -p build -- test
-      - run: cargo run -q -p build -- test --media iso
-
-      - name: Images and logs
+          zstd -dc "$RUNNER_TEMP/images.tar.zst" | tar --sparse -xf -
+          mv qs400-guest.img "$RUNNER_TEMP/qs400-guest.img"
+          echo "QSVS_QS400_IMAGE=$RUNNER_TEMP/qs400-guest.img" >> "$GITHUB_ENV"
+          rm "$RUNNER_TEMP/images.tar.zst"
+          df -h /
+      - name: The suites
+        env:
+          SUITES: ${{ matrix.suites }}
+        run: |
+          set -o pipefail
+          mkdir -p target/suite-logs
+          failed=()
+          for suite in $SUITES; do
+            echo "::group::$suite"
+            cargo run -q -p build -- test --suite "$suite" 2>&1 | tee "target/suite-logs/$suite.log" || failed+=("$suite")
+            echo "::endgroup::"
+            grep -a -E "PASS $suite|FAIL" "target/suite-logs/$suite.log" | cut -c1-300 || true
+          done
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "::error::failed: ${failed[*]}"
+            exit 1
+          fi
+      - name: Logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qsvs-images
-          path: |
-            target/images/manifest.json
-            target/images/manifest.sig
-            target/test-image/images/manifest.json
-            target/logs/
-            target/test-image/logs/
+          name: logs-${{ matrix.shard }}
+          path: target/suite-logs/
           if-no-files-found: ignore
