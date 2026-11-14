@@ -9,11 +9,14 @@ Every QS/400 crate is a git dependency on
 `https://github.com/quartzsystems/quartz-systems-400` at one commit:
 
 ```
-e035bea3998bd5732750f134eafcd89ba45d638f
+0fc8afa5055d1dee0a05cf35edb58760f10607ab
 ```
 
-It was `main` on 2026-11-13 and has what Phase 4 needs of QS/400: the
-side of the next IPL and the console mode in `licpart`, the sides'
+It was `main` on 2026-11-14 and has what Phase 5 needs of QS/400:
+handoff 15, the write-intent bitmap of `protect`'s mirrored set and
+the answers for storage pools (`docs/BUILDKIT.md` section 5;
+`docs/PHASE5.md`, Step 0). Phase 4 was built at `e035bea3`, which had
+the side of the next IPL and the console mode in `licpart`, the sides'
 paths in `diskimg`, and a QS/400 that knows a partition of QS/VS
 (`docs/PHASE4.md`, Step 0). Phases 2 and 3 were built at `03d64929`,
 which had QS/400 handoff 14 (the neutral `console`, `scrkit`,
