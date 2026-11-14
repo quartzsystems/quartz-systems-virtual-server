@@ -9,11 +9,15 @@ Every QS/400 crate is a git dependency on
 `https://github.com/quartzsystems/quartz-systems-400` at one commit:
 
 ```
-03d6492913318da96bc707cb68d3b54a94ef9bff
+e035bea3998bd5732750f134eafcd89ba45d638f
 ```
 
-It was `main` on 2026-11-12 and has QS/400 handoff 14 (the neutral
-`console`, `scrkit`, `svcusers`, `protect`, `ublk` and `netlink`);
+It was `main` on 2026-11-13 and has what Phase 4 needs of QS/400: the
+side of the next IPL and the console mode in `licpart`, the sides'
+paths in `diskimg`, and a QS/400 that knows a partition of QS/VS
+(`docs/PHASE4.md`, Step 0). Phases 2 and 3 were built at `03d64929`,
+which had QS/400 handoff 14 (the neutral `console`, `scrkit`,
+`svcusers`, `protect`, `ublk` and `netlink`);
 Phases 0 and 1 were built at `6d5532fa`, which had `tools/buildkit`,
 `lic/vrm`, `lic/abrec` and `docs/BUILDKIT.md` (handoffs 13 and 13a). The
 crates named in `Cargo.toml` are `buildkit`, `vrm`, `diskimg` and
@@ -27,7 +31,8 @@ versions QS/400 tests, and cargo cut it down to this workspace's graph.
 Moving the pin is one change to the `rev =` values in `Cargo.toml` (four
 in Phase 0, eight since Phase 1 took `ipc`, `netlink`, `dhcp` and `ntp`,
 fourteen since Phase 2 took `blockdev`, `protect`, `ublk`, `console`,
-`scrkit` and `svcusers`), with the kernel pin if QS/400's moved.
+`scrkit` and `svcusers`, fifteen since Phase 3 took `licpart`), with
+the kernel pin if QS/400's moved.
 
 ## What exists
 

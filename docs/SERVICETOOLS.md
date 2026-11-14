@@ -140,9 +140,21 @@ service has been ready, or the IPL is in progress); the release, the
 build and whether the image is a release or a test image; the slot
 this IPL came from, with the A/B record; the reference code posted
 last; the management line; what `/data` is mounted from; what the KVM
-probe found; the uptime; and each service of the table with its state
-and how often it has failed. A last line says that partitions are
-managed from QS/MC.
+probe found; the uptime; the partitions, counted: how many are defined
+and how many are running, starting, shutting down or in error; and
+each service of the table with its state and how often it has failed.
+
+**F11, Display Partitions.** Every partition of the host, a row each,
+as the partition manager says: its ID, its name, its state (Not
+activated, Starting, Running, Shutting down, Error), the reference
+code the host posted last about it, and what it holds now: its
+processors (`2 dedicated`, or its processing units and virtual
+processors, `0.50 on 1 shr`) and its memory. A partition that is not
+activated holds nothing and shows `-`. The display follows the
+partitions; F7 and F8 page a long list. **Nothing here acts on a
+partition**: there is no option to type, and a partition is created,
+changed, activated and shut down from QS/MC. A partition manager that
+does not answer is said so in place of the list.
 
 ### 2. Work with disk units
 
@@ -252,4 +264,5 @@ The console edits no state file itself.
 | service tools users | the console service's own users' store | `users.db`, written beside and renamed, as `svcusers` does |
 
 The users have no other owner: nothing but the local console signs
-anyone on. The logs are read, never written.
+anyone on. The logs are read, never written. The partitions are read
+too, from the partition manager, and nothing of them is changed here.

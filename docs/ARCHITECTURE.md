@@ -12,7 +12,12 @@ a side effect of other work.
 | Hypervisor | KVM. Own VMM `qsvmm`, one process per partition, on the rust-vmm crates. No QEMU on the host |
 | Partition IPL | No guest firmware: the VMM loads the side's UKI from the partition's load-source disk and starts it through the 64-bit Linux boot protocol, with ACPI tables of its own. The keylock position and the console mode are written to the guest's LIC record before the IPL. Seven bytes at the reset vector end the partition when its guest restarts by a jump there |
 | Virtual devices | virtio over PCI for everything a partition does I/O with: scsi, net (vhost-net), console, rng. Four devices beside them for what virtio has no place for: a 16550, a CMOS clock, the reset line, the ACPI power-off register |
-| Partition process | `qsvmm` opens what it needs as root, then runs as an unprivileged user with no capability. It exits with a code that says why the partition ended; a guest restart ends it |
+| Partition process | `qsvmm` is given its whole configuration by the partition manager, opens what it needs as root, then runs as its partition's own unprivileged user (23000 plus the partition's ID) with no capability. It exits with a code that says why the partition ended; a guest restart ends it |
+| Partition manager | `partd` keeps definitions and profiles, gives out processors and memory at activation, owns every `qsvmm` and says what state each partition is in. Driven over a local socket, which the QSI host server will sit on. Its partitions go on when it is started again |
+| Processors | A partition's processor is one host core: both threads with SMT, kept to one partition at a time by core scheduling. Dedicated: whole cores, pinned. Shared: virtual processors over a pool's cores, with processing units (1.00 a core), capped or uncapped by weight. The host keeps cores of its own |
+| Memory | Partition memory is 2 MB huge pages, reserved by the host at its IPL: no overcommit, no ballooning. The host keeps memory of its own |
+| Partition identity | Each partition has a system serial number, made once from the host's and the partition's ID, and SMBIOS tables that carry it and name the machine a QS/VS partition |
+| Whose disks | The host takes the disk it IPLed from and the members that disk's label names, and no other |
 | Storage | Storage pools are xfs file systems; virtual disks are raw files; software RAID as on QS/400, presented through a ublk block device |
 | Virtual Ethernet | VLAN-aware kernel bridges, tap devices with vhost-net |
 | Management | QSI server on TCP 2300 with mutual TLS; Service Tools console locally; nothing else listens |
@@ -77,17 +82,69 @@ register that powers the partition off. There is no other emulated
 hardware: no display, no keyboard, no IDE. The interrupt controllers
 and the PIT are KVM's (`docs/VMM.md`).
 
-**The partition process.** `qsvmm` starts as root, opens KVM, the
-partition's disks, its log and its console socket, and then becomes an
-unprivileged user for good, with no capability and no way to gain one;
-the guest runs only after that. It reports reference codes on its
-standard error and whoever started it posts them. It ends when the
+**The partition process.** `qsvmm` is started by the partition
+manager, which writes its whole configuration to its standard input:
+`qsvmm` reads no profile and decides nothing. It starts as root, opens
+KVM, the partition's disks, its log and its console socket, and then
+becomes the partition's own unprivileged user for good, user and group
+23000 plus the partition's ID, with no capability and no way to gain
+one; the guest runs only after that. One partition's process so can
+neither signal another's nor read its log. It reports reference codes
+on its standard error and the partition manager posts them. It ends when the
 partition does, with an exit code that says why: powered off, restart
 asked for, guest fault, could not IPL, VMM error, ended by the host. A
 guest restart ends the process; starting it again is the partition
-manager's, which is Phase 4. Until then nothing of a release image
-starts `qsvmm`: a test image starts one partition, from a profile
-written by hand (`docs/PROFILE.md`).
+manager's.
+
+**The partition manager.** `partd` is a supervised service. It keeps
+each partition's definition and profiles in state (`docs/PROFILE.md`),
+resolves a profile's processors and memory against what the host has
+at activation (`docs/RESOURCES.md`), starts `qsvmm` in the partition's
+control group, watches it, and keeps the partition's state: Not
+activated, Starting, Running, Shutting down, Error. A guest that
+powers off leaves its partition Not activated; one that asks for a
+restart is activated again at once; a VMM that fails or is killed
+leaves it in Error and is not started again. It is driven over a local
+socket (`docs/PARTD.md`), framed as PID 1's control socket is, and
+answers a request that fails with `QVS` messages
+(`docs/MESSAGES.md`). The QSI host server of Phase 8 sits on that
+socket. In a release image nothing acts on a partition through it:
+Service Tools lists, and PID 1 has every partition ended before it
+stops the services. A partition does not end because the partition
+manager did: each VMM is in a session and a control group of its own,
+and a partition manager that starts finds them again.
+
+**Processors.** A partition's processor is one host core. With SMT it
+is both threads of the core: the guest sees them as sibling threads,
+and core scheduling keeps two partitions from running on the two
+threads of one core at the same time. Dedicated processors are whole
+cores no other partition and no host service uses, each virtual CPU
+pinned to its thread. Shared processors are virtual processors
+floating over the cores of a shared pool, with an entitlement in
+processing units, 1.00 a core; a capped partition cannot use more
+than its units, an uncapped one takes spare time by its weight. The
+default pool has every core that is not dedicated, reserved for the
+host or in a named pool. Resources are resolved at activation and do
+not change on a running partition.
+
+**Memory.** A partition's memory is 2 MB huge pages. PID 1 reserves
+the configurable memory, the installed memory less the host's reserve,
+as huge pages early in the IPL, before anything has fragmented memory;
+when the kernel gives fewer it says so and the host has that much less
+to give. Nothing is overcommitted and nothing balloons: a partition
+that is activated has its memory.
+
+**A partition's identity.** A partition's system serial number is made
+when the partition is created, from the host's serial number and the
+partition's ID, in the form QS/400's `QSRLNBR` holds, and is never
+changed. `qsvmm` writes SMBIOS tables for the partition that carry it
+and name the manufacturer and the product, which is how QS/400 knows
+its serial number and its hypervisor.
+
+**Whose the disks are.** A disk with QS/VS's three partitions is not
+the host's for that alone: a partition's disk can look the same. The
+host takes the disk the firmware started it from and the members that
+disk's label names.
 
 **Storage.** A storage pool is an xfs file system and a virtual disk is
 a raw file in it. Protection is the software RAID QS/400 has, served to

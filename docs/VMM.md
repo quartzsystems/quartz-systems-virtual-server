@@ -1,7 +1,8 @@
 # The VMM: a partition's machine
 
-`qsvmm` is one process for one partition. It reads a profile
-(`docs/PROFILE.md`), builds the machine below on KVM, IPLs the guest
+`qsvmm` is one process for one partition. It is given the partition's
+configuration for one activation (below), builds the machine on KVM,
+IPLs the guest
 from its load source (`vmm/ipl`), runs it, and exits with a code that
 says why the partition ended. It has no firmware to hand the guest,
 no QEMU beside it, and nothing that listens on a network.
@@ -9,25 +10,75 @@ no QEMU beside it, and nothing that listens on a network.
 The code is in `vmm/`: `arch` (the boot state), `acpi` (the tables),
 `devices`, `ipl` (the loader), `qsvmm` (the process).
 
+## The configuration
+
+The partition manager starts `qsvmm` and writes its whole
+configuration to its standard input: a profile resolved
+(`docs/PARTD.md`, `docs/RESOURCES.md`). `qsvmm` reads no profile and
+decides nothing: how many virtual CPUs, on which host threads, how
+much memory, which side, is all in what it is given. It is checked
+again all the same, for what `qsvmm` itself relies on, and a key it
+does not know is refused.
+
+```toml
+id = 3
+name = "PROD"
+serial = "8GQ2W03"
+vcpus = 4
+threads_per_core = 2
+pin = [6, 14, 7, 15]
+memory_mib = 2048
+huge_pages = true
+side = "recorded"
+keylock = "normal"
+ipl_type = "unattended"
+console = "serial"
+
+[[adapter]]
+slot = 2
+
+[[adapter.unit]]
+lun = 0
+backing = "/dev/sdb"
+serial = "PROD-LS"
+```
+
+| Key | Value |
+|---|---|
+| `id`, `name` | the partition's ID, 1 to 999, and its name. The ID names its log directory, its console socket and its user |
+| `serial` | its system serial number, for the SMBIOS tables |
+| `vcpus`, `threads_per_core` | the virtual CPUs, and how many of them are the sibling threads of one core: 1 or 2 |
+| `pin` | dedicated processors: the host thread each virtual CPU's thread stays on, in order. Left out for shared processors |
+| `memory_mib`, `huge_pages` | the memory, and whether it is the 2 MB huge pages the host reserved |
+| `side` | `a`, `b` or `recorded` |
+| `keylock`, `ipl_type`, `console` | written to the LIC record before the IPL; each may be left out, and is then left as the record has it. A load source with no LIC partition has nowhere to keep them: it loads when the side is named, with `C2005037`, and they are not written |
+| `[[adapter]]` | a virtual SCSI adapter: its `slot`, and its units, each with its `lun`, `backing` and `serial` |
+
+A developer can name a file in place of standard input: `qsvmm
+--config <file>`.
+
 ## The life of the process
 
-1. The profile is read. A profile that is refused ends here
+1. The configuration is read. One that is refused ends here
    (`A2005000`).
 2. **As root**: `/dev/kvm` is opened and a VM made with the interrupt
    controller and the PIT in the kernel; the partition's log directory
    and console socket are made; every disk unit is opened for direct
    I/O; `/dev/urandom` is opened; the guest's memory is mapped and
    given to KVM; the IPL loader reads the load source and loads the
-   side's kernel; the ACPI tables are written; the devices and the
-   processors are made.
-3. The process becomes user and group 23000 for good: no supplementary
+   side's kernel; the ACPI and SMBIOS tables are written; the devices
+   and the processors are made; the process gives itself a core
+   scheduling cookie (`docs/RESOURCES.md`).
+3. The process becomes the partition's own user and group, 23000 plus
+   the partition's ID, for good: no supplementary
    group, every capability dropped from the bounding set, none
    permitted, effective, inheritable or ambient, and `no_new_privs`
    set. It then checks that it cannot become root again. This is done
    while the process has one thread, so no thread keeps what was
-   dropped. One user serves every partition until the partition
-   manager gives each its own (Phase 4).
-4. The threads are started: one for each processor, one that writes
+   dropped. Every partition has a user of its own, so one partition's
+   process can neither signal another's nor read its files.
+4. The threads are started: one for each virtual CPU (each pinned to
+   its host thread when the processors are dedicated), one that writes
    the serial output, one that takes console connections, one that
    waits for a signal. A virtio device starts its own when the guest's
    driver is ready.
@@ -40,10 +91,15 @@ serial log, in a directory that is its own. The seccomp filter is
 Phase 11; step 3 is where it will be installed, after the last open
 and before the first thread.
 
-`qsvmm` reports on standard error. A reference code is a line
-`REF <code> <text>`; whoever started `qsvmm` posts it
-(`docs/REFCODES.md`, the `C2005` and `A2005` blocks). It cannot post
-by itself: PID 1's control socket is root's.
+`qsvmm` reports on standard error, which the partition manager gives
+it as a file. A reference code is a line `REF <code> <text>`, the text
+naming the partition; the partition manager posts it
+(`docs/REFCODES.md`, the `C2005` and `A2005` blocks). `C2005090`,
+"Partition started", is the report that the IPL loader has entered the
+kernel: the partition is Running from then. The report's last line is
+`END <exit code>`, for a partition manager that was not there to wait
+for the process. `qsvmm` cannot post by itself: PID 1's control socket
+is root's.
 
 ## Exit codes
 
@@ -62,14 +118,19 @@ Any other code (a panic's 101) is read as a VMM error.
 
 ## Memory
 
-An anonymous shared mapping for each region, not reserved ahead of use.
-Huge pages are Phase 4.
+An anonymous shared mapping for each region, of the 2 MB huge pages the
+host reserved at its IPL (`docs/RESOURCES.md`). The pages are reserved
+for the mapping as it is made, so a partition whose memory is not
+there ends at its activation with `A2005065`, and never faults for a
+page later. Run by hand without huge pages (`huge_pages = false`), the
+mapping is of ordinary pages, not reserved ahead of use.
 
 | From | To | What |
 |---|---|---|
 | `0` | `9FC00` | RAM. The boot structures: the GDT at `500`, the zero page at `7000`, six pages of page tables from `9000`, the (empty) command line at `20000` |
 | `9FC00` | `A0000` | reserved |
-| `E0000` | `FF000` | the ACPI tables, the root pointer first |
+| `E0000` | `F0000` | the ACPI tables, the root pointer first |
+| `F0000` | `FF000` | reserved. The SMBIOS tables, the entry point first |
 | `FF000` | `100000` | reserved. Seven bytes at the reset vector, `FFFF0`: `mov al, FE`, `out 64, al`, `hlt` and a jump back to it |
 | `100000` | 3 GiB at most | RAM. The kernel is loaded at `1000000` |
 | `C0000000` | `E8000000` | PCI memory space |
@@ -81,7 +142,13 @@ Huge pages are Phase 4.
 
 ## Processors
 
-One thread each. Processor 0 is put where the 64-bit Linux boot
+A partition's processor is a host core (`docs/RESOURCES.md`): one
+virtual CPU where a core has one thread, two sibling ones where it has
+two. Each virtual CPU is a thread of `qsvmm`. With dedicated
+processors each thread is pinned to one host thread of the partition's
+cores, one to one; with shared processors they float over the pool's.
+
+Virtual CPU 0 is put where the 64-bit Linux boot
 protocol wants it: long mode, the first four gigabytes mapped one to
 one in 2 MiB pages, flat segments, interrupts off, `rsi` at the zero
 page, `rip` 0x200 past where the kernel was loaded. The others wait,
@@ -90,8 +157,10 @@ as KVM leaves them, for the kernel to start them.
 **CPUID** is what KVM supports on the host, with these changes:
 
 - the topology leaves (1, 4, 0xB, 0x1F, and AMD's 0x80000008 and
-  0x8000001E) say one package of as many cores as the profile has
-  processors, one thread a core; a processor's APIC id is its number;
+  0x8000001E) say one package of as many cores as the partition has
+  processors, each of one thread or of two sibling threads; a virtual
+  CPU's APIC id is its number, so a core's threads are next to each
+  other;
 - the hypervisor bit, the TSC deadline timer and x2APIC are set;
 - the hypervisor leaves are KVM's own (`KVMKVMKVM`), so the guest uses
   the paravirtual clock;
@@ -159,8 +228,7 @@ notification is an eventfd KVM writes without leaving the kernel
 
 A device's queues are served on threads of its own, never on a
 processor's thread: virtio-scsi has one for requests and one for the
-control queue, so a request stuck in the host's I/O does not keep a
-task management function from being answered.
+control queue.
 
 Not there, and not missed by a Linux guest: the PCI configuration
 access capability (`VIRTIO_PCI_CAP_PCI_CFG`), legacy and transitional
@@ -169,9 +237,12 @@ interfaces, `INTx`, `EVENT_IDX`, packed queues.
 ### virtio-scsi
 
 One request queue of 256, the control queue, the event queue (never
-used: nothing is plugged or resized under a running partition). A unit
-of the profile is a LUN of target 0, the load source LUN 0. An inquiry
-gives `QUARTZ` / `VIRTUAL DISK` / `0100` and the profile's serial
+used: nothing is plugged or resized under a running partition). Each
+virtual SCSI adapter of the configuration is a virtio-scsi function of
+its own, in slot order; an adapter's units are the LUNs of its target
+0, numbered from 0 without a gap, and the load source is LUN 0 of the
+first. An inquiry
+gives `QUARTZ` / `VIRTUAL DISK` / `0100` and the unit's serial
 number in the unit serial number and device identification pages.
 
 The commands a disk takes: TEST UNIT READY, REQUEST SENSE, INQUIRY and
@@ -183,8 +254,17 @@ CACHE, MODE SENSE (6) and (10) for the caching page, UNMAP, WRITE SAME
 (10) and (16), START STOP UNIT and PREVENT ALLOW MEDIUM REMOVAL (which
 do nothing). Everything else ends with CHECK CONDITION and sense
 data: illegal request, invalid command operation code. Every task
-management function is answered complete: a request ends before the
-next is taken, so there is never a task left to abort.
+management function (an abort or a reset, which a guest sends when a
+request has taken too long) is answered complete, but only once every
+request the guest made before it has ended: the control queue's thread
+waits for the request in progress and serves those still waiting
+itself. The guest takes the answer to mean the device has done with
+those requests' buffers and reuses them, so a request that ended after
+it would write into memory that is no longer its. A request stuck in
+the host's I/O so keeps the answer back, and the guest's error handling
+goes on to its next step. At its end `qsvmm` reports how many there
+were, an adapter at a time, when there were any:
+`qsvmm: adapter 0 task management 3`.
 
 **The backing store** is a file or a block device of the host, opened
 with `O_DIRECT`, and a block device with `O_EXCL` too, so one the host
@@ -219,13 +299,35 @@ XSDT. OEM id `QUARTZ`, OEM table id `QSVSPART`.
 | MCFG | configuration space of segment 0, bus 0, at `E8000000` |
 | DSDT | `\_SB.PCI0` (`PNP0A08`, `PNP0A03`: bus 0, the configuration ports, PCI memory space); `\_SB.MBRD` (`PNP0C02`: the memory-mapped configuration space, so the kernel trusts the MCFG); `\_SB.COM1` (`PNP0501`); `\_SB.RTC0` (`PNP0B00`); `\_SB.PWRD` (`PNP0C02`: the sleep registers); `\_S5` |
 
+## SMBIOS
+
+A partition has no firmware to say what machine it is, so `qsvmm`
+writes SMBIOS tables where a kernel without firmware looks for them: a
+64-bit entry point (`_SM3_`) at `F0000`, the structures after it.
+
+| Type | What | Says |
+|---|---|---|
+| 0 | BIOS | the vendor `Quartz Systems`, the version `QS/VS` and the host's release; a virtual machine |
+| 1 | System | the manufacturer `Quartz Systems`, the product `QS/VS partition`, the release, the partition's serial number, a UUID made from the serial number, the family `QS/VS` |
+| 3 | Chassis | the manufacturer and the serial number again |
+| 127 | End | |
+
+The serial number is the partition's own, from its definition, the
+same at every activation (`docs/PROFILE.md`). The manufacturer and the
+product are what QS/400 knows a partition of QS/VS by
+(`docs/QS400_GUEST.md`). Every string is the host's; nothing in the
+tables comes from the guest.
+
 ## The serial port's far side
 
 What the guest transmits goes, through a bounded queue and one thread,
-to `<data>/log/partitions/<name>/serial.log` and to whoever is
-connected to `<run>/partitions/<name>/console.sock`. The log is rotated
+to `<data>/log/partitions/<ID>/serial.log` and to whoever is
+connected to `<run>/partitions/<ID>/console.sock`. Both directories
+are the partition's user's alone. The log is rotated
 at 4 MiB with three generations behind it, so a guest that never stops
-talking fills a bounded space. The socket is root's (mode 600); a
+talking fills a bounded space. The socket is the partition's user's
+(mode 600), so root and that user reach it and no other partition
+does; a
 client reads the guest's output from the moment it connects and writes
 the guest's input. A client that does not take the output is dropped;
 when the queue is full the guest waits, as on a slow line. A later

@@ -8,7 +8,10 @@ entry says what that was and what changed. The Phase 2 handoff decided
 9 and 13 again, and Phase 2 raised 16 to 22. The Phase 3 handoff
 answered those: 16, 18 and 21 are closed below, 20 was decided and
 built and waits for Cody to confirm the rule, 17 and 22 are decided in
-Phase 8, and 19 stays open. Phase 3 raised 23 to 28.
+Phase 8, and 19 stays open. Phase 3 raised 23 to 28, and 29 was
+answered with them; the Phase 4 handoff answered 23 to 28, which are
+closed below, and left 6, 17, 19 and 22 as they were. Phase 4 raised
+30 to 33.
 
 ## Open
 
@@ -62,69 +65,53 @@ need an owner both can ask: PID 1, or a service of their own. The
 Phase 3 handoff: decide in Phase 8, when QSI may need to manage them.
 Nothing changed.
 
-### 23. The side of a partition's next IPL (NEEDS-CODY: a QS/400 handoff)
+### 30. What a profile's IPL type is
 
-QS/400 chooses the side of its next IPL through firmware variables
-(`BootNext`, `BootOrder`). A partition has none, and the request is
-lost: `IPLSRC(B)` at a power down says `IPL source not set: not booted
-through UEFI` (`docs/QS400_GUEST.md`). The LIC record has no field for
-it that `licpart` owns: the default and pending slots are in a TLV of
-QS/400's `ptf` crate. So `side = "recorded"` in a profile means the
-side of the last IPL that completed. Recommended: QS/400 records the
-once-only slot and the default slot through `licpart` when it has no
-firmware, and `vmm/ipl` honours them. Needed before a partition can
-apply a LIC PTF, so before Phase 4 calls the IPL source the
-partition's own.
+The handoff gives a profile's boot section three fields: the IPL
+source, the IPL type and the console mode. QS/400's LIC record has no
+field of that name beside the source: it has the keylock position and
+a mode for the next IPL, normal or manual. The IPL type was taken to
+be whether the IPL is attended: `type = "unattended"` or `"attended"`
+in a profile, written as the record's mode for the next IPL, with the
+keylock in the manual position making an IPL attended whatever the
+profile says (`docs/PROFILE.md`, `vmm/ipl/src/lic.rs`). If QS/MC's
+wizard means something else by it, the field's values change and
+nothing else does.
 
-### 24. What QS/VS restates of QS/400 (a QS/400 handoff)
+### 31. A VMM ended by a signal that the partition manager did not send
 
-Two things the IPL loader knows of QS/400 that it does not get from
-`licpart`: the console mode's TLV tag and its two values, which are in
-QS/400's `svctools` (`vmm/ipl/src/lic.rs`), and the two paths of the
-sides' UKIs on the ESP, which are in `slic` (`vmm/ipl/src/lib.rs`).
-Each is a constant, not copied source. Recommended: QS/400 moves the
-console mode into `licpart` and exports the paths from `diskimg`, and
-QS/VS takes them from there at the next pin.
+`qsvmm` that takes `SIGTERM` ends in order with exit code 50, "ended by
+the host". When the partition manager sent it, the partition is Not
+activated. When something else did, the partition manager cannot tell
+an operator's act from an accident, and leaves the partition Not
+activated too, not in Error (`docs/PARTD.md`). Nothing in a release
+image sends that signal but the partition manager, so the case is the
+test hooks' alone. Recommended: leave it.
 
-### 25. A partition's identity
+### 32. The kernel is built for 64 threads
 
-A partition has no SMBIOS tables. QS/400 so has no machine serial
-number (`QSRLNBR 0000000` in every partition) and cannot name its
-hypervisor (`unidentified hypervisor` in `QSHWQUAL`). Two ways: QS/VS
-writes SMBIOS tables for a partition, with a serial number from its
-profile; or QS/400 learns a partition from QS/VS's ACPI tables and the
-service channel of Phase 7. Recommended: decide with Phase 4's
-profiles, which is where a partition's serial number would be kept.
+`NR_CPUS=64` is what the pinned kernel configuration gives, here as in
+QS/400. A host with more threads than that shows 64 of them, and its
+partitions can be given no others. Not a matter of this phase, and the
+kernel pin is QS/400's: a larger value is a change to the fragment
+there and here, in a commit of its own. Recommended: raise it with
+the kernel pin's next move, before the first machine that has more.
 
-### 26. Which disks the host takes for its own load source
+### 33. What a processing unit is worth where a core has two threads
 
-The host takes every disk whose table has its three partition types
-for a load-source disk: it writes its A/B record to each. That was
-right when every disk was the host's. A partition's disk can now look
-like one (a QS/VS image as a guest's disk, which only the conformance
-harness has; but also a disk moved from another host). The harness
-wraps its guest image so the host does not see it
-(`tools/conformance/src/suite/partition/devices.rs`). Recommended,
-before a partition is given a whole disk (Phases 5 and 10): the host
-takes the disk it IPLed from and the members its set's label names,
-and no other.
-
-### 27. Whose the keylock is
-
-The profile's `keylock`, when it has one, is written to the guest's
-LIC record at every activation; the guest's own `mode manual` at its
-service console writes the same field for its next IPL. Whoever wrote
-last wins. On a machine the keylock is a physical key. Recommended:
-decide with Phase 4's panel functions whether a partition's keylock is
-the host's alone.
-
-### 28. One user for every partition
-
-`qsvmm` runs as user and group 23000 once it has opened its devices:
-the same for every partition, so one partition's process could signal
-another's or read its serial log. With one partition that is nothing.
-Phase 4 gives each partition its own.
-
+A unit is one core's worth of time, and a core with SMT has two
+threads' worth: a capped partition's quota is its units times two, in
+thread time (`docs/RESOURCES.md`). A partition whose load keeps both
+threads of each of its virtual processors busy is so held to exactly
+its units. One that keeps a single thread busy can hold a core for up
+to twice the wall-clock time its units say, because core scheduling
+keeps the core's other thread idle beside it and idle time is charged
+to nobody. The other choice, a quota of the units in thread time,
+holds such a partition to its units of cores and gives a partition
+that uses both threads half of what it is entitled to. Measured under
+full load, as the handoff's suite does, the first is exact; it is the
+one built. Recommended: confirm, or say which load the cap is to be
+exact for.
 
 ## Closed
 
@@ -245,3 +232,38 @@ Phase 4 gives each partition its own.
     the guest's kernel, and the IPL is the VMM's. A QS/400 that
     restarts by the ACPI reset register in a partition would make them
     unused, not wrong; ACPI that is not hardware-reduced was not taken.
+23. **The side of a partition's next IPL.** Closed with the pin of
+    Phase 4 (`e035bea`): QS/400 records the side for one IPL and the
+    default side in its LIC record when it has no firmware
+    (`licpart::IplSource`), and the IPL loader takes it, once an
+    activation (`vmm/ipl/src/lic.rs`). A profile's `recorded` source
+    is what the partition itself asked for; side A or B in an
+    activation overrides it and leaves the record alone. The suite
+    `partition-recorded` shows it from the guest's side.
+24. **What QS/VS restates of QS/400.** Nothing any more: the console
+    mode is `licpart::ConsoleMode`, and the sides' paths are
+    `diskimg::SLOT_A_UKI` and `SLOT_B_UKI`.
+25. **A partition's identity.** QS/VS writes SMBIOS tables for each
+    partition: the manufacturer `Quartz Systems`, the product `QS/VS
+    partition`, and a system serial number made once, when the
+    partition is created, from the host's serial number and the
+    partition's ID, in the format `QSRLNBR` holds; it is in the
+    definition and never changes (`docs/PROFILE.md`, `docs/VMM.md`).
+    QS/400 at `e035bea` reads it as it is (`docs/QS400_GUEST.md`).
+26. **Which disks the host takes.** The disk it IPLed from and the
+    members that disk's label names, and no other
+    (`base/loadsource/src/own.rs`). The disk of the IPL is the one the
+    firmware's `BootCurrent` entry names, by the PCI functions of its
+    device path or the GUID of its ESP; with no firmware to ask it is
+    the first disk in name order that has the three partitions. The
+    harness's wrapper around guest images is gone, and the suite
+    `partition-own-disks` shows a guest's disk with QS/VS's own
+    partitions and identifiers left as it was.
+27. **Whose the keylock is.** The host's. The definition holds it, it
+    is written to the LIC record at every activation, and what the
+    guest sets for itself lasts until the next one
+    (`partition-attributes`).
+28. **One user for every partition.** Each partition's `qsvmm` runs as
+    its own user and group, 23000 plus the partition's ID; its serial
+    log and its console socket are in directories of that user alone
+    (`partition-isolation`).

@@ -11,16 +11,22 @@ change: a list a QS/400 handoff can be written from.
 to four processors, finds its disks on virtio-scsi, takes its time from
 the clock, powers off through ACPI, restarts by the reset vector, and
 recovers its object store after the VMM is killed under it. Nothing in
-QS/400 blocks a suite of Phase 3. What does not work is everything
-QS/400 does through firmware variables: choosing the side of the next
-IPL.
+QS/400 blocks a suite. Since the pin of Phase 4 (`e035bea`) it also
+chooses the side of its next IPL without firmware, through its LIC
+record; takes its serial number from the SMBIOS tables QS/VS gives a
+partition; and names its hypervisor. The sections below say what was
+seen at which pin.
 
 ## How it was run
 
-- The guest is `qs400-V1R1M0-f50c366ffb35.img`, built by QS/400's own
-  orchestrator (`cargo run -p build -- all`, `QS400_BUILD_ID=qsvs-guest`)
-  from a clone at the pinned commit `03d6492913318da96bc707cb68d3b54a94ef9bff`,
-  with nothing changed. `docs/PHASE3.md` says how to make it.
+- For Phase 3 the guest was `qs400-V1R1M0-f50c366ffb35.img`, built by
+  QS/400's own orchestrator (`cargo run -p build -- all`,
+  `QS400_BUILD_ID=qsvs-guest`) from a clone at the commit pinned then,
+  `03d6492913318da96bc707cb68d3b54a94ef9bff`, with nothing changed.
+  For Phase 4 it is `qs400-V1R1M0-150983bae8c2.img`, built the same
+  way at `e035bea3998bd5732750f134eafcd89ba45d638f`. What is marked
+  "at `e035bea`" below was seen with that one; `docs/PHASE4.md` says
+  how to make it.
 - It was run two ways: by `qsvmm` on the build host itself, against a
   copy of the image as a file, with the guest's service console driven
   through the console socket; and by the conformance suites, in a
@@ -84,8 +90,37 @@ with `not booted through UEFI`, and reports `boot order not changed`
 with the IPL going on. That path was read in the source
 (`lic/slic/src/cpp/ptflic.rs`), not run: it needs a LIC PTF.
 
-**When `IPLSRC` or a PTF asks for the other side.** It is refused, in a
-line on the serial port, and the power down goes on:
+**When `IPLSRC` or a PTF asks for the other side.** At `e035bea` the
+request is kept in the LIC record and the hypervisor honours it:
+
+```
+QS400-SVC> pwrdwnsys OPTION(*IMMED) IPLSRC(B)
+...
+slic: next IPL from slot B
+SRC D1001090  Power down complete
+```
+
+and at the next activation whose IPL source is `recorded`:
+
+```
+REF C2005030 Partition LIC record read: TESTLPAR, side B once keylock *NORMAL console serial sequence 9
+REF C2005035 Partition IPL attributes written
+REF C2005040 Partition IPL image read: TESTLPAR, side B 31589376 bytes
+...
+slic: slot B, mode None, svc on
+```
+
+`slic` writes the TLV `0x010B` when it did not come up through UEFI
+and the processor has the hypervisor flag (`lic/slic/src/platform/partfw.rs`
+there); the IPL loader reads it through `licpart::IplSource::take`,
+once an activation: the side for one IPL is taken and cleared, and the
+record written; with none it is the default side; with no TLV, side A.
+An activation that names side A or B itself overrides the request and
+leaves the record alone. The suite `partition-recorded` shows all of
+it from the guest's side.
+
+At the commit pinned for Phase 3 it was refused, in a line on the
+serial port, and the power down went on:
 
 ```
 QS400-SVC> pwrdwnsys OPTION(*IMMED) RESTART(*YES) IPLSRC(B)
@@ -108,8 +143,9 @@ right outcome for a partition: side A's path is where the loader looks.
 A LIC install over an installed system (`install.rs`, the slot-B path)
 likewise logs `boot order not set` and writes slot A as well.
 
-**Does the LIC record already hold enough for the hypervisor to honour
-the requested side at the next activation? No.**
+**Does the LIC record hold enough for the hypervisor to honour the
+requested side at the next activation? At `e035bea`, yes** (above). At
+the commit pinned for Phase 3 it did not:
 
 - The record's header (`licpart::Header`) has `last_slot` and
   `last_good_slot`: where the last IPLs came from. It has no field for
@@ -121,9 +157,10 @@ the requested side at the next activation? No.**
   not.
 - The slot `IPLSRC` names is not recorded anywhere.
 
-So `side = "recorded"` in a profile means, for now, the side of the
-last IPL that completed (`last_good_slot`); a disk that has never IPLed
-starts from side A.
+So in Phase 3 a profile's recorded side meant the side of the last IPL
+that completed (`last_good_slot`). Since Phase 4 it means what the
+partition itself asked for; a disk that has never IPLed, or has asked
+for nothing, starts from side A.
 
 ### Does the console come up on serial when the LIC record says serial, and what does the local-display path do with no framebuffer?
 
@@ -237,9 +274,51 @@ It has no effect that was seen.
   its transactions (`storage management recovery: 158 transaction(s)
   replayed`) and completes.
 
+## A partition's identity (at `e035bea`)
+
+QS/VS gives each partition SMBIOS tables (`docs/VMM.md`): the
+manufacturer `Quartz Systems`, the product `QS/VS partition`, and the
+partition's system serial number, which is made once when the
+partition is created and never changed (`docs/PROFILE.md`). An
+unmodified QS/400 uses all three:
+
+```
+slic: 159 system values, 0 overridden, QSRLNBR K2M4101, QTIMZON Q0000UTC
+```
+
+```
+QS400-SVC> qshwqual
+ Machine  . . . . . . :   Quartz Systems QS/VS partition
+ Hypervisor . . . . . :   QS/VS
+ Firmware and security
+  PASS   UEFI                  No firmware: a partition of QS/VS, which loads
+```
+
+**What QS/400 reads to use the serial number.** The SMBIOS system
+information's serial number (type 1), as the kernel publishes it at
+`/sys/class/dmi/id/product_serial`: `hwrsrc::dmi::Dmi::serial()`, which
+`slic`'s `host_info()` hands to `sysval` as the machine's genuine
+serial number. `sysval::store::fitting_serial` takes it as `QSRLNBR`
+when it is letters and digits only and no longer than the value's
+length, which a QS/VS serial number always is (seven characters of
+`0` to `9` and `A` to `Z` without `I` and `O`). The UUID beside it
+(type 1 too, derived from the serial number) is what QS/400 would hash
+if the serial number did not fit; it is never needed. QS/400 knows a
+partition of QS/VS by the product's name (`hwqual::checks::qsvs`), or
+by the ACPI tables' OEM ids and the FADT's hypervisor vendor identity,
+which were there since Phase 3.
+
+So nothing is left for QS/400 to change for this: at `e035bea` it
+already reads what QS/VS writes. The one thing a QS/400 handoff should
+do is **keep it so**: the serial number of a partition is the SMBIOS
+type 1 serial number, read from `product_serial`, and must not come to
+depend on a firmware variable or on the product UUID.
+
 ## What QS/400 would have to change
 
 For a QS/400 handoff, in the order of how much a partition needs each.
+Items 1 to 6 were done at `e035bea`; what is said under each is how it
+was at the commit pinned for Phase 3.
 
 1. **Record the side of the next IPL in the LIC record when there is no
    firmware to tell.** `licpart` gains, in the header or in a TLV of
@@ -282,6 +361,13 @@ For a QS/400 handoff, in the order of how much a partition needs each.
    command line does it, and is harmless on a machine with firmware
    only if its reset register works.
 
-None of these is needed for Phase 3. Item 1 is needed before a
-partition can apply a LIC PTF or be told `IPLSRC`, which is before
-Phase 4 can call a partition's IPL source its own.
+Done at `e035bea`: 1 (`licpart::IplSource`, `partfw.rs`), 2
+(`licpart::ConsoleMode`; QS/VS restates nothing, and takes the sides'
+paths from `diskimg::SLOT_A_UKI` and `SLOT_B_UKI`), 3 and 4 (`QSHWQUAL`
+names QS/VS and passes the firmware check), 5 (the serial number, from
+the SMBIOS tables QS/VS writes since Phase 4), 6 (the entropy device
+has a type of its own, `QX01`: `lic/hwrsrc/src/scan/pci.rs` there). 7 needs nothing. 8 stays as it is: the seven
+bytes at the reset vector are kept (`docs/OPEN_QUESTIONS.md` item 29).
+
+Still QS/400's, and not needed before Phase 7: a guest agent for the
+service channel, and a partition's reference codes sent to the host.
