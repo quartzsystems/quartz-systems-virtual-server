@@ -36,9 +36,10 @@ use ipl::{Fault, Step};
 use refcode::RefCode;
 use vmm_sys_util::signal::Killable;
 
-use crate::config::{self, Partition};
+use crate::config::{self, Partition, Slot};
 use crate::end::End;
 use crate::machine::{self, Hypervisor, vcpu};
+use crate::media;
 use crate::serial::{self, Clients, console, log::Log};
 use crate::{post, sys};
 
@@ -105,6 +106,10 @@ fn post_step(step: Step) {
             &refcode::PARTITION_IMAGE_READ,
             &format!("side {} {bytes} bytes", ipl::side_letter(side)),
         ),
+        Step::MediaRead { label, bytes } => post(
+            &refcode::PARTITION_MEDIA_READ,
+            &format!("{label} {bytes} bytes"),
+        ),
         Step::Loaded => post(&refcode::PARTITION_LOADED, ""),
     }
 }
@@ -121,10 +126,14 @@ fn fault_stop(fault: &Fault) -> Stop {
         Fault::BadRecord(_) => &refcode::PARTITION_BAD_RECORD,
         Fault::NotKernel(ipl::load::LoadError::NotKernel(_)) => &refcode::PARTITION_NOT_KERNEL,
         Fault::NotKernel(_) => &refcode::PARTITION_NOT_BUILT,
+        Fault::NoMedia => &refcode::PARTITION_NO_MEDIA,
+        Fault::BadMedia(_) => &refcode::PARTITION_BAD_MEDIA,
+        Fault::NoMediaImage => &refcode::PARTITION_NO_MEDIA_IMAGE,
     };
     let detail = match fault {
         Fault::Io => "the load source".to_string(),
-        Fault::NoEsp | Fault::NoLic => String::new(),
+        Fault::NoEsp | Fault::NoLic | Fault::NoMedia => String::new(),
+        Fault::NoMediaImage => ipl::MEDIA_PATH.to_string(),
         Fault::NoImage(side) => format!("side {}", ipl::side_letter(*side)),
         other => other.to_string(),
     };
@@ -136,6 +145,7 @@ struct Running {
     ends: mpsc::Receiver<(End, String)>,
     tap: serial::Tap,
     luns: Vec<Units>,
+    drives: media::Drives,
     managed: Vec<Arc<AtomicU64>>,
 }
 
@@ -168,6 +178,28 @@ fn open_units(partition: &Partition) -> Result<Vec<Vec<Arc<dyn Unit>>>, Stop> {
         adapters.push(luns);
     }
     Ok(adapters)
+}
+
+/// One function a device, in slot order: a disk adapter's units, or an
+/// optical or tape drive alone.
+fn functions(
+    partition: &Partition,
+    adapters: Vec<Vec<Arc<dyn Unit>>>,
+    mut drives: media::SlotUnits,
+) -> Vec<Vec<Arc<dyn Unit>>> {
+    let mut adapters: Vec<Option<Vec<Arc<dyn Unit>>>> = adapters.into_iter().map(Some).collect();
+    let mut functions = Vec::new();
+    for (slot, device) in partition.slots() {
+        match device {
+            Slot::Disks(i) => functions.extend(adapters[i].take()),
+            Slot::Optical(_) | Slot::Tape(_) => {
+                if let Some(at) = drives.iter().position(|(s, _)| *s == slot) {
+                    functions.push(vec![drives.remove(at).1]);
+                }
+            }
+        }
+    }
+    functions
 }
 
 /// Make `dir` the partition's own: its user's, and nobody else's to
@@ -214,8 +246,17 @@ fn open_console(
 }
 
 /// The IPL: the load source read through the page cache, and what the
-/// loader wrote made durable before the guest's first direct read.
+/// loader wrote made durable before the guest's first direct read. For
+/// IPL source D, the first optical device's medium instead.
 fn load(partition: &Partition, memory: &devices::Memory, ram: &Ram) -> Result<ipl::Ipl, Stop> {
+    if partition.side == ipl::Side::Media {
+        let medium = media::first_medium(partition).map_err(|e| Stop {
+            code: &refcode::PARTITION_BAD_MEDIA,
+            detail: e.to_string(),
+        })?;
+        return ipl::ipl_media(medium, memory, ram, &mut post_step)
+            .map_err(|fault| fault_stop(&fault));
+    }
     let load_source = partition.load_source();
     let unreadable = |e: io::Error| Stop {
         code: &refcode::PARTITION_DISK_UNREADABLE,
@@ -318,14 +359,22 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
 
     let log = open_log(options, partition, root)?;
     let listener = open_console(options, partition, root)?;
+    let control =
+        media::bind(&options.socket_dir(config.id)).map_err(not_built("the control socket"))?;
 
     let adapters = open_units(partition)?;
+    let load_blocks = adapters[0][0].blocks();
+    let (drives, drive_units) = media::open(partition).map_err(|e| Stop {
+        code: &refcode::PARTITION_DISK_UNREADABLE,
+        detail: format!("an optical or tape device: {e}"),
+    })?;
+    let functions = functions(partition, adapters, drive_units);
     post(
         &refcode::PARTITION_DISKS_OPENED,
         &format!(
             "{} unit(s), load source {} blocks",
             partition.units(),
-            adapters[0][0].blocks()
+            load_blocks
         ),
     );
     let entropy = File::open("/dev/urandom").map_err(not_built("/dev/urandom"))?;
@@ -347,7 +396,7 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         &memory,
         Box::new(tap.clone()),
         requests,
-        adapters,
+        functions,
         entropy,
     )
     .map_err(not_built("devices"))?;
@@ -377,14 +426,12 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     let clients = Clients::default();
     serial::spawn(queue, log, clients.clone()).map_err(not_built("threads"))?;
     console::spawn(listener, built.serial.clone(), clients).map_err(not_built("threads"))?;
+    media::spawn(control, drives.clone()).map_err(not_built("threads"))?;
     vcpu::install_kick().map_err(not_built("signals"))?;
     let processors = start_processors(vcpus, &built, &ends, &memory, &config.pin)
         .map_err(not_built("threads"))?;
     spawn_signal_watch(ends.clone(), processors).map_err(not_built("threads"))?;
-    post(
-        &refcode::PARTITION_STARTED,
-        &format!("side {}", ipl::side_letter(loaded.side)),
-    );
+    post(&refcode::PARTITION_STARTED, &loaded.loaded.words());
     // The VM and the memory live as long as the process does.
     std::mem::forget(hypervisor);
     std::mem::forget(memory);
@@ -392,6 +439,7 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         ends: ended,
         tap,
         luns: built.luns,
+        drives,
         managed: built.managed,
     })
 }
@@ -512,8 +560,10 @@ pub fn run(options: &Options) -> End {
         .ends
         .recv()
         .unwrap_or((End::VmmError, "every thread ended".into()));
-    // What the guest said last is in the log before the process goes.
+    // What the guest said last is in the log before the process goes,
+    // and what it wrote to tape is durable.
     running.tap.drain(Duration::from_secs(2));
+    running.drives.sync();
     let mut unit = 0;
     for luns in &running.luns {
         for lun in luns.iter() {

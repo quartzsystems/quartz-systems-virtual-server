@@ -73,9 +73,9 @@ installed host's history starts with its first IPL.
 | `C2004xxx`, `A2004xxx` | the installer, numbered after its steps |
 | `C2005xxx`, `A2005xxx` | a partition: its activation and IPL in order, what it lacked when it could not IPL, and how it ended (`qsvmm`) |
 | `C2006xxx`, `A2006xxx` | the partition manager (`partd`): its start, partitions found running, auto start, an activation that failed before a VMM ran |
+| `C2007xxx`, `A2007xxx` | storage pools and the media library (`poold`, the pool service): assembly, creation, resynchronization and rebuild, hot spares, imports, how full a pool is |
 
-Later phases take further blocks (storage pools, QSI) and record them
-here.
+Later phases take further blocks (QSI) and record them here.
 
 ## A partition's codes
 
@@ -177,15 +177,27 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2005035` | Partition IPL attributes written | the keylock position, the IPL type or the console mode of the activation is in the LIC record, or the side asked for one IPL was taken out of it |
 | `C2005037` | Partition has no LIC record yet | the LIC partition is blank and the guest writes the first record; or there is none and the IPL is from a side that was named: the keylock position, IPL type and console mode are then written nowhere |
 | `C2005040` | Partition IPL image read | the side's UKI was read from the ESP, with the side and its size |
+| `C2005045` | Partition installation media read | IPL source D: the media UKI was read from the ISO 9660 image in the first optical device, with the image's volume identifier and the UKI's size |
 | `C2005050` | Partition kernel loaded | the kernel, the page tables, the GDT and the zero page are in guest memory |
 | `C2005060` | Partition machine built | with the processors, the memory and the disk units |
 | `C2005090` | Partition started | the processors are running, with the name and the side |
 | `C2005100` | Partition powered off | the guest powered off: exit code 0 |
 | `C2005110` | Partition ended for a restart | the guest asked for a restart: exit code 10. `qsvmm` does not restart in place: the partition manager activates the partition again |
+| `C2005160` | Partition resumed | a partition held for its pool's space has room again: its processors run, and the write that found the pool full was done |
 | `C2006000` | Partition manager started | with the partitions defined and those found running |
 | `C2006010` | Partition found running | a partition that ran while the partition manager did not is watched again, with its name |
 | `C2006020` | Partition auto start started | with the number of partitions flagged to start with the host |
 | `C2006030` | Partition auto start complete | every flagged partition was tried, with how many were activated |
+| `C2007000` | Pool service started | with the pools found and how many were assembled |
+| `C2007010` | Storage pool assembled | a pool's units were found by their labels, its set opened and its file system mounted, with its name, protection and state |
+| `C2007015` | Storage pool created | with its name, protection, units and capacity |
+| `C2007020` | Pool resynchronization started | a pool stopped uncleanly: a mirrored pool copies the regions its write-intent map has dirty, a parity pool computes the parity it had not, with the extent |
+| `C2007025` | Pool resynchronization finished | the pool's units are in step |
+| `C2007030` | Pool rebuild started | a unit is written again from the others, with the pool, the unit and its location code |
+| `C2007035` | Pool rebuild finished | the unit is in step |
+| `C2007040` | Hot spare taken into a pool | a hot spare took a failed unit's place, with both units' location codes; its rebuild follows |
+| `C2007050` | Media image imported | an optical image is in the media library, with its name and volume identifier |
+| `C2007090` | Storage pools stopped | at the host's shutdown, after every partition ended: each pool's file system unmounted and its set stopped in order |
 | `A2001030` | A/B record not valid | no copy of the record is valid; a new one is written for the slot booted |
 | `A2001035` | Pending slot not confirmed | the pending slot did not confirm on its IPL; this IPL is on the default and the pending field is cleared |
 | `A2001040` | Data file system not mounted | `/data` could not be mounted, with the reason; state is in memory only. Nothing is reformatted |
@@ -214,6 +226,9 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2005022` | Partition EFI system partition cannot be read | the ESP holds no FAT16 or FAT32 volume, or a damaged one |
 | `A2005030` | Partition has no IPL image for the side | the ESP has no UKI at the side's path, with the side |
 | `A2005031` | Partition IPL image cannot be read | the UKI's cluster chain is damaged or the file is larger than 128 MiB |
+| `A2005032` | Partition has no installation media | IPL source D, and the partition's first optical device has no medium |
+| `A2005033` | Partition installation media cannot be read | the medium is not an ISO 9660 image, or one whose structures do not hold, with what is wrong |
+| `A2005034` | Partition installation media has no IPL image | the image has no file at `EFI/BOOT/BOOTX64.EFI` |
 | `A2005040` | Partition load source has no LIC partition | the IPL is from the recorded side and the table has no LIC partition to read it from |
 | `A2005041` | Partition LIC record not valid | neither copy of the LIC record is valid and the partition is not blank |
 | `A2005050` | Partition IPL image is not a kernel | the UKI is not a bzImage with a 64-bit entry, with what is wrong |
@@ -224,11 +239,19 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2005130` | Partition ended with a VMM error | `qsvmm` failed while the partition ran: exit code 40, or one it does not use |
 | `A2005140` | Partition ended by the host | `qsvmm` was sent `SIGTERM`: exit code 50 |
 | `A2005150` | Partition VMM killed | `qsvmm` was killed by a signal, with the signal |
+| `A2005160` | Partition held for storage pool space | a write to a thin virtual disk found its pool full: the partition's processors are stopped, it stays Running, nothing reaches the guest as an error, and it goes on by itself (`C2005160`) when the pool has room |
 | `A2006010` | Partition not activated | an activation failed before `qsvmm` ran, with the partition's name and the message |
 | `A2006020` | Partition not started automatically | a partition flagged to start with the host could not be activated, with its name and the message; the others are still tried |
 | `A2006030` | Partition state not valid | a definition, a profile or `partitions.toml` was refused, with the file and the reason |
 | `A2006040` | Resource controls not set | a control group could not be made or a value written, with the file and the error |
 | `A2006090` | Partitions not ended in time | at the host's shutdown the partition manager did not report every partition ended; the shutdown goes on |
+| `A2007010` | Storage pool not assembled | a pool's units were found but its set could not be opened or its file system mounted, with the pool and why; only the partitions that use it are affected |
+| `A2007020` | Pool unit failed | a unit was taken out of service or not found, with the pool, the unit, its location code and serial number |
+| `A2007030` | Pool rebuild not finished | a rebuild or resynchronization stopped, with the pool and why |
+| `A2007040` | Storage pool failed | more units are lost than the pool's protection covers: the pool is Failed, nothing more is written to its units, and its partitions are in Error |
+| `A2007050` | Storage pool 80% allocated | a pool's allocated space passed 80% of its size, with the pool, what is allocated and what is provisioned |
+| `A2007051` | Storage pool 90% allocated | the same at 90% |
+| `A2007060` | Media image not imported | an import of an optical image failed, with the name and why; nothing of it is left |
 | `B2001000` | Host PID 1 failed | by PID 1's panic handler, with the panic message, before it parks |
 | `B2003000` | Storage service stopped | the storage service of a mirrored load source failed five times in ten minutes; the host parks |
 | `D2001000` | Host shutdown started | an orderly shutdown began, with what asked for it |

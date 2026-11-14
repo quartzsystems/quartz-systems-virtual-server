@@ -13,7 +13,13 @@
 //! 3. The side's UKI, read from the ESP's FAT volume.
 //! 4. The kernel loaded, the page tables, GDT and zero page written.
 //!
+//! IPL source D is the installation media instead: the media UKI is
+//! read from the ISO 9660 image in the partition's first optical
+//! device, where QS/400's build puts it, and loaded the same way. The
+//! disk and its LIC record are not read.
+//!
 //! - [`gpt`], [`fat`]: bounded readers of the guest's disk.
+//! - [`iso`]: a bounded reader of the installation media.
 //! - [`lic`]: the LIC record through QS/400's `licpart`.
 //! - [`load`]: the bzImage into guest memory.
 //! - [`part`]: a partition as a device.
@@ -38,6 +44,7 @@ use uuid::{Uuid, uuid};
 use vm_memory::GuestMemoryMmap;
 
 use fat::FatError;
+use iso::IsoError;
 use lic::{RecordError, Recorded, Settings};
 use part::Part;
 
@@ -52,6 +59,9 @@ pub use diskimg::SLOT_A_UKI as SIDE_A_PATH;
 pub use diskimg::SLOT_B_UKI as SIDE_B_PATH;
 /// The most bytes a UKI may have.
 pub const MAX_IMAGE_BYTES: usize = 128 << 20;
+/// The media UKI on an installation image: QS/400's build puts it
+/// there, in the ISO 9660 tree as well as in the El Torito image.
+pub const MEDIA_PATH: &str = "EFI/BOOT/BOOTX64.EFI";
 
 /// The side asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,10 +74,13 @@ pub enum Side {
     /// the once-only slot when there is one, which is then cleared,
     /// else the default slot, else side A.
     Recorded,
+    /// IPL source D: the installation media in the first optical
+    /// device.
+    Media,
 }
 
 /// A step of the IPL that was done.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Step {
     /// The partition table was read.
     TableRead,
@@ -78,6 +91,13 @@ pub enum Step {
     RecordWritten,
     /// The load source has no LIC record yet and none was needed.
     NoRecord,
+    /// The installation media's UKI was read.
+    MediaRead {
+        /// The image's volume identifier.
+        label: String,
+        /// The UKI's bytes.
+        bytes: usize,
+    },
     /// The side's UKI was read.
     ImageRead {
         /// The side.
@@ -120,13 +140,41 @@ pub enum Fault {
     /// The UKI is not a kernel that can be started.
     #[error("{0}")]
     NotKernel(load::LoadError),
+    /// IPL source D, and no medium in the first optical device.
+    #[error("no installation media is loaded")]
+    NoMedia,
+    /// The medium is not an ISO 9660 image that can be read.
+    #[error("the installation media: {0}")]
+    BadMedia(IsoError),
+    /// The medium has no UKI where installation media has it.
+    #[error("the installation media has no UKI")]
+    NoMediaImage,
+}
+
+/// What a partition was loaded from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Loaded {
+    /// A side of its load source.
+    Side(Slot),
+    /// The installation media.
+    Media,
+}
+
+impl Loaded {
+    /// As a report says it: `side A`, `installation media`.
+    pub fn words(self) -> String {
+        match self {
+            Loaded::Side(side) => format!("side {}", side_letter(side)),
+            Loaded::Media => "installation media".to_string(),
+        }
+    }
 }
 
 /// A partition ready to run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Ipl {
-    /// The side loaded.
-    pub side: Slot,
+    /// What was loaded.
+    pub loaded: Loaded,
     /// The address the boot processor starts at.
     pub entry: u64,
 }
@@ -193,7 +241,7 @@ pub fn read<D: Device>(
         Side::A => Slot::A,
         Side::B => Slot::B,
         // A disk that has not IPLed yet has asked for nothing: side A.
-        Side::Recorded => recorded.map_or(Slot::A, |r| r.side),
+        Side::Recorded | Side::Media => recorded.map_or(Slot::A, |r| r.side),
     };
 
     let part = Part::new(&mut *disk, esp.offset(), esp.bytes());
@@ -230,7 +278,53 @@ pub fn ipl<D: Device>(
     let (side, image) = read(disk, disk_bytes, side, settings, now, step)?;
     let entry = load::load(mem, ram, &image).map_err(Fault::NotKernel)?;
     step(Step::Loaded);
-    Ok(Ipl { side, entry })
+    Ok(Ipl {
+        loaded: Loaded::Side(side),
+        entry,
+    })
+}
+
+/// Read the media UKI from `media`, an ISO 9660 image of `bytes`, or
+/// `None` when the first optical device is empty.
+pub fn read_media<D: std::io::Read + std::io::Seek>(
+    media: Option<(D, u64)>,
+    step: &mut dyn FnMut(Step),
+) -> Result<Vec<u8>, Fault> {
+    let (dev, bytes) = media.ok_or(Fault::NoMedia)?;
+    let mut volume = iso::Volume::open(dev, bytes).map_err(|e| match e {
+        IsoError::Io => Fault::Io,
+        e => Fault::BadMedia(e),
+    })?;
+    let label = volume.label().to_string();
+    let image = volume
+        .read_file(MEDIA_PATH, MAX_IMAGE_BYTES)
+        .map_err(|e| match e {
+            IsoError::Io => Fault::Io,
+            IsoError::NotFound => Fault::NoMediaImage,
+            e => Fault::BadMedia(e),
+        })?;
+    step(Step::MediaRead {
+        label,
+        bytes: image.len(),
+    });
+    Ok(image)
+}
+
+/// IPL a partition from installation media: read the media UKI from
+/// `media` and load it into `mem`.
+pub fn ipl_media<D: std::io::Read + std::io::Seek>(
+    media: Option<(D, u64)>,
+    mem: &GuestMemoryMmap,
+    ram: &Ram,
+    step: &mut dyn FnMut(Step),
+) -> Result<Ipl, Fault> {
+    let image = read_media(media, step)?;
+    let entry = load::load(mem, ram, &image).map_err(Fault::NotKernel)?;
+    step(Step::Loaded);
+    Ok(Ipl {
+        loaded: Loaded::Media,
+        entry,
+    })
 }
 
 /// A load source for the tests and the fuzzer's corpus: a table, an
@@ -302,13 +396,54 @@ mod tests {
         (result, steps)
     }
 
+    fn media_ipl(media: Option<Vec<u8>>) -> (Result<Ipl, Fault>, Vec<Step>) {
+        let (mem, ram) = memory();
+        let mut steps = Vec::new();
+        let media = media.map(|m| {
+            let len = m.len() as u64;
+            (Cursor::new(m), len)
+        });
+        let result = ipl_media(media, &mem, &ram, &mut |s| steps.push(s));
+        (result, steps)
+    }
+
+    #[test]
+    fn source_d_loads_the_media_uki_and_each_fault_is_its_own() {
+        let kernel = load::build(7000);
+        let iso = iso::build("QS400_V1R1M0", &[(MEDIA_PATH, &kernel)]);
+        let (result, steps) = media_ipl(Some(iso));
+        assert_eq!(result.unwrap().loaded, Loaded::Media);
+        assert_eq!(
+            steps,
+            [
+                Step::MediaRead {
+                    label: "QS400_V1R1M0".into(),
+                    bytes: kernel.len()
+                },
+                Step::Loaded
+            ]
+        );
+        assert!(matches!(media_ipl(None).0, Err(Fault::NoMedia)));
+        assert!(matches!(
+            media_ipl(Some(vec![0; 64 * 1024])).0,
+            Err(Fault::BadMedia(_))
+        ));
+        let other = iso::build("DATA", &[("README.TXT", b"x".as_slice())]);
+        assert!(matches!(media_ipl(Some(other)).0, Err(Fault::NoMediaImage)));
+        let not_kernel = iso::build("X", &[(MEDIA_PATH, b"MZ not a kernel".as_slice())]);
+        assert!(matches!(
+            media_ipl(Some(not_kernel)).0,
+            Err(Fault::NotKernel(_))
+        ));
+    }
+
     #[test]
     fn each_side_loads_its_own_uki_with_the_steps_in_order() {
         let (a, b) = sides();
         let image = build_disk(&[(SIDE_A_PATH, &a), (SIDE_B_PATH, &b)], true);
         let mut disk = Cursor::new(image);
         let (result, steps) = run(&mut disk, Side::B, Settings::default());
-        assert_eq!(result.unwrap().side, Slot::B);
+        assert_eq!(result.unwrap().loaded, Loaded::Side(Slot::B));
         assert!(matches!(steps[0], Step::TableRead));
         assert!(matches!(steps[1], Step::RecordRead(r) if r.side == Slot::A));
         assert_eq!(
@@ -320,7 +455,7 @@ mod tests {
         );
         assert_eq!(steps[3], Step::Loaded);
         let (result, steps) = run(&mut disk, Side::Recorded, Settings::default());
-        assert_eq!(result.unwrap().side, Slot::A);
+        assert_eq!(result.unwrap().loaded, Loaded::Side(Slot::A));
         assert_eq!(
             steps[2],
             Step::ImageRead {
@@ -420,7 +555,7 @@ mod tests {
             Side::A,
             Settings::default(),
         );
-        assert_eq!(result.unwrap().side, Slot::A);
+        assert_eq!(result.unwrap().loaded, Loaded::Side(Slot::A));
         assert!(steps.contains(&Step::NoRecord));
         let (result, _) = run(
             &mut Cursor::new(image.clone()),
@@ -435,7 +570,7 @@ mod tests {
         };
         // Settings alone do not need it: they are written nowhere.
         let (result, steps) = run(&mut Cursor::new(image), Side::A, settings);
-        assert_eq!(result.unwrap().side, Slot::A);
+        assert_eq!(result.unwrap().loaded, Loaded::Side(Slot::A));
         assert!(steps.contains(&Step::NoRecord));
         assert!(!steps.contains(&Step::RecordWritten));
     }
@@ -463,10 +598,13 @@ mod tests {
         let mut disk = Cursor::new(build_disk(&[(SIDE_A_PATH, &a), (SIDE_B_PATH, &b)], true));
         let side = |disk: &mut Cursor<Vec<u8>>, side| {
             let (result, steps) = run(disk, side, Settings::default());
-            (result.unwrap().side, steps.contains(&Step::RecordWritten))
+            (result.unwrap().loaded, steps.contains(&Step::RecordWritten))
         };
         // Nothing asked: side A, and the record is not written.
-        assert_eq!(side(&mut disk, Side::Recorded), (Slot::A, false));
+        assert_eq!(
+            side(&mut disk, Side::Recorded),
+            (Loaded::Side(Slot::A), false)
+        );
 
         // Side B for one IPL: taken, cleared, and the next is side A.
         let once = licpart::IplSource {
@@ -474,9 +612,15 @@ mod tests {
             default: None,
         };
         ask(&mut disk, once);
-        assert_eq!(side(&mut disk, Side::Recorded), (Slot::B, true));
+        assert_eq!(
+            side(&mut disk, Side::Recorded),
+            (Loaded::Side(Slot::B), true)
+        );
         assert_eq!(asked(&mut disk), licpart::IplSource::default());
-        assert_eq!(side(&mut disk, Side::Recorded), (Slot::A, false));
+        assert_eq!(
+            side(&mut disk, Side::Recorded),
+            (Loaded::Side(Slot::A), false)
+        );
 
         // Side B from now on: every IPL, and the record stays.
         let default = licpart::IplSource {
@@ -484,8 +628,14 @@ mod tests {
             default: Some(Slot::B),
         };
         ask(&mut disk, default);
-        assert_eq!(side(&mut disk, Side::Recorded), (Slot::B, false));
-        assert_eq!(side(&mut disk, Side::Recorded), (Slot::B, false));
+        assert_eq!(
+            side(&mut disk, Side::Recorded),
+            (Loaded::Side(Slot::B), false)
+        );
+        assert_eq!(
+            side(&mut disk, Side::Recorded),
+            (Loaded::Side(Slot::B), false)
+        );
         assert_eq!(asked(&mut disk), default);
     }
 
@@ -499,12 +649,12 @@ mod tests {
         };
         ask(&mut disk, once);
         let (result, steps) = run(&mut disk, Side::A, Settings::default());
-        assert_eq!(result.unwrap().side, Slot::A);
+        assert_eq!(result.unwrap().loaded, Loaded::Side(Slot::A));
         assert!(!steps.contains(&Step::RecordWritten));
         assert_eq!(asked(&mut disk), once);
         // The request is still there for the activation that takes it.
         let (result, steps) = run(&mut disk, Side::Recorded, Settings::default());
-        assert_eq!(result.unwrap().side, Slot::B);
+        assert_eq!(result.unwrap().loaded, Loaded::Side(Slot::B));
         assert!(matches!(steps[1], Step::RecordRead(r) if r.once && r.side == Slot::B));
         assert_eq!(asked(&mut disk).next, None);
     }
@@ -516,7 +666,7 @@ mod tests {
         let before = image.clone();
         let mut disk = Cursor::new(image);
         let (result, steps) = run(&mut disk, Side::Recorded, Settings::default());
-        assert_eq!(result.unwrap().side, Slot::A);
+        assert_eq!(result.unwrap().loaded, Loaded::Side(Slot::A));
         assert!(steps.contains(&Step::NoRecord));
         assert_eq!(disk.into_inner(), before);
     }

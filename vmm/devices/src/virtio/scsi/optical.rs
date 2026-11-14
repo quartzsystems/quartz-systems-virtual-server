@@ -58,10 +58,10 @@ impl MediaEvent {
 }
 
 /// What the drive told the host of its own accord.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Notice {
-    /// The guest ejected the medium: it is unloaded.
-    Ejected,
+    /// The guest ejected the medium, named here: it is unloaded.
+    Ejected(String),
 }
 
 /// Why the host's unload was refused.
@@ -425,9 +425,9 @@ impl Optical {
                     if s.prevented {
                         return Err(REMOVAL_PREVENTED.into());
                     }
-                    if s.medium.take().is_some() {
+                    if let Some(m) = s.medium.take() {
                         s.event = MediaEvent::MediaRemoval;
-                        s.notices.push(Notice::Ejected);
+                        s.notices.push(Notice::Ejected(m.name));
                     }
                 }
                 Ok(0)
@@ -710,7 +710,7 @@ mod tests {
         run(&d, &[0x1E, 0, 0, 0, 0, 0]).unwrap();
         run(&d, &[0x1B, 0, 0, 0, 0x02, 0]).unwrap();
         assert_eq!(d.loaded(), None);
-        assert_eq!(d.notices(), [Notice::Ejected]);
+        assert_eq!(d.notices(), [Notice::Ejected("ONE".into())]);
         assert_eq!(d.unload(false), Err(UnloadError::Empty));
         // Forced: unloaded whatever the guest said.
         d.load(image(4), "TWO").unwrap();

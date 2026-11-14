@@ -70,6 +70,8 @@ pub fn build(
             .to_string(),
         ),
         adapters,
+        optical: Vec::new(),
+        tape: Vec::new(),
     }
 }
 

@@ -10,6 +10,7 @@ publish.workspace = true
 arch = { path = "../arch", version = "0.1.0" }
 acpi = { path = "../acpi", version = "0.1.0" }
 devices = { path = "../devices", version = "0.1.0" }
+fdpass = { path = "../../base/fdpass", version = "0.1.0" }
 ipl = { path = "../ipl", version = "0.1.0" }
 refcode = { path = "../../lic/refcode", version = "0.1.0" }
 release = { path = "../../lic/release", version = "0.1.0" }

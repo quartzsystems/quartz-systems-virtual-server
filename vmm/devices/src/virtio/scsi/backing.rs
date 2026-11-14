@@ -70,6 +70,57 @@ pub trait Backing: Send + Sync {
     fn write_zeroes(&self, offset: u64, bytes: u64) -> io::Result<()>;
 }
 
+/// An image to read: an optical medium. Read through the page cache,
+/// as nothing writes it.
+pub struct ImageFile {
+    file: File,
+    bytes: u64,
+}
+
+impl ImageFile {
+    /// The image in `file`, opened to read.
+    pub fn new(file: File) -> io::Result<Self> {
+        let meta = file.metadata()?;
+        if !meta.file_type().is_file() {
+            return Err(io::Error::other("not a file"));
+        }
+        Ok(Self {
+            bytes: meta.len(),
+            file,
+        })
+    }
+}
+
+impl Backing for ImageFile {
+    fn bytes(&self) -> u64 {
+        self.bytes
+    }
+    fn block_bytes(&self) -> u32 {
+        2048
+    }
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
+        self.file.read_exact_at(buf, offset)
+    }
+    fn write_at(&self, _: &[u8], _: u64) -> io::Result<()> {
+        Err(io::Error::from(io::ErrorKind::PermissionDenied))
+    }
+    fn flush(&self) -> io::Result<()> {
+        Ok(())
+    }
+    fn can_discard(&self) -> bool {
+        false
+    }
+    fn discard_zeroes(&self) -> bool {
+        false
+    }
+    fn discard(&self, _: u64, _: u64) -> io::Result<()> {
+        Err(io::Error::from(io::ErrorKind::PermissionDenied))
+    }
+    fn write_zeroes(&self, _: u64, _: u64) -> io::Result<()> {
+        Err(io::Error::from(io::ErrorKind::PermissionDenied))
+    }
+}
+
 /// A file or block device of the host.
 pub struct HostStore {
     file: File,

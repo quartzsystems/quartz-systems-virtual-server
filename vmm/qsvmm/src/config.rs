@@ -28,7 +28,25 @@
 //! lun = 0
 //! backing = "/dev/sdb"
 //! serial = "PROD-LS"
+//!
+//! [[optical]]              # a virtual optical device; side "d" IPLs
+//! slot = 3                 # from the first one's medium
+//! serial = "K2M4103-3-0"
+//! media = "/proc/self/fd/4"
+//! name = "QS400"
+//!
+//! [[tape]]
+//! slot = 4
+//! serial = "K2M4103-4-0"
+//! volume = "/proc/self/fd/5"
+//! name = "SAVE1"
+//! capacity_mib = 4096
+//! protected = false
 //! ```
+//!
+//! A backing store, a medium or a volume the partition manager has
+//! open itself is given to `qsvmm` as one of its descriptors, named by
+//! its `/proc/self/fd` path.
 //!
 //! It comes from the partition manager, which has validated the
 //! profile it was made from; it is checked again here all the same,
@@ -48,6 +66,10 @@ pub const NAME_MAX: usize = 10;
 pub const MAX_ADAPTERS: usize = 8;
 /// The most units of one adapter.
 pub const MAX_UNITS: usize = 64;
+/// The most optical devices, and the most tape devices.
+pub const MAX_MEDIA_DEVICES: usize = 4;
+/// The slots a device may be in.
+pub const SLOTS: std::ops::RangeInclusive<u32> = 2..=255;
 /// The highest partition ID.
 pub const MAX_ID: u32 = 999;
 /// A partition's user and group are this plus its ID.
@@ -84,6 +106,44 @@ pub struct Adapter {
     /// Its units.
     #[serde(default, rename = "unit")]
     pub units: Vec<Unit>,
+}
+
+/// A virtual optical device, as written.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Optical {
+    /// Its virtual slot.
+    pub slot: u32,
+    /// The serial number the guest sees.
+    pub serial: String,
+    /// The image loaded at the start; none for an empty drive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media: Option<PathBuf>,
+    /// The image's name in the media library, for reports.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+}
+
+/// A virtual tape device, as written.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TapeDrive {
+    /// Its virtual slot.
+    pub slot: u32,
+    /// The serial number the guest sees.
+    pub serial: String,
+    /// The volume mounted at the start; none for an empty drive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<PathBuf>,
+    /// The volume's name in the media library, for reports.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// The volume's capacity in MiB.
+    #[serde(default)]
+    pub capacity_mib: u64,
+    /// Whether the volume is write-protected.
+    #[serde(default)]
+    pub protected: bool,
 }
 
 /// The configuration, as written.
@@ -123,6 +183,12 @@ pub struct Config {
     /// The virtual SCSI adapters.
     #[serde(default, rename = "adapter")]
     pub adapters: Vec<Adapter>,
+    /// The virtual optical devices.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub optical: Vec<Optical>,
+    /// The virtual tape devices.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tape: Vec<TapeDrive>,
 }
 
 /// A partition, as it is to be activated: a [`Config`] that was checked.
@@ -139,6 +205,21 @@ pub struct Partition {
     /// The adapters in slot order, each with its units in unit order.
     /// The first unit of the first is the load source.
     pub adapters: Vec<Adapter>,
+    /// The optical devices in slot order: IPL source D reads the first.
+    pub optical: Vec<Optical>,
+    /// The tape devices in slot order.
+    pub tape: Vec<TapeDrive>,
+}
+
+/// A device of the partition's PCI bus, by its slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Slot {
+    /// A virtual SCSI adapter with disk units: its place in `adapters`.
+    Disks(usize),
+    /// An optical device: its place in `optical`.
+    Optical(usize),
+    /// A tape device: its place in `tape`.
+    Tape(usize),
 }
 
 impl Partition {
@@ -155,6 +236,31 @@ impl Partition {
     /// The load source's backing store.
     pub fn load_source(&self) -> &PathBuf {
         &self.adapters[0].units[0].backing
+    }
+
+    /// Every device, in slot order: the order of their functions.
+    pub fn slots(&self) -> Vec<(u32, Slot)> {
+        let mut all: Vec<(u32, Slot)> = Vec::new();
+        all.extend(
+            self.adapters
+                .iter()
+                .enumerate()
+                .map(|(i, a)| (a.slot, Slot::Disks(i))),
+        );
+        all.extend(
+            self.optical
+                .iter()
+                .enumerate()
+                .map(|(i, o)| (o.slot, Slot::Optical(i))),
+        );
+        all.extend(
+            self.tape
+                .iter()
+                .enumerate()
+                .map(|(i, t)| (t.slot, Slot::Tape(i))),
+        );
+        all.sort_by_key(|(slot, _)| *slot);
+        all
     }
 }
 
@@ -245,43 +351,72 @@ fn adapters(written: &[Adapter]) -> Result<Vec<Adapter>, ConfigError> {
     Ok(adapters)
 }
 
-/// Check a configuration.
-pub fn check(config: Config) -> Result<Partition, ConfigError> {
-    if config.id == 0 || config.id > MAX_ID {
-        return refuse(format!("id: 1 to {MAX_ID}"));
+/// The optical and tape devices, each in slot order, checked against
+/// each other and the adapters.
+fn media_devices(
+    config: &Config,
+    adapters: &[Adapter],
+) -> Result<(Vec<Optical>, Vec<TapeDrive>), ConfigError> {
+    if config.optical.len() > MAX_MEDIA_DEVICES || config.tape.len() > MAX_MEDIA_DEVICES {
+        return refuse(format!(
+            "optical, tape: {MAX_MEDIA_DEVICES} of each at most"
+        ));
     }
-    if !valid_name(&config.name) {
-        return refuse("name: 1 to 10 of A to Z, 0 to 9 and _, a letter first");
+    let mut slots: Vec<u32> = adapters.iter().map(|a| a.slot).collect();
+    let mut serials: Vec<&str> = adapters
+        .iter()
+        .flat_map(|a| a.units.iter().map(|u| u.serial.as_str()))
+        .collect();
+    let mut paths: Vec<&PathBuf> = adapters
+        .iter()
+        .flat_map(|a| a.units.iter().map(|u| &u.backing))
+        .collect();
+    let devices = config
+        .optical
+        .iter()
+        .map(|o| (o.slot, o.serial.as_str(), o.media.as_ref(), "optical"))
+        .chain(
+            config
+                .tape
+                .iter()
+                .map(|t| (t.slot, t.serial.as_str(), t.volume.as_ref(), "tape")),
+        );
+    for (slot, serial, path, kind) in devices {
+        let what = format!("{kind} slot {slot}");
+        if !SLOTS.contains(&slot) {
+            return refuse(format!("{what}: a slot is 2 to 255"));
+        }
+        if slots.contains(&slot) {
+            return refuse(format!("{what}: the slot is another device's"));
+        }
+        slots.push(slot);
+        if !valid_serial(serial, 20) || serials.contains(&serial) {
+            return refuse(format!(
+                "{what}: serial is 1 to 20 letters, digits, - and _, and no other unit's"
+            ));
+        }
+        serials.push(serial);
+        if let Some(path) = path {
+            if !path.is_absolute() || paths.contains(&path) {
+                return refuse(format!("{what}: an absolute path, and no other unit's"));
+            }
+            paths.push(path);
+        }
     }
-    if !valid_serial(&config.serial, 16) {
-        return refuse("serial: 1 to 16 letters and digits");
+    for t in &config.tape {
+        if t.volume.is_some() && !(16..=16 << 20).contains(&t.capacity_mib) {
+            return refuse(format!("tape slot {}: capacity_mib 16 to 16777216", t.slot));
+        }
     }
-    let threads = config.threads_per_core;
-    if config.vcpus == 0 || config.vcpus > MAX_VCPUS {
-        return refuse(format!("vcpus: 1 to {MAX_VCPUS}"));
-    }
-    if !(1..=2).contains(&threads) || !config.vcpus.is_multiple_of(threads) {
-        return refuse("threads_per_core: 1 or 2, and vcpus a multiple of it");
-    }
-    if !config.pin.is_empty() && config.pin.len() != config.vcpus as usize {
-        return refuse("pin: a host thread for each virtual CPU, or none");
-    }
-    if config.pin.iter().any(|cpu| *cpu >= 4096) {
-        return refuse("pin: a host thread's number is below 4096");
-    }
-    let memory_bytes = config
-        .memory_mib
-        .checked_mul(MIB)
-        .ok_or_else(|| ConfigError("memory_mib: too large".into()))?;
-    Ram::for_bytes(memory_bytes).map_err(|e| ConfigError(format!("memory_mib: {e}")))?;
-    if config.huge_pages && !memory_bytes.is_multiple_of(HUGE_PAGE) {
-        return refuse("memory_mib: huge pages are 2 MiB each");
-    }
-    let side = one_of(
-        "side",
-        &config.side,
-        &[("a", Side::A), ("b", Side::B), ("recorded", Side::Recorded)],
-    )?;
+    let mut optical = config.optical.clone();
+    optical.sort_by_key(|o| o.slot);
+    let mut tape = config.tape.clone();
+    tape.sort_by_key(|t| t.slot);
+    Ok((optical, tape))
+}
+
+/// What the activation writes to the LIC record.
+fn settings(config: &Config) -> Result<Settings, ConfigError> {
     let keylock = config
         .keylock
         .as_deref()
@@ -327,17 +462,69 @@ pub fn check(config: Config) -> Result<Partition, ConfigError> {
         })
         .transpose()?;
 
+    Ok(Settings {
+        keylock,
+        ipl_type,
+        console,
+    })
+}
+
+/// Check a configuration.
+pub fn check(config: Config) -> Result<Partition, ConfigError> {
+    if config.id == 0 || config.id > MAX_ID {
+        return refuse(format!("id: 1 to {MAX_ID}"));
+    }
+    if !valid_name(&config.name) {
+        return refuse("name: 1 to 10 of A to Z, 0 to 9 and _, a letter first");
+    }
+    if !valid_serial(&config.serial, 16) {
+        return refuse("serial: 1 to 16 letters and digits");
+    }
+    let threads = config.threads_per_core;
+    if config.vcpus == 0 || config.vcpus > MAX_VCPUS {
+        return refuse(format!("vcpus: 1 to {MAX_VCPUS}"));
+    }
+    if !(1..=2).contains(&threads) || !config.vcpus.is_multiple_of(threads) {
+        return refuse("threads_per_core: 1 or 2, and vcpus a multiple of it");
+    }
+    if !config.pin.is_empty() && config.pin.len() != config.vcpus as usize {
+        return refuse("pin: a host thread for each virtual CPU, or none");
+    }
+    if config.pin.iter().any(|cpu| *cpu >= 4096) {
+        return refuse("pin: a host thread's number is below 4096");
+    }
+    let memory_bytes = config
+        .memory_mib
+        .checked_mul(MIB)
+        .ok_or_else(|| ConfigError("memory_mib: too large".into()))?;
+    Ram::for_bytes(memory_bytes).map_err(|e| ConfigError(format!("memory_mib: {e}")))?;
+    if config.huge_pages && !memory_bytes.is_multiple_of(HUGE_PAGE) {
+        return refuse("memory_mib: huge pages are 2 MiB each");
+    }
+    let side = one_of(
+        "side",
+        &config.side,
+        &[
+            ("a", Side::A),
+            ("b", Side::B),
+            ("recorded", Side::Recorded),
+            ("d", Side::Media),
+        ],
+    )?;
+    let settings = settings(&config)?;
     let adapters = adapters(&config.adapters)?;
+    let (optical, tape) = media_devices(&config, &adapters)?;
+    if side == Side::Media && optical.is_empty() {
+        return refuse("side: d needs an optical device");
+    }
     Ok(Partition {
+        config,
         memory_bytes,
         side,
-        settings: Settings {
-            keylock,
-            ipl_type,
-            console,
-        },
+        settings,
         adapters,
-        config,
+        optical,
+        tape,
     })
 }
 
@@ -376,6 +563,8 @@ pub fn sample(backing: &str) -> Config {
                 serial: "TESTLPAR-0".into(),
             }],
         }],
+        optical: Vec::new(),
+        tape: Vec::new(),
     }
 }
 
@@ -492,5 +681,57 @@ mod tests {
         // A key the configuration does not know is refused.
         let text = render(&sample("/dev/sdb")).replace("vcpus", "processors");
         assert!(parse(&text).is_err());
+    }
+
+    fn optical(slot: u32, media: Option<&str>) -> Optical {
+        Optical {
+            slot,
+            serial: format!("OPT-{slot}"),
+            media: media.map(PathBuf::from),
+            name: "QS400".into(),
+        }
+    }
+
+    #[test]
+    fn optical_and_tape_devices_take_slots_of_their_own() {
+        let mut config = sample("/proc/self/fd/3");
+        config.side = "d".into();
+        config.optical = vec![optical(5, None), optical(3, Some("/proc/self/fd/4"))];
+        config.tape = vec![TapeDrive {
+            slot: 4,
+            serial: "TAP-4".into(),
+            volume: Some("/proc/self/fd/5".into()),
+            name: "SAVE1".into(),
+            capacity_mib: 1024,
+            protected: false,
+        }];
+        let p = parse(&render(&config)).unwrap();
+        assert_eq!(p.side, Side::Media);
+        // In slot order: IPL source D reads slot 3's medium.
+        assert_eq!(p.optical[0].slot, 3);
+        assert_eq!(
+            p.slots(),
+            [
+                (2, Slot::Disks(0)),
+                (3, Slot::Optical(0)),
+                (4, Slot::Tape(0)),
+                (5, Slot::Optical(1)),
+            ]
+        );
+        let refused = |change: &dyn Fn(&mut Config)| {
+            let mut c = config.clone();
+            change(&mut c);
+            check(c).unwrap_err().0
+        };
+        assert!(refused(&|c| c.optical[0].slot = 2).contains("another device"));
+        assert!(refused(&|c| c.optical[0].slot = 1).contains("2 to 255"));
+        assert!(refused(&|c| c.tape[0].serial = "OPT-5".into()).contains("serial"));
+        assert!(refused(&|c| c.tape[0].volume = Some("/proc/self/fd/3".into())).contains("path"));
+        assert!(refused(&|c| c.tape[0].capacity_mib = 1).contains("capacity"));
+        assert!(refused(&|c| c.optical.clear()).contains("optical device"));
+        assert!(
+            refused(&|c| c.optical = (0..5).map(|i| optical(10 + i, None)).collect())
+                .contains("at most")
+        );
     }
 }

@@ -236,6 +236,8 @@ pub const PARTITION_RECORD_WRITTEN: RefCode =
 pub const PARTITION_NO_RECORD: RefCode = progress("C2005037", "Partition has no LIC record yet");
 /// The side's UKI was read from the ESP.
 pub const PARTITION_IMAGE_READ: RefCode = progress("C2005040", "Partition IPL image read");
+/// IPL source D: the media UKI was read from the installation media.
+pub const PARTITION_MEDIA_READ: RefCode = progress("C2005045", "Partition installation media read");
 /// The kernel is in guest memory with its boot structures.
 pub const PARTITION_LOADED: RefCode = progress("C2005050", "Partition kernel loaded");
 /// Memory, processors and devices are built.
@@ -246,6 +248,8 @@ pub const PARTITION_STARTED: RefCode = progress("C2005090", "Partition started")
 pub const PARTITION_POWERED_OFF: RefCode = progress("C2005100", "Partition powered off");
 /// The guest asked for a restart; the VMM ended for it.
 pub const PARTITION_RESTART: RefCode = progress("C2005110", "Partition ended for a restart");
+/// A partition held for its pool's space goes on: the pool has room.
+pub const PARTITION_RESUMED: RefCode = progress("C2005160", "Partition resumed");
 
 // C2006xxx: the partition manager.
 
@@ -283,6 +287,15 @@ pub const PARTITION_NO_IMAGE: RefCode =
 /// The side's UKI cannot be read.
 pub const PARTITION_BAD_IMAGE: RefCode =
     attention("A2005031", "Partition IPL image cannot be read");
+/// IPL source D, and the first optical device has no medium.
+pub const PARTITION_NO_MEDIA: RefCode =
+    attention("A2005032", "Partition has no installation media");
+/// The medium is not an ISO 9660 image that can be read.
+pub const PARTITION_BAD_MEDIA: RefCode =
+    attention("A2005033", "Partition installation media cannot be read");
+/// The medium has no UKI where installation media has it.
+pub const PARTITION_NO_MEDIA_IMAGE: RefCode =
+    attention("A2005034", "Partition installation media has no IPL image");
 /// The load source has no LIC partition and the IPL needs its record.
 pub const PARTITION_NO_LIC: RefCode =
     attention("A2005040", "Partition load source has no LIC partition");
@@ -306,6 +319,9 @@ pub const PARTITION_VMM_ERROR: RefCode = attention("A2005130", "Partition ended 
 pub const PARTITION_ENDED: RefCode = attention("A2005140", "Partition ended by the host");
 /// The VMM was killed.
 pub const PARTITION_KILLED: RefCode = attention("A2005150", "Partition VMM killed");
+/// A write found the partition's pool full: its processors are
+/// stopped until there is room, and it stays Running.
+pub const PARTITION_HELD: RefCode = attention("A2005160", "Partition held for storage pool space");
 
 // A2006xxx: attention from the partition manager.
 
@@ -319,6 +335,46 @@ pub const PARTITION_STATE_INVALID: RefCode = attention("A2006030", "Partition st
 pub const CONTROLS_NOT_SET: RefCode = attention("A2006040", "Resource controls not set");
 /// The partitions did not all end before the host's shutdown went on.
 pub const PARTITIONS_NOT_ENDED: RefCode = attention("A2006090", "Partitions not ended in time");
+
+// C2007xxx: storage pools, the pool service.
+
+/// The pool service started, with the pools it found.
+pub const POOLD_STARTED: RefCode = progress("C2007000", "Pool service started");
+/// A pool was assembled and mounted, with its name and state.
+pub const POOL_ASSEMBLED: RefCode = progress("C2007010", "Storage pool assembled");
+/// A pool was made, with its name, protection and capacity.
+pub const POOL_CREATED: RefCode = progress("C2007015", "Storage pool created");
+/// A pool's units are being brought in step after an unclean stop.
+pub const POOL_RESYNC_STARTED: RefCode = progress("C2007020", "Pool resynchronization started");
+/// The same, done.
+pub const POOL_RESYNC_FINISHED: RefCode = progress("C2007025", "Pool resynchronization finished");
+/// A unit of a pool is being rebuilt.
+pub const POOL_REBUILD_STARTED: RefCode = progress("C2007030", "Pool rebuild started");
+/// The same, done.
+pub const POOL_REBUILD_FINISHED: RefCode = progress("C2007035", "Pool rebuild finished");
+/// A hot spare took a failed unit's place.
+pub const POOL_SPARE_TAKEN: RefCode = progress("C2007040", "Hot spare taken into a pool");
+/// An image was imported into the media library.
+pub const MEDIA_IMPORTED: RefCode = progress("C2007050", "Media image imported");
+/// Every pool was stopped in order, at the host's shutdown.
+pub const POOLS_STOPPED: RefCode = progress("C2007090", "Storage pools stopped");
+
+// A2007xxx: attention from the pool service.
+
+/// A pool could not be assembled, with its name and why.
+pub const POOL_NOT_ASSEMBLED: RefCode = attention("A2007010", "Storage pool not assembled");
+/// A pool's unit failed, with the pool, the unit and its location code.
+pub const POOL_UNIT_FAILED: RefCode = attention("A2007020", "Pool unit failed");
+/// A pool's rebuild or resynchronization did not finish.
+pub const POOL_REBUILD_FAILED: RefCode = attention("A2007030", "Pool rebuild not finished");
+/// More of a pool's units failed than its protection covers.
+pub const POOL_FAILED: RefCode = attention("A2007040", "Storage pool failed");
+/// A pool is 80% allocated.
+pub const POOL_FILLING: RefCode = attention("A2007050", "Storage pool 80% allocated");
+/// A pool is 90% allocated.
+pub const POOL_NEARLY_FULL: RefCode = attention("A2007051", "Storage pool 90% allocated");
+/// A media import failed, with what and why.
+pub const MEDIA_NOT_IMPORTED: RefCode = attention("A2007060", "Media image not imported");
 
 /// PID 1 panicked and parked.
 pub const PANIC: RefCode = RefCode {
@@ -389,15 +445,27 @@ pub const ALL: &[&RefCode] = &[
     &PARTITION_RECORD_WRITTEN,
     &PARTITION_NO_RECORD,
     &PARTITION_IMAGE_READ,
+    &PARTITION_MEDIA_READ,
     &PARTITION_LOADED,
     &PARTITION_MACHINE_BUILT,
     &PARTITION_STARTED,
     &PARTITION_POWERED_OFF,
     &PARTITION_RESTART,
+    &PARTITION_RESUMED,
     &PARTD_STARTED,
     &PARTITION_ADOPTED,
     &AUTO_START_STARTED,
     &AUTO_START_DONE,
+    &POOLD_STARTED,
+    &POOL_ASSEMBLED,
+    &POOL_CREATED,
+    &POOL_RESYNC_STARTED,
+    &POOL_RESYNC_FINISHED,
+    &POOL_REBUILD_STARTED,
+    &POOL_REBUILD_FINISHED,
+    &POOL_SPARE_TAKEN,
+    &MEDIA_IMPORTED,
+    &POOLS_STOPPED,
     &RECORD_INVALID,
     &SLOT_FELL_BACK,
     &DATA_NOT_MOUNTED,
@@ -426,6 +494,9 @@ pub const ALL: &[&RefCode] = &[
     &PARTITION_BAD_ESP,
     &PARTITION_NO_IMAGE,
     &PARTITION_BAD_IMAGE,
+    &PARTITION_NO_MEDIA,
+    &PARTITION_BAD_MEDIA,
+    &PARTITION_NO_MEDIA_IMAGE,
     &PARTITION_NO_LIC,
     &PARTITION_BAD_RECORD,
     &PARTITION_NOT_KERNEL,
@@ -436,11 +507,19 @@ pub const ALL: &[&RefCode] = &[
     &PARTITION_VMM_ERROR,
     &PARTITION_ENDED,
     &PARTITION_KILLED,
+    &PARTITION_HELD,
     &PARTITION_NOT_ACTIVATED,
     &AUTO_START_FAILED,
     &PARTITION_STATE_INVALID,
     &CONTROLS_NOT_SET,
     &PARTITIONS_NOT_ENDED,
+    &POOL_NOT_ASSEMBLED,
+    &POOL_UNIT_FAILED,
+    &POOL_REBUILD_FAILED,
+    &POOL_FAILED,
+    &POOL_FILLING,
+    &POOL_NEARLY_FULL,
+    &MEDIA_NOT_IMPORTED,
     &PANIC,
     &STORAGE_LOST,
     &SHUTDOWN_STARTED,

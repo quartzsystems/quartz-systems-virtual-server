@@ -63,10 +63,10 @@ const WRITE_ERROR: Sense = Sense::new(MEDIUM_ERROR, 0x0C, 0x00);
 const READ_ERROR: Sense = Sense::new(MEDIUM_ERROR, 0x11, 0x00);
 
 /// What the drive told the host of its own accord.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Notice {
-    /// The guest unloaded the volume: it is unmounted.
-    Unloaded,
+    /// The guest unloaded the volume, named here: it is unmounted.
+    Unloaded(String),
 }
 
 /// Why the host's unmount was refused.
@@ -605,7 +605,7 @@ impl Tape {
                 }
                 if let Some(m) = s.mounted.take() {
                     let _ = m.medium.sync();
-                    s.notices.push(Notice::Unloaded);
+                    s.notices.push(Notice::Unloaded(m.name));
                 }
                 Ok(0)
             }
@@ -966,7 +966,7 @@ mod tests {
         run(&t, &[0x1E, 0, 0, 0, 0, 0], &[]).unwrap();
         // The guest unloads: the host is told, and the data is kept.
         run(&t, &[0x1B, 0, 0, 0, 0, 0], &[]).unwrap();
-        assert_eq!(t.notices(), [Notice::Unloaded]);
+        assert_eq!(t.notices(), [Notice::Unloaded("VOL001".into())]);
         assert_eq!(t.mounted(), None);
         assert_eq!(run(&t, &[0; 6], &[]).unwrap_err().0, NO_MEDIUM);
         assert_eq!(mem.0.lock().unwrap().len(), 4 + 6);
