@@ -15,6 +15,10 @@ use supervise::Service;
 /// The hook that keeps a slot on trial from confirming.
 pub const REFUSE_CONFIRM: &str = "refuse-confirm";
 
+/// The hook that holds the host's reserve of memory while the huge
+/// pages are asked for, so the kernel gives fewer than asked.
+pub const HOLD_MEMORY: &str = "hold-memory";
+
 /// The test hooks' binary.
 const BINARY: &str = "/qsvs/bin/qsvshook";
 

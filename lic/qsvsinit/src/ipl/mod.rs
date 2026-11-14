@@ -200,7 +200,15 @@ mod on_host {
     /// huge pages, before anything has fragmented memory.
     fn partition_memory(host: &mut Host, store: &Store) {
         let installed = hostinv::memory_mib(&hostinv::Roots::default());
+        // A test image can be told to have too little free for them.
+        #[cfg(test_hooks)]
+        let held = crate::hooks::has(crate::hooks::HOLD_MEMORY).then(|| {
+            let settings = store.load::<resource::Settings>().ok().flatten();
+            memory::hold(settings.unwrap_or_default().reserve_mib(installed))
+        });
         let reserved = memory::reserve(store, installed, Path::new(memory::NR_HUGEPAGES));
+        #[cfg(test_hooks)]
+        drop(held);
         let code = if reserved.given < reserved.wanted {
             &refcode::MEMORY_SHORT
         } else {

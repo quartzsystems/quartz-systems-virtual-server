@@ -1,0 +1,24 @@
+                               Display Partitions
+                                                               System:  vs-test
+
+  ID  Name        State          Reference  Processors     Memory
+   1  PROD        Running        C2005090   1 dedicated    128 MB
+   2  SHARED      Running        C2005090   0.50 on 1 shr  128 MB
+   3  DEV         Not activated  -          -              -
+                                                                       Bottom
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F3=Exit   F7=Backward   F8=Forward   F12=Cancel
+

@@ -9,16 +9,16 @@
  Data . . . . . . . : /dev/vda3
  KVM  . . . . . . . : <not compared>
  Uptime . . . . . . : 0 days hh:mm:ss
+ Partitions . . . . : none defined
 
  Services:
    stgd     ready                       logd     ready
-   netd     ready                       tools    ready
-   flaky    ready                       hook     ready
-   partition ready
-
- Partitions are managed from the management console, QS/MC.
+   netd     ready                       partd    ready
+   tools    ready                       flaky    ready
+   hook     ready                       partition ready
 
 
 
- F1=Help   F3=Exit   F12=Cancel
+
+ F1=Help   F3=Exit   F11=Display partitions   F12=Cancel
 

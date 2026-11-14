@@ -85,6 +85,10 @@ ipc::wire_struct!(Settings {
     pools
 });
 
+/// The least memory a host may be told to keep for itself, in MiB:
+/// with less it does not stay up.
+pub const MIN_RESERVE_MIB: u64 = 512;
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -100,8 +104,12 @@ impl Default for Settings {
 impl Settings {
     /// The memory kept back for a host with `installed_mib` installed.
     pub fn reserve_mib(&self, installed_mib: u64) -> u64 {
-        self.reserved_memory_mib
-            .unwrap_or_else(|| DEFAULT_RESERVE_FLOOR_MIB.max(installed_mib / 20))
+        // A file with less than the least is read as the least: the host
+        // must still IPL to be told otherwise.
+        self.reserved_memory_mib.map_or_else(
+            || DEFAULT_RESERVE_FLOOR_MIB.max(installed_mib / 20),
+            |mib| mib.max(MIN_RESERVE_MIB),
+        )
     }
 
     /// The memory partitions can be given on such a host: what is left
@@ -124,6 +132,16 @@ impl Settings {
                 "max_partitions",
                 &self.max_partitions.to_string(),
                 &format!("1 to {}", model::definition::MAX_ID),
+            ]));
+        }
+        if let Some(mib) = self
+            .reserved_memory_mib
+            .filter(|mib| *mib < MIN_RESERVE_MIB)
+        {
+            errors.push(qvsmsg::SETTING_INVALID.with(&[
+                "reserved_memory_mib",
+                &mib.to_string(),
+                &format!("{MIN_RESERVE_MIB} or more"),
             ]));
         }
         let block = self.memory_block_mib;

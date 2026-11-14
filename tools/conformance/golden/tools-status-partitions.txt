@@ -1,0 +1,24 @@
+                            Work with System Status
+                                                               System:  vs-test
+
+ Host state . . . . : Running; every service has been ready
+ Release  . . . . . : V1R0M0 build <build> (test image)
+ Slot . . . . . . . : A (default A, nothing pending)
+ Reference code . . : <not compared>
+ Management . . . . : <not compared>
+ Data . . . . . . . : /dev/vda3
+ KVM  . . . . . . . : <not compared>
+ Uptime . . . . . . : 0 days hh:mm:ss
+ Partitions . . . . : 3 defined, 2 running
+
+ Services:
+   stgd     ready                       logd     ready
+   netd     ready                       partd    ready
+   tools    ready                       flaky    ready
+   hook     ready                       partition ready
+
+
+
+
+ F1=Help   F3=Exit   F11=Display partitions   F12=Cancel
+

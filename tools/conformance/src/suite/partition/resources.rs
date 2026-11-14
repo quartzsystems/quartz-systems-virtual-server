@@ -299,7 +299,14 @@ pub fn minimum(run: &Run<'_>) -> Result<String, String> {
     wants.memory.maximum_mib = most;
     said(partd(&mut guest)?.put_profile(ids[1], wants.clone()))?;
     let got = said(partd(&mut guest)?.activate(ids[1], wants.name.clone(), None, None))?;
-    let built = expect_code(&mut guest, &refcode::PARTITION_MACHINE_BUILT, deadline)?;
+    // The second one's line: the first's is still unread.
+    let line = format!(
+        "{}: {}, ",
+        crate::suite::base::posted(&refcode::PARTITION_MACHINE_BUILT, ""),
+        name(1)
+    );
+    guest.expect(&line, deadline)?;
+    let built = guest.rest_of_line(deadline)?;
     let status = manager::until(&mut guest, ids[1], State::Running, deadline)?;
     let Processors::Dedicated { cores: given } = &got.processors else {
         return Err(format!("the second was given {:?}", got.processors));
@@ -788,14 +795,24 @@ pub fn huge_pages(run: &Run<'_>) -> Result<String, String> {
         ));
     }
 
-    // Too few: the host is told to keep almost nothing back, and the
-    // kernel cannot give what that asks.
+    // A reserve too small to stay up on is refused.
     let mut settings = partd(&mut guest)?.settings().map_err(|e| e.to_string())?;
     settings.reserved_memory_mib = Some(96);
-    said(partd(&mut guest)?.change_settings(settings))?;
-    let wanted = (host.memory.installed - 96) / 16 * 16;
+    let refused = match partd(&mut guest)?.change_settings(settings) {
+        Ok(Err(refused)) if refused.iter().any(|m| m.id == qvsmsg::SETTING_INVALID.id) => {
+            manager::refused(&refused)
+        }
+        other => return Err(format!("a reserve of 96 MB: {other:?}")),
+    };
+
+    // Too few: at the next IPL the host's reserve is held by PID 1
+    // while it asks for the pages (a hook of the test image), so the
+    // kernel cannot give all of them.
+    let wanted = host.memory.configurable;
     super::power_off(&mut guest, 3 * run.timeout)?;
     drop(guest);
+    let mut l = l;
+    l.oem.push("qsvs.hook=hold-memory".into());
     let mut guest = super::host(run, &l)?;
     let short = expect_posted(&mut guest, &refcode::MEMORY_SHORT)?;
     let now = partd(&mut guest)?.resources().map_err(|e| e.to_string())?;
@@ -803,21 +820,19 @@ pub fn huge_pages(run: &Run<'_>) -> Result<String, String> {
         &super::super::base::channel(&mut guest)?.text("/proc/meminfo")?,
         "HugePages_Total",
     );
-    if now.memory.configurable >= wanted
-        || now.memory.configurable != given * 2 / 16 * 16
-        || now.memory.installed - now.memory.configurable <= 96
-    {
+    if now.memory.configurable >= wanted || now.memory.configurable != given * 2 / 16 * 16 {
         return Err(format!(
-            "asked to keep back 96 MB of {}: {} MB configurable, {given} huge pages (`{short}`)",
-            now.memory.installed, now.memory.configurable
+            "with the reserve held, of {wanted} MB wanted: {} MB configurable, {given} huge pages \
+             (`{short}`)",
+            now.memory.configurable
         ));
     }
     host_unaffected(&mut guest)?;
     Ok(format!(
         "{pages} huge pages reserved at the IPL for {} MB configurable; a partition of 256 MB \
-         has {mapped} kB of 2 MB pages mapped and takes 128 pages. Told to keep back 96 MB, \
-         the host posts `A2001072 {short}` and reports {} MB configurable of {} installed, \
-         where {wanted} were asked for",
+         has {mapped} kB of 2 MB pages mapped and takes 128 pages. A reserve of 96 MB is \
+         refused (`{refused}`). With its reserve held while it asks, the host posts `A2001072 \
+         {short}` and reports {} MB configurable of {} installed, where {wanted} were asked for",
         host.memory.configurable, now.memory.configurable, now.memory.installed
     ))
 }

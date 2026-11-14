@@ -59,6 +59,14 @@ pub fn reserve(store: &Store, installed_mib: u64, nr_hugepages: &Path) -> Reserv
     Reserved { wanted, given }
 }
 
+/// Memory written to and so held, `mib` of it: what the kernel cannot
+/// make huge pages of while this is kept.
+#[cfg(test_hooks)]
+pub fn hold(mib: u64) -> Vec<u8> {
+    let bytes = usize::try_from(mib << 20).unwrap_or(0);
+    std::hint::black_box(vec![1u8; bytes])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

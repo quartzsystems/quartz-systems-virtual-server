@@ -109,7 +109,8 @@ pub enum Fault {
     /// The side's UKI is not a file the loader takes.
     #[error("the UKI of side {0:?}: {1}")]
     BadImage(Slot, FatError),
-    /// The load source has no LIC partition and the IPL needs its record.
+    /// The load source has no LIC partition and the IPL is from the
+    /// side its record asks for.
     #[error("no LIC partition")]
     NoLic,
     /// The LIC record cannot be used.
@@ -165,10 +166,10 @@ pub fn read<D: Device>(
         .ok_or(Fault::NoEsp)?;
     let lic = table.iter().find(|p| p.type_guid == licpart::LIC_TYPE_GUID);
 
-    // The record is needed to know the side asked for and to hold the
-    // settings; without either, a disk with no LIC partition loads.
+    // The record is needed to know the side asked for. A disk with no
+    // LIC partition loads from a side that is named, and the settings,
+    // which every activation has, are then written nowhere.
     let take = side == Side::Recorded;
-    let needed = take || settings.any();
     let recorded = match lic {
         Some(lic) => {
             let part = Part::new(&mut *disk, lic.offset(), lic.bytes());
@@ -181,7 +182,7 @@ pub fn read<D: Device>(
             }
             recorded
         }
-        None if needed => return Err(Fault::NoLic),
+        None if take => return Err(Fault::NoLic),
         None => None,
     };
     if recorded.is_none() {
@@ -406,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn a_disk_without_a_lic_partition_loads_when_its_record_is_not_needed() {
+    fn a_disk_without_a_lic_partition_loads_from_a_side_that_is_named() {
         let (a, _) = sides();
         let esp = fat::build(false, &[(SIDE_A_PATH, &a)]);
         let esp_sectors = (esp.len() / 512) as u64;
@@ -431,8 +432,11 @@ mod tests {
             ipl_type: None,
             console: None,
         };
-        let (result, _) = run(&mut Cursor::new(image), Side::A, settings);
-        assert!(matches!(result, Err(Fault::NoLic)));
+        // Settings alone do not need it: they are written nowhere.
+        let (result, steps) = run(&mut Cursor::new(image), Side::A, settings);
+        assert_eq!(result.unwrap().side, Slot::A);
+        assert!(steps.contains(&Step::NoRecord));
+        assert!(!steps.contains(&Step::RecordWritten));
     }
 
     /// The guest's own request, as `slic` writes it in a partition.
