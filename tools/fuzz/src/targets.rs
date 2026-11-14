@@ -34,7 +34,7 @@ use devices::platform::{MsiRoute, Platform, Requests};
 use devices::virtio::scsi::backing::Bounce;
 use devices::virtio::scsi::backing::memory::MemoryStore;
 use devices::virtio::scsi::lun::Lun;
-use devices::virtio::scsi::{cdb, serve_control, serve_requests};
+use devices::virtio::scsi::{serve_control, serve_requests};
 use devices::virtio::{Activation, VirtioDevice, VirtioPci, rng};
 use ipl::lic::{ConsoleMode, Keylock, Settings};
 use ipl::{SIDE_A_PATH, SIDE_B_PATH, Side};
@@ -204,10 +204,14 @@ fn bzimage(data: &[u8]) {
     }
 }
 
-fn luns() -> Vec<Lun> {
+fn luns() -> Vec<std::sync::Arc<dyn devices::virtio::scsi::Unit>> {
     vec![
-        Lun::new(Box::new(MemoryStore::new(128 * 512, true)), "FUZZ-0").expect("a LUN"),
-        Lun::new(Box::new(MemoryStore::new(16 * 512, false)), "FUZZ-1").expect("a LUN"),
+        std::sync::Arc::new(
+            Lun::new(Box::new(MemoryStore::new(128 * 512, true)), "FUZZ-0").expect("a LUN"),
+        ),
+        std::sync::Arc::new(
+            Lun::new(Box::new(MemoryStore::new(16 * 512, false)), "FUZZ-1").expect("a LUN"),
+        ),
     ]
 }
 
@@ -247,10 +251,8 @@ fn scsi(data: &[u8]) {
     let mut out = &data[n..];
     let luns = luns();
     let mut bounce = Bounce::new(4096);
-    if let Ok(command) = cdb::decode(&block) {
-        for lun in &luns {
-            let _ = lun.execute(command, luns.len(), &mut out, &mut io::sink(), &mut bounce);
-        }
+    for lun in &luns {
+        let _ = lun.run(&block, luns.len(), &mut out, &mut io::sink(), &mut bounce);
     }
 }
 

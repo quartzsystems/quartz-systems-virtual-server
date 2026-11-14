@@ -32,10 +32,18 @@ use crate::virtio::{Activation, Interrupt, TYPE_SCSI, VirtioDevice};
 pub mod backing;
 pub mod cdb;
 pub mod lun;
+pub mod optical;
+pub mod tape;
+pub mod unit;
 
 use backing::Bounce;
 use cdb::Sense;
-use lun::{CHUNK_BYTES, Failure, Lun, MAX_TRANSFER_BLOCKS};
+use lun::{CHUNK_BYTES, Failure, MAX_TRANSFER_BLOCKS};
+pub use unit::Unit;
+
+/// The units of a target, shared with whoever reports on them or loads
+/// their media.
+pub type Units = Arc<Vec<Arc<dyn Unit>>>;
 
 /// The most LUNs the target has.
 pub const MAX_LUNS: usize = 64;
@@ -72,7 +80,7 @@ const CONTROL_SUBSCRIBE: u32 = 2;
 
 /// The SCSI host.
 pub struct Scsi {
-    luns: Arc<Vec<Lun>>,
+    luns: Units,
     managed: Arc<AtomicU64>,
     workers: Vec<Worker>,
 }
@@ -86,13 +94,13 @@ impl Scsi {
     }
 
     /// The LUNs, for whoever reports what they were asked for.
-    pub fn luns(&self) -> Arc<Vec<Lun>> {
+    pub fn luns(&self) -> Units {
         self.luns.clone()
     }
 
     /// A host with `luns`, numbered from 0. `None` when there are
     /// none or too many.
-    pub fn new(luns: Vec<Lun>) -> Option<Self> {
+    pub fn new(luns: Vec<Arc<dyn Unit>>) -> Option<Self> {
         (!luns.is_empty() && luns.len() <= MAX_LUNS).then(|| Self {
             luns: Arc::new(luns),
             managed: Arc::new(AtomicU64::new(0)),
@@ -151,7 +159,7 @@ fn response(
 /// header, `data_in` the guest's room after the response. The response
 /// and the bytes written to `data_in`.
 pub fn request(
-    luns: &[Lun],
+    luns: &[Arc<dyn Unit>],
     header: &[u8; REQUEST_HEADER],
     out: &mut dyn Read,
     out_bytes: usize,
@@ -162,13 +170,7 @@ pub fn request(
     let Some(lun) = lun_of(&header[..8]).and_then(|n| luns.get(n)) else {
         return (response(RESPONSE_BAD_TARGET, STATUS_GOOD, None, 0), 0);
     };
-    let outcome = match cdb::decode(&header[19..]) {
-        Ok(command) => lun.execute(command, luns.len(), out, data_in, bounce),
-        Err(sense) => {
-            lun.refused();
-            Err(Failure::Check(sense))
-        }
-    };
+    let outcome = lun.run(&header[19..], luns.len(), out, data_in, bounce);
     match outcome {
         Ok(given) => {
             // What of the guest's buffers was not used, whichever way
@@ -185,6 +187,15 @@ pub fn request(
             response(RESPONSE_OK, STATUS_CHECK_CONDITION, Some(sense), in_bytes),
             0,
         ),
+        Err(Failure::Partial(sense, given)) => (
+            response(
+                RESPONSE_OK,
+                STATUS_CHECK_CONDITION,
+                Some(sense),
+                in_bytes - given.min(in_bytes),
+            ),
+            given,
+        ),
         Err(Failure::Overrun) => (response(RESPONSE_OVERRUN, STATUS_GOOD, None, 0), 0),
     }
 }
@@ -194,7 +205,7 @@ pub fn request(
 struct Requests {
     queue: Queue,
     memory: Arc<Memory>,
-    luns: Arc<Vec<Lun>>,
+    luns: Units,
     bounce: Bounce,
     interrupt: Interrupt,
     vector: u16,
@@ -214,7 +225,7 @@ impl Requests {
 pub fn serve_requests(
     queue: &mut Queue,
     memory: &Memory,
-    luns: &[Lun],
+    luns: &[Arc<dyn Unit>],
     bounce: &mut Bounce,
 ) -> bool {
     let mut any = false;
@@ -494,6 +505,7 @@ pub(crate) mod testing {
 #[cfg(test)]
 mod tests {
     use super::backing::memory::MemoryStore;
+    use super::lun::Lun;
     use super::testing::{Guest, chain};
     use super::*;
     use vm_memory::{Bytes, GuestAddress};
@@ -503,10 +515,10 @@ mod tests {
     const RESPONSE_AT: u64 = 0xA000;
     const IN_AT: u64 = 0xB000;
 
-    fn luns() -> Vec<Lun> {
+    fn luns() -> Vec<Arc<dyn Unit>> {
         vec![
-            Lun::new(Box::new(MemoryStore::new(64 * 512, true)), "LS0").unwrap(),
-            Lun::new(Box::new(MemoryStore::new(16 * 512, false)), "D1").unwrap(),
+            Arc::new(Lun::new(Box::new(MemoryStore::new(64 * 512, true)), "LS0").unwrap()),
+            Arc::new(Lun::new(Box::new(MemoryStore::new(16 * 512, false)), "D1").unwrap()),
         ]
     }
 

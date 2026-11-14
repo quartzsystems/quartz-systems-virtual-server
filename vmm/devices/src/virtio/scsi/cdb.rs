@@ -16,9 +16,43 @@ pub struct Sense {
     pub asc: u8,
     /// Its qualifier.
     pub ascq: u8,
+    /// A sequential-access device's marks: [`Sense::FILEMARK`],
+    /// [`Sense::EOM`], [`Sense::ILI`].
+    pub marks: u8,
+    /// The information field, when it is valid: for a tape, what was
+    /// not done of the count.
+    pub info: Option<u32>,
 }
 
 impl Sense {
+    /// A filemark was read or spaced to.
+    pub const FILEMARK: u8 = 0x80;
+    /// The end of the medium, or its early warning, was reached.
+    pub const EOM: u8 = 0x40;
+    /// The block's length was not the one asked for.
+    pub const ILI: u8 = 0x20;
+
+    /// Sense data of a key and an additional sense code.
+    pub const fn new(key: u8, asc: u8, ascq: u8) -> Sense {
+        Sense {
+            key,
+            asc,
+            ascq,
+            marks: 0,
+            info: None,
+        }
+    }
+
+    /// The same with `marks` set and the information field `info`.
+    #[must_use]
+    pub const fn with(self, marks: u8, info: u32) -> Sense {
+        Sense {
+            marks: self.marks | marks,
+            info: Some(info),
+            ..self
+        }
+    }
+
     const ILLEGAL_REQUEST: u8 = 0x05;
     const MEDIUM_ERROR: u8 = 0x03;
 
@@ -38,26 +72,22 @@ impl Sense {
     pub const WRITE_ERROR: Sense = Sense::medium(0x0C, 0x00);
 
     const fn illegal(asc: u8, ascq: u8) -> Sense {
-        Sense {
-            key: Self::ILLEGAL_REQUEST,
-            asc,
-            ascq,
-        }
+        Sense::new(Self::ILLEGAL_REQUEST, asc, ascq)
     }
 
     const fn medium(asc: u8, ascq: u8) -> Sense {
-        Sense {
-            key: Self::MEDIUM_ERROR,
-            asc,
-            ascq,
-        }
+        Sense::new(Self::MEDIUM_ERROR, asc, ascq)
     }
 
     /// Fixed-format sense data.
     pub fn bytes(&self) -> [u8; 18] {
         let mut b = [0u8; 18];
         b[0] = 0x70;
-        b[2] = self.key;
+        b[2] = self.key | self.marks;
+        if let Some(info) = self.info {
+            b[0] |= 0x80;
+            b[3..7].copy_from_slice(&info.to_be_bytes());
+        }
         b[7] = 10;
         b[12] = self.asc;
         b[13] = self.ascq;

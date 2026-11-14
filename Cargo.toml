@@ -46,6 +46,11 @@ members = [
     "part/model",
     "part/resource",
     "part/partd",
+    # Storage: pools, virtual disks, the media library, tape volumes.
+    "stg/pool",
+    "stg/vdisk",
+    "stg/media",
+    "stg/tape",
 ]
 
 [workspace.package]

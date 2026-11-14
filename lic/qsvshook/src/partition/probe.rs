@@ -12,6 +12,7 @@
 use std::path::Path;
 
 use devices::Memory;
+use devices::virtio::scsi::Unit;
 use devices::virtio::scsi::backing::{Bounce, HostStore};
 use devices::virtio::scsi::lun::Lun;
 use devices::virtio::scsi::serve_requests;
@@ -50,7 +51,7 @@ struct Answer {
 struct Probe {
     memory: Memory,
     queue: Queue,
-    luns: Vec<Lun>,
+    luns: Vec<std::sync::Arc<dyn Unit>>,
     bounce: Bounce,
     descriptors: u16,
     offered: u16,
@@ -71,7 +72,7 @@ impl Probe {
         Ok(Self {
             memory,
             queue,
-            luns: vec![lun],
+            luns: vec![std::sync::Arc::new(lun)],
             bounce: Bounce::new(1 << 16),
             descriptors: 0,
             offered: 0,

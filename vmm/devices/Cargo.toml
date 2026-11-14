@@ -14,6 +14,8 @@ vm-superio.workspace = true
 vmm-sys-util.workspace = true
 rustix.workspace = true
 thiserror.workspace = true
+# The tape volume a virtual tape drive reads and writes.
+tape = { path = "../../stg/tape", version = "0.1.0" }
 
 [lints]
 workspace = true

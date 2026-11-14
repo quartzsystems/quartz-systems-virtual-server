@@ -1,0 +1,17 @@
+[package]
+name = "media"
+description = "The media library: optical images and tape volumes in the pool designated as the media repository, imported, listed, renamed, deleted and opened for a partition's devices"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tape = { path = "../tape", version = "0.1.0" }
+vdisk = { path = "../vdisk", version = "0.1.0" }
+serde.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

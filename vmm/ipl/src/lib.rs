@@ -27,6 +27,7 @@
 
 pub mod fat;
 pub mod gpt;
+pub mod iso;
 pub mod lic;
 pub mod load;
 pub mod part;

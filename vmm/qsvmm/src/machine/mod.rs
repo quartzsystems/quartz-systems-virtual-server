@@ -31,8 +31,7 @@ use devices::legacy::serial::{Output, Serial};
 use devices::pci::PciBus;
 use devices::platform::{Platform, Requests};
 use devices::virtio::rng::Rng;
-use devices::virtio::scsi::Scsi;
-use devices::virtio::scsi::lun::Lun;
+use devices::virtio::scsi::{Scsi, Unit, Units};
 use devices::virtio::{VirtioDevice, VirtioPci};
 use kvm_bindings::{KVM_PIT_SPEAKER_DUMMY, kvm_pit_config};
 use kvm_ioctls::{Cap, Kvm, VmFd};
@@ -163,7 +162,7 @@ pub struct Devices {
     /// The serial port, for the console's input.
     pub serial: Arc<Mutex<Serial>>,
     /// The disk LUNs of each adapter, for the counts at the end.
-    pub luns: Vec<Arc<Vec<Lun>>>,
+    pub luns: Vec<Units>,
     /// Each adapter's count of task management functions.
     pub managed: Vec<Arc<AtomicU64>>,
 }
@@ -193,7 +192,7 @@ pub fn devices(
     memory: &Arc<Memory>,
     output: Output,
     requests: Requests,
-    adapters: Vec<Vec<Lun>>,
+    adapters: Vec<Vec<Arc<dyn Unit>>>,
     entropy: File,
 ) -> io::Result<Devices> {
     let platform: Arc<dyn Platform> = Arc::new(KvmPlatform::new(vm.clone()));

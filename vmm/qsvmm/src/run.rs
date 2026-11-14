@@ -31,6 +31,7 @@ use arch::layout::Ram;
 use devices::platform::{Request, Requests};
 use devices::virtio::scsi::backing::HostStore;
 use devices::virtio::scsi::lun::Lun;
+use devices::virtio::scsi::{Unit, Units};
 use ipl::{Fault, Step};
 use refcode::RefCode;
 use vmm_sys_util::signal::Killable;
@@ -134,7 +135,7 @@ fn fault_stop(fault: &Fault) -> Stop {
 struct Running {
     ends: mpsc::Receiver<(End, String)>,
     tap: serial::Tap,
-    luns: Vec<Arc<Vec<Lun>>>,
+    luns: Vec<Units>,
     managed: Vec<Arc<AtomicU64>>,
 }
 
@@ -145,7 +146,7 @@ fn now() -> u64 {
 }
 
 /// The units of every adapter, opened.
-fn open_units(partition: &Partition) -> Result<Vec<Vec<Lun>>, Stop> {
+fn open_units(partition: &Partition) -> Result<Vec<Vec<Arc<dyn Unit>>>, Stop> {
     let mut adapters = Vec::with_capacity(partition.adapters.len());
     for adapter in &partition.adapters {
         let mut luns = Vec::with_capacity(adapter.units.len());
@@ -162,7 +163,7 @@ fn open_units(partition: &Partition) -> Result<Vec<Vec<Lun>>, Stop> {
             let store = HostStore::open(&unit.backing).map_err(|e| unreadable(e.to_string()))?;
             let lun = Lun::new(Box::new(store), &unit.serial)
                 .ok_or_else(|| unreadable("not a disk unit".into()))?;
-            luns.push(lun);
+            luns.push(Arc::new(lun) as Arc<dyn Unit>);
         }
         adapters.push(luns);
     }

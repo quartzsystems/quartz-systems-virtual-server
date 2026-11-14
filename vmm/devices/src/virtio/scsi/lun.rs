@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::backing::{Backing, Bounce};
 use super::cdb::{Command, Sense};
+use super::unit::{Unit, give, report_luns};
 
 /// Bytes moved at a time.
 pub const CHUNK_BYTES: usize = 1 << 20;
@@ -37,6 +38,9 @@ const REVISION: &[u8; 4] = b"0100";
 pub enum Failure {
     /// A check condition with sense data.
     Check(Sense),
+    /// A check condition with sense data, after the bytes given were
+    /// written to the initiator: a tape read that met a short block.
+    Partial(Sense, usize),
     /// The guest's buffers do not hold the transfer the command names.
     Overrun,
 }
@@ -75,19 +79,6 @@ pub struct Lun {
     blocks: u64,
     block_bytes: u32,
     counters: Counters,
-}
-
-/// Write as much of `bytes` as the initiator made room for.
-fn give(data_in: &mut dyn Write, bytes: &[u8], room: usize) -> usize {
-    let mut given = 0;
-    let wanted = &bytes[..bytes.len().min(room)];
-    while given < wanted.len() {
-        match data_in.write(&wanted[given..]) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => given += n,
-        }
-    }
-    given
 }
 
 impl Lun {
@@ -440,11 +431,7 @@ impl Lun {
             Command::Nothing => Ok(0),
             Command::RequestSense { room } => {
                 // Nothing is ever deferred: there is no sense to report.
-                let sense = Sense {
-                    key: 0,
-                    asc: 0,
-                    ascq: 0,
-                };
+                let sense = Sense::new(0, 0, 0);
                 Ok(give(data_in, &sense.bytes(), room))
             }
             Command::Inquiry { page: None, room } => Ok(give(data_in, &Self::inquiry(), room)),
@@ -452,17 +439,7 @@ impl Lun {
                 page: Some(page),
                 room,
             } => Ok(give(data_in, &self.vital_page(page)?, room)),
-            Command::ReportLuns { room } => {
-                let mut b = Vec::with_capacity(8 + luns * 8);
-                #[allow(clippy::cast_possible_truncation)] // 256 LUNs at most
-                b.extend_from_slice(&(luns as u32 * 8).to_be_bytes());
-                b.extend_from_slice(&[0; 4]);
-                for lun in 0..luns {
-                    #[allow(clippy::cast_possible_truncation)]
-                    b.extend_from_slice(&[(lun >> 8) as u8 & 0x3F, lun as u8, 0, 0, 0, 0, 0, 0]);
-                }
-                Ok(give(data_in, &b, room))
-            }
+            Command::ReportLuns { room } => Ok(give(data_in, &report_luns(luns), room)),
             Command::ReadCapacity10 => {
                 let last = u32::try_from(self.blocks - 1).unwrap_or(u32::MAX);
                 let mut b = last.to_be_bytes().to_vec();
@@ -498,6 +475,33 @@ impl Lun {
                 no_data,
             } => self.write_same(lba, blocks, unmap, no_data, data_out, bounce),
         }
+    }
+}
+
+impl Unit for Lun {
+    fn run(
+        &self,
+        cdb: &[u8],
+        luns: usize,
+        data_out: &mut dyn Read,
+        data_in: &mut dyn Write,
+        bounce: &mut Bounce,
+    ) -> Result<usize, Failure> {
+        match super::cdb::decode(cdb) {
+            Ok(command) => self.execute(command, luns, data_out, data_in, bounce),
+            Err(sense) => {
+                self.refused();
+                Err(Failure::Check(sense))
+            }
+        }
+    }
+
+    fn counts(&self) -> Counts {
+        Lun::counts(self)
+    }
+
+    fn blocks(&self) -> u64 {
+        Lun::blocks(self)
     }
 }
 

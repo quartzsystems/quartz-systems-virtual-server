@@ -1,0 +1,17 @@
+[package]
+name = "pool"
+description = "A storage pool: the member label each of its disks carries, the GPT layout of a pool disk, the protection and capacity of a pool to be made with its limits, and what each of the host's disks is"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+abrec.workspace = true
+diskimg.workspace = true
+protect.workspace = true
+uuid.workspace = true
+loadsource = { path = "../../base/loadsource", version = "0.1.0" }
+
+[lints]
+workspace = true
