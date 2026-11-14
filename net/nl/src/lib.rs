@@ -128,11 +128,33 @@ impl Nl {
         Ok(())
     }
 
+    /// The largest MTU the link `index` takes, when its driver says.
+    pub fn max_mtu(&mut self, index: u32) -> Result<Option<u32>> {
+        let mut out = None;
+        self.sock
+            .request(&netlink::route::link::get_by_index(index), |m| {
+                if m.kind == netlink::route::consts::RTM_NEWLINK {
+                    out = m
+                        .attrs(netlink::route::consts::IFINFOMSG_LEN)
+                        .get(netlink::route::consts::IFLA_MAX_MTU)
+                        .and_then(|a| a.u32());
+                }
+                Ok(())
+            })?;
+        Ok(out)
+    }
+
     /// Turn IPv6 off on the link `name`, so the host never has an
     /// address on it, link-local included. Done before it is brought up.
     pub fn disable_ipv6(&self, name: &str) -> Result<()> {
+        self.set_ipv6(name, false)
+    }
+
+    /// Turn IPv6 on or off on the link `name`.
+    pub fn set_ipv6(&self, name: &str, on: bool) -> Result<()> {
+        let value = if on { "0" } else { "1" };
         self.sysctl
-            .write(&format!("ipv6/conf/{name}/disable_ipv6"), "1")
+            .write(&format!("ipv6/conf/{name}/disable_ipv6"), value)
     }
 
     /// Whether IPv6 is off on `name`.

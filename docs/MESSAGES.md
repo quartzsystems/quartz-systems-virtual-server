@@ -175,6 +175,7 @@ wording.
 | `QVS4012` | The switch service could not &1: &2. | The host's log has more. What was there before the request is as it was. |
 | `QVS4013` | Switch &1 has &2 partition ports; it may have &3. | The host's switch settings say how many partitions' ports one switch may have. |
 | `QVS4014` | Switch number &1 is not valid or is used twice. | A switch's number is given by the switch service when the switch is made. The state file was changed by something else. |
+| `QVS4015` | Switch &1 has the port of partition &2, slot &3. | A switch, or a VLAN of it, that a running partition is on is not deleted or taken away. End the partition first. |
 | `QVS4101` | There is no network interface at &1. | Display network hardware lists the host's interfaces with their location codes. |
 | `QVS4102` | Interface &1 is the management interface. | The interface the host is managed through is never a switch's uplink. Choose another interface, or move the management network to another interface first. |
 | `QVS4103` | Interface &1 is in the uplink of switch &2. | An interface belongs to one switch at a time. Clear that switch's uplink first. |

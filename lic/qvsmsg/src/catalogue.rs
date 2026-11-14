@@ -570,6 +570,10 @@ catalogue! {
     SWITCH_ID_TWICE = "QVS4014",
         "Switch number &1 is not valid or is used twice.",
         "A switch's number is given by the switch service when the switch is made. The state file was changed by something else.";
+    /// A switch with a running partition's port on it.
+    SWITCH_IN_USE = "QVS4015",
+        "Switch &1 has the port of partition &2, slot &3.",
+        "A switch, or a VLAN of it, that a running partition is on is not deleted or taken away. End the partition first.";
     /// No interface at a location.
     INTERFACE_MISSING = "QVS4101",
         "There is no network interface at &1.",
