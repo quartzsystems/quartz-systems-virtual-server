@@ -23,6 +23,8 @@ const POOLS: &str = "Work with Storage Pools";
 
 /// `pool-tools`.
 pub fn tools(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let disks = installed(run, Kind::Single)?;
     let units = pool_disks(run, 2, POOL_DISK_BYTES)?;
     let mut launch = machine(run, &[Some(disks[0].as_path())]);

@@ -373,15 +373,22 @@ impl Core {
             }
         }
         self.pools[i].write_label(names, clock(), false);
-        if self.pools[i].label.lost() && self.pools[i].failure.is_empty() {
+        // A mirror keeps its last unit in service whatever it does: a
+        // transfer the set failed says no unit was left to serve it.
+        let lost = self.pools[i].label.lost() || self.pools[i].recorded.failed();
+        if lost && self.pools[i].failure.is_empty() {
             let p = &mut self.pools[i];
             p.recorded.lose();
-            p.failure = format!(
-                "{} unit(s) out of step; {} protection covers {}",
-                p.label.out_of_step(),
-                p.label.protection.word(),
-                p.label.protection.tolerates()
-            );
+            p.failure = if p.label.lost() {
+                format!(
+                    "{} unit(s) out of step; {} protection covers {}",
+                    p.label.out_of_step(),
+                    p.label.protection.word(),
+                    p.label.protection.tolerates()
+                )
+            } else {
+                "a transfer failed on every unit that holds it".into()
+            };
             let detail = format!("{name}: {}", p.failure);
             self.post(&refcode::POOL_FAILED, &detail);
             return;

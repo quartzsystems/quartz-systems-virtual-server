@@ -1,0 +1,24 @@
+                              Create Storage Pool
+                                                               System:  vs-test
+
+ Pool name . . . . . :
+ Protection  . . . . : mirrored
+
+ Protection: none (1 disk), mirrored (2), raid5 (3 or more),
+ raid6 (4 or more). The disks are chosen next.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel
+

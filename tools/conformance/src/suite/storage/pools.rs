@@ -46,6 +46,8 @@ fn make(
 /// pool assembled from its labels; its state file deleted and made
 /// again from them.
 pub fn create(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let disks = pool_disks(run, 2, POOL_DISK_BYTES)?;
     let mut guest = host(run, &disks)?;
     let names = disk_names(&mut guest, 2)?;
@@ -102,6 +104,8 @@ pub fn create(run: &Run<'_>) -> Result<String, String> {
 /// `pool-foreign`: a disk with what is not this host's on it, and a
 /// pool disk of another host, are taken only with a typed confirmation.
 pub fn foreign(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let disks = pool_disks(run, 3, POOL_DISK_BYTES)?;
     // The first holds a GPT another system wrote; the second an xfs.
     write_foreign(&disks[0], b"EFI PART", 512)?;
@@ -233,21 +237,29 @@ fn pulled(run: &Run<'_>, protection: &str, n: usize, pulls: &[usize]) -> Result<
 
 /// `pool-pulled-mirrored`.
 pub fn pulled_mirrored(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     pulled(run, "mirrored", 2, &[0])
 }
 
 /// `pool-pulled-raid5`.
 pub fn pulled_raid5(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     pulled(run, "raid5", 3, &[1])
 }
 
 /// `pool-pulled-raid6`: two pulled.
 pub fn pulled_raid6(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     pulled(run, "raid6", 4, &[0, 2])
 }
 
 /// `pool-lost`: more units lost than the protection covers.
 pub fn lost(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let disks = pool_disks(run, 3, POOL_DISK_BYTES)?;
     let mut guest = host(run, &disks)?;
     let names = disk_names(&mut guest, 3)?;
@@ -277,6 +289,8 @@ pub fn lost(run: &Run<'_>) -> Result<String, String> {
 /// is whole.
 pub fn power_pull(run: &Run<'_>) -> Result<String, String> {
     const CUTS: u32 = 20;
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let disks = pool_disks(run, 2, POOL_DISK_BYTES)?;
     let mut guest = host(run, &disks)?;
     let names = disk_names(&mut guest, 2)?;
@@ -318,6 +332,8 @@ pub fn power_pull(run: &Run<'_>) -> Result<String, String> {
 /// device holds the transfers until the service is back, and nothing
 /// is lost.
 pub fn kill(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let disks = pool_disks(run, 2, POOL_DISK_BYTES)?;
     let mut guest = host(run, &disks)?;
     let names = disk_names(&mut guest, 2)?;

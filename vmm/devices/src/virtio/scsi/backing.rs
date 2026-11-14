@@ -5,7 +5,9 @@
 //! What a LUN's blocks are kept in: a file or a block device of the
 //! host, opened for direct I/O. Nothing the guest wrote waits in the
 //! host's page cache, and a guest's flush is a flush of the host's
-//! device: the guest's own crash consistency rests on that.
+//! device: the guest's own crash consistency rests on that. A file
+//! whose direct I/O wants a larger boundary than the guest's blocks
+//! (a virtual disk on a pool) is read and written in aligned spans.
 
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -128,6 +130,25 @@ pub struct HostStore {
     block_bytes: u32,
     block_device: bool,
     discards: bool,
+    /// The boundary direct I/O of the file wants: its offsets and
+    /// lengths. A file on a pool is on a device of 4096-byte blocks,
+    /// and its guest asks for 512.
+    align: u64,
+    /// Held by every write when `align` is more than a block: a write
+    /// of part of an aligned block is a read, a change and a write.
+    writing: std::sync::Mutex<()>,
+}
+
+/// The direct-I/O offset alignment of an open file, by `statx`; 4096
+/// when the kernel does not say.
+fn dio_alignment(file: &File) -> u64 {
+    use rustix::fs::{AtFlags, StatxFlags, statx};
+    statx(file, "", AtFlags::EMPTY_PATH, StatxFlags::DIOALIGN)
+        .ok()
+        .filter(|x| StatxFlags::from_bits_retain(x.stx_mask).contains(StatxFlags::DIOALIGN))
+        .map(|x| u64::from(x.stx_dio_offset_align))
+        .filter(|a| a.is_power_of_two() && (512..=65536).contains(a))
+        .unwrap_or(ALIGNMENT as u64)
 }
 
 /// `O_DIRECT`.
@@ -185,13 +206,56 @@ impl HostStore {
         if bytes == 0 {
             return Err(io::Error::other("no blocks"));
         }
+        let align = if block_device {
+            u64::from(block_bytes)
+        } else {
+            dio_alignment(&file).max(u64::from(block_bytes))
+        };
         Ok(Self {
             file,
             bytes,
             block_bytes,
             block_device,
             discards,
+            align,
+            writing: std::sync::Mutex::new(()),
         })
+    }
+
+    /// Whether a transfer of `len` bytes at `offset` from `buf` may go
+    /// to the file as it is.
+    fn aligned(&self, buf: &[u8], offset: u64) -> bool {
+        let a = self.align;
+        offset.is_multiple_of(a)
+            && (buf.len() as u64).is_multiple_of(a)
+            && buf.as_ptr().align_offset(ALIGNMENT) == 0
+    }
+
+    /// The aligned span around `len` bytes at `offset`, within the
+    /// file: where it starts and how long it is.
+    fn span(&self, offset: u64, len: usize) -> (u64, usize) {
+        let a = self.align;
+        let start = offset - offset % a;
+        let end = (offset + len as u64).div_ceil(a) * a;
+        (start, usize::try_from(end - start).unwrap_or(usize::MAX))
+    }
+
+    /// Read the aligned span at `start` into `b`. A span that passes
+    /// the end of the file reads zeros there.
+    fn read_span(&self, b: &mut [u8], start: u64) -> io::Result<()> {
+        let mut done = 0;
+        while done < b.len() {
+            match self.file.read_at(&mut b[done..], start + done as u64) {
+                Ok(0) => {
+                    b[done..].fill(0);
+                    break;
+                }
+                Ok(n) => done += n,
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
     }
 }
 
@@ -205,11 +269,34 @@ impl Backing for HostStore {
     }
 
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
-        self.file.read_exact_at(buf, offset)
+        if self.aligned(buf, offset) {
+            return self.file.read_exact_at(buf, offset);
+        }
+        let (start, len) = self.span(offset, buf.len());
+        let mut b = Bounce::new(len);
+        self.read_span(b.bytes(), start)?;
+        let skip = usize::try_from(offset - start).unwrap_or(0);
+        buf.copy_from_slice(&b.bytes()[skip..skip + buf.len()]);
+        Ok(())
     }
 
     fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<()> {
-        self.file.write_all_at(buf, offset)
+        let coarse = self.align > u64::from(self.block_bytes);
+        let _held = coarse.then(|| {
+            self.writing
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        });
+        if self.aligned(buf, offset) {
+            return self.file.write_all_at(buf, offset);
+        }
+        // Part of an aligned block: read it, change it, write it.
+        let (start, len) = self.span(offset, buf.len());
+        let mut b = Bounce::new(len);
+        self.read_span(b.bytes(), start)?;
+        let skip = usize::try_from(offset - start).unwrap_or(0);
+        b.bytes()[skip..skip + buf.len()].copy_from_slice(buf);
+        self.file.write_all_at(b.bytes(), start)
     }
 
     fn flush(&self) -> io::Result<()> {
@@ -242,6 +329,43 @@ impl Backing for HostStore {
             let flags = FallocateFlags::ZERO_RANGE | FallocateFlags::KEEP_SIZE;
             Ok(fallocate(&self.file, flags, offset, bytes)?)
         }
+    }
+}
+
+#[cfg(test)]
+mod file_tests {
+    use super::*;
+
+    #[test]
+    fn a_file_store_reads_and_writes_parts_of_its_aligned_blocks() {
+        let dir = std::env::temp_dir().join(format!("qsvs-backing-aligned-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("disk.img");
+        let f = File::create(&path).unwrap();
+        f.set_len(1 << 20).unwrap();
+        drop(f);
+        let Ok(mut s) = HostStore::open(&path) else {
+            // A file system without direct I/O (tmpfs): nothing to see.
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        };
+        s.align = 4096;
+        let mut b = Bounce::new(8192);
+        b.bytes().fill(0x11);
+        s.write_at(b.bytes(), 0).unwrap();
+        // 512 bytes inside the first block, and 1024 across the two.
+        s.write_at(&[0x22; 512], 512).unwrap();
+        s.write_at(&[0x33; 1024], 3584).unwrap();
+        let mut back = [0u8; 1536];
+        s.read_at(&mut back, 3072).unwrap();
+        assert!(back[..512].iter().all(|x| *x == 0x11));
+        assert!(back[512..].iter().all(|x| *x == 0x33));
+        let mut one = [0u8; 512];
+        s.read_at(&mut one, 512).unwrap();
+        assert!(one.iter().all(|x| *x == 0x22));
+        s.read_at(&mut one, 1024).unwrap();
+        assert!(one.iter().all(|x| *x == 0x11));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

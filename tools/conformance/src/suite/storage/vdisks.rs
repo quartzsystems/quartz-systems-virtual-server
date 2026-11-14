@@ -14,7 +14,7 @@ use super::{POOL_DISK_BYTES, disk_names, host, pool_disks, pool_until, poold, sa
 use crate::qemu::session::Session;
 use crate::suite::base::{Run, channel, posted};
 use crate::suite::partition::manager::{self, Spec};
-use crate::suite::partition::{NAME, QSVS_MEMORY_MIB, guest_line, power_off};
+use crate::suite::partition::{NAME, QSVS_MEMORY_MIB, guest_line, power_off, profile};
 
 fn vdisk(guest: &mut Session, pool: &str, name: &str) -> Result<Vdisk, String> {
     poold(guest)?
@@ -25,13 +25,17 @@ fn vdisk(guest: &mut Session, pool: &str, name: &str) -> Result<Vdisk, String> {
         .ok_or_else(|| format!("no virtual disk {pool}/{name}"))
 }
 
-/// The host with a pool disk and a copy of the cheap guest's disk as
-/// further drives: their kernel names.
+/// The host with a pool disk and a copy of the cheap guest's disk (the
+/// release image, from side A) as further drives: their kernel
+/// names.
 fn with_guest_image<'a>(
     run: &Run<'a>,
 ) -> Result<(crate::suite::base::Guest<'a>, String, String), String> {
+    let release = run
+        .release_disk
+        .ok_or("the release image is not built; run `all` first")?;
     let disks = pool_disks(run, 1, POOL_DISK_BYTES)?;
-    let image = crate::suite::partition::unit(run, run.disk)?;
+    let image = crate::suite::partition::unit(run, release)?;
     let mut guest = host(run, &[disks[0].clone(), image])?;
     let names = disk_names(&mut guest, 2)?;
     Ok((guest, names[0].clone(), names[1].clone()))
@@ -40,7 +44,10 @@ fn with_guest_image<'a>(
 /// Copy the guest's disk from its drive into a virtual disk's file.
 fn copy_guest(guest: &mut Session, drive: &str, file: &str) -> Result<(), String> {
     let bytes = loadsource_bytes(guest, drive)?;
-    channel(guest)?.ask(&format!("copy /dev/{drive} 0 {file} 0 {bytes}"))?;
+    channel(guest)?.ask_within(
+        &format!("copy /dev/{drive} 0 {file} 0 {bytes}"),
+        Duration::from_mins(5),
+    )?;
     Ok(())
 }
 
@@ -53,6 +60,28 @@ fn loadsource_bytes(guest: &mut Session, drive: &str) -> Result<u64, String> {
         .find(|d| d.name == drive)
         .map(|d| d.bytes)
         .ok_or_else(|| format!("no disk {drive}"))
+}
+
+/// The cheap guest's profile over `backing`.
+fn cheap(backing: &str) -> Spec {
+    profile(1, QSVS_MEMORY_MIB, "side a", backing)
+}
+
+/// Fill pool `pool` with the file `name`: random bytes, which the
+/// hooks' copy does not leave as holes, until the pool has no room.
+fn fill(guest: &mut Session, pool: &str, name: &str) -> Result<(), String> {
+    let p = pool_until(guest, pool, Instant::now(), |_| true)?;
+    let room = p.bytes.saturating_sub(p.allocated) + (64 << 20);
+    // Refused at the end, when the pool is full: that is the point.
+    let _ = channel(guest)?.ask_within(
+        &format!("copy /dev/urandom 0 /pools/{pool}/{name} 0 {room}"),
+        Duration::from_mins(10),
+    );
+    let after = pool_until(guest, pool, Instant::now(), |_| true)?;
+    if after.bytes.saturating_sub(after.allocated) > 16 << 20 {
+        return Err(format!("the pool was not filled: {after:?}"));
+    }
+    Ok(())
 }
 
 /// A pool of one disk, made and mounted.
@@ -77,6 +106,8 @@ fn one_pool(guest: &mut Session, name: &str, disk: &str) -> Result<(), String> {
 /// gives it back on discard; a thick disk has its space when made, and
 /// its writes find room with the pool otherwise full.
 pub fn thin_thick(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let disks = pool_disks(run, 1, POOL_DISK_BYTES)?;
     let mut guest = host(run, &disks)?;
     let names = disk_names(&mut guest, 1)?;
@@ -99,12 +130,12 @@ pub fn thin_thick(run: &Run<'_>) -> Result<String, String> {
         return Err(format!("discarded, the thin disk is {discarded:?}"));
     }
     // The pool filled by a file of its own: the thick disk still writes.
-    let _ = channel(&mut guest)?.ask(&format!(
-        "copy /dev/zero 0 /pools/POOL1/filler 0 {}",
-        4u64 << 30
-    ));
+    fill(&mut guest, "POOL1", "filler")?;
     let thick_file = "/pools/POOL1/vdisks/THICK.img";
-    channel(&mut guest)?.ask(&format!("copy /dev/urandom 0 {thick_file} 0 {}", 255 << 20))?;
+    channel(&mut guest)?.ask_within(
+        &format!("copy /dev/urandom 0 {thick_file} 0 {}", 255 << 20),
+        Duration::from_mins(5),
+    )?;
     power_off(&mut guest, Duration::from_secs(60))?;
     Ok(format!(
         "a thin disk of 1 GiB made with {} bytes allocated, {} after 64 MiB written and {} after \
@@ -118,14 +149,19 @@ pub fn thin_thick(run: &Run<'_>) -> Result<String, String> {
 /// partition is held, with the attention code, no error reaches the
 /// guest, and it goes on when there is room.
 pub fn full(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let (mut guest, pool, image) = with_guest_image(run)?;
     one_pool(&mut guest, "POOL1", &pool)?;
     // The cheap guest's disk, copied into a thin disk larger than the
     // pool: it writes until the pool is full.
     said(poold(&mut guest)?.create_vdisk("POOL1".into(), "GUEST".into(), 4096, false))?;
     copy_guest(&mut guest, &image, "/pools/POOL1/vdisks/GUEST.img")?;
+    // The rest of the pool taken: the guest's first write to a part of
+    // its disk not yet written finds no room.
+    fill(&mut guest, "POOL1", "filler")?;
     let id = manager::partition(&mut guest, NAME)?;
-    let spec = Spec::new(1, QSVS_MEMORY_MIB, "POOL1/GUEST");
+    let spec = cheap("POOL1/GUEST");
     manager::activate(&mut guest, id, &spec).map_err(|e| manager::refused(&e))?;
     guest.seen(&posted(&refcode::PARTITION_HELD, ""), run.deadline())?;
     let held = manager::status(&mut guest, id)?;
@@ -153,13 +189,15 @@ pub fn full(run: &Run<'_>) -> Result<String, String> {
 /// only while no partition holds it; deleted only when none holds it
 /// and, unless the request says so, no profile names it.
 pub fn rules(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let (mut guest, pool, image) = with_guest_image(run)?;
     one_pool(&mut guest, "POOL1", &pool)?;
     said(poold(&mut guest)?.create_vdisk("POOL1".into(), "SHARED".into(), 1024, false))?;
     copy_guest(&mut guest, &image, "/pools/POOL1/vdisks/SHARED.img")?;
     let first = manager::partition(&mut guest, "FIRST")?;
     let second = manager::partition(&mut guest, "SECOND")?;
-    let spec = Spec::new(1, QSVS_MEMORY_MIB, "POOL1/SHARED");
+    let spec = cheap("POOL1/SHARED");
     manager::activate(&mut guest, first, &spec).map_err(|e| manager::refused(&e))?;
     let refused = manager::activate(&mut guest, second, &spec)
         .err()
@@ -189,11 +227,7 @@ pub fn rules(run: &Run<'_>) -> Result<String, String> {
     // Deleting a partition with its disks deletes them.
     said(poold(&mut guest)?.create_vdisk("POOL1".into(), "MINE".into(), 64, false))?;
     let mine = manager::partition(&mut guest, "MINE")?;
-    manager::put(
-        &mut guest,
-        mine,
-        &Spec::new(1, QSVS_MEMORY_MIB, "POOL1/MINE"),
-    )?;
+    manager::put(&mut guest, mine, &cheap("POOL1/MINE"))?;
     manager::said(manager::partd(&mut guest)?.delete(mine, true))?;
     if vdisk(&mut guest, "POOL1", "MINE").is_ok() {
         return Err("the deleted partition's disk is there".into());

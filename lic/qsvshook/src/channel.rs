@@ -408,7 +408,18 @@ fn copy(rest: &str) -> Vec<String> {
         while at < bytes {
             let n = usize::try_from((bytes - at).min(1 << 20)).unwrap_or(1 << 20);
             source.read_exact_at(&mut chunk[..n], skip + at)?;
-            if !holes || chunk[..n].iter().any(|b| *b != 0) {
+            if holes {
+                // Into a file, a page of zeros is left a hole: what was
+                // never written takes no room, as in a thin disk.
+                let mut off = 0usize;
+                for page in chunk[..n].chunks(4096) {
+                    if page.iter().any(|b| *b != 0) {
+                        target.write_all_at(page, seek + at + off as u64)?;
+                        written += page.len() as u64;
+                    }
+                    off += page.len();
+                }
+            } else {
                 target.write_all_at(&chunk[..n], seek + at)?;
                 written += n as u64;
             }

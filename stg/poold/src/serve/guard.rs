@@ -5,7 +5,8 @@
 //! A pool's set as the kernel's device, with one rule added: a transfer
 //! that changed a unit's state does not complete until the label says
 //! so on the disks that are left. A pool that is lost answers every
-//! transfer with an error and writes nothing to its units.
+//! transfer with an error and writes nothing to its units. A transfer
+//! the set itself failed is remembered: no unit could serve it.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -26,6 +27,7 @@ pub struct Recorded {
     changed: Condvar,
     busy: AtomicUsize,
     lost: AtomicBool,
+    failed: AtomicBool,
 }
 
 impl Recorded {
@@ -38,6 +40,12 @@ impl Recorded {
     /// Whether the host has a transfer under way.
     pub fn busy(&self) -> bool {
         self.busy.load(Ordering::Relaxed) > 0
+    }
+
+    /// Whether the set failed a transfer of the host's since the pool
+    /// was opened.
+    pub fn failed(&self) -> bool {
+        self.failed.load(Ordering::Acquire)
     }
 
     /// The pool is lost: nothing more is written to its units.
@@ -88,6 +96,9 @@ impl Guarded {
         }
         self.recorded.busy.fetch_add(1, Ordering::Relaxed);
         let done = run();
+        if done.is_err() {
+            self.recorded.failed.store(true, Ordering::Release);
+        }
         self.recorded.wait(&*self.states);
         self.recorded.busy.fetch_sub(1, Ordering::Relaxed);
         done
@@ -128,6 +139,9 @@ mod tests {
         );
         let page = vec![7u8; 4096];
         assert_eq!(g.write(0, &page), Ok(()));
+        assert!(!recorded.failed());
+        assert!(g.write(16, &page).is_err());
+        assert!(recorded.failed());
         recorded.lose();
         assert_eq!(g.write(1, &page), Err(EIO));
         let mut back = vec![0u8; 4096];

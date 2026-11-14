@@ -58,6 +58,8 @@ fn send_image(guest: &mut Session, name: &str, device: &str) -> Result<Vec<Strin
 /// `pool-upload`: an interrupted upload leaves nothing; a file that is
 /// not an ISO 9660 image is refused; a whole one is kept.
 pub fn upload_suite(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let good = ipl::iso::build("GOOD_IMAGE", &[("README.TXT", b"a medium".as_slice())]);
     let mut bad = vec![0u8; good.len()];
     bad[..4].copy_from_slice(b"junk");
@@ -104,6 +106,8 @@ pub fn upload_suite(run: &Run<'_>) -> Result<String, String> {
 /// that is not an ISO, and with one that has no UKI: each its code, and
 /// the VMM ends in order.
 pub fn damaged(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let no_uki = ipl::iso::build("NO_UKI", &[("README.TXT", b"no kernel".as_slice())]);
     let mut not_iso = no_uki.clone();
     not_iso[16 * 2048 + 1] = b'X';

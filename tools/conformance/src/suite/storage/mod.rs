@@ -137,9 +137,17 @@ pub fn pool_until(
     ok: impl Fn(&PoolStatus) -> bool,
 ) -> Result<PoolStatus, String> {
     loop {
-        let pools = poold(guest)?
-            .pools()
-            .map_err(|e| format!("the pool service: {e}"))?;
+        // A service started again does not answer for a moment.
+        let pools = match poold(guest)?.pools() {
+            Ok(pools) => pools,
+            Err(e) if Instant::now() >= deadline => {
+                return Err(format!("the pool service: {e}"));
+            }
+            Err(_) => {
+                std::thread::sleep(Duration::from_millis(200));
+                continue;
+            }
+        };
         let p = pools.iter().find(|p| p.name == name).cloned();
         match p {
             Some(p) if ok(&p) => return Ok(p),
@@ -154,7 +162,9 @@ pub fn pool_until(
 /// Boot the host with its further disks `disks` and wait until both
 /// its pool service and its partition manager answer.
 pub fn host<'a>(run: &Run<'a>, disks: &[PathBuf]) -> Result<Guest<'a>, String> {
-    let launch = super::partition::launch(run, disks)?;
+    // A monitor, so a suite can take a disk from under the host.
+    let mut launch = super::partition::launch(run, disks)?;
+    launch.monitor = Some(run.socket("monitor.sock"));
     let mut guest = super::partition::host(run, &launch)?;
     let deadline = run.deadline();
     loop {

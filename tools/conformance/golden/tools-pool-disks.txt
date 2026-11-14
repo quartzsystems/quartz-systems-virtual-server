@@ -1,0 +1,24 @@
+                              Create Storage Pool
+                                                               System:  vs-test
+
+ Pool TOOLS1, mirrored: type 1 by each member, 2 by each hot spare.
+
+ Opt Location             Serial                Size  What it is
+     P0000-B00-D14-F0     QSVSUNIT0           2.1 GB  Not configured
+     P0000-B00-D15-F0     QSVSUNIT1           2.1 GB  Not configured
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F3=Exit   F12=Cancel
+

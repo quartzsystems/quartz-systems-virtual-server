@@ -408,7 +408,7 @@ impl Pool {
         if !self.failure.is_empty() && self.set.is_none() {
             return state::FAILED;
         }
-        if self.label.lost() {
+        if self.label.lost() || self.recorded.failed() {
             return state::FAILED;
         }
         if self.set.is_none() {

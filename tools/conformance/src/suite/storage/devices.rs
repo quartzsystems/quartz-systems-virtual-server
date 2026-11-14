@@ -50,6 +50,8 @@ fn library<'a>(
 
 /// `pool-optical`.
 pub fn optical(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let filler: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
     let first = ipl::iso::build("FIRST", &[("DATA.BIN", filler.as_slice())]);
     let second = ipl::iso::build("SECOND", &[("README.TXT", b"another".as_slice())]);
@@ -65,6 +67,8 @@ pub fn optical(run: &Run<'_>) -> Result<String, String> {
 /// `pool-tape`: the device's own behaviour. A save from QS/400 and its
 /// restore to another partition are `docs/PHASE5.md`'s.
 pub fn tape(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let mut guest = library(run, &[])?;
     said(poold(&mut guest)?.create_volume("SAVE1".into(), "SAV001".into(), 16))?;
     let lines = channel(&mut guest)?.ask("scsiprobe tape /pools/MEDIA/media/tape/SAVE1.aws")?;

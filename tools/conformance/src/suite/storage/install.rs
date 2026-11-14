@@ -48,6 +48,8 @@ pub fn qs400_iso() -> Result<PathBuf, String> {
 
 /// `pool-install`.
 pub fn install(run: &Run<'_>) -> Result<String, String> {
+    // A copy of this image's host disk, not a disk an earlier run left.
+    crate::suite::partition::fresh_host(run)?;
     let iso = qs400_iso()?;
     let pool = run.file("pool0.img");
     blank(&pool, 4 * POOL_DISK_BYTES + (2 << 30))?;
@@ -62,7 +64,10 @@ pub fn install(run: &Run<'_>) -> Result<String, String> {
     ))?;
     super::pool_until(&mut guest, "POOL1", run.deadline(), |p| !p.mount.is_empty())?;
     said(poold(&mut guest)?.designate("POOL1".into()))?;
-    let uploaded = channel(&mut guest)?.ask(&format!("upload QS400 {}", names[1]))?;
+    let uploaded = channel(&mut guest)?.ask_within(
+        &format!("upload QS400 {}", names[1]),
+        Duration::from_mins(15),
+    )?;
     said(poold(&mut guest)?.create_vdisk("POOL1".into(), "PRODLS".into(), 8192, false))?;
 
     let id = manager::partition(&mut guest, NAME)?;
@@ -86,7 +91,10 @@ pub fn install(run: &Run<'_>) -> Result<String, String> {
     // The LIC phase restarts the partition, which is activated again
     // from the side the guest recorded: A, with the media still there.
     guest.seen(&posted(&refcode::PARTITION_RESTART, ""), deadline)?;
-    guest.seen(&posted(&refcode::PARTITION_RECORD_READ, "side A"), deadline)?;
+    guest.seen(
+        &posted(&refcode::PARTITION_RECORD_READ, &format!("{NAME}, side A")),
+        deadline,
+    )?;
     ipl_complete(&mut guest, deadline)?;
     let installed = started.elapsed();
     let vdisk = poold(&mut guest)?
@@ -106,7 +114,10 @@ pub fn install(run: &Run<'_>) -> Result<String, String> {
         None,
     ))?;
     let deadline = Instant::now() + Duration::from_mins(15);
-    guest.seen(&posted(&refcode::PARTITION_STARTED, "side A"), deadline)?;
+    guest.seen(
+        &posted(&refcode::PARTITION_STARTED, &format!("{NAME}, side A")),
+        deadline,
+    )?;
     ipl_complete(&mut guest, deadline)?;
     if guest.said(&guest_line("IPL source not set")) {
         return Err("the guest says its IPL source is not set".into());

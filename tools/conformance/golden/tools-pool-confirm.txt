@@ -1,0 +1,24 @@
+                             Confirm Create of Pool
+                                                               System:  vs-test
+
+ Type it to confirm . :
+
+ Pool TOOLS1, mirrored protection: 2 unit(s), 0 hot spare(s).
+ Its capacity: 2.1 GB.
+ Everything on these disks is erased.
+
+ To go on, type: TOOLS1
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel
+

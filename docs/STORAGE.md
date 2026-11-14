@@ -126,7 +126,9 @@ Hot spare.
 - **The pool service fails.** The `ublk` device outlives it and holds
   the partitions' transfers; the service started again takes the
   device over and they go on.
-- **A pool is lost**: more units failed than its protection covers. It
+- **A pool is lost**: more units failed than its protection covers,
+  or the set failed a transfer because no unit was left to serve it
+  (a mirror keeps its last unit in service until then). It
   is Failed (`A2007040`), nothing more is written to its remaining
   units (every transfer answers an error), and the partitions that use
   it are ended and left in Error with `QVS2111`. Other pools and their

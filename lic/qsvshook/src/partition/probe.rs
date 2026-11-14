@@ -23,9 +23,10 @@ const DESC: u32 = 0x1000;
 const AVAIL: u32 = 0x2000;
 const USED: u32 = 0x3000;
 const HEADER_AT: u64 = 0x8000;
-const OUT_AT: u64 = 0x9000;
-const RESPONSE_AT: u64 = 0xA000;
-const IN_AT: u64 = 0xB000;
+// Data-out and data-in each have room for 256 KiB, apart from the rest.
+const OUT_AT: u64 = 0x1_0000;
+const RESPONSE_AT: u64 = 0x9000;
+const IN_AT: u64 = 0x5_0000;
 const QUEUE_SIZE: u16 = 64;
 const HEADER_BYTES: u32 = 51;
 const RESPONSE_BYTES: u32 = 108;
@@ -463,7 +464,12 @@ pub fn tape(volume: &Path) -> Result<Vec<String>, String> {
     }
     let data = p.ask(0, &r(262_144), &[], 262_144)?;
     if data.data != block {
-        return Err("the data block read back otherwise".into());
+        return Err(format!(
+            "the data block read back otherwise: {} bytes, status {}, sense {:#x}",
+            data.data.len(),
+            data.status,
+            data.sense.0
+        ));
     }
     p.ask(0, &r(16), &[], 16)?;
     p.ask(0, &r(16), &[], 16)?;

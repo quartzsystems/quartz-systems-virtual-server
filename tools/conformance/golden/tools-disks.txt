@@ -6,17 +6,17 @@
  Unit  Location                Serial                  Size  State
     1  P0000-B00-D10-F0        QSVSHD0             671.0 MB  Unprotected
 
- Other disks, not configured:
-       (None)
+ Other disks: 0 (option 6 shows each and what it is)
 
  Select one of the following:
 
       1. Start mirrored protection
       2. Replace a failed unit
       5. Display the units again
-
-
-
+      6. Display disk configuration
+      7. Work with storage pools
+      8. Display virtual disks
+      9. Display media library
  Selection
 
 

@@ -1,0 +1,24 @@
+                              Display Storage Pool
+                                                               System:  vs-test
+
+ Pool  . . : TOOLS1, mirrored protection, Active
+ Size  . . : 2.0 GB, 35.9 MB allocated, 0 B provisioned
+
+ Unit  Location                Serial                  Size  State
+    1  P0000-B00-D14-F0        QSVSUNIT0             2.1 GB  Active
+    2  P0000-B00-D15-F0        QSVSUNIT1             2.1 GB  Active
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Enter=Continue   F1=Help   F12=Cancel
+
