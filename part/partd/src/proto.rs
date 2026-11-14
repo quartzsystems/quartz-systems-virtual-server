@@ -269,7 +269,11 @@ impl Client {
     /// One request, encoded, and its encoded answer: for whoever
     /// carries requests it does not read.
     pub fn exchange(&self, request: &[u8]) -> Result<Vec<u8>, ipc::WireError> {
-        supervise::control::exchange(&self.path, request)
+        let mut stream = std::os::unix::net::UnixStream::connect(&self.path)?;
+        stream.set_read_timeout(Some(ANSWER_WAIT))?;
+        stream.set_write_timeout(Some(ANSWER_WAIT))?;
+        ipc::frame::write_frame(&mut stream, request)?;
+        ipc::frame::read_frame_max(&mut stream, MAX_FRAME)
     }
 
     /// Subscribe: the connection every event then arrives on.
@@ -291,6 +295,12 @@ impl Calls for Client {
 
 /// The longest request, answer or event.
 pub const MAX_FRAME: usize = 256 * 1024;
+
+/// How long a client waits for an answer. A request that changes a
+/// definition, a profile or the settings writes a state file to the
+/// disk before it answers, which on a busy host can take seconds.
+#[cfg(unix)]
+pub const ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// A subscription.
 #[cfg(unix)]

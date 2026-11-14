@@ -136,7 +136,7 @@ pub fn blank_disks(run: &Run<'_>, tag: &str, count: usize) -> Result<Vec<PathBuf
 /// their fixed places: a missing one leaves its place empty.
 pub fn machine(run: &Run<'_>, disks: &[Option<&Path>]) -> Launch {
     let mut launch = Launch {
-        hook: Some(run.file("hook.sock")),
+        hook: Some(run.socket("hook.sock")),
         snapshot: false,
         pinned: true,
         ..run.base.clone()

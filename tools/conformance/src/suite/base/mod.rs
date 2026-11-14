@@ -112,12 +112,21 @@ impl<'a> Run<'a> {
         self.work.join(format!("{}-{name}", self.name))
     }
 
+    /// A Unix socket of this suite. Not beside the scratch files: a
+    /// socket's path has room for 107 bytes, which a checkout deep in a
+    /// CI runner's workspace leaves no room for.
+    pub fn socket(&self, name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("qsvs-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        dir.join(format!("{}-{name}", self.name))
+    }
+
     /// The launch every suite starts from: the test image as a
     /// snapshot, no NIC, and the channel.
     pub fn launch(&self) -> Launch {
         Launch {
             disk: Some(self.disk.to_path_buf()),
-            hook: Some(self.file("hook.sock")),
+            hook: Some(self.socket("hook.sock")),
             ..self.base.clone()
         }
     }

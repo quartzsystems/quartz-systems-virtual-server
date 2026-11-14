@@ -92,7 +92,7 @@ fn installed<'a>(run: &Run<'a>, disk: &Path) -> Result<Guest<'a>, String> {
     let mut launch = machine(run, &[Some(disk)]);
     launch.nic = Some(MAC.into());
     launch.keys = true;
-    launch.monitor = Some(run.file("monitor.sock"));
+    launch.monitor = Some(run.socket("monitor.sock"));
     let mut guest = boot(run, &launch)?;
     let deadline = run.deadline();
     let status = channel(&mut guest)?.until("the management address", deadline, |s| {
@@ -358,7 +358,7 @@ pub fn display(run: &Run<'_>) -> Result<String, String> {
     // Nothing is typed at the serial port: it only shows where the
     // installer is, since it draws the same screens there.
     launch.keys = false;
-    launch.monitor = Some(run.file("monitor.sock"));
+    launch.monitor = Some(run.socket("monitor.sock"));
     let mut guest = run.boot(&launch)?;
     let deadline = Instant::now() + INSTALL_WITHIN;
     let mut typed = 0;

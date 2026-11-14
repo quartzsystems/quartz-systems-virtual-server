@@ -15,6 +15,7 @@ pub mod vcpu;
 
 use std::fs::File;
 use std::io;
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 
 use arch::layout::{
@@ -163,6 +164,8 @@ pub struct Devices {
     pub serial: Arc<Mutex<Serial>>,
     /// The disk LUNs of each adapter, for the counts at the end.
     pub luns: Vec<Arc<Vec<Lun>>>,
+    /// Each adapter's count of task management functions.
+    pub managed: Vec<Arc<AtomicU64>>,
 }
 
 fn put(
@@ -214,10 +217,12 @@ pub fn devices(
     put(&mut io, SLEEP_PORT, 2, power, "the sleep register")?;
 
     let mut luns = Vec::with_capacity(adapters.len());
+    let mut managed = Vec::with_capacity(adapters.len());
     let mut functions: Vec<Box<dyn VirtioDevice>> = Vec::with_capacity(adapters.len() + 1);
     for units in adapters {
         let scsi = Scsi::new(units).ok_or_else(|| io::Error::other("the number of disk units"))?;
         luns.push(scsi.luns());
+        managed.push(scsi.managed());
         functions.push(Box::new(scsi));
     }
     functions.push(Box::new(Rng::new(entropy)));
@@ -250,5 +255,6 @@ pub fn devices(
         pci,
         serial,
         luns,
+        managed,
     })
 }

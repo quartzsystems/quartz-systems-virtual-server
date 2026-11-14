@@ -161,7 +161,7 @@ pub fn shutdown(run: &Run<'_>) -> Result<String, String> {
     let launch = Launch {
         disk: Some(disk),
         snapshot: false,
-        monitor: Some(run.file("monitor.sock")),
+        monitor: Some(run.socket("monitor.sock")),
         ..run.launch()
     };
     let mut guest = booted(run, &launch)?;

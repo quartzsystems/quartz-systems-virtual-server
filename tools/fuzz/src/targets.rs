@@ -311,7 +311,7 @@ fn virtqueue(data: &[u8]) {
         serve_requests(&mut queue, &memory, &luns, &mut bounce);
     }
     if let Some(mut queue) = queue_at(&memory, 64) {
-        serve_control(&mut queue, &memory);
+        serve_control(&mut queue, &memory, &mut || ());
     }
     if let (Some(mut queue), Ok(source)) = (queue_at(&memory, 64), File::open("/dev/zero")) {
         rng::fill(&mut queue, &memory, &source);
@@ -504,8 +504,13 @@ fn report(data: &[u8]) {
     }
     #[cfg(target_os = "linux")]
     if let partd::manager::Ended::Exit(code) = partd::serve::ended(&text) {
-        // The number the last such line has, and nothing made up.
-        assert!(text.contains(&code.to_string()));
+        // The number an END line of the report has, and nothing made
+        // up: `END -05` is -5, which the text does not spell.
+        assert!(text.lines().any(|line| {
+            line.strip_prefix(partd::serve::watch::END_WORD)
+                .and_then(|rest| rest.trim().parse::<i32>().ok())
+                == Some(code)
+        }));
     }
 }
 

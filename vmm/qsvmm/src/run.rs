@@ -22,7 +22,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::os::unix::fs::{PermissionsExt, chown};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -135,6 +135,7 @@ struct Running {
     ends: mpsc::Receiver<(End, String)>,
     tap: serial::Tap,
     luns: Vec<Arc<Vec<Lun>>>,
+    managed: Vec<Arc<AtomicU64>>,
 }
 
 fn now() -> u64 {
@@ -390,6 +391,7 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         ends: ended,
         tap,
         luns: built.luns,
+        managed: built.managed,
     })
 }
 
@@ -520,6 +522,12 @@ pub fn run(options: &Options) -> End {
                 c.reads, c.writes, c.flushes, c.refused
             );
             unit += 1;
+        }
+    }
+    for (adapter, managed) in running.managed.iter().enumerate() {
+        let count = managed.load(Ordering::Relaxed);
+        if count > 0 {
+            eprintln!("qsvmm: adapter {adapter} task management {count}");
         }
     }
     eprintln!("qsvmm: {name} ended: {why}");

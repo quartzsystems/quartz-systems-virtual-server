@@ -148,7 +148,10 @@ pub fn scsi(run: &Run<'_>) -> Result<String, String> {
     guest_ready(&mut guest, deadline)?;
     std::thread::sleep(Duration::from_secs(2));
     end(&mut guest, deadline)?;
-    guest.seen(&vmm_line("qsvmm: unit 0 "), deadline)?;
+    // The whole line: its start may come before its end.
+    guest.wait_for("the unit's counts", deadline, |log| {
+        counts_in(log, 0).is_some()
+    })?;
     let Counts {
         reads,
         writes,

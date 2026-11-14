@@ -9,19 +9,25 @@
 //! - [`backing`]: the host file or block device behind a LUN.
 //!
 //! The request queue and the control queue are served on a thread
-//! each: a request stuck in the host's I/O does not keep a task
-//! management function from being answered, so the guest's error
-//! handling runs on instead of hanging. The event queue is never
-//! used: nothing is plugged or resized under a running partition.
+//! each, and share the request queue behind a lock. A task management
+//! function (an abort, a reset) is answered only when every request
+//! the guest made before it has ended: the control thread waits for
+//! the one in progress and serves those still waiting itself. The
+//! guest takes the answer to mean the device has done with those
+//! requests' buffers, and reuses them; a request ended after that
+//! would write a read's data into memory that is no longer its. The
+//! event queue is never used: nothing is plugged or resized under a
+//! running partition.
 
 use std::io::{self, Read, Write};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use virtio_queue::{Queue, QueueT};
 
 use crate::Memory;
 use crate::virtio::worker::Worker;
-use crate::virtio::{Activation, TYPE_SCSI, VirtioDevice};
+use crate::virtio::{Activation, Interrupt, TYPE_SCSI, VirtioDevice};
 
 pub mod backing;
 pub mod cdb;
@@ -67,10 +73,18 @@ const CONTROL_SUBSCRIBE: u32 = 2;
 /// The SCSI host.
 pub struct Scsi {
     luns: Arc<Vec<Lun>>,
+    managed: Arc<AtomicU64>,
     workers: Vec<Worker>,
 }
 
 impl Scsi {
+    /// How many task management functions (aborts, resets) the guest
+    /// has asked for: each is what the guest does when a request took
+    /// too long.
+    pub fn managed(&self) -> Arc<AtomicU64> {
+        self.managed.clone()
+    }
+
     /// The LUNs, for whoever reports what they were asked for.
     pub fn luns(&self) -> Arc<Vec<Lun>> {
         self.luns.clone()
@@ -81,6 +95,7 @@ impl Scsi {
     pub fn new(luns: Vec<Lun>) -> Option<Self> {
         (!luns.is_empty() && luns.len() <= MAX_LUNS).then(|| Self {
             luns: Arc::new(luns),
+            managed: Arc::new(AtomicU64::new(0)),
             workers: Vec::new(),
         })
     }
@@ -174,6 +189,26 @@ pub fn request(
     }
 }
 
+/// The request queue and what serving it takes: the request thread's,
+/// and the control thread's while it settles the queue.
+struct Requests {
+    queue: Queue,
+    memory: Arc<Memory>,
+    luns: Arc<Vec<Lun>>,
+    bounce: Bounce,
+    interrupt: Interrupt,
+    vector: u16,
+}
+
+impl Requests {
+    /// Serve what is waiting, and tell the guest when any was.
+    fn serve(&mut self) {
+        if serve_requests(&mut self.queue, &self.memory, &self.luns, &mut self.bounce) {
+            self.interrupt.queue(self.vector);
+        }
+    }
+}
+
 /// Serve every request the guest has put in the request queue.
 /// Whether any was.
 pub fn serve_requests(
@@ -220,8 +255,10 @@ pub fn serve_requests(
 }
 
 /// Answer every request the guest has put in the control queue.
-/// Whether any was.
-pub fn serve_control(queue: &mut Queue, memory: &Memory) -> bool {
+/// `settle` is called before a task management function is answered:
+/// it returns when every request made before it has ended. Whether
+/// any was.
+pub fn serve_control(queue: &mut Queue, memory: &Memory, settle: &mut dyn FnMut()) -> bool {
     let mut any = false;
     while let Some(chain) = queue.pop_descriptor_chain(memory) {
         let head = chain.head_index();
@@ -234,10 +271,13 @@ pub fn serve_control(queue: &mut Queue, memory: &Memory) -> bool {
                 .read_exact(&mut kind)
                 .map(|()| u32::from_le_bytes(kind))
             {
-                // Every request ends before the next is taken, so a
-                // task named here is no longer the device's: aborting
-                // or resetting has nothing left to do.
-                Ok(CONTROL_TASK_MANAGEMENT) => &[RESPONSE_FUNCTION_COMPLETE],
+                // Every request made before this one has ended once
+                // `settle` returns, the task named here among them:
+                // aborting or resetting has nothing left to do.
+                Ok(CONTROL_TASK_MANAGEMENT) => {
+                    settle();
+                    &[RESPONSE_FUNCTION_COMPLETE]
+                }
                 // No asynchronous event is ever reported.
                 Ok(CONTROL_QUERY | CONTROL_SUBSCRIBE) => &[0, 0, 0, 0, RESPONSE_OK],
                 _ => &[RESPONSE_FUNCTION_REJECTED],
@@ -301,28 +341,43 @@ impl VirtioDevice for Scsi {
         };
         let control = take(CONTROL_QUEUE);
 
-        let luns = self.luns.clone();
-        let (request_memory, request_interrupt) = (memory.clone(), interrupt.clone());
-        let mut queue = requests.queue;
-        let vector = requests.vector;
-        let mut bounce = Bounce::new(CHUNK_BYTES);
+        let shared = Arc::new(Mutex::new(Requests {
+            queue: requests.queue,
+            memory: memory.clone(),
+            luns: self.luns.clone(),
+            bounce: Bounce::new(CHUNK_BYTES),
+            interrupt: interrupt.clone(),
+            vector: requests.vector,
+        }));
+        let serving = shared.clone();
         self.workers.push(Worker::spawn(
             "virtio-scsi",
             vec![(REQUEST_QUEUE, requests.notify)],
             move |_| {
-                if serve_requests(&mut queue, &request_memory, &luns, &mut bounce) {
-                    request_interrupt.queue(vector);
-                }
+                serving
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .serve();
             },
         )?);
         if let Some(control) = control {
             let mut queue = control.queue;
             let vector = control.vector;
+            let managed = self.managed.clone();
             self.workers.push(Worker::spawn(
                 "virtio-scsi-ctl",
                 vec![(CONTROL_QUEUE, control.notify)],
                 move |_| {
-                    if serve_control(&mut queue, &memory) {
+                    // Waits for the request in progress, then serves
+                    // those still waiting.
+                    let mut settle = || {
+                        managed.fetch_add(1, Ordering::Relaxed);
+                        shared
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .serve();
+                    };
+                    if serve_control(&mut queue, &memory, &mut settle) {
                         interrupt.queue(vector);
                     }
                 },
@@ -618,8 +673,9 @@ mod tests {
     }
 
     #[test]
-    fn task_management_is_always_answered() {
+    fn task_management_is_always_answered_once_the_requests_are_settled() {
         let mut guest = Guest::new(16);
+        let mut settled = 0;
         let put = |guest: &Guest, kind: u32| {
             guest
                 .memory
@@ -628,7 +684,10 @@ mod tests {
         };
         put(&guest, CONTROL_TASK_MANAGEMENT);
         chain(&mut guest, &[(HEADER_AT, 24)], &[(RESPONSE_AT, 1)]);
-        assert!(serve_control(&mut guest.queue, &guest.memory));
+        assert!(serve_control(&mut guest.queue, &guest.memory, &mut || {
+            settled += 1;
+        }));
+        assert_eq!(settled, 1);
         let done: u8 = guest.memory.read_obj(GuestAddress(RESPONSE_AT)).unwrap();
         assert_eq!(done, RESPONSE_FUNCTION_COMPLETE);
         put(&guest, CONTROL_QUERY);
@@ -637,7 +696,11 @@ mod tests {
         chain(&mut guest, &[(HEADER_AT, 16)], &[(RESPONSE_AT, 5)]);
         chain(&mut guest, &[(HEADER_AT, 2)], &[(RESPONSE_AT, 5)]);
         chain(&mut guest, &[(HEADER_AT, 16)], &[]);
-        assert!(serve_control(&mut guest.queue, &guest.memory));
+        assert!(serve_control(&mut guest.queue, &guest.memory, &mut || {
+            settled += 1;
+        }));
+        // Nothing but a task management function waits for requests.
+        assert_eq!(settled, 1);
         let written: Vec<u32> = guest.used().iter().map(|u| u.1).collect();
         // The query was read as 77 by then: both are rejected in one byte.
         assert_eq!(written, [1, 1, 1, 1, 0]);

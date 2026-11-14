@@ -100,8 +100,11 @@ pub fn power_pull(run: &Run<'_>) -> Result<String, String> {
             if id != ID {
                 return Err(at(format!("the first partition has the ID {id}")));
             }
-            start(&mut guest, Some(&spec)).map_err(at)?;
+            // Flagged first: a definition changes only while its
+            // partition is not activated.
+            manager::put(&mut guest, ID, &spec).map_err(at)?;
             manager::auto_start(&mut guest, ID, 1, 0).map_err(at)?;
+            start(&mut guest, Some(&spec)).map_err(at)?;
         }
         let deadline = patience(run);
         ipl_complete(&mut guest, deadline).map_err(at)?;

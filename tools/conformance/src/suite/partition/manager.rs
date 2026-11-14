@@ -214,8 +214,8 @@ pub fn auto_start(guest: &mut Session, id: u32, order: u32, delay_secs: u32) -> 
         order,
         delay_secs,
     };
-    // A definition changes only while its partition is not activated:
-    // the flag is what is kept, and the partition goes on.
+    // Only while the partition is not activated: partd refuses a
+    // definition's change otherwise.
     match partd(guest)?.change(definition.clone()) {
         Ok(Ok(())) => Ok(()),
         Ok(Err(errors)) => Err(refused(&errors)),

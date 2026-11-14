@@ -428,7 +428,9 @@ pub struct Counts {
 pub fn counts_in(log: &str, unit: u32) -> Option<Counts> {
     let mark = vmm_line(&format!("qsvmm: unit {unit} "));
     let line = log.rsplit(&mark).next().filter(|_| log.contains(&mark))?;
-    let words: Vec<&str> = line.lines().next()?.split_ascii_whitespace().collect();
+    // Only a line that has ended: a number may still be coming.
+    let (line, _) = line.split_once('\n')?;
+    let words: Vec<&str> = line.split_ascii_whitespace().collect();
     let value = |name: &str| -> Option<u64> {
         let at = words.iter().position(|w| *w == name)?;
         words.get(at + 1)?.parse().ok()
@@ -485,6 +487,14 @@ mod tests {
         );
         assert_eq!(counts_in(log, 1), None);
         assert_eq!(counts_in("", 0), None);
+        // A line not yet ended is not read.
+        assert_eq!(
+            counts_in(
+                "TESTLPAR! qsvmm: unit 0 reads 1 writes 2 flushes 3 refused 1",
+                0
+            ),
+            None
+        );
     }
 
     #[test]
