@@ -21,6 +21,7 @@ loadsource = { path = "../../base/loadsource", version = "0.1.0" }
 stgd = { path = "../../base/stgd", version = "0.1.0" }
 resource = { path = "../../part/resource", version = "0.1.0" }
 partd = { path = "../../part/partd", version = "0.1.0" }
+vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
 abrec.workspace = true
 diskimg.workspace = true
 

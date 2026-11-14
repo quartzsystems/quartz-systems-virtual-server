@@ -211,7 +211,7 @@ catalogue! {
         "Add the VLAN to the switch first, or choose one of the VLANs it carries.";
     /// A MAC address another partition has.
     MAC_IN_USE = "QVS1225",
-        "MAC address &2 of the virtual Ethernet adapter in slot &1 is partition &3's.",
+        "MAC address &2 of the virtual Ethernet adapter in slot &1 is also &3's.",
         "No two partitions of a host have one MAC address. Leave the address out to have the host make one from the partition and the slot.";
     /// An adapter with no switch.
     ADAPTER_SWITCH_NEEDED = "QVS1226",

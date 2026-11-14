@@ -92,7 +92,30 @@ pub struct Status {
     pub message: Option<Issued>,
     /// Its VMM's process; 0 when it has none.
     pub pid: u32,
+    /// Its virtual Ethernet adapters: the running profile's, or the
+    /// default profile's when it is not activated.
+    pub ethernet: Vec<Ethernet>,
 }
+
+/// A virtual Ethernet adapter, as a list shows it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Ethernet {
+    /// Its slot.
+    pub slot: u32,
+    /// Its switch.
+    pub switch: String,
+    /// Its MAC address.
+    pub mac: String,
+    /// Whether it has link: its port is open on a running partition.
+    pub link: bool,
+}
+ipc::wire_struct!(Ethernet {
+    slot,
+    switch,
+    mac,
+    link
+});
+
 ipc::wire_struct!(Status {
     id,
     name,
@@ -103,7 +126,8 @@ ipc::wire_struct!(Status {
     profile,
     last_end,
     message,
-    pid
+    pid,
+    ethernet
 });
 
 /// One reference code of a partition's history.
@@ -258,6 +282,9 @@ ipc::rpc! {
     /// The profiles that name the virtual disk `name` of `pool`: each
     /// as `PROD profile NORMAL slot 2`.
     24 => fn named / Named (pool: String, name: String) -> Vec<String>;
+    /// Every virtual Ethernet adapter of a partition's profiles, with its
+    /// switch and MAC address; of every partition with 0.
+    25 => fn adapters / Adapters (id: u32) -> Vec<vswitchd::Adapter>;
 }
 
 /// An optical or tape device of a running partition.
@@ -380,6 +407,12 @@ mod tests {
             last_end: String::new(),
             message: Some(qvsmsg::POOL_MISSING.with(&["X"])),
             pid: 412,
+            ethernet: vec![Ethernet {
+                slot: 5,
+                switch: "PRODNET".into(),
+                mac: "02:5a:3c:00:03:05".into(),
+                link: true,
+            }],
         };
         let back: Status = ipc::decode(&ipc::encode(&status)).unwrap();
         assert_eq!(back, status);

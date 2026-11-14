@@ -253,6 +253,10 @@ pub struct Adapter {
     pub vlan: u16,
     /// The tagged VLANs.
     pub tagged: Vec<u16>,
+    /// Its MAC address.
+    pub mac: String,
+    /// Whether the partition is activated only with its port.
+    pub required: bool,
 }
 ipc::wire_struct!(Adapter {
     partition,
@@ -261,7 +265,9 @@ ipc::wire_struct!(Adapter {
     slot,
     switch,
     vlan,
-    tagged
+    tagged,
+    mac,
+    required
 });
 
 /// What a port that was opened is: its tap's open file follows.

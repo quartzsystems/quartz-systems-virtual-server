@@ -39,6 +39,10 @@ pub struct Fake {
     pub refuse_hold: Option<Issued>,
     pub refuse_host_paths: bool,
     pub deleted: Vec<(String, String)>,
+    pub switches: Option<Vec<vswitch::Switch>>,
+    pub ports: Vec<(u32, vswitch::port::PortSpec)>,
+    pub refuse_port: Option<Issued>,
+    pub reconciled: Vec<Vec<u32>>,
 }
 
 impl System for Fake {
@@ -116,6 +120,22 @@ impl System for Fake {
     fn delete_vdisks(&mut self, disks: &[(String, String)]) -> Vec<Issued> {
         self.deleted.extend_from_slice(disks);
         Vec::new()
+    }
+    fn switches(&mut self) -> Option<Vec<vswitch::Switch>> {
+        self.switches.clone()
+    }
+    fn open_port(&mut self, id: u32, spec: &vswitch::port::PortSpec) -> Result<u32, Vec<Issued>> {
+        if let Some(refused) = &self.refuse_port {
+            return Err(vec![refused.clone()]);
+        }
+        self.ports.push((id, spec.clone()));
+        Ok(9000)
+    }
+    fn close_ports(&mut self, id: u32) {
+        self.ports.retain(|(i, _)| *i != id);
+    }
+    fn reconcile_ports(&mut self, running: &[u32]) {
+        self.reconciled.push(running.to_vec());
     }
 }
 
@@ -597,14 +617,13 @@ fn the_keylock_is_the_definition_s_unless_the_activation_says() {
     assert!(refused[0].is(&qvsmsg::NO_OPTICAL));
     let mut later = m.profile(id, "NORMAL".into()).unwrap();
     later.name = "NET".into();
-    later.ethernet.push(model::EthernetAdapter {
-        slot: 9,
-        vlan: 1,
-        mac: None,
+    later.physical_io.push(model::PhysicalIo {
+        location: "P0000-B00-D05-F0".into(),
+        required: true,
     });
     m.put_profile(id, later).unwrap();
     let refused = m.activate(id, "NET".into(), None, None).unwrap_err();
-    assert!(refused[0].text.contains("Phase 6"), "{}", refused[0]);
+    assert!(refused[0].text.contains("Phase 10"), "{}", refused[0]);
     assert_eq!(
         ids(&m.activate(id, "NOSUCH".into(), None, None).unwrap_err()),
         [qvsmsg::PROFILE_MISSING.id]
@@ -813,4 +832,138 @@ fn a_release_image_takes_no_host_path_as_a_backing_store() {
     assert!(refused[0].text.contains("/dev/A"));
     assert!(m.system.launched.is_empty());
     assert_eq!(state(&mut m, id), State::NotActivated);
+}
+
+fn adapter(
+    slot: u32,
+    switch: &str,
+    vlan: u32,
+    tagged: &[u32],
+    required: bool,
+) -> model::EthernetAdapter {
+    model::EthernetAdapter {
+        slot,
+        switch: Some(switch.into()),
+        vlan,
+        tagged: tagged.to_vec(),
+        mac: None,
+        required,
+    }
+}
+
+fn switch(name: &str, vlans: &[u16]) -> vswitch::Switch {
+    vswitch::Switch {
+        name: name.into(),
+        id: 1,
+        vlans: vlans.to_vec(),
+        mtu: 9000,
+        uplink: None,
+    }
+}
+
+#[test]
+fn an_adapter_is_given_its_address_once_and_checked_against_the_switches() {
+    let scratch = Scratch::new("ethernet");
+    let mut m = scratch.manager();
+    let id = partition(&mut m, "PROD");
+    let other = partition(&mut m, "TEST");
+    m.system.switches = Some(vec![switch("PRODNET", &[10, 20])]);
+    let mut p = m.profile(id, "NORMAL".into()).unwrap();
+    p.ethernet = vec![adapter(5, "PRODNET", 10, &[20], true)];
+    m.put_profile(id, p).unwrap();
+    // Made from the host's prefix, the partition and the slot; kept in
+    // the profile, and the prefix in the settings.
+    let prefix = vswitch::mac::prefix_of("HOST01");
+    let made = vswitch::mac::text(&vswitch::mac::made(prefix, id, 5));
+    let kept = m.profile(id, "NORMAL".into()).unwrap();
+    assert_eq!(kept.ethernet[0].mac.as_deref(), Some(made.as_str()));
+    assert_eq!(m.settings().mac_prefix.as_deref(), Some(&made[..8]));
+    let again = scratch.manager();
+    assert_eq!(again.prefix(), prefix);
+    // Another partition may not have it; a switch or VLAN that is not
+    // there is refused by name.
+    let mut q = m.profile(other, "NORMAL".into()).unwrap();
+    q.ethernet = vec![
+        model::EthernetAdapter {
+            mac: Some(made.clone()),
+            ..adapter(5, "PRODNET", 10, &[], true)
+        },
+        adapter(6, "NONE", 10, &[], true),
+        adapter(7, "PRODNET", 30, &[40], false),
+    ];
+    assert_eq!(
+        ids(&m.put_profile(other, q).unwrap_err()),
+        [
+            qvsmsg::MAC_IN_USE.id,
+            qvsmsg::ADAPTER_SWITCH_MISSING.id,
+            qvsmsg::ADAPTER_VLAN_MISSING.id,
+            qvsmsg::ADAPTER_VLAN_MISSING.id,
+        ]
+    );
+    // Every adapter, as the switch service asks for them.
+    let all = m.adapters(0);
+    assert_eq!(all.len(), 1);
+    assert_eq!((all[0].partition, all[0].slot, all[0].vlan), (id, 5, 10));
+    assert_eq!(all[0].mac, made);
+    assert!(m.adapters(other).is_empty());
+    // The partition deleted, its address is free.
+    m.delete(id, false).unwrap();
+    let mut q = m.profile(other, "NORMAL".into()).unwrap();
+    q.ethernet = vec![model::EthernetAdapter {
+        mac: Some(made),
+        ..adapter(5, "PRODNET", 10, &[], true)
+    }];
+    m.put_profile(other, q).unwrap();
+}
+
+#[test]
+fn an_activation_opens_each_adapters_port_and_the_end_closes_them() {
+    let scratch = Scratch::new("ports");
+    let mut m = scratch.manager();
+    let id = partition(&mut m, "PROD");
+    let mut p = m.profile(id, "NORMAL".into()).unwrap();
+    p.ethernet = vec![
+        adapter(7, "BACKEND", 30, &[], false),
+        adapter(5, "PRODNET", 10, &[20], true),
+    ];
+    m.put_profile(id, p).unwrap();
+    run(&mut m, id);
+    let opened: Vec<u32> = m.system.ports.iter().map(|(_, s)| s.slot).collect();
+    assert_eq!(opened, [5, 7]);
+    assert_eq!(m.system.ports[0].1.tagged, [20]);
+    let config = &m.system.launched[0].2;
+    assert!(config.contains("[[net]]"), "{config}");
+    assert!(config.contains("tap = \"/proc/self/fd/3\""), "{config}");
+    assert!(config.contains("tap = \"/proc/self/fd/4\""), "{config}");
+    assert!(config.contains("mtu = 9000"), "{config}");
+    let listed = m.list().into_iter().find(|s| s.id == id).unwrap();
+    assert_eq!(listed.ethernet.len(), 2);
+    assert!(listed.ethernet.iter().all(|e| e.link));
+    m.ended(id, Ended::Exit(0));
+    assert!(m.system.ports.is_empty());
+
+    // A switch service that refuses: the required adapter fails the
+    // activation by name, and nothing is held.
+    m.system.refuse_port = Some(qvsmsg::ADAPTER_SWITCH_MISSING.with(&["5", "PRODNET"]));
+    let refused = m.activate(id, String::new(), None, None).unwrap_err();
+    assert_eq!(
+        ids(&refused),
+        [qvsmsg::PORT_NOT_GIVEN.id, qvsmsg::ADAPTER_SWITCH_MISSING.id]
+    );
+    assert!(refused[0].text.contains("slot 5"), "{}", refused[0]);
+    assert!(m.system.held.is_empty());
+    assert_eq!(state(&mut m, id), State::NotActivated);
+    // Not required: it comes up without link.
+    let mut p = m.profile(id, "NORMAL".into()).unwrap();
+    p.ethernet = vec![adapter(7, "BACKEND", 30, &[], false)];
+    m.put_profile(id, p).unwrap();
+    run(&mut m, id);
+    let config = &m.system.launched.last().unwrap().2;
+    assert!(
+        config.contains("[[net]]") && !config.contains("tap ="),
+        "{config}"
+    );
+    let listed = m.list().into_iter().find(|s| s.id == id).unwrap();
+    assert_eq!(listed.ethernet.len(), 1);
+    assert!(!listed.ethernet[0].link);
 }

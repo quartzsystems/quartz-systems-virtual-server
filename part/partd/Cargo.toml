@@ -18,6 +18,9 @@ qsvmm = { path = "../../vmm/qsvmm", version = "0.1.0" }
 # The pool service: its socket's types, and the client of a running one.
 poold = { path = "../../stg/poold", version = "0.1.0" }
 fdpass = { path = "../../base/fdpass", version = "0.1.0" }
+# The switch service: its socket's types, and the client of a running one.
+vswitch = { path = "../../net/vswitch", version = "0.1.0" }
+vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
 ipc.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]

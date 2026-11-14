@@ -76,13 +76,19 @@ pub struct Settings {
     /// The shared processor pools beside the default one.
     #[serde(default, rename = "pool", skip_serializing_if = "Vec::is_empty")]
     pub pools: Vec<Pool>,
+    /// The first three bytes of the MAC addresses the host makes for
+    /// partitions' adapters, `xx:xx:xx`: derived once from the host's
+    /// serial number and kept, so they never change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mac_prefix: Option<String>,
 }
 ipc::wire_struct!(Settings {
     max_partitions,
     memory_block_mib,
     reserved_cores,
     reserved_memory_mib,
-    pools
+    pools,
+    mac_prefix
 });
 
 /// The least memory a host may be told to keep for itself, in MiB:
@@ -97,6 +103,7 @@ impl Default for Settings {
             reserved_cores: DEFAULT_RESERVED_CORES,
             reserved_memory_mib: None,
             pools: Vec::new(),
+            mac_prefix: None,
         }
     }
 }

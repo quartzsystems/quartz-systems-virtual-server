@@ -202,6 +202,8 @@ fn functions(
                     functions.push(vec![drives.remove(at).1]);
                 }
             }
+            // BLOCKED(phase6-wip): the virtio-net function is placed by the machine.
+            Slot::Net(_) => {}
         }
     }
     functions

@@ -14,12 +14,14 @@
 //! | it failed, the guest faulted, or it was killed | Error, with the reference code and how it ended; not started again |
 
 use model::validate::{Backing, backing};
-use model::{IplSource, Keylock, Profile};
+use model::{EthernetAdapter, IplSource, Keylock, Profile};
 use poold::proto::{Kind, Want};
+use qsvmm::config::Net;
 use qsvmm::end::End;
 use qvsmsg::Issued;
 use resource::cgroup;
 use resource::{Current, Held};
+use vswitch::port::PortSpec;
 
 use super::{Ended, MAX_LINE, Manager, Record, Run, System, config};
 use config::Stores;
@@ -173,6 +175,7 @@ impl<S: System> Manager<S> {
             return Ok(stores);
         }
         let given = self.system.hold(id, &wants)?;
+        stores.files = given.len();
         for (i, (key, g)) in keys.into_iter().zip(&given).enumerate() {
             // The files are the VMM's from descriptor 3 on, in order.
             let path = format!("/proc/self/fd/{}", 3 + i);
@@ -191,6 +194,75 @@ impl<S: System> Manager<S> {
             }
         }
         Ok(stores)
+    }
+
+    /// Open the ports of `profile`'s Ethernet adapters for `id`, named
+    /// `name`, in slot order: each a `[[net]]` of `stores`, its tap the
+    /// VMM's descriptor after the pool service's files. A required
+    /// adapter that gets no port fails the activation by name; one that
+    /// is not comes up without link. Each adapter's slot and whether its
+    /// port was opened.
+    fn open_ports(
+        &mut self,
+        id: u32,
+        name: &str,
+        profile: &Profile,
+        stores: &mut Stores,
+    ) -> Result<Vec<(u32, bool)>, Vec<Issued>> {
+        let mut adapters: Vec<&EthernetAdapter> = profile.ethernet.iter().collect();
+        adapters.sort_by_key(|a| a.slot);
+        let prefix = self.prefix();
+        let mut ports = Vec::new();
+        let mut taps = 0;
+        for a in adapters {
+            let mac = a
+                .mac
+                .as_deref()
+                .and_then(vswitch::mac::parse)
+                .unwrap_or_else(|| vswitch::mac::made(prefix, id, a.slot));
+            let spec = PortSpec {
+                partition: id,
+                slot: a.slot,
+                switch: a.switch.clone().unwrap_or_default(),
+                vlan: a.port_vlan().unwrap_or(0),
+                tagged: a.tagged_vlans(),
+                mac,
+            };
+            match self.system.open_port(id, &spec) {
+                Ok(mtu) => {
+                    let fd = 3 + stores.files + taps;
+                    taps += 1;
+                    stores.net.push(Net {
+                        slot: a.slot,
+                        mac: vswitch::mac::text(&mac),
+                        tap: Some(format!("/proc/self/fd/{fd}").into()),
+                        mtu,
+                    });
+                    ports.push((a.slot, true));
+                }
+                Err(refused) => {
+                    let why = refused.first().map(|m| m.text.clone()).unwrap_or_default();
+                    let slot = a.slot.to_string();
+                    if a.required {
+                        self.system.close_ports(id);
+                        let mut all = vec![qvsmsg::PORT_NOT_GIVEN.with(&[name, &slot, &why])];
+                        all.extend(refused);
+                        return Err(all);
+                    }
+                    self.system.log(&format!(
+                        "{name}: the adapter in slot {slot} comes up without link: {why}"
+                    ));
+                    stores.net.push(Net {
+                        slot: a.slot,
+                        mac: vswitch::mac::text(&mac),
+                        tap: None,
+                        mtu: vswitch::switch::DEFAULT_MTU,
+                    });
+                    ports.push((a.slot, false));
+                }
+            }
+        }
+        Ok(ports)
     }
 
     /// Start the VMM of `id` holding `current`, with its media as
@@ -214,7 +286,14 @@ impl<S: System> Manager<S> {
         };
         let definition = partition.definition.clone();
         let media = media.unwrap_or_else(|| profile_media(&profile));
-        let stores = self.hold_stores(id, &profile, &media)?;
+        let mut stores = self.hold_stores(id, &profile, &media)?;
+        let ports = match self.open_ports(id, &name, &profile, &mut stores) {
+            Ok(ports) => ports,
+            Err(refused) => {
+                self.system.give_back(id, &[]);
+                return Err(refused);
+            }
+        };
         let vcpus = self.host.vcpus(&current.processors);
         let written = config::build(
             &definition,
@@ -248,6 +327,7 @@ impl<S: System> Manager<S> {
             Err(e) => {
                 self.system.remove_group(&group);
                 self.system.give_back(id, &[]);
+                self.system.close_ports(id);
                 let _ = self.apply_base();
                 return Err(vec![qvsmsg::VMM_NOT_STARTED.with(&[&name, &e])]);
             }
@@ -275,6 +355,7 @@ impl<S: System> Manager<S> {
                 asked: None,
                 media,
                 lost: None,
+                ports,
             });
             partition.last_profile = profile_name.to_string();
             partition.message = None;
@@ -355,6 +436,7 @@ impl<S: System> Manager<S> {
         self.system.remove_group(&run.group);
         self.system.record(id, None);
         self.system.give_back(id, &[]);
+        self.system.close_ports(id);
         if let Err(e) = self.apply_base() {
             self.system.log(&format!("resource controls: {e}"));
         }
@@ -623,6 +705,12 @@ impl<S: System> Manager<S> {
                 .map(profile_media)
                 .unwrap_or_default(),
             lost: None,
+            // Its ports stay with its VMM's taps.
+            ports: partition
+                .profiles
+                .get(&record.profile)
+                .map(|p| p.ethernet.iter().map(|a| (a.slot, true)).collect())
+                .unwrap_or_default(),
         });
         partition.last_profile.clone_from(&record.profile);
         partition.state = State::Starting;

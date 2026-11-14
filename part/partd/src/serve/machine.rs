@@ -20,6 +20,8 @@ use poold::proto::{Calls as _, Given, Want};
 use qvsmsg::Issued;
 use resource::cgroup::Step;
 use rustix::process::{Pid, Signal, kill_process};
+use vswitch::port::PortSpec;
+use vswitchd::Calls as _;
 
 use super::sys;
 use crate::manager::{Record, System};
@@ -49,6 +51,8 @@ pub struct Paths {
     pub vmm: PathBuf,
     /// The pool service's socket.
     pub pools: PathBuf,
+    /// The switch service's socket.
+    pub switches: PathBuf,
     /// Where each partition's sockets are: `<partitions>/<ID>`.
     pub partitions: PathBuf,
     /// Whether a host path may back a unit: a test image's.
@@ -75,6 +79,9 @@ pub struct Machine {
     /// The files the pool service gave each partition, in order, not
     /// yet handed to its VMM.
     held: BTreeMap<u32, Vec<(Want, File)>>,
+    /// The taps the switch service gave each partition, in order: the
+    /// VMM's after the pool service's files.
+    taps: BTreeMap<u32, Vec<File>>,
 }
 
 impl Machine {
@@ -86,11 +93,16 @@ impl Machine {
             watches,
             posts,
             held: BTreeMap::new(),
+            taps: BTreeMap::new(),
         }
     }
 
     fn pools(&self) -> poold::proto::Client {
         poold::proto::Client::new(&self.paths.pools)
+    }
+
+    fn switch_service(&self) -> vswitchd::Client {
+        vswitchd::Client::new(&self.paths.switches)
     }
 
     fn start(&mut self, id: u32, group: &str, config: &str) -> io::Result<Child> {
@@ -121,6 +133,7 @@ impl Machine {
             .unwrap_or_default()
             .into_iter()
             .map(|(_, f)| f)
+            .chain(self.taps.remove(&id).unwrap_or_default())
             .collect();
         let mut child = sys::spawn_with(&mut command, procs, files)?;
         // The whole configuration, then the end of its input.
@@ -318,5 +331,42 @@ impl System for Machine {
             }
         }
         refused
+    }
+
+    fn switches(&mut self) -> Option<Vec<vswitch::Switch>> {
+        self.switch_service()
+            .switches()
+            .ok()
+            .map(|all| all.into_iter().filter_map(|s| s.switch).collect())
+    }
+
+    fn open_port(&mut self, id: u32, spec: &PortSpec) -> Result<u32, Vec<Issued>> {
+        match self.switch_service().open_port_file(spec.clone()) {
+            Ok(Ok((given, file))) => {
+                self.taps.entry(id).or_default().push(file);
+                Ok(given.mtu)
+            }
+            Ok(Err(refused)) => Err(refused),
+            Err(e) => Err(vec![
+                qvsmsg::SWITCHES_UNREACHABLE.with(&[&id.to_string(), &e.to_string()]),
+            ]),
+        }
+    }
+
+    fn close_ports(&mut self, id: u32) {
+        self.taps.remove(&id);
+        if let Err(e) = self.switch_service().close_port(id, 0) {
+            println!("the switch service did not close partition {id}'s ports: {e}");
+        }
+    }
+
+    fn reconcile_ports(&mut self, running: &[u32]) {
+        match self.switch_service().reconcile(running.to_vec()) {
+            Ok(0) => {}
+            Ok(n) => {
+                println!("the switch service closed {n} port(s) of partitions that do not run");
+            }
+            Err(e) => println!("the switch service did not reconcile its ports: {e}"),
+        }
     }
 }

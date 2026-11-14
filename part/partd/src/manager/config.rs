@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use model::{ConsoleMode, Definition, IplSource, IplType, Keylock, Profile};
-use qsvmm::config::{Adapter, Config, Optical, TapeDrive, Unit};
+use qsvmm::config::{Adapter, Config, Net, Optical, TapeDrive, Unit};
 use resource::{Current, Vcpus};
 
 /// What the units and devices are kept in, as `qsvmm` names them: a
@@ -21,6 +21,10 @@ pub struct Stores {
     /// A tape device's volume by its slot: the file, its name, its
     /// capacity in MiB and its write protection.
     pub tape: BTreeMap<u32, (String, String, u64, bool)>,
+    /// How many files the pool service gave: the taps' follow them.
+    pub files: usize,
+    /// The Ethernet adapters, each with its tap or none.
+    pub net: Vec<Net>,
 }
 
 /// The serial number of a unit whose profile gives none: the
@@ -119,6 +123,7 @@ pub fn build(
                 }
             })
             .collect(),
+        net: stores.net.clone(),
     }
 }
 

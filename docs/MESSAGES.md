@@ -86,7 +86,7 @@ wording.
 | `QVS1222` | The profile has &1 virtual Ethernet adapters; a partition may have &2. | The host's switch settings say how many adapters one partition may have, 8 at most. |
 | `QVS1223` | The virtual Ethernet adapter in slot &1 names switch &2, which does not exist. | Make the switch in Work with virtual switches, or name one of the host's switches. An adapter that is not required comes up without link when its switch is missing at activation. |
 | `QVS1224` | The virtual Ethernet adapter in slot &1 uses VLAN &3, which switch &2 does not carry. | Add the VLAN to the switch first, or choose one of the VLANs it carries. |
-| `QVS1225` | MAC address &2 of the virtual Ethernet adapter in slot &1 is partition &3's. | No two partitions of a host have one MAC address. Leave the address out to have the host make one from the partition and the slot. |
+| `QVS1225` | MAC address &2 of the virtual Ethernet adapter in slot &1 is also &3's. | No two partitions of a host have one MAC address. Leave the address out to have the host make one from the partition and the slot. |
 | `QVS1226` | The virtual Ethernet adapter in slot &1 names no switch. | Every adapter names the virtual switch it is on, with the key switch. |
 | `QVS2001` | Partition &1 does not exist. | No partition of this host has that ID. List the partitions to see the IDs there are. |
 | `QVS2002` | Partition &1 is activated. | A partition is changed, deleted or activated only while it is not activated. Its state is &2. Shut it down first. |

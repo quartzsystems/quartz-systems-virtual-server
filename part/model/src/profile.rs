@@ -228,20 +228,66 @@ impl Default for Boot {
     }
 }
 
-/// `[[ethernet]]`: a virtual Ethernet adapter. Phase 6.
+/// `[[ethernet]]`: a virtual Ethernet adapter, a port of a virtual
+/// switch (`docs/NETWORK.md`).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct EthernetAdapter {
     /// The virtual slot.
     pub slot: u32,
-    /// The port's VLAN, 1 to 4094.
+    /// The virtual switch it is on. Required: a profile without it is
+    /// refused (`QVS1226`), not misread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub switch: Option<String>,
+    /// The port VLAN, 1 to 4094: untagged to the guest.
     pub vlan: u32,
-    /// The MAC address, `xx:xx:xx:xx:xx:xx`; the host's choice when
-    /// left out.
+    /// Further VLANs passed to the guest with their tags.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tagged: Vec<u32>,
+    /// The MAC address, `xx:xx:xx:xx:xx:xx`. Made by the host and kept
+    /// here when the adapter is first saved without one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mac: Option<String>,
+    /// Whether the partition is activated only with its port: when not,
+    /// a missing or failed switch leaves the adapter without link.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub required: bool,
 }
-ipc::wire_struct!(EthernetAdapter { slot, vlan, mac });
+ipc::wire_struct!(EthernetAdapter {
+    slot,
+    switch,
+    vlan,
+    tagged,
+    mac,
+    required
+});
+
+fn yes() -> bool {
+    true
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's signature
+fn is_yes(b: &bool) -> bool {
+    *b
+}
+
+impl EthernetAdapter {
+    /// The port VLAN as a VLAN ID, when it is one.
+    pub fn port_vlan(&self) -> Option<u16> {
+        u16::try_from(self.vlan)
+            .ok()
+            .filter(|v| (1..=4094).contains(v))
+    }
+
+    /// The tagged VLANs as VLAN IDs, those that are.
+    pub fn tagged_vlans(&self) -> Vec<u16> {
+        self.tagged
+            .iter()
+            .filter_map(|v| u16::try_from(*v).ok())
+            .filter(|v| (1..=4094).contains(v))
+            .collect()
+    }
+}
 
 /// `[[optical]]` and `[[tape]]`: a virtual optical or tape device.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]

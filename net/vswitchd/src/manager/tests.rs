@@ -231,6 +231,8 @@ fn a_switch_a_profile_names_or_a_port_is_on_stays_unless_forced() {
         switch: "A".into(),
         vlan: 20,
         tagged: vec![],
+        mac: String::new(),
+        required: true,
     }]);
     assert_eq!(
         ids(&c.delete("A", false).unwrap_err()),

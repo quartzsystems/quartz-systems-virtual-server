@@ -25,11 +25,12 @@ use release::LOAD_SOURCE;
 pub const INIT: &str = "qsvsinit";
 
 /// The service packages, `/qsvs/bin/<name>` in every initramfs.
-pub const SERVICES: [&str; 6] = [
+pub const SERVICES: [&str; 7] = [
     "qsvsstgd",
     "qsvslogd",
     "qsvsnetd",
     "qsvspoold",
+    "qsvsvswitchd",
     "qsvspartd",
     "qsvstools",
 ];
@@ -81,6 +82,7 @@ const RELEASE_PACKAGES: &[Package] = &[
     package(SERVICES[3]),
     package(SERVICES[4]),
     package(SERVICES[5]),
+    package(SERVICES[6]),
     package(VMM),
     package(INSTALLER),
 ];
@@ -92,6 +94,7 @@ const TEST_PACKAGES: &[Package] = &[
     package(SERVICES[3]),
     package(SERVICES[4]),
     package(SERVICES[5]),
+    package(SERVICES[6]),
     package(VMM),
     package(INSTALLER),
     package(HOOK),
@@ -222,6 +225,7 @@ mod tests {
                 "qsvslogd",
                 "qsvsnetd",
                 "qsvspoold",
+                "qsvsvswitchd",
                 "qsvspartd",
                 "qsvstools",
                 "qsvmm",
@@ -236,6 +240,7 @@ mod tests {
                 "qsvslogd",
                 "qsvsnetd",
                 "qsvspoold",
+                "qsvsvswitchd",
                 "qsvspartd",
                 "qsvstools",
                 "qsvmm",

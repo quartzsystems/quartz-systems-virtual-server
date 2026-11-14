@@ -29,6 +29,7 @@ use poold::proto::{Given, Want};
 use qvsmsg::Issued;
 use resource::cgroup::Step;
 use resource::{Current, Held, Host};
+use vswitch::port::PortSpec;
 
 use crate::proto::{Event, Posted, State, Status};
 use crate::store::{Kept, Store};
@@ -124,6 +125,17 @@ pub trait System {
     /// Delete virtual disks, each its pool and its name: the messages
     /// of those that were not.
     fn delete_vdisks(&mut self, disks: &[(String, String)]) -> Vec<Issued>;
+    /// The host's virtual switches; none when the switch service does
+    /// not answer.
+    fn switches(&mut self) -> Option<Vec<vswitch::Switch>>;
+    /// Have the switch service open the port of one of `id`'s adapters:
+    /// its tap's open file is kept by the machine until the VMM is
+    /// started with it, after the pool service's files. The switch's MTU.
+    fn open_port(&mut self, id: u32, spec: &PortSpec) -> Result<u32, Vec<Issued>>;
+    /// Close every port of `id`.
+    fn close_ports(&mut self, id: u32);
+    /// Close every port of a partition not in `running`: at the start.
+    fn reconcile_ports(&mut self, running: &[u32]);
 }
 
 /// A partition while it is activated.
@@ -145,6 +157,8 @@ pub(crate) struct Run {
     pub(crate) media: Vec<(u32, Option<String>)>,
     /// A storage pool it uses that failed: it was ended for that.
     pub(crate) lost: Option<String>,
+    /// Each Ethernet adapter's slot and whether its port was opened.
+    pub(crate) ports: Vec<(u32, bool)>,
 }
 
 /// One partition.
@@ -187,7 +201,35 @@ impl Partition {
             last_end: self.last_end.clone(),
             message: self.message.clone(),
             pid: self.run.as_ref().map_or(0, |r| r.pid),
+            ethernet: self.ethernet(),
         }
+    }
+
+    /// Its adapters: the running profile's with their link, or the
+    /// default profile's.
+    fn ethernet(&self) -> Vec<crate::proto::Ethernet> {
+        let name = match &self.run {
+            Some(r) => &r.profile,
+            None => &self.definition.default_profile,
+        };
+        let Some(profile) = self.profiles.get(name) else {
+            return Vec::new();
+        };
+        let mut out: Vec<crate::proto::Ethernet> = profile
+            .ethernet
+            .iter()
+            .map(|a| crate::proto::Ethernet {
+                slot: a.slot,
+                switch: a.switch.clone().unwrap_or_default(),
+                mac: a.mac.clone().unwrap_or_default(),
+                link: self
+                    .run
+                    .as_ref()
+                    .is_some_and(|r| r.ports.contains(&(a.slot, true))),
+            })
+            .collect();
+        out.sort_by_key(|e| e.slot);
+        out
     }
 }
 

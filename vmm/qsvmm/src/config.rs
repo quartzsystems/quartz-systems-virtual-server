@@ -42,6 +42,12 @@
 //! name = "SAVE1"
 //! capacity_mib = 4096
 //! protected = false
+//!
+//! [[net]]                  # a virtual Ethernet adapter
+//! slot = 5
+//! mac = "02:5a:3c:00:03:05"
+//! tap = "/proc/self/fd/6"  # its port's tap; left out, it has no link
+//! mtu = 1500
 //! ```
 //!
 //! A backing store, a medium or a volume the partition manager has
@@ -66,6 +72,10 @@ pub const NAME_MAX: usize = 10;
 pub const MAX_ADAPTERS: usize = 8;
 /// The most units of one adapter.
 pub const MAX_UNITS: usize = 64;
+/// The most virtual Ethernet adapters.
+pub const MAX_NET: usize = 8;
+/// An adapter's least and greatest MTU.
+pub const MTU: std::ops::RangeInclusive<u32> = 68..=9000;
 /// The most optical devices, and the most tape devices.
 pub const MAX_MEDIA_DEVICES: usize = 4;
 /// The slots a device may be in.
@@ -146,6 +156,38 @@ pub struct TapeDrive {
     pub protected: bool,
 }
 
+/// A virtual Ethernet adapter, as written.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Net {
+    /// Its virtual slot.
+    pub slot: u32,
+    /// Its MAC address, `xx:xx:xx:xx:xx:xx`.
+    pub mac: String,
+    /// Its port's tap, opened by the switch service; none for an adapter
+    /// that comes up without link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap: Option<PathBuf>,
+    /// The switch's MTU: the most the guest is told it may send.
+    pub mtu: u32,
+}
+
+impl Net {
+    /// The address's six bytes.
+    pub fn mac_bytes(&self) -> Option<[u8; 6]> {
+        let mut mac = [0u8; 6];
+        let mut parts = self.mac.split(':');
+        for byte in &mut mac {
+            let part = parts.next()?;
+            if part.len() != 2 {
+                return None;
+            }
+            *byte = u8::from_str_radix(part, 16).ok()?;
+        }
+        parts.next().is_none().then_some(mac)
+    }
+}
+
 /// The configuration, as written.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -189,6 +231,9 @@ pub struct Config {
     /// The virtual tape devices.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tape: Vec<TapeDrive>,
+    /// The virtual Ethernet adapters.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub net: Vec<Net>,
 }
 
 /// A partition, as it is to be activated: a [`Config`] that was checked.
@@ -209,6 +254,8 @@ pub struct Partition {
     pub optical: Vec<Optical>,
     /// The tape devices in slot order.
     pub tape: Vec<TapeDrive>,
+    /// The Ethernet adapters in slot order.
+    pub net: Vec<Net>,
 }
 
 /// A device of the partition's PCI bus, by its slot.
@@ -220,6 +267,8 @@ pub enum Slot {
     Optical(usize),
     /// A tape device: its place in `tape`.
     Tape(usize),
+    /// An Ethernet adapter: its place in `net`.
+    Net(usize),
 }
 
 impl Partition {
@@ -258,6 +307,12 @@ impl Partition {
                 .iter()
                 .enumerate()
                 .map(|(i, t)| (t.slot, Slot::Tape(i))),
+        );
+        all.extend(
+            self.net
+                .iter()
+                .enumerate()
+                .map(|(i, n)| (n.slot, Slot::Net(i))),
         );
         all.sort_by_key(|(slot, _)| *slot);
         all
@@ -415,6 +470,53 @@ fn media_devices(
     Ok((optical, tape))
 }
 
+/// The Ethernet adapters in slot order, checked against the other
+/// devices' slots and each other.
+fn nets(
+    config: &Config,
+    partition_slots: &[u32],
+    paths: &[&PathBuf],
+) -> Result<Vec<Net>, ConfigError> {
+    if config.net.len() > MAX_NET {
+        return refuse(format!("net: {MAX_NET} at most"));
+    }
+    let mut slots = partition_slots.to_vec();
+    let mut macs: Vec<[u8; 6]> = Vec::new();
+    let mut taps: Vec<&PathBuf> = paths.to_vec();
+    for n in &config.net {
+        let what = format!("net slot {}", n.slot);
+        if !SLOTS.contains(&n.slot) {
+            return refuse(format!("{what}: a slot is 2 to 255"));
+        }
+        if slots.contains(&n.slot) {
+            return refuse(format!("{what}: the slot is another device's"));
+        }
+        slots.push(n.slot);
+        match n.mac_bytes() {
+            Some(mac) if mac[0] & 1 == 0 && mac != [0; 6] && !macs.contains(&mac) => macs.push(mac),
+            _ => {
+                return refuse(format!(
+                    "{what}: mac is six pairs of hexadecimal digits, no group address, no other adapter's"
+                ));
+            }
+        }
+        if !MTU.contains(&n.mtu) {
+            return refuse(format!("{what}: mtu 68 to 9000"));
+        }
+        if let Some(tap) = &n.tap {
+            if !tap.is_absolute() || taps.contains(&tap) {
+                return refuse(format!(
+                    "{what}: tap is an absolute path, and no other device's"
+                ));
+            }
+            taps.push(tap);
+        }
+    }
+    let mut net = config.net.clone();
+    net.sort_by_key(|n| n.slot);
+    Ok(net)
+}
+
 /// What the activation writes to the LIC record.
 fn settings(config: &Config) -> Result<Settings, ConfigError> {
     let keylock = config
@@ -514,6 +616,19 @@ pub fn check(config: Config) -> Result<Partition, ConfigError> {
     let settings = settings(&config)?;
     let adapters = adapters(&config.adapters)?;
     let (optical, tape) = media_devices(&config, &adapters)?;
+    let used: Vec<u32> = adapters
+        .iter()
+        .map(|a| a.slot)
+        .chain(optical.iter().map(|o| o.slot))
+        .chain(tape.iter().map(|t| t.slot))
+        .collect();
+    let paths: Vec<&PathBuf> = adapters
+        .iter()
+        .flat_map(|a| a.units.iter().map(|u| &u.backing))
+        .chain(optical.iter().filter_map(|o| o.media.as_ref()))
+        .chain(tape.iter().filter_map(|t| t.volume.as_ref()))
+        .collect();
+    let net = nets(&config, &used, &paths)?;
     if side == Side::Media && optical.is_empty() {
         return refuse("side: d needs an optical device");
     }
@@ -525,6 +640,7 @@ pub fn check(config: Config) -> Result<Partition, ConfigError> {
         adapters,
         optical,
         tape,
+        net,
     })
 }
 
@@ -565,12 +681,54 @@ pub fn sample(backing: &str) -> Config {
         }],
         optical: Vec::new(),
         tape: Vec::new(),
+        net: Vec::new(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn net(slot: u32, mac: &str, tap: Option<&str>) -> Net {
+        Net {
+            slot,
+            mac: mac.into(),
+            tap: tap.map(PathBuf::from),
+            mtu: 1500,
+        }
+    }
+
+    #[test]
+    fn ethernet_adapters_are_checked_and_taken_in_slot_order() {
+        let mut config = sample("/dev/sdb");
+        config.net = vec![
+            net(7, "02:00:00:00:00:02", None),
+            net(5, "02:00:00:00:00:01", Some("/proc/self/fd/4")),
+        ];
+        let p = check(config.clone()).unwrap();
+        assert_eq!(p.net[0].slot, 5);
+        assert_eq!(p.net[0].mac_bytes(), Some([2, 0, 0, 0, 0, 1]));
+        let slots: Vec<u32> = p.slots().into_iter().map(|(s, _)| s).collect();
+        assert_eq!(slots, [2, 5, 7]);
+        assert!(matches!(p.slots()[1].1, Slot::Net(0)));
+        let back = parse(&render(&config)).unwrap();
+        assert_eq!(back.net, p.net);
+        for bad in [
+            net(2, "02:00:00:00:00:03", None),
+            net(8, "01:00:5e:00:00:01", None),
+            net(8, "02:00:00:00:00:01", None),
+            net(8, "02:00:00:00:00", None),
+            net(8, "02:00:00:00:00:03", Some("/dev/sdb")),
+            Net {
+                mtu: 9216,
+                ..net(8, "02:00:00:00:00:03", None)
+            },
+        ] {
+            let mut c = config.clone();
+            c.net.push(bad.clone());
+            assert!(check(c).is_err(), "{bad:?}");
+        }
+    }
 
     #[test]
     fn a_configuration_round_trips_and_is_read_with_everything_set() {

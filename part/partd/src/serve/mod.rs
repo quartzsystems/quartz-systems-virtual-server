@@ -38,7 +38,7 @@ use resource::settings::HUGE_PAGE_MIB;
 use resource::{Host, Settings, Thread, Topology};
 use supervise::control::Calls as _;
 
-use crate::manager::{Ended, Manager, Record};
+use crate::manager::{Ended, Manager, Record, System as _};
 use crate::proto::{self, MAX_FRAME, Partitions as _, RUN, Request};
 use crate::store::Store;
 use machine::{Machine, Paths, Watch};
@@ -75,6 +75,8 @@ pub struct Service {
     pub serial: String,
     /// The pool service's socket.
     pub pools: PathBuf,
+    /// The switch service's socket.
+    pub switches: PathBuf,
     /// Whether a host path may back a unit: a test image's.
     pub host_paths: bool,
 }
@@ -284,6 +286,7 @@ pub fn run(service: &Service) -> io::Error {
         run: service.run_dir.join(RUN),
         vmm: service.vmm.clone(),
         pools: service.pools.clone(),
+        switches: service.switches.clone(),
         partitions: service.run_dir.join("partitions"),
         host_paths: service.host_paths,
     };
@@ -313,6 +316,18 @@ pub fn run(service: &Service) -> io::Error {
     let defined = manager.statuses().len();
     let shared: Shared = Arc::new(Mutex::new(manager));
     let running = adopt(&shared, &paths, &watch_to);
+    // The switch service closes the ports of partitions that ended while
+    // no partition manager watched.
+    {
+        let mut manager = lock(&shared);
+        let ids: Vec<u32> = manager
+            .statuses()
+            .into_iter()
+            .filter(|s| s.state.active())
+            .map(|s| s.id)
+            .collect();
+        manager.system().reconcile_ports(&ids);
+    }
 
     let socket = proto::socket(&service.run_dir.to_string_lossy());
     // One left by the service's last run.

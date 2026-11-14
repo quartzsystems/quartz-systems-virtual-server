@@ -57,6 +57,97 @@ impl<S: System> Manager<S> {
         }
     }
 
+    /// The host's MAC prefix as kept, or as its serial number makes it.
+    pub(crate) fn prefix(&self) -> [u8; 3] {
+        self.host
+            .settings
+            .mac_prefix
+            .as_deref()
+            .and_then(|p| vswitch::mac::parse(&format!("{p}:00:00:00")))
+            .map_or_else(
+                || vswitch::mac::prefix_of(&self.host_serial),
+                |m| [m[0], m[1], m[2]],
+            )
+    }
+
+    /// The host's MAC prefix, kept in `partitions.toml` the first time:
+    /// it never changes afterwards.
+    fn kept_prefix(&mut self) -> Result<[u8; 3], Refused> {
+        let prefix = self.prefix();
+        if self.host.settings.mac_prefix.is_none() {
+            let text =
+                vswitch::mac::text(&[prefix[0], prefix[1], prefix[2], 0, 0, 0])[..8].to_string();
+            // What the file says, which may be the next IPL's.
+            let mut kept = self
+                .store
+                .settings()
+                .unwrap_or_else(|_| self.host.settings.clone());
+            kept.mac_prefix = Some(text.clone());
+            self.store
+                .save_settings(&kept)
+                .map_err(|e| one(qvsmsg::STATE_NOT_KEPT.with(&["The host's settings", &e])))?;
+            self.host.settings.mac_prefix = Some(text);
+        }
+        Ok(prefix)
+    }
+
+    /// The errors of `profile`'s adapters for partition `id` that need
+    /// the host: an address another partition has, a switch that is not
+    /// there, a VLAN it does not carry.
+    fn ethernet_errors(&mut self, id: u32, profile: &Profile) -> Vec<Issued> {
+        let mut errors = Vec::new();
+        for a in &profile.ethernet {
+            let Some(mac) = a.mac.as_deref() else {
+                continue;
+            };
+            let other = self.partitions.values().find(|p| {
+                p.definition.id != id
+                    && p.profiles.values().flat_map(|p| &p.ethernet).any(|o| {
+                        o.mac
+                            .as_deref()
+                            .is_some_and(|m| m.eq_ignore_ascii_case(mac))
+                    })
+            });
+            if let Some(other) = other {
+                errors.push(qvsmsg::MAC_IN_USE.with(&[
+                    &a.slot.to_string(),
+                    mac,
+                    &format!("partition {}", other.definition.name),
+                ]));
+            }
+        }
+        if profile.ethernet.is_empty() {
+            return errors;
+        }
+        let Some(switches) = self.system.switches() else {
+            self.system.log(
+                "the switch service did not answer: the profile's switches are checked at its activation",
+            );
+            return errors;
+        };
+        for a in &profile.ethernet {
+            let Some(name) = a.switch.as_deref() else {
+                continue;
+            };
+            let slot = a.slot.to_string();
+            match switches.iter().find(|s| s.name == name) {
+                None => errors.push(qvsmsg::ADAPTER_SWITCH_MISSING.with(&[&slot, name])),
+                Some(s) => {
+                    for v in a.port_vlan().into_iter().chain(a.tagged_vlans()) {
+                        if !s.carries(v) {
+                            errors.push(qvsmsg::ADAPTER_VLAN_MISSING.with(&[
+                                &slot,
+                                name,
+                                &v.to_string(),
+                            ]));
+                        }
+                    }
+                }
+            }
+        }
+        errors
+    }
+
     fn partition(&self, id: u32) -> Result<&Partition, Refused> {
         self.partitions
             .get(&id)
@@ -311,6 +402,7 @@ impl<S: System> Partitions for Manager<S> {
 
     fn put_profile(&mut self, id: u32, profile: Profile) -> Result<(), Refused> {
         let partition = self.partition(id)?;
+        let mut profile = profile;
         let errors = model::validate::profile(&profile, self.limits());
         if !errors.is_empty() {
             return Err(errors);
@@ -320,11 +412,24 @@ impl<S: System> Partitions for Manager<S> {
             return Err(one(qvsmsg::TOO_MANY_PROFILES
                 .with(&[&partition.definition.name, &MAX_PROFILES.to_string()])));
         }
+        let mut definition = partition.definition.clone();
+        // An adapter saved without an address is given one, kept from then on.
+        if profile.ethernet.iter().any(|a| a.mac.is_none()) {
+            let prefix = self.kept_prefix()?;
+            for a in &mut profile.ethernet {
+                if a.mac.is_none() {
+                    a.mac = Some(vswitch::mac::text(&vswitch::mac::made(prefix, id, a.slot)));
+                }
+            }
+        }
+        let errors = self.ethernet_errors(id, &profile);
+        if !errors.is_empty() {
+            return Err(errors);
+        }
         self.store
             .save_profile(id, &profile)
             .map_err(|e| one(qvsmsg::STATE_NOT_KEPT.with(&["The profile", &e])))?;
         // The first profile of a partition is its default.
-        let mut definition = partition.definition.clone();
         let first = definition.default_profile.is_empty();
         if first {
             definition.default_profile.clone_from(&profile.name);
@@ -438,6 +543,8 @@ impl<S: System> Partitions for Manager<S> {
         // The pools have their own requests.
         let settings = Settings {
             pools: self.host.settings.pools.clone(),
+            // Made once and kept.
+            mac_prefix: self.host.settings.mac_prefix.clone(),
             ..settings
         };
         let mut errors = settings.errors();
@@ -587,6 +694,31 @@ impl<S: System> Partitions for Manager<S> {
                 })
             })
             .collect())
+    }
+
+    fn adapters(&mut self, id: u32) -> Vec<vswitchd::Adapter> {
+        let mut out = Vec::new();
+        for p in self.partitions.values() {
+            if id != 0 && p.definition.id != id {
+                continue;
+            }
+            for profile in p.profiles.values() {
+                for a in &profile.ethernet {
+                    out.push(vswitchd::Adapter {
+                        partition: p.definition.id,
+                        name: p.definition.name.clone(),
+                        profile: profile.name.clone(),
+                        slot: a.slot,
+                        switch: a.switch.clone().unwrap_or_default(),
+                        vlan: a.port_vlan().unwrap_or(0),
+                        tagged: a.tagged_vlans(),
+                        mac: a.mac.clone().unwrap_or_default(),
+                        required: a.required,
+                    });
+                }
+            }
+        }
+        out
     }
 
     fn named(&mut self, pool: String, name: String) -> Vec<String> {

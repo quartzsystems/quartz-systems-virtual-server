@@ -57,6 +57,20 @@ pub const POOLD: Service = Service {
     ready_within: Duration::from_secs(120),
 };
 
+/// The switch service: the virtual switches and the partitions' ports.
+/// After the network service, which keeps the management interface it
+/// never takes; before the partition manager, which asks it for a
+/// partition's ports; after it when stopping, and its kernel objects
+/// are left as they are.
+pub const VSWITCHD: Service = Service {
+    name: vswitchd::NAME,
+    binary: "/qsvs/bin/qsvsvswitchd",
+    args: &[],
+    order: 23,
+    needs: &[],
+    ready_within: Duration::from_secs(30),
+};
+
 /// The partition manager: it owns every partition's VMM. Its
 /// partitions go on when it is started again.
 pub const PARTD: Service = Service {
@@ -80,7 +94,7 @@ pub const TOOLS: Service = Service {
 
 /// The base services.
 #[cfg(not(test_hooks))]
-pub static TABLE: &[Service] = &[STGD, LOGD, NETD, POOLD, PARTD, TOOLS];
+pub static TABLE: &[Service] = &[STGD, LOGD, NETD, POOLD, VSWITCHD, PARTD, TOOLS];
 
 /// The base services and, in a test image, the test hooks' two.
 #[cfg(test_hooks)]
@@ -89,6 +103,7 @@ pub static TABLE: &[Service] = &[
     LOGD,
     NETD,
     POOLD,
+    VSWITCHD,
     PARTD,
     TOOLS,
     crate::hooks::FLAKY,
@@ -115,7 +130,11 @@ mod tests {
         // The pool service before the partition manager, which asks it
         // for a partition's disks.
         assert_eq!(TABLE[order[3]].name, "poold");
-        assert_eq!(TABLE[order[4]].name, "partd");
+        // The switch service after the network service and before the
+        // partition manager, which asks it for a partition's ports.
+        assert_eq!(TABLE[order[2]].name, "netd");
+        assert_eq!(TABLE[order[4]].name, "vswitchd");
+        assert_eq!(TABLE[order[5]].name, "partd");
         assert!(
             TABLE
                 .iter()

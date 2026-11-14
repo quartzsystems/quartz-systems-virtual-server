@@ -34,6 +34,11 @@ pub const MAX_LUNS: usize = 64;
 /// A unit's serial number's most characters.
 pub const UNIT_SERIAL_MAX: usize = 20;
 
+/// The most virtual Ethernet adapters of a profile.
+pub const MAX_ETHERNET: usize = 8;
+/// The most tagged VLANs of one adapter.
+pub const MAX_TAGGED: usize = 32;
+
 /// What validation needs of the host's settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
@@ -61,7 +66,7 @@ pub fn valid_unit_serial(serial: &str) -> bool {
 }
 
 /// Whether `mac` is `xx:xx:xx:xx:xx:xx`, and no group address.
-fn valid_mac(mac: &str) -> bool {
+pub fn valid_mac(mac: &str) -> bool {
     let octets: Vec<&str> = mac.split(':').collect();
     octets.len() == 6
         && octets
@@ -332,17 +337,63 @@ fn storage(profile: &Profile, errors: &mut Vec<Issued>) {
     }
 }
 
-/// The sections later phases bring: checked for shape only.
-fn later(profile: &Profile, errors: &mut Vec<Issued>) {
+/// The virtual Ethernet adapters: what needs no look at the host's
+/// switches. Those are the partition manager's to check.
+fn ethernet(profile: &Profile, errors: &mut Vec<Issued>) {
+    if profile.ethernet.len() > MAX_ETHERNET {
+        errors.push(qvsmsg::ETHERNET_TOO_MANY.with(&[
+            &profile.ethernet.len().to_string(),
+            &MAX_ETHERNET.to_string(),
+        ]));
+    }
+    let mut macs: Vec<String> = Vec::new();
     for adapter in &profile.ethernet {
         let slot = adapter.slot.to_string();
+        match adapter.switch.as_deref() {
+            None => errors.push(qvsmsg::ADAPTER_SWITCH_NEEDED.with(&[&slot])),
+            Some(s) if !valid_name(s) => {
+                errors.push(qvsmsg::ADAPTER_SWITCH_INVALID.with(&[&slot, s]));
+            }
+            Some(_) => {}
+        }
         if !(1..=4094).contains(&adapter.vlan) {
             errors.push(qvsmsg::VLAN_INVALID.with(&[&slot, &adapter.vlan.to_string()]));
         }
-        if let Some(mac) = adapter.mac.as_deref().filter(|mac| !valid_mac(mac)) {
-            errors.push(qvsmsg::MAC_INVALID.with(&[&slot, mac]));
+        for (i, t) in adapter.tagged.iter().enumerate() {
+            let bad = !(1..=4094).contains(t)
+                || *t == adapter.vlan
+                || adapter.tagged[..i].contains(t)
+                || i >= MAX_TAGGED;
+            if bad {
+                errors.push(qvsmsg::TAGGED_INVALID.with(&[&slot, &t.to_string()]));
+            }
+        }
+        if let Some(mac) = adapter.mac.as_deref() {
+            if !valid_mac(mac) {
+                errors.push(qvsmsg::MAC_INVALID.with(&[&slot, mac]));
+            } else if macs.contains(&mac.to_ascii_lowercase()) {
+                let other = profile
+                    .ethernet
+                    .iter()
+                    .find(|o| {
+                        o.mac
+                            .as_deref()
+                            .is_some_and(|m| m.eq_ignore_ascii_case(mac))
+                    })
+                    .map_or(0, |o| o.slot);
+                errors.push(qvsmsg::MAC_IN_USE.with(&[
+                    &slot,
+                    mac,
+                    &format!("the adapter in slot {other}"),
+                ]));
+            }
+            macs.push(mac.to_ascii_lowercase());
         }
     }
+}
+
+/// The sections later phases bring: checked for shape only.
+fn later(profile: &Profile, errors: &mut Vec<Issued>) {
     for (kind, devices) in [("optical", &profile.optical), ("tape", &profile.tape)] {
         for device in devices {
             if let Some(media) = device.media.as_deref().filter(|m| !valid_store_name(m)) {
@@ -380,6 +431,7 @@ pub fn profile(profile: &Profile, limits: Limits) -> Vec<Issued> {
     memory(profile, limits, &mut errors);
     slots(profile, &mut errors);
     storage(profile, &mut errors);
+    ethernet(profile, &mut errors);
     later(profile, &mut errors);
     errors
 }
@@ -388,13 +440,7 @@ pub fn profile(profile: &Profile, limits: Limits) -> Vec<Issued> {
 /// message an activation refuses it with; `None` when it uses none.
 pub fn not_yet(profile: &Profile) -> Option<Issued> {
     let refuse = |what: &str, phase: u32| qvsmsg::NOT_YET.with(&[what, &phase.to_string()]);
-    if !profile.ethernet.is_empty() {
-        Some(refuse("A virtual Ethernet adapter", 6))
-    } else if !profile.physical_io.is_empty() {
-        Some(refuse("Physical I/O", 10))
-    } else {
-        None
-    }
+    (!profile.physical_io.is_empty()).then(|| refuse("Physical I/O", 10))
 }
 
 #[cfg(test)]
@@ -546,8 +592,11 @@ mod tests {
         let mut p = sample::dedicated();
         p.ethernet.push(EthernetAdapter {
             slot: 4,
+            switch: Some("PRODNET".into()),
             vlan: 1,
+            tagged: vec![20],
             mac: Some("02:00:00:00:00:01".into()),
+            required: true,
         });
         p.optical.push(MediaDevice {
             slot: 5,
@@ -558,12 +607,11 @@ mod tests {
             required: true,
         });
         assert_eq!(profile(&p, LIMITS), []);
-        // Optical and tape devices and IPL source D are Phase 5's: taken.
+        // Optical and tape devices, IPL source D and Ethernet adapters
+        // are taken; physical I/O is Phase 10's.
         let refused = not_yet(&p).unwrap();
         assert!(refused.is(&qvsmsg::NOT_YET));
-        assert!(refused.text.contains("Phase 6"));
-        p.ethernet.clear();
-        assert!(not_yet(&p).unwrap().text.contains("Phase 10"));
+        assert!(refused.text.contains("Phase 10"));
         p.physical_io.clear();
         p.boot = Boot {
             source: IplSource::D,
@@ -578,8 +626,11 @@ mod tests {
         let mut p = sample::dedicated();
         p.ethernet.push(EthernetAdapter {
             slot: 2,
+            switch: None,
             vlan: 4095,
+            tagged: vec![],
             mac: Some("01:00:5e:00:00:01".into()),
+            required: true,
         });
         p.tape.push(MediaDevice {
             slot: 9,
@@ -593,11 +644,57 @@ mod tests {
             ids(&profile(&p, LIMITS)),
             [
                 qvsmsg::SLOT_TWICE.id,
+                qvsmsg::ADAPTER_SWITCH_NEEDED.id,
                 qvsmsg::VLAN_INVALID.id,
                 qvsmsg::MAC_INVALID.id,
                 qvsmsg::MEDIA_INVALID.id,
                 qvsmsg::LOCATION_INVALID.id
             ]
+        );
+    }
+
+    #[test]
+    fn an_ethernet_adapters_errors_are_all_given() {
+        let adapter =
+            |slot, switch: &str, vlan, tagged: &[u32], mac: Option<&str>| EthernetAdapter {
+                slot,
+                switch: Some(switch.into()),
+                vlan,
+                tagged: tagged.to_vec(),
+                mac: mac.map(str::to_string),
+                required: false,
+            };
+        let mut p = sample::dedicated();
+        p.ethernet = vec![
+            adapter(4, "prod", 10, &[10, 20, 20, 0], Some("02:00:00:00:00:01")),
+            adapter(5, "PRODNET", 10, &[], Some("02:00:00:00:00:01")),
+        ];
+        assert_eq!(
+            ids(&profile(&p, LIMITS)),
+            [
+                qvsmsg::ADAPTER_SWITCH_INVALID.id,
+                qvsmsg::TAGGED_INVALID.id,
+                qvsmsg::TAGGED_INVALID.id,
+                qvsmsg::TAGGED_INVALID.id,
+                qvsmsg::MAC_IN_USE.id,
+            ]
+        );
+        p.ethernet = (2..=10)
+            .map(|slot| adapter(slot + 10, "PRODNET", 10, &[], None))
+            .collect();
+        assert_eq!(ids(&profile(&p, LIMITS)), [qvsmsg::ETHERNET_TOO_MANY.id]);
+        // As a state file: required unless it says otherwise, and a
+        // profile of Phase 5 without its switch is refused, not misread.
+        let text = "slot = 4\nswitch = \"PRODNET\"\nvlan = 10\ntagged = [20]\n";
+        let a: EthernetAdapter = toml::from_str(text).unwrap();
+        assert!(a.required);
+        assert_eq!(a.tagged_vlans(), [20]);
+        assert_eq!(toml::to_string(&a).unwrap(), text);
+        let old: EthernetAdapter = toml::from_str("slot = 4\nvlan = 10\n").unwrap();
+        p.ethernet = vec![old];
+        assert_eq!(
+            ids(&profile(&p, LIMITS)),
+            [qvsmsg::ADAPTER_SWITCH_NEEDED.id]
         );
     }
 

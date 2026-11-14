@@ -45,6 +45,7 @@ fn main() {
         installed_mib: hostinv::memory_mib(&roots),
         serial,
         pools: poold::proto::socket(release::RUN_DIR),
+        switches: vswitchd::socket(release::RUN_DIR),
         // A unit backed by a host path is a test image's alone.
         host_paths: cfg!(test_hooks),
     };
