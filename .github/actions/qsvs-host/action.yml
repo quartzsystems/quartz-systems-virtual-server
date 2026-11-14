@@ -42,7 +42,9 @@ runs:
           echo "::error::/dev/kvm is not usable here: this job needs a runner with KVM"
           exit 1
         fi
-        nested=$(cat /sys/module/kvm_intel/parameters/nested /sys/module/kvm_amd/parameters/nested 2>/dev/null | head -n1)
+        # A runner has one of the two modules: the other's file is
+        # not there, which under pipefail would end the step unsaid.
+        nested=$(cat /sys/module/kvm_intel/parameters/nested /sys/module/kvm_amd/parameters/nested 2>/dev/null | head -n1 || true)
         case "$nested" in
           Y|y|1) echo "nested virtualization: $nested; $(nproc) processors, $(free -g | awk '/Mem:/ {print $2}') GB" ;;
           *)
