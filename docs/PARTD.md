@@ -174,6 +174,10 @@ child by now). When it ends, how is read from the report's last line,
 `END <exit code>`, which `qsvmm` writes for exactly this; with no such
 line it was killed. A record whose group is empty is a partition that
 ended while nobody watched: it is ended then and there, the same way.
+Then `C2006000` is posted with how many partitions are defined and
+running, before the service says it is ready: at the host's IPL the
+code so comes before `C2001090`, and the host's current reference code
+is that one.
 
 `/run` does not outlive an IPL, so a host that restarts starts with no
 partition activated, and auto start brings back the ones flagged.

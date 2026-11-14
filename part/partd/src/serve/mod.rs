@@ -9,7 +9,9 @@
 //! 2. The cgroup tree's base is made.
 //! 3. The partitions that run already are taken up: the service was
 //!    started again and its partitions were not ended for that.
-//! 4. The socket is bound and the service says it is ready.
+//! 4. The socket is bound, `C2006000` posted, and the service says it
+//!    is ready: at the host's IPL the code so comes before the base is
+//!    ready.
 //! 5. When the host's base is ready, the partitions flagged to start
 //!    with it are activated, once an IPL.
 //!
@@ -297,15 +299,17 @@ pub fn run(service: &Service) -> io::Error {
         return e;
     }
     workers(&shared, service, watches);
-    if let Err(e) = supervise::ready::signal() {
-        return e;
-    }
+    // Posted before the service says it is ready, so at the host's IPL
+    // it comes before the base is ready and never after it.
     let started = &refcode::PARTD_STARTED;
     post(
         &control,
         started.code,
         &started.text_with(&format!("{defined} defined, {running} running")),
     );
+    if let Err(e) = supervise::ready::signal() {
+        return e;
+    }
     for stream in listener.incoming() {
         let Ok(stream) = stream else {
             continue;
