@@ -259,7 +259,9 @@ impl Switches {
 
     /// The lowest number no switch has.
     pub fn free_id(&self) -> u32 {
-        (1..).find(|id| self.by_id(*id).is_none()).unwrap_or(1)
+        (1..=u32::MAX)
+            .find(|id| self.by_id(*id).is_none())
+            .unwrap_or(1)
     }
 
     /// The switch whose uplink has the interface `location`.
