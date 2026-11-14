@@ -72,7 +72,7 @@ and `Settings` (`part/resource`, `docs/RESOURCES.md`), `Status`,
 
 | # | Request | Arguments | Answer | Refused when |
 |---|---|---|---|---|
-| 0 | list | | every partition in ID order: ID, name, state, current reference code and its text, current resources, the profile last activated with, how its VMM last ended, the message of a failure, the VMM's process | |
+| 0 | list | | every partition in ID order: ID, name, state, current reference code and its text, current resources, the profile last activated with, how its VMM last ended, the message of a failure, the VMM's process, and each virtual Ethernet adapter's slot, switch, MAC address and link | |
 | 1 | create | name | the definition, with its ID and serial number assigned | the name is not one or is taken (`QVS1001`, `QVS1005`); the host has as many partitions as it is set to (`QVS2006`) |
 | 2 | get definition | ID | the definition | no such partition (`QVS2001`) |
 | 3 | change definition | definition | | activated (`QVS2002`); a fixed field differs (`QVS1006`); the definition's own errors; the name is taken; the default profile is not the partition's (`QVS1007`) |
@@ -81,7 +81,7 @@ and `Settings` (`part/resource`, `docs/RESOURCES.md`), `Status`,
 | 6 | get profile | ID, name | the profile | no such profile (`QVS2004`) |
 | 7 | put profile | ID, profile | | every error of the profile (`QVS11xx`, `QVS12xx`). The first profile of a partition becomes its default. A partition may be running: its profile is the next activation's |
 | 8 | delete profile | ID, name | | it is the default profile (`QVS2007`) |
-| 9 | activate | ID, profile name (empty: the default), an IPL source or none, a keylock position or none | the resources it was given | activated already; no such profile, or no default (`QVS2005`); the profile's errors; source D with no optical device (`QVS1219`); a section a later phase brings (`QVS2106`); a host path in a release image (`QVS1218`), or one that is not there (`QVS2110`); a virtual disk or medium the pool service cannot give (its messages, `QVS2112` when it does not answer); a resource that is not available (`QVS2101` to `QVS2105`); the VMM could not be started (`QVS2107`); the host is shutting down (`QVS2010`) |
+| 9 | activate | ID, profile name (empty: the default), an IPL source or none, a keylock position or none | the resources it was given | activated already; no such profile, or no default (`QVS2005`); the profile's errors; source D with no optical device (`QVS1219`); a section a later phase brings (`QVS2106`); a host path in a release image (`QVS1218`), or one that is not there (`QVS2110`); a virtual disk or medium the pool service cannot give (its messages, `QVS2112` when it does not answer); a required Ethernet adapter's port the switch service cannot give (`QVS2117` and its messages, `QVS2116` when it does not answer); a resource that is not available (`QVS2101` to `QVS2105`); the VMM could not be started (`QVS2107`); the host is shutting down (`QVS2010`) |
 | 10 | shut down | ID | | not activated (`QVS2003`); shutting down already (`QVS2009`) |
 | 11 | restart | ID | | the same |
 | 12 | host resources | | installed, configurable and available processors and memory, the reserved cores, each pool | |
@@ -97,6 +97,7 @@ and `Settings` (`part/resource`, `docs/RESOURCES.md`), `Status`,
 | 22 | unload media | ID, slot, forced | the medium's name | the same; the partition prevents its removal and it is not forced (`QVS2114`) |
 | 23 | media | ID | each optical and tape device: slot, kind, the medium, whether the partition prevents its removal | not running |
 | 24 | named | pool, virtual disk | the profiles that name it, each `PROD profile NORMAL slot 2` | |
+| 25 | adapters | ID, or 0 for every partition | each virtual Ethernet adapter of the partition's profiles: the partition, its name, the profile, the slot, the switch, the port VLAN, the tagged VLANs, the MAC address, whether it is required | |
 
 **Activate** answers when the VMM has been started: the partition is
 then Starting, and a list or the events say how it goes on. The two
@@ -138,20 +139,27 @@ dropped.
 4. The pool service is asked to hold the profile's virtual disks and
    the media its optical and tape devices load, all at once
    (`docs/POOLD.md`); it hands each over open.
+4a. The switch service is asked for a port for each of the profile's
+   virtual Ethernet adapters, in slot order (`docs/VSWITCHD.md`); it
+   hands each tap over open. A required adapter whose port is refused
+   fails the activation, and what was held is given back; one that is
+   not required comes up without link.
 5. `qsvmm` is started in that group, in a session of its own, with its
    standard error appended to `/run/partd/<ID>.report`, and the held
-   files as its descriptors 3 and on, in order. Its whole
+   files as its descriptors 3 and on, in order, the taps after the pool
+   service's files. Its whole
    configuration is written to its standard input (`docs/VMM.md`): the
    resolved processors and their host threads, the memory, the IPL
    source, the keylock, IPL type and console mode, the units and the
-   optical and tape devices, a held file named by its
-   `/proc/self/fd/N` path.
+   optical and tape devices, the Ethernet adapters, a held file named
+   by its `/proc/self/fd/N` path.
 6. What the partition holds is recorded in `/run/partd/<ID>.record`.
 7. The partition is Starting. Each line of the report that is a
    reference code of the table becomes its current code, is published,
    and is posted through PID 1; `C2005090` makes it Running.
 8. When the VMM ends, what it held is given back (the pool service
-   releases its disks and media), its group is removed, the end's code
+   releases its disks and media, the switch service closes its ports),
+   its group is removed, the end's code
    is posted, and the table above says what follows.
 
 ## Media while a partition runs
@@ -201,13 +209,19 @@ child by now). When it ends, how is read from the report's last line,
 `END <exit code>`, which `qsvmm` writes for exactly this; with no such
 line it was killed. A record whose group is empty is a partition that
 ended while nobody watched: it is ended then and there, the same way.
-Then `C2006000` is posted with how many partitions are defined and
-running, before the service says it is ready: at the host's IPL the
+The switch service is then told which partitions run, and closes the
+ports of any other. Then `C2006000` is posted with how many partitions
+are defined and running, before the service says it is ready: at the host's IPL the
 code so comes before `C2001090`, and the host's current reference code
 is that one.
 
 `/run` does not outlive an IPL, so a host that restarts starts with no
 partition activated, and auto start brings back the ones flagged.
+
+When a profile is saved, an Ethernet adapter that gives no MAC
+address is given one, kept in the profile from then on
+(`docs/NETWORK.md`), and its switch and VLANs are checked with the
+switch service.
 
 ## Limits
 
@@ -223,5 +237,5 @@ the host.
   functions, the guest's own reference codes: the service channel,
   Phase 7.
 - Any change to a running partition's resources.
-- `BLOCKED(phase5)`: a partition's history is in memory and in the host's log: a partition manager started again has the codes of the activations that still run, not the older ones.
-- `BLOCKED(phase5)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event.
+- `BLOCKED(phase6)`: a partition's history is in memory and in the host's log: a partition manager started again has the codes of the activations that still run, not the older ones.
+- `BLOCKED(phase6)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event.

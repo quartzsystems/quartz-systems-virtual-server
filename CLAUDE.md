@@ -25,8 +25,8 @@ guest's LIC record, by the IPL loader alone.
 | 2 | Installer, ISO and Service Tools: the installer and its ISO, the mirrored load source with its storage service, the Service Tools console | `docs/PHASE2.md` |
 | 3 | VMM core: `qsvmm`, and one QS/400 system taken from a disk image to a completed IPL in a partition | `docs/PHASE3.md` |
 | 4 | Partition manager, profiles, processors and memory: `partd`, definitions and profiles, activation with resource accounting, dedicated and shared processors, huge-page memory, the state machine, auto start | `docs/PHASE4.md` |
-| **5 (current)** | Virtual storage, optical and tape: storage pools, virtual disks, the media library, optical and tape devices, IPL source D | `docs/PHASE5.md` |
-| 6 | Virtual Ethernet | |
+| 5 | Virtual storage, optical and tape: storage pools, virtual disks, the media library, optical and tape devices, IPL source D | `docs/PHASE5.md` |
+| **6 (current)** | Virtual Ethernet: virtual switches and their uplinks, the switch service, partitions' adapters and ports, virtio-net over vhost-net | `docs/PHASE6.md` |
 | 7 | Partition service interface | |
 | 8 | QSI host server and QS/MC integration | |
 | 9 | Service, dumps and code update | |
@@ -34,7 +34,7 @@ guest's LIC record, by the IPL loader alone.
 | 11 | Release engineering and hardening | |
 
 Work that is not done is listed in the current phase's record,
-`docs/PHASE5.md`. Code and documents mark it `BLOCKED(phase5): reason`
+`docs/PHASE6.md`. Code and documents mark it `BLOCKED(phase6): reason`
 (one line) or `NEEDS-CODY` (Cody's hardware or sign-off). No other
 marker form. The records of earlier phases keep the markers they were
 written with.
@@ -96,6 +96,14 @@ written with.
 - The pool service (`stg/poold`) is a service of its own, apart from
   the load source's: a fault in pool code cannot take `/data` away.
   The pool labels are the truth; `pools.toml` is written from them.
+- The switch service (`net/vswitchd`) is a service of its own, apart
+  from the network service: a fault in switch code cannot take the
+  management network away. The management interface is never a
+  switch's uplink, and the host has no address on any switch, bridge,
+  bond or tap and forwards nothing (`docs/NETWORK.md`). A partition's
+  port passes only its adapter's address on its own VLANs, by the
+  bridge's controls and a tc filter; `NETFILTER` stays off. `qsvmm` is
+  handed its taps open and opens no network device by name.
 - `qsvmm` opens what it needs as root and then runs as its partition's
   own unprivileged user (23000 plus the partition's ID) with no
   capability; it reports reference codes on standard error and the
@@ -118,7 +126,7 @@ written with.
   release artifact; the userland and manifest steps check.
 - No IBM text, product names or marks anywhere. The names in use are
   QS/VS, QS/MC and QS/400.
-- Anything not done is listed in `docs/PHASE5.md`.
+- Anything not done is listed in `docs/PHASE6.md`.
 
 ## Locked decisions
 
@@ -260,6 +268,7 @@ lic/            PID 1, release, installer, base services
   qsvsstgd/       base/stgd run as QS/VS, with QS/VS's inventory
   qsvspartd/      part/partd run as QS/VS, with QS/VS's cores, memory and serial number
   qsvspoold/      stg/poold run as QS/VS, with QS/VS's pool disk names, inventory and identity
+  qsvsvswitchd/   net/vswitchd run as QS/VS, with the inventory's interfaces, netd's management device and partd's adapters
   qvsmsg/         the message catalogue: QVS messages, first-level and second-level text
   qsvsinstall/    the installer: base/install over QS/VS's media, disks and state
   qsvshook/       the test hooks' binary: the harness's channel, a failing service, the state churn
@@ -286,9 +295,13 @@ stg/            storage
   media/          the media library: optical images, tape volumes, imports
   tape/           a tape volume: the AWSTAPE image, a drive's view of it
   poold/          the pool service: pools assembled from their labels, served through ublk, rebuilt; virtual disks, the library, what partitions hold; its socket
+net/            virtual Ethernet
+  nl/             what QS/400's netlink lacks: VLAN-filtering bridges, port rules and VLANs, the forwarding table, a port's tc filter, taps
+  vswitch/        switches as kept: vswitch.toml, uplinks, limits, a port's VLANs, MAC addresses, every error
+  vswitchd/       the switch service: switches built from state, uplinks and bonds, ports handed over open, uplink carrier; its socket
 svc/            Service Tools
-  tools/          qsvstools: QS/VS's menu, system status, the partition list, disk units, disk configuration and storage pools over base/panels; the two sessions; the one panel PID 1 runs it for
-docs/           ARCHITECTURE, PHASE0 to PHASE5, QS400_GUEST, VMM, PARTD, POOLD, STORAGE, RESOURCES, PROFILE, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
+  tools/          qsvstools: QS/VS's menu, system status, the partition list, disk units, disk configuration, storage pools and the network's switches over base/panels; the two sessions; the one panel PID 1 runs it for
+docs/           ARCHITECTURE, PHASE0 to PHASE6, QS400_GUEST, VMM, PARTD, POOLD, VSWITCHD, NETWORK, STORAGE, RESOURCES, PROFILE, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
 ```
 
 Category folders are created as phases need them. The full set: `tools/`
@@ -296,7 +309,7 @@ Category folders are created as phases need them. The full set: `tools/`
 installer, base services), `vmm/`, `stg/`, `net/`, `qsi/`, `svc/`
 (Service Tools). Phase 2 has `tools/`, `base/`, `lic/` and `svc/`;
 Phase 3 adds `vmm/`, Phase 4 `part/` (the partition manager), Phase 5
-`stg/` (storage).
+`stg/` (storage), Phase 6 `net/` (virtual Ethernet).
 
 ## Commands
 
@@ -316,7 +329,7 @@ cargo run -p build -- deny            cargo-deny and the C-linkage check
 cargo run -p build -- notices         rewrite lic/release/NOTICES.txt (--check in CI)
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvspoold -p qsvspartd -p qsvstools -p qsvsinstall -p qsvshook -p qsvmm --all-targets --target x86_64-unknown-linux-musl -- -D warnings
+cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvspoold -p qsvsvswitchd -p qsvspartd -p qsvstools -p qsvsinstall -p qsvshook -p qsvmm --all-targets --target x86_64-unknown-linux-musl -- -D warnings
 cargo test --workspace
 QVS_MESSAGES=update cargo test -p qvsmsg   write the table of docs/MESSAGES.md from the catalogue
 ```
@@ -357,6 +370,14 @@ a test image and off for a release image, whatever the caller has.
   source's write-intent map: what exists, how to run it, kernel
   additions, hashes, the acceptance table, what remains for a real
   machine.
+- `docs/PHASE6.md`: virtual Ethernet: what exists, how to run it,
+  kernel additions, what belongs in QS/400's `netlink`, the throughput
+  baseline, hashes, the acceptance table, what remains for a real
+  machine.
+- `docs/NETWORK.md`: switches, uplinks, VLANs, adapters, MAC addresses,
+  what a partition may send, what the host exposes, limits, failures.
+- `docs/VSWITCHD.md`: the switch service's socket, which QSI's
+  virtual Ethernet maps onto.
 - `docs/STORAGE.md`: pools, member labels, protection, virtual disks,
   the media library, the tape image format, limits, what happens on
   each failure.

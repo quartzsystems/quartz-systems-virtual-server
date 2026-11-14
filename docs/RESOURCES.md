@@ -222,7 +222,7 @@ there since Phase 0: `CPUSETS`, `CGROUP_SCHED`, `FAIR_GROUP_SCHED`,
 
 ## Not here yet
 
-- `BLOCKED(phase5)`: the kernel is built for 64 threads (`NR_CPUS=64`, the pinned configuration's); a host with more shows 64.
-- `BLOCKED(phase5)`: cores are given without regard to sockets or to memory's place: a partition's cores and its huge pages may be on different NUMA nodes.
-- `BLOCKED(phase5)`: only 2 MB pages; 1 GiB pages are not used.
+- `BLOCKED(phase6)`: the kernel is built for 64 threads (`NR_CPUS=64`, the pinned configuration's); a host with more shows 64.
+- `BLOCKED(phase6)`: cores are given without regard to sockets or to memory's place: a partition's cores and its huge pages may be on different NUMA nodes.
+- `BLOCKED(phase6)`: only 2 MB pages; 1 GiB pages are not used.
 - Any change to a running partition's resources: not in this phase.

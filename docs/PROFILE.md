@@ -124,6 +124,13 @@ media = "QS400V1R1"
 
 [[tape]]
 slot = 4
+
+[[ethernet]]
+slot = 5
+switch = "PRODNET"
+vlan = 10
+tagged = [20]
+mac = "02:5a:3c:00:01:05"
 ```
 
 ### `[processors]`
@@ -195,6 +202,27 @@ is loaded and unloaded while the partition runs by the partition
 manager's requests (`docs/PARTD.md`); a guest's restart loads what was
 loaded when it restarted, not what the profile says.
 
+### `[[ethernet]]`: virtual Ethernet adapters
+
+Each adapter is a port of a virtual switch (`docs/NETWORK.md`) and a
+virtio-net function of its own in its slot (`docs/VMM.md`). Eight at
+most.
+
+| Key | Value | Left out |
+|---|---|---|
+| `slot` | 2 to 255 | required |
+| `switch` | the virtual switch it is on, by name. A profile without it is refused (`QVS1226`) | required |
+| `vlan` | the port VLAN, 1 to 4094: the guest's frames on it are untagged | required |
+| `tagged` | further VLANs passed to the guest with their tags: 1 to 4094 each, listed once, none the port VLAN, 32 at most | none |
+| `mac` | `xx:xx:xx:xx:xx:xx`, no group address and no other partition's. Made when the adapter is first saved without one and written into the profile: the host's prefix, the partition's ID and the slot; it never changes afterwards | made |
+| `required` | `false`: a missing or failed switch does not fail the activation, and the adapter comes up without link | `true` |
+
+When a profile is saved, its adapters are checked against the switches
+too: a switch that is not there (`QVS1223`), a VLAN it does not carry
+(`QVS1224`, each), an address another partition has (`QVS1225`). When
+the switch service does not answer, those are checked at activation.
+An adapter's settings apply at the next activation.
+
 ### The sections later phases bring
 
 They are in the schema now and are checked for shape. A profile that
@@ -203,7 +231,6 @@ names the phase that brings it.
 
 | Section | Keys | Phase |
 |---|---|---|
-| `[[ethernet]]` | `slot`; `vlan`, 1 to 4094; `mac`, optional, six pairs of hexadecimal digits and no group address | 6 |
 | `[[physical_io]]` | `location`, a location code (`docs/LOCATION.md`); `required`, optional | 10 |
 
 An adapter of any kind has a slot of its own: a slot is used once in a
@@ -222,7 +249,6 @@ its partition runs is the next activation's.
 
 ## Not here yet
 
-- `BLOCKED(phase5)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
-- Virtual Ethernet adapters: Phase 6. The service channel and console
-  attach: Phase 7. Physical I/O, a whole physical disk or tape drive
+- `BLOCKED(phase6)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
+- The service channel and console attach: Phase 7. Physical I/O, a whole physical disk or tape drive
   given to a partition: Phase 10.

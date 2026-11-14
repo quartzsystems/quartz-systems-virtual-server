@@ -55,6 +55,12 @@ volume = "/proc/self/fd/5"
 name = "SAVE1"
 capacity_mib = 4096
 protected = false
+
+[[net]]
+slot = 5
+mac = "02:5a:3c:00:03:05"
+tap = "/proc/self/fd/6"
+mtu = 1500
 ```
 
 | Key | Value |
@@ -69,12 +75,16 @@ protected = false
 | `[[adapter]]` | a virtual SCSI adapter: its `slot`, and its units, each with its `lun`, `backing` and `serial` |
 | `[[optical]]` | a virtual optical device: its `slot`, `serial`, and the image loaded at the start (`media`, with its library `name`) or none. Four at most |
 | `[[tape]]` | a virtual tape device: its `slot`, `serial`, and the volume mounted at the start (`volume`, `name`, `capacity_mib`, `protected`) or none. Four at most |
+| `[[net]]` | a virtual Ethernet adapter: its `slot`, its `mac`, its port's `tap` or none (no link), and the switch's `mtu`, 68 to 9000. Eight at most |
 
 A backing store, an image or a volume the partition manager holds is
 given to `qsvmm` as one of its open descriptors and named by its
 `/proc/self/fd/N` path, which `qsvmm` opens as it would any path: the
 same file, so a rename or a removal of the name cannot put another
-under it. Every slot is a device's alone, whatever its kind.
+under it. A tap is the exception: opened again by its path it would be
+a new, unattached tun, so `qsvmm` takes descriptor N itself, checked to
+be open and a character device. Every slot is a device's alone,
+whatever its kind.
 
 A developer can name a file in place of standard input: `qsvmm
 --config <file>`.
@@ -229,6 +239,7 @@ No firmware, no VGA, no keyboard, no floppy, no IDE.
 | Power off | ports `600`, `601` | the ACPI sleep control and status registers of a hardware-reduced machine. S5 with the enable bit ends the partition as powered off |
 | PCI host bridge | ports `CF8` to `CFF`, and memory at `E8000000` | one bus. Device 0 is the bridge (`1b36:0008`); a virtio function follows at each device number |
 | virtio-scsi | PCI `00:01.0` and on, `1af4:1048` | one function a device, in slot order: a SCSI adapter's disks at its LUNs, an optical drive or a tape drive at LUN 0 of a function of its own |
+| virtio-net | among them by slot, `1af4:1041` | a virtual Ethernet adapter, its frames served by vhost-net from its port's tap |
 | virtio-rng | after them, `1af4:1044` | the host's `/dev/urandom`, a page at most a buffer |
 
 ### virtio over PCI
@@ -359,6 +370,49 @@ field the residue:
 A write reaches the page cache; WRITE FILEMARKS (of none as well, the
 guest's flush) makes everything durable, and so does an unload and the
 partition's end.
+
+### virtio-net
+
+A virtual Ethernet adapter is a function of its own in its slot, PCI
+class Ethernet. Its frames do not pass through `qsvmm`: its receive and
+transmit queues (256 entries each) are served in the kernel by
+vhost-net, from the tap of the adapter's port, which the switch service
+made and the partition manager gave (`docs/NETWORK.md`). `/dev/vhost-net`
+is opened as root before the privilege drop; at the first driver's start
+`qsvmm` makes itself its owner and gives it the guest's memory; at each
+start it sets the features vhost-net takes (`MRG_RXBUF`, `VERSION_1`,
+`RING_INDIRECT_DESC`), tells the tap which offloads the guest took, and
+gives each queue its size, base, rings at `qsvmm`'s own addresses, the
+transport's notification eventfd (the ioeventfd) as its kick and the
+queue's MSI-X vector's eventfd (the irqfd) as its call, and last the
+tap. A vector the guest masks after it was routed is still raised
+through it; a Linux guest does not mask them in use.
+
+| Feature | Offered |
+|---|---|
+| `MAC` | the profile's address |
+| `STATUS` | link up with a tap; down without one, an adapter not required whose switch was missing. It does not follow the uplink |
+| `MTU` | the switch's: a Linux guest takes it as its MTU and its largest |
+| `MRG_RXBUF` | yes |
+| `CSUM`, `GUEST_CSUM`, `HOST_TSO4`, `HOST_TSO6`, `HOST_ECN`, `GUEST_TSO4`, `GUEST_TSO6`, `GUEST_ECN` | with a tap; the guest's choice is the tap's `TUNSETOFFLOAD` |
+| `CTRL_VQ`, `CTRL_RX`, `CTRL_MAC_ADDR` | the control queue (64 entries), served by `qsvmm` on a thread of its own |
+| `SPEED_DUPLEX` | 10000 Mb/s, full duplex; unknown without link |
+
+Not offered: more queue pairs, `CTRL_VLAN` (the port filters VLANs),
+`CTRL_GUEST_OFFLOADS`, `GUEST_ANNOUNCE`, `EVENT_IDX`.
+
+The control queue's requests are read to 4 KiB at most and an address
+table to 64 entries; anything that does not hold is answered with an
+error. Receive modes are recorded and answered: the port decides what
+reaches the adapter. An address the guest sets for itself is recorded,
+written to the report as `NET <slot> the guest set its address to
+<address>` (the partition manager logs it), answered, and not passed
+on. Without a tap, what the guest sends is taken and goes nowhere.
+
+A reset by the guest stops vhost-net's queues (each back end taken away
+and its base read back) and the control queue's thread; the next
+driver's start sets them again. A guest's restart and the partition's
+end close the tap and vhost-net with the process.
 
 ### The control socket
 
@@ -499,8 +553,12 @@ or reach a file descriptor or a byte of a disk that is not its own.
   lengths. A disk that fails any of it gives an `A2005` code and exit
   code 30.
 - The process holds no privilege while the guest runs, and the only
-  files it has open are its own units, its log, its console socket and
-  the random source.
+  files it has open are its own units, its media, its log, its sockets,
+  the random source, its adapters' taps and `/dev/vhost-net`. It opens
+  no network device by name.
+- A virtio-net adapter's frames are vhost-net's in the kernel, which
+  checks the rings against the memory table it was given; the control
+  queue's requests are the VMM's, bounded as above.
 
 **How it is checked.** Unit tests for each of the above; the
 conformance suites (`partition-scsi` makes the requests no guest
@@ -511,7 +569,9 @@ on mutated input with LLVM's coverage counters as its guide: the GPT,
 the FAT volume, the LIC record, a whole load source, the bzImage, a
 SCSI command with its data, guest memory holding the virtio-scsi and
 virtio-rng queues, and accesses to the ports, PCI configuration space
-and the virtio BARs. The targets that sit behind a checksum are also
+and the virtio BARs; since Phase 5 the ISO 9660 volume and the optical
+and tape drives' commands, and since Phase 6 the virtio-net control
+queue (`netctrl`). The targets that sit behind a checksum are also
 run on input whose checksum was made to hold.
 
 **What is not defended yet.** The system calls `qsvmm` can make are

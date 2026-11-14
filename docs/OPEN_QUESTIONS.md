@@ -17,7 +17,9 @@ with the kernel pin's next change, and left 6, 17 and 22 unchanged.
 Phase 5 raised 34 to 36. On 2026-11-14, at the end of Phase 5, Cody
 had Claude's recommendation taken for every question still open: 17,
 22, 31 and 34 are closed below; 32, 35 and 36 are decided and wait on
-a change in QS/400; 6 waits on the first push.
+a change in QS/400; 6 waits on the first push. The Phase 6 handoff
+answered 35 and 36 (below, with what was decided before them) and
+left 34, 6, 17, 22, 31 and 32 as they were; Phase 6 raised 37.
 
 ## Open
 
@@ -35,6 +37,20 @@ should the hosted runners not nest that far, the `vmm`, `qs400`,
 the Dell machine and the rest stay hosted. Nothing more can be seen
 before the first push, which is Cody's.
 
+### 37. Management on a VLAN of a switch (NEEDS-CODY)
+
+The management interface is never a switch's uplink, and a switch's
+uplink is never taken for management (`docs/NETWORK.md`), so a host
+with one network port has internal switches only. The question is
+whether management may later ride a VLAN of a switch: the host would
+then have an address on a bridge VLAN of its own, beside partitions,
+on a port it shares with them, which is the one thing Phase 6 rules out
+(the host has no address on any partition network). Recommended: not
+in V1; a host that needs outside networks for partitions has a second
+port. If it is wanted later, as a VLAN sub-interface of the uplink's
+bond that the bridge never sees, with its own trial as `netd` has
+today, and never a VLAN a partition is on.
+
 ## Decided, waiting on QS/400
 
 ### 32. The kernel is built for 64 threads
@@ -48,7 +64,7 @@ pin's next change (the Phase 5 handoff), each in a commit of its own.
 QS/400 needs it too: a partition's guest kernel is QS/400's, and it
 sees no more processors than its own `NR_CPUS`.
 
-### 35. A copy of a virtual disk
+### 35. A copy of a virtual disk (answered by the Phase 6 handoff)
 
 QS/400's `xfsfmt` makes a pool's xfs without reflink, so a copy of a
 virtual disk would be a whole copy of its bytes. It is left out
@@ -56,9 +72,11 @@ virtual disk would be a whole copy of its bytes. It is left out
 the reverse mapping it takes, in QS/400; QS/VS then copies a virtual
 disk by `FICLONE`, a request of the pool service's, when QS/MC's
 template partitions need it. A pool made before that has no reflink
-and copies by bytes.
+and copies by bytes. The Phase 6 handoff: left out until QS/MC needs
+template partitions; the reflink change to `xfsfmt` is a QS/400
+handoff then.
 
-### 36. Tape from QS/400
+### 36. Tape from QS/400 (answered by the Phase 6 handoff)
 
 The virtual tape drive answers what Linux's `st` driver sends, and its
 behaviour is shown at the device (`pool-tape`). A save of a library by
@@ -69,7 +87,8 @@ after `ENOSPC`, then `EOV1` labels) needs `st`'s own behaviour past the
 warning, which this drive gives as SSC has it. Decided: QS/400's
 `INZTAP`, `SAVLIB` and `RSTLIB` against this drive are the first thing
 of Phase 10, beside the pass-through to a real one; what QS/400's tape
-code needs to change for it is QS/400's, found then.
+code needs to change for it is QS/400's, found then. The Phase 6
+handoff took it as recommended.
 
 ## Closed
 

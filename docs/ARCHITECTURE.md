@@ -162,9 +162,13 @@ tape volumes is in the pool the operator designates. The pool service
 is a service of its own, apart from the load source's
 (`docs/STORAGE.md`, `docs/POOLD.md`).
 
-**Virtual Ethernet.** A virtual Ethernet is a VLAN-aware kernel bridge.
-Each partition adapter is a tap device on it, driven by vhost-net; a
-physical port or bond joins a bridge to carry it outside.
+**Virtual Ethernet.** A virtual switch is a VLAN-aware kernel bridge
+with spanning tree off, kept by a service of its own (`vswitchd`).
+Each partition adapter is a tap device on it, locked to the adapter's
+own address and VLANs, driven by vhost-net: frames do not pass through
+the VMM. A physical port or a bond, never the management interface,
+joins a switch as its uplink, a trunk of its VLANs. The host has no
+address on any of it and forwards nothing (`docs/NETWORK.md`).
 
 **Management.** The host is managed by QS/MC over QSI, a Quartz
 protocol, served on TCP 2300 with mutual TLS. The Service Tools console

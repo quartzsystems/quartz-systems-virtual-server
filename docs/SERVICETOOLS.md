@@ -120,7 +120,7 @@ everything in Service Tools; there is one kind of user in this release.
 
       1. Work with system status
       2. Work with disk units
-      3. Configure management network
+      3. Work with network
       4. Management console pairing  (not yet available: comes with Phase 8)
       5. Work with service tools user IDs
       6. Date and time
@@ -231,9 +231,18 @@ partition and slot hold it) and the library's optical images and tape
 volumes, with the line that they are managed from QS/MC. Nothing of
 them is changed here.
 
-### 3. Configure management network
+### 3. Work with network
 
-Everything on the installer's network screen, with the values in use:
+A menu of four:
+
+```
+ 1. Configure management network
+ 2. Display network hardware
+ 3. Work with virtual switches
+ 4. Display partition adapters
+```
+
+**1. Configure management network.** Everything on the installer's network screen, with the values in use:
 the host name, the interface, DHCP or a static address with its prefix
 length and gateway, the VLAN ID, the DNS servers. Enter applies; nothing
 restarts.
@@ -250,7 +259,36 @@ puts it on the interface and shows the trial:
 
 So a mistyped address or a wrong VLAN cannot cut off a host that is
 managed over that network: the operator who cannot reach the console
-any more need only wait. A change of the host name is made at once.
+any more need only wait. A change of the host name is made at once. A
+kept change returns to this menu with the line that it changed.
+
+The management interface is never a switch's uplink, and an interface
+that is on a switch is never taken for management (`docs/NETWORK.md`).
+
+**2. Display network hardware.** Every network interface of the host:
+its location code, MAC address, driver, speed, whether it has a link,
+and what it is: `Management`, `Uplink of <switch>`, `Bond member of
+<switch>`, or `Not used`.
+
+**3. Work with virtual switches.** The switches, each with its VLANs,
+MTU, its uplink's state (`None` for an internal switch, `Up`,
+`Degraded`, `Down`, `Missing`) and how many partitions' ports are on
+it. F6 makes a switch: its name, its VLANs (apart by spaces) and its
+MTU. By a switch:
+
+| Option | What it does |
+|---|---|
+| 2 | change its VLANs and MTU; partitions on it go on running |
+| 4 | delete it, once its name is typed in full; one a profile names or a partition is on is refused |
+| 5 | display it: its VLANs, MTU, uplink with each interface by location code and its link, native VLAN, ports |
+| 7 | set its uplink, or move it: 1 by one interface, or by several to bond them, then the bond mode (`active-backup` or `802.3ad`) and the native VLAN, or none |
+| 8 | clear its uplink: it is internal from then on |
+| 9 | display its forwarding table: each address, its VLAN, where it is (a partition and slot, the uplink, the switch) and how it came to be there |
+
+**4. Display partition adapters.** The running partitions' adapters:
+partition, slot, switch, port VLAN, MAC address, link, and the frames
+each sent and was sent; with the line that adapters are managed from
+QS/MC. Nothing of them is changed here.
 
 ### 5. Work with service tools user IDs
 
