@@ -29,6 +29,7 @@ pub mod boot;
 #[cfg(target_os = "linux")]
 pub mod disks;
 pub mod gpt;
+pub mod intent;
 pub mod layout;
 pub mod multi;
 pub mod own;

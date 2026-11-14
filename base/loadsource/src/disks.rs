@@ -255,3 +255,18 @@ pub fn record(
 ) -> Result<(HostRecord, u64), AbError> {
     record::read_all(&mut records(names, sources)?)
 }
+
+/// A write-intent map on the record partitions of `sources`, from
+/// byte `base` (`intent::SET_MAP_OFFSET` or `intent::AWAY_MAP_OFFSET`).
+/// A disk that cannot be opened is left out.
+pub fn intent_map(
+    names: &LoadSourceNames,
+    sources: &[LoadSource],
+    base: u64,
+) -> crate::intent::MapStore<File> {
+    let devs = sources
+        .iter()
+        .filter_map(|s| open(&s.record).ok())
+        .collect();
+    crate::intent::MapStore::new(devs, base, names.intent_magic)
+}

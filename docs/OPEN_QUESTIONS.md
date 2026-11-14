@@ -11,7 +11,7 @@ built and waits for Cody to confirm the rule, 17 and 22 are decided in
 Phase 8, and 19 stays open. Phase 3 raised 23 to 28, and 29 was
 answered with them; the Phase 4 handoff answered 23 to 28, which are
 closed below, and left 6, 17, 19 and 22 as they were. Phase 4 raised
-30 to 33.
+30 to 33. Step 0 of Phase 5 closed 19 with QS/400's handoff 15.
 
 ## Open
 
@@ -35,24 +35,6 @@ Rust. Nothing uses it yet. If the TLS stack of QSI does not take
 Ed25519 certificates, the identity has to be a P-256 one and hosts
 installed before then make a new one. The Phase 3 handoff: decide in
 Phase 8, with the TLS stack. Nothing changed.
-
-### 19. Resynchronization after a power loss is the whole partition
-
-A mirrored load source that was cut off writes its whole second unit
-again from the first: there is no write-intent bitmap, so the service
-cannot know which megabytes were in flight. The map of the copy
-survives a further power loss, the host runs meanwhile, and the copy
-gives way to the host's own I/O. On a load source of several hundred
-gigabytes that is still a long time without protection. A bitmap in the
-record partition would bound it to what was being written. The Phase 3
-handoff: it stays open until a real machine shows how long it takes.
-
-Storage pools (Phase 5) cannot wait for that answer: a pool is far
-larger than a load source, and writing a whole unit of it again after
-every power loss is not acceptable. They need a write-intent bitmap in
-QS/400's `protect` before Phase 5, which is a change in QS/400's
-repository and a new pin here; the load source then takes it too.
-
 
 ### 22. Who owns the service tools users
 
@@ -267,3 +249,16 @@ exact for.
     its own user and group, 23000 plus the partition's ID; its serial
     log and its console socket are in directories of that user alone
     (`partition-isolation`).
+19. **Resynchronization after a power loss is the whole partition.**
+    Closed with the pin of Phase 5 (`0fc8afa`): QS/400's handoff 15
+    gives `protect`'s mirrored set a write-intent bitmap, and the
+    mirrored load source keeps it in the tails of the set label's two
+    copies, which the label never reaches: the set's map in the first,
+    the map of a member out of service in the second
+    (`base/loadsource/src/intent.rs`). Nothing an installed host has on
+    disk moved; a host installed before reads zeros there, takes every
+    region as dirty once, and keeps the map from then. After a power
+    loss only the regions the map has set are copied, from the first
+    unit in step to the other, and a stale unit comes back by what was
+    written while it was away. The suite `mirror-power-pull` shows the
+    copy bounded after each of its twenty cuts.

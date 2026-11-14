@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 appliance = { path = "../appliance", version = "0.1.0" }
 abrec.workspace = true
+protect.workspace = true
 vrm.workspace = true
 diskimg.workspace = true
 uuid.workspace = true

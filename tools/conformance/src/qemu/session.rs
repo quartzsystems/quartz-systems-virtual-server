@@ -204,6 +204,16 @@ impl Session {
         self.wait_for(&format!("`{needle}`"), deadline, |log| log.contains(needle))
     }
 
+    /// The last line of the serial log that has `needle`, once one has
+    /// appeared, by `deadline`. Nothing is consumed.
+    pub fn line_with(&mut self, needle: &str, deadline: Instant) -> Result<String, String> {
+        self.seen(needle, deadline)?;
+        let at = self.log.rfind(needle).unwrap_or(0);
+        let start = self.log[..at].rfind('\n').map_or(0, |i| i + 1);
+        let end = self.log[at..].find('\n').map_or(self.log.len(), |i| at + i);
+        Ok(self.log[start..end].trim_end().to_string())
+    }
+
     /// Take what the serial port has said without waiting for more.
     pub fn drain(&mut self) {
         while let Ok(chunk) = self.rx.try_recv() {

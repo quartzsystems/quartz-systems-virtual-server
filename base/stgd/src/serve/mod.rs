@@ -26,9 +26,12 @@ use std::time::{Duration, Instant};
 use appliance::{Appliance, Event, LoadSourceNames};
 use blockdev::{BlockDev, LinuxBlockDev};
 use loadsource::disks::{self, LoadSource};
+use loadsource::intent::{self, AWAY_MAP_OFFSET, SET_MAP_OFFSET};
 use loadsource::set::{BLOCK, Member, MemberState, SetLabel};
 use protect::UnitState;
-use protect::set::{MirrorMember, MirrorSet, Resume, SetEvent};
+use protect::intent::IntentStore;
+use protect::mirror::RESUME_CHUNK;
+use protect::set::{Intent, MirrorMember, MirrorSet, Resume, SetEvent};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use supervise::signal::{Signals, TERM};
 use ublk::{Device, Options};
@@ -244,30 +247,24 @@ impl Core {
             .and_then(|id| id.trim().parse::<u32>().ok())
             .filter(|id| Path::new(&format!("/dev/ublkb{id}")).exists());
         let unclean = !label.clean && kept.is_none();
-        let attached = |m: &Member| core.source_of(m).is_some();
-        let source = label
-            .members
-            .iter()
-            .position(|m| m.state == MemberState::Active && attached(m));
         let mut members = Vec::new();
-        for (i, m) in label.members.iter().enumerate() {
+        for m in &label.members {
             let dev: Option<Box<dyn BlockDev>> = match core.source_of(m) {
                 Some(s) => Some(Box::new(LinuxBlockDev::open(&s.data).map_err(text)?)),
                 None => None,
             };
-            let state = match m.state {
-                // The members may differ after an unclean stop: the
-                // first that was in step is the one the others follow.
-                MemberState::Active if unclean && Some(i) != source => UnitState::Suspended,
-                other => unit_state(other),
-            };
+            // After an unclean stop the members stay as recorded: the
+            // write-intent map says which regions may differ, and the
+            // set copies those from the first member in step.
             members.push(MirrorMember {
                 uuid: *m.partition.as_bytes(),
-                state,
+                state: unit_state(m.state),
                 dev,
             });
         }
-        let set = MirrorSet::open(*label.id.as_bytes(), label.blocks, members).map_err(text)?;
+        let intent = core.intent(&label);
+        let set = MirrorSet::open_with(*label.id.as_bytes(), label.blocks, members, Some(intent))
+            .map_err(text)?;
         // The label as read is what the disks say of the members now.
         core.recorded.set(guard::states(&set));
         let target = Arc::new(Guarded::new(set.clone(), Arc::clone(&core.recorded)));
@@ -305,7 +302,93 @@ impl Core {
                 core.post_failed(&unit);
             }
         }
+        if let Some(p) = core.set.as_ref().and_then(MirrorSet::resync_progress) {
+            core.post(
+                What::ResyncStarted,
+                &format!(
+                    "units in step again, {} of {} MiB to copy",
+                    p.chunks_dirty, p.chunks
+                ),
+            );
+        } else if unclean {
+            let chunks = core.label.as_ref().map_or(0, |l| l.blocks / RESUME_CHUNK);
+            core.post(
+                What::ResyncFinished,
+                &format!("units in step, 0 of {chunks} MiB to copy"),
+            );
+        }
         Ok(core)
+    }
+
+    /// How the set keeps its write-intent maps: on the record partitions
+    /// of the load-source disks. A clean stop left the members the same
+    /// and the map clear, so the map starts clear; otherwise it is read.
+    fn intent(&self, label: &SetLabel) -> Intent {
+        let names = self.names();
+        let mut intent = Intent::new(
+            names.intent_magic,
+            Box::new(disks::intent_map(names, &self.sources, SET_MAP_OFFSET)),
+        );
+        intent.region_blocks = intent::region_blocks(label.blocks);
+        intent.fresh = label.clean;
+        // A member's own map is kept on the other disks while it is out
+        // of service, so it comes back by what was written since.
+        intent.away = label
+            .members
+            .iter()
+            .map(|m| {
+                let others: Vec<LoadSource> = self
+                    .sources
+                    .iter()
+                    .filter(|s| s.data_guid != m.partition)
+                    .cloned()
+                    .collect();
+                let store = disks::intent_map(names, &others, AWAY_MAP_OFFSET);
+                Some(Box::new(store) as Box<dyn IntentStore>)
+            })
+            .collect();
+        intent
+    }
+
+    /// Whether the copy an unclean stop left is still under way.
+    fn resyncing(&self) -> bool {
+        self.set
+            .as_ref()
+            .and_then(MirrorSet::resync_progress)
+            .is_some_and(|p| !p.complete)
+    }
+
+    /// Copy a step of the regions an unclean stop left dirty.
+    fn resync(&mut self, set: &MirrorSet) {
+        let mut step = set.resync_step(1);
+        for _ in 1..STEP_CHUNKS {
+            if !matches!(&step, Ok(Some(p)) if !p.complete) {
+                break;
+            }
+            let give_up = Instant::now() + GIVE_WAY;
+            while self.recorded.busy() && Instant::now() < give_up {
+                std::thread::sleep(Duration::from_micros(200));
+            }
+            step = set.resync_step(1);
+        }
+        match step {
+            Ok(Some(p)) if p.complete => {
+                self.write_label(false);
+                self.post(
+                    What::ResyncFinished,
+                    &format!(
+                        "units in step, {} of {} MiB copied",
+                        p.chunks_copied, p.chunks
+                    ),
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                self.failure = format!("resynchronization: {e}");
+                self.write_label(false);
+                self.post(What::RebuildFailed, &self.failure);
+            }
+        }
     }
 
     fn post_failed(&self, unit: &Unit) {
@@ -423,7 +506,14 @@ impl Core {
             ),
             (None, Some(Job::Replace(member, _))) => ("preparing", member + 1, 0),
             (None, Some(Job::Start(_))) => ("preparing", 2, 0),
-            (None, None) => ("", 0, 0),
+            (None, None) => match self.set.as_ref().and_then(MirrorSet::resync_progress) {
+                Some(p) if !p.complete => (
+                    "resynchronizing",
+                    2,
+                    u32::try_from(p.chunks_copied * 100 / p.chunks_dirty.max(1)).unwrap_or(0),
+                ),
+                _ => ("", 0, 0),
+            },
         };
         Status {
             protection: if self.label.is_some() { MIRRORED } else { NONE }.into(),
@@ -513,6 +603,13 @@ impl Core {
     /// Copy a step of the work under way; start what is waiting.
     fn work(&mut self) {
         let Some(set) = self.set.clone() else { return };
+        // The units in step first: a stale one is copied from them.
+        if self.work.is_none() && self.job.is_none() && self.resyncing() {
+            if self.failure.is_empty() {
+                self.resync(&set);
+            }
+            return;
+        }
         if self.work.is_none() && self.job.is_none() {
             // A member that is there and not in step is brought back.
             let stale = set.members().iter().position(|m| {
@@ -584,14 +681,24 @@ impl Core {
     /// End in order: the device stopped, the label marked clean.
     fn stop(mut self) -> ! {
         let stopped = self.device.take().map_or(Ok(()), Device::stop);
+        // Flushed, and the write-intent map cleared: the next IPL copies
+        // nothing. A set that cannot is left marked open.
+        let closed = match self.set.as_ref().map_or(Ok(()), MirrorSet::close) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("the set was not closed: {e}");
+                false
+            }
+        };
         match stopped {
-            Ok(()) => {
+            Ok(()) if closed => {
                 if let Some(label) = &mut self.label {
                     label.clean = true;
                 }
                 self.write_label(true);
                 let _ = fs::remove_file(device_id(&self.app));
             }
+            Ok(()) => {}
             Err(e) => eprintln!("the device was not stopped: {e}"),
         }
         std::process::exit(0);
@@ -730,13 +837,19 @@ pub fn run(appliance: &Appliance, host: Host) -> String {
     }
     loop {
         // While a copy runs the loop does not wait.
-        let wait = if core.work.is_some() || core.job.is_some() {
+        let wait = if core.work.is_some() || core.job.is_some() || core.resyncing() {
             Duration::ZERO
         } else {
             Duration::from_millis(100)
         };
         if term(&mut signals, wait) {
             core.stop();
+        }
+        // A set gone quiet has its idle regions cleared.
+        if let Some(set) = &core.set
+            && let Err(e) = set.sweep()
+        {
+            eprintln!("the write-intent map: {e}");
         }
         answer(&mut core, &rx, &shown);
         core.events();

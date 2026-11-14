@@ -84,6 +84,7 @@ pub static LOAD_SOURCE: LoadSourceNames = LoadSourceNames {
     label_magic: *b"QSVSSET\0",
     resume_magic: *b"QSVSRSM\0",
     resume_map_magic: *b"QSVSRMAP",
+    intent_magic: *b"QSVSIMAP",
 };
 
 /// QS/VS as the base crates see it. The caller says how an event is
@@ -283,6 +284,7 @@ mod tests {
         assert_eq!(&n.label_magic, b"QSVSSET\0");
         assert_eq!(&n.resume_magic, b"QSVSRSM\0");
         assert_eq!(&n.resume_map_magic, b"QSVSRMAP");
+        assert_eq!(&n.intent_magic, b"QSVSIMAP");
         assert!(n.slot_b_path.contains(n.vendor));
     }
 

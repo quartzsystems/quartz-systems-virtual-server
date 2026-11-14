@@ -122,6 +122,7 @@ pub fn mirror(run: &Run<'_>) -> Result<String, String> {
     let seed = seed();
     let mut moments = Moments(seed);
     let mut resyncs = 0;
+    let (mut copied, mut unit_mib) = (0u64, 0u64);
     let mut generations: Vec<u64> = Vec::new();
     for cut in 0..=CUTS {
         let mut guest = run.boot(&launch)?;
@@ -147,12 +148,32 @@ pub fn mirror(run: &Run<'_>) -> Result<String, String> {
         if !data.starts_with("/dev/ublkb") {
             return Err(at(format!("/data is on {data}")));
         }
-        // A host that was cut off brings its second unit back in step.
+        // A host that was cut off brings its units back in step, by the
+        // regions its write-intent map has dirty: never the whole unit.
         if cut > 0 {
+            let started = posted(&refcode::RESYNC_STARTED, "units in step again");
+            let nothing = posted(&refcode::RESYNC_FINISHED, "units in step, 0 of");
             guest
-                .seen(&posted(&refcode::RESYNC_STARTED, ""), deadline)
+                .wait_for("the resynchronization's start", deadline, |log| {
+                    log.contains(&started) || log.contains(&nothing)
+                })
                 .map_err(at)?;
-            resyncs += 1;
+            let which = if guest.said(&started) {
+                &started
+            } else {
+                &nothing
+            };
+            let line = guest.line_with(which, deadline).map_err(at)?;
+            let (dirty, whole) =
+                mib_of(&line).ok_or_else(|| at(format!("`{line}` names no extent")))?;
+            if dirty >= whole {
+                return Err(at(format!("the whole unit was copied: `{line}`")));
+            }
+            copied += dirty;
+            unit_mib = whole;
+            if dirty > 0 {
+                resyncs += 1;
+            }
         }
         if cut < CUTS {
             std::thread::sleep(Duration::from_millis(moments.number() % RUN_ON_MS));
@@ -182,15 +203,39 @@ pub fn mirror(run: &Run<'_>) -> Result<String, String> {
     }
     Ok(format!(
         "{CUTS} power cuts on a running mirrored host (seed {seed}): /data mounted from the \
-         protected set at every IPL, a resynchronization started after each of the {resyncs} \
-         and the last ran to its end; every state file whole each time (host.toml generation \
-         {first} to {last}); powered off clean with both units active"
+         protected set at every IPL; after each cut only the regions the write-intent map had \
+         dirty were copied, {copied} MiB in all over the {CUTS} of a {unit_mib} MiB unit, \
+         {resyncs} times some, and the last ran to its end; every state file whole each time \
+         (host.toml generation {first} to {last}); powered off clean with both units active"
     ))
+}
+
+/// `N` and `M` of a line that says `N of M MiB`.
+fn mib_of(line: &str) -> Option<(u64, u64)> {
+    let words: Vec<&str> = line.split_whitespace().collect();
+    words.windows(4).find_map(|w| {
+        if w[1] == "of" && w[3].starts_with("MiB") {
+            Some((w[0].parse().ok()?, w[2].parse().ok()?))
+        } else {
+            None
+        }
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_extent_of_a_resynchronization_is_read_from_its_line() {
+        let line = "C2003020 Resynchronization started: units in step again, 48 of 700 MiB to copy";
+        assert_eq!(mib_of(line), Some((48, 700)));
+        assert_eq!(
+            mib_of("units in step, 0 of 700 MiB to copy"),
+            Some((0, 700))
+        );
+        assert_eq!(mib_of("Resynchronization started"), None);
+    }
 
     #[test]
     fn the_steps_done_are_counted_from_the_progress_display() {

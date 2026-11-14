@@ -41,6 +41,9 @@ pub struct LoadSourceNames {
     pub resume_magic: [u8; 8],
     /// The magic the protection engine encodes its resume map under.
     pub resume_map_magic: [u8; 8],
+    /// The magic the protection engine encodes its write-intent maps
+    /// under.
+    pub intent_magic: [u8; 8],
 }
 
 impl LoadSourceNames {
@@ -61,5 +64,6 @@ impl LoadSourceNames {
         label_magic: *b"QSDMSET\0",
         resume_magic: *b"QSDMRSM\0",
         resume_map_magic: *b"QSDMRMAP",
+        intent_magic: *b"QSDMIMAP",
     };
 }

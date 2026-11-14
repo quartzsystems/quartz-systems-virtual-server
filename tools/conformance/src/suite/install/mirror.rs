@@ -341,10 +341,17 @@ pub fn storage_kill(run: &Run<'_>) -> Result<String, String> {
         &refcode::DATA_NOT_MOUNTED,
         &refcode::STORAGE_LOST,
         &refcode::UNIT_FAILED,
-        &refcode::RESYNC_STARTED,
     ] {
         if guest.said(&code.tag()) {
             return Err(format!("the host posted {}", code.line()));
+        }
+    }
+    // A server cut off may leave a write on one unit only: the regions
+    // its write-intent map had dirty are copied, never a whole unit.
+    if guest.said(&posted_code(&refcode::RESYNC_STARTED)) {
+        let line = guest.line_with(&posted_code(&refcode::RESYNC_STARTED), run.deadline())?;
+        if !line.contains("units in step again") {
+            return Err(format!("a unit was copied whole: `{line}`"));
         }
     }
     let storage = protected(&mut guest, Duration::from_secs(30))?;
@@ -367,7 +374,7 @@ pub fn storage_kill(run: &Run<'_>) -> Result<String, String> {
         "the storage service killed {KILLS} times while {FILE_MB} MiB files were written to \
          {data}: started again each time ({}; {failures} failures counted), the writes went on, \
          {} files written and the last {checked} read back whole; both units still {}, no \
-         resynchronization needed",
+         unit copied whole",
         restarts.join(", "),
         done.len(),
         storage.units[0].state
