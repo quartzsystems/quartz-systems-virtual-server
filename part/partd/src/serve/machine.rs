@@ -5,14 +5,19 @@
 //! The machine behind the manager: the cgroup file system, the VMM's
 //! process, PID 1's control socket, the run directory.
 
+use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
+use std::os::fd::AsFd;
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use poold::proto::{Calls as _, Given, Want};
+use qvsmsg::Issued;
 use resource::cgroup::Step;
 use rustix::process::{Pid, Signal, kill_process};
 
@@ -42,6 +47,12 @@ pub struct Paths {
     pub run: PathBuf,
     /// The VMM.
     pub vmm: PathBuf,
+    /// The pool service's socket.
+    pub pools: PathBuf,
+    /// Where each partition's sockets are: `<partitions>/<ID>`.
+    pub partitions: PathBuf,
+    /// Whether a host path may back a unit: a test image's.
+    pub host_paths: bool,
 }
 
 impl Paths {
@@ -61,6 +72,9 @@ pub struct Machine {
     paths: Paths,
     watches: Sender<Watch>,
     posts: Sender<(String, String)>,
+    /// The files the pool service gave each partition, in order, not
+    /// yet handed to its VMM.
+    held: BTreeMap<u32, Vec<(Want, File)>>,
 }
 
 impl Machine {
@@ -71,10 +85,15 @@ impl Machine {
             paths,
             watches,
             posts,
+            held: BTreeMap::new(),
         }
     }
 
-    fn start(&self, id: u32, group: &str, config: &str) -> io::Result<Child> {
+    fn pools(&self) -> poold::proto::Client {
+        poold::proto::Client::new(&self.paths.pools)
+    }
+
+    fn start(&mut self, id: u32, group: &str, config: &str) -> io::Result<Child> {
         fs::create_dir_all(&self.paths.run)?;
         // The report starts anew with each activation. It is appended
         // to, so the VMM cannot write over what it has said.
@@ -96,7 +115,14 @@ impl Machine {
             .stdout(Stdio::null())
             .stderr(Stdio::from(report))
             .current_dir("/");
-        let mut child = sys::spawn_in_group(&mut command, procs)?;
+        let files = self
+            .held
+            .remove(&id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(_, f)| f)
+            .collect();
+        let mut child = sys::spawn_with(&mut command, procs, files)?;
         // The whole configuration, then the end of its input.
         let written = child
             .stdin
@@ -218,5 +244,79 @@ impl System for Machine {
 
     fn exists(&self, backing: &str) -> bool {
         Path::new(backing).exists()
+    }
+
+    fn hold(&mut self, id: u32, wants: &[Want]) -> Result<Vec<Given>, Vec<Issued>> {
+        let unreachable = |e: &dyn std::fmt::Display| {
+            vec![qvsmsg::POOLS_UNREACHABLE.with(&[&id.to_string(), &e.to_string()])]
+        };
+        let given = self
+            .pools()
+            .hold_files(id, wants.to_vec())
+            .map_err(|e| unreachable(&e))??;
+        let held = self.held.entry(id).or_default();
+        let mut out = Vec::with_capacity(given.len());
+        for (g, file) in given {
+            held.retain(|(w, _)| !(w.kind == g.want.kind && w.slot == g.want.slot));
+            held.push((g.want.clone(), file));
+            out.push(g);
+        }
+        Ok(out)
+    }
+
+    fn give_back(&mut self, id: u32, wants: &[Want]) {
+        if wants.is_empty() {
+            self.held.remove(&id);
+        } else if let Some(held) = self.held.get_mut(&id) {
+            held.retain(|(w, _)| !wants.iter().any(|x| x.kind == w.kind && x.slot == w.slot));
+        }
+        if let Err(e) = self.pools().release(id, wants.to_vec()) {
+            println!("the pool service did not take back partition {id}'s: {e}");
+        }
+    }
+
+    fn control(&mut self, id: u32, line: &str, with: Option<&Want>) -> Result<String, String> {
+        let file = with.and_then(|w| {
+            let held = self.held.get_mut(&id)?;
+            let at = held
+                .iter()
+                .position(|(x, _)| x.kind == w.kind && x.slot == w.slot)?;
+            Some(held.remove(at).1)
+        });
+        let socket = self
+            .paths
+            .partitions
+            .join(id.to_string())
+            .join(qsvmm::media::CONTROL_SOCKET);
+        let talk = || -> io::Result<String> {
+            let stream = UnixStream::connect(&socket)?;
+            stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+            let fds: Vec<_> = file.iter().map(AsFd::as_fd).collect();
+            fdpass::send(&stream, &fds)?;
+            (&stream).write_all(format!("{line}\n").as_bytes())?;
+            let mut answer = String::new();
+            Read::take(&stream, 64 * 1024).read_to_string(&mut answer)?;
+            Ok(answer.trim_end().to_string())
+        };
+        talk().map_err(|e| format!("{}: {e}", socket.display()))
+    }
+
+    fn host_paths(&self) -> bool {
+        self.paths.host_paths
+    }
+
+    fn delete_vdisks(&mut self, disks: &[(String, String)]) -> Vec<Issued> {
+        let mut client = self.pools();
+        let mut refused = Vec::new();
+        for (pool, name) in disks {
+            match client.delete_vdisk(pool.clone(), name.clone(), true) {
+                Ok(Ok(())) => {}
+                Ok(Err(mut r)) => refused.append(&mut r),
+                Err(e) => refused.push(
+                    qvsmsg::STORAGE_FAILED.with(&["delete the virtual disk", &e.to_string()]),
+                ),
+            }
+        }
+        refused
     }
 }

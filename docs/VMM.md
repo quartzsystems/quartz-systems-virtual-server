@@ -39,8 +39,22 @@ slot = 2
 
 [[adapter.unit]]
 lun = 0
-backing = "/dev/sdb"
+backing = "/proc/self/fd/3"
 serial = "PROD-LS"
+
+[[optical]]
+slot = 3
+serial = "8GQ2W03-3-0"
+media = "/proc/self/fd/4"
+name = "QS400V1R1"
+
+[[tape]]
+slot = 4
+serial = "8GQ2W03-4-0"
+volume = "/proc/self/fd/5"
+name = "SAVE1"
+capacity_mib = 4096
+protected = false
 ```
 
 | Key | Value |
@@ -50,9 +64,17 @@ serial = "PROD-LS"
 | `vcpus`, `threads_per_core` | the virtual CPUs, and how many of them are the sibling threads of one core: 1 or 2 |
 | `pin` | dedicated processors: the host thread each virtual CPU's thread stays on, in order. Left out for shared processors |
 | `memory_mib`, `huge_pages` | the memory, and whether it is the 2 MB huge pages the host reserved |
-| `side` | `a`, `b` or `recorded` |
+| `side` | `a`, `b`, `recorded`, or `d`: the installation media in the first optical device, which must then be there |
 | `keylock`, `ipl_type`, `console` | written to the LIC record before the IPL; each may be left out, and is then left as the record has it. A load source with no LIC partition has nowhere to keep them: it loads when the side is named, with `C2005037`, and they are not written |
 | `[[adapter]]` | a virtual SCSI adapter: its `slot`, and its units, each with its `lun`, `backing` and `serial` |
+| `[[optical]]` | a virtual optical device: its `slot`, `serial`, and the image loaded at the start (`media`, with its library `name`) or none. Four at most |
+| `[[tape]]` | a virtual tape device: its `slot`, `serial`, and the volume mounted at the start (`volume`, `name`, `capacity_mib`, `protected`) or none. Four at most |
+
+A backing store, an image or a volume the partition manager holds is
+given to `qsvmm` as one of its open descriptors and named by its
+`/proc/self/fd/N` path, which `qsvmm` opens as it would any path: the
+same file, so a rename or a removal of the name cannot put another
+under it. Every slot is a device's alone, whatever its kind.
 
 A developer can name a file in place of standard input: `qsvmm
 --config <file>`.
@@ -206,8 +228,8 @@ No firmware, no VGA, no keyboard, no floppy, no IDE.
 | Reset line | ports `60` to `64` | `vm-superio`'s i8042, of which only the pulse on the reset line (`FE` to port `64`) does anything: the partition ends for a restart. The FADT names that port as the ACPI reset register, and the reset vector pulses it |
 | Power off | ports `600`, `601` | the ACPI sleep control and status registers of a hardware-reduced machine. S5 with the enable bit ends the partition as powered off |
 | PCI host bridge | ports `CF8` to `CFF`, and memory at `E8000000` | one bus. Device 0 is the bridge (`1b36:0008`); a virtio function follows at each device number |
-| virtio-scsi | PCI `00:01.0`, `1af4:1048` | one target, a disk at each LUN |
-| virtio-rng | PCI `00:02.0`, `1af4:1044` | the host's `/dev/urandom`, a page at most a buffer |
+| virtio-scsi | PCI `00:01.0` and on, `1af4:1048` | one function a device, in slot order: a SCSI adapter's disks at its LUNs, an optical drive or a tape drive at LUN 0 of a function of its own |
+| virtio-rng | after them, `1af4:1044` | the host's `/dev/urandom`, a page at most a buffer |
 
 ### virtio over PCI
 
@@ -279,6 +301,86 @@ range is said to read as zeros only for a file.
 
 Each unit counts its reads, writes, flushes and refused commands;
 `qsvmm` reports them at its end.
+
+### The optical device
+
+A read-only CD/DVD drive of 2048-byte blocks (peripheral type 5,
+removable), `QUARTZ` / `VIRTUAL OPTICAL`, with an image of the media
+library behind it, read through the page cache. It answers what Linux's
+`sr` and `cdrom` drivers send, which is all QS/400 sends to an optical
+drive (`docs/QS400_GUEST.md`): TEST UNIT READY, REQUEST SENSE, INQUIRY
+and the serial number and identification pages, READ CAPACITY, READ
+(10) and (12), READ TOC (the tracks and the first session, by address
+or time), GET CONFIGURATION (the profile list, core, morphing,
+removable medium, random readable and the CD or DVD read feature; DVD
+for an image over 900 MiB), GET EVENT STATUS NOTIFICATION (polled, the
+media class), MODE SENSE (6) and (10) for the capabilities page, READ
+DISC INFORMATION, START STOP UNIT and its eject, PREVENT ALLOW MEDIUM
+REMOVAL, SEEK, VERIFY, REPORT LUNS. A write is DATA PROTECT; everything
+else ILLEGAL REQUEST, invalid operation code.
+
+The first command after the device starts, and the first after a
+medium is loaded or unloaded, is answered UNIT ATTENTION (29/00, then
+28/00), except INQUIRY, REQUEST SENSE, GET CONFIGURATION, GET EVENT
+STATUS NOTIFICATION and REPORT LUNS, which neither report it nor clear
+it; the next event poll says new media or media removal. The guest's
+eject unloads the medium and `qsvmm` reports it (`MEDIA <slot>
+unloaded <name>`). A guest that prevents removal makes the host's
+unload fail unless forced, and its own eject fail.
+
+### The tape device
+
+A sequential-access drive (peripheral type 1, removable), `QUARTZ` /
+`VIRTUAL TAPE`, with a volume of the media library behind it in the
+AWSTAPE format (`docs/STORAGE.md`). It answers what Linux's `st`
+driver sends, which is all QS/400 sends to a tape drive: TEST UNIT
+READY, REQUEST SENSE, INQUIRY, READ BLOCK LIMITS (1 byte to 1 MiB),
+MODE SENSE and MODE SELECT (6) and (10) with the block descriptor
+(variable blocks to begin with, fixed by a descriptor's length) and
+the data compression and device configuration pages, READ (6) and
+WRITE (6) in variable and fixed blocks, WRITE FILEMARKS (6), SPACE (6)
+by blocks, filemarks and to the end of data, REWIND, LOCATE (10), READ
+POSITION (short form), LOAD UNLOAD, ERASE (6), PREVENT ALLOW MEDIUM
+REMOVAL, REPORT DENSITY SUPPORT, REPORT LUNS.
+
+The conditions are reported as SSC has them, with the information
+field the residue:
+
+| Condition | Status, sense key, ASC/ASCQ, bits |
+|---|---|
+| a filemark read or spaced to | CHECK CONDITION, NO SENSE, 00/01, FILEMARK; the residue the count not done |
+| the end of data | BLANK CHECK, 00/05 |
+| the beginning reached spacing back | NO SENSE, 00/04, EOM |
+| a block of another length | NO SENSE, ILI; the data given; the residue negative for a longer block. SILI suppresses it for a shorter one in variable mode |
+| the early warning | NO SENSE, 00/02, EOM; the block written |
+| the end of the volume | VOLUME OVERFLOW, 00/02, EOM; nothing written |
+| a write-protected volume | DATA PROTECT, 27/00 |
+
+A write reaches the page cache; WRITE FILEMARKS (of none as well, the
+guest's flush) makes everything durable, and so does an unload and the
+partition's end.
+
+### The control socket
+
+`<run>/partitions/<ID>/control.sock`, made by `qsvmm` as root before
+it drops its privileges and root's alone (mode 600): the partition
+manager reaches it, no partition does. One request a connection: a
+line, `load <slot> <name> <capacity MiB> <protected>`, `unload <slot>
+<forced>` or `media`, after one byte that carries the medium's open file
+when there is one (`SCM_RIGHTS`). The answer is `ok <name>` or
+`refused <why>`; `media` answers a line a device and `end`.
+
+## A partition held for its pool's space
+
+A write to a virtual disk that the host's file system answers with no
+space (a thin disk in a full pool) does not reach the guest. The
+device thread that made it waits: the first such write stops every
+processor of the partition (each is brought out of the guest and
+parks before it enters it again) and `qsvmm` reports `A2005160`. The
+write is tried again each second. When the last write that waited is
+done, `C2005160` and the processors go on, each telling KVM it was
+stopped so the guest's clock does not take the time for a lockup. The
+partition is Running throughout (`docs/PARTD.md`).
 
 ## Interrupts
 

@@ -314,6 +314,54 @@ do is **keep it so**: the serial number of a partition is the SMBIOS
 type 1 serial number, read from `product_serial`, and must not come to
 depend on a firmware variable or on the product UUID.
 
+## Installation media, optical and tape (Phase 5, at `0fc8afa`)
+
+What QS/400 does with the devices of Phase 5, read from its source at
+the pin; what a run showed is in `docs/PHASE5.md`.
+
+**The installation media.** QS/400's build puts the media UKI at
+`EFI/BOOT/BOOTX64.EFI` in the ISO 9660 tree (and the same in its El
+Torito image); the tree has Joliet and Rock Ridge names. IPL source D
+reads it from there and enters it as it would a side's UKI. The media
+UKI's command line is built in (`CONFIG_CMDLINE_OVERRIDE`): nothing the
+VMM passes is seen. Its `/init`, `instload`, looks for the media among
+the block devices, `sr*` first, finds an ISO 9660 signature, and mounts
+it with the kernel's iso9660; so the media is found in the partition's
+optical device by name, and nothing of the device's identity is read.
+
+**An unattended installation** needs `QS400/INSTALL.RSP` on the media
+(a build with `QS400_INSTALL_RSP` set): with no OS installed and a
+response that parses, the installation runs with no menu. The LIC
+phase partitions the disk, writes both sides, records side A as the
+default in the LIC record (`licpart::IplSource`, as a partition with no
+firmware) and restarts; the partition manager activates it again from
+the side recorded, and the OS phase reads the media again: **the
+optical device keeps its media across the restart**, which it does
+(`docs/PARTD.md`). The installation ends in the running system.
+
+**Optical.** QS/400 sends no command of its own to an optical drive;
+it reads `/dev/srN` through Linux's `sr` and `cdrom` drivers and the
+iso9660 file system. It takes a device of peripheral type 5 as optical
+(`OPTnn`) and reads its serial number from sysfs; vendor and product
+are not read. Saving to and restoring from optical are its virtual
+(image catalog) devices', not a drive's.
+
+**Tape.** QS/400 drives a tape through Linux's `st` driver alone, on
+`/dev/nstN`: variable blocks (`MTSETBLK 0`), 80-byte IBM standard
+labels in EBCDIC, 64 KiB save blocks, a 256 KiB read buffer; it spaces
+by filemarks and blocks, rewinds, writes filemarks, erases, unloads.
+It takes the early warning as `ENOSPC` with `GMT_EOT` set, writes the
+block again and ends the volume with `EOV1` labels. Its tape code has
+never met a drive, real or virtual (QS/400's own `docs/INSTALL.md`):
+a save to this drive and a restore from it were not run in Phase 5
+(`docs/OPEN_QUESTIONS.md` item 36).
+
+What QS/400 would have to change for any of it: nothing found. Two
+things it could do: read its install response from somewhere other
+than the media (the command line it cannot be given, a seed volume),
+so one ISO serves attended and unattended installs alike; and say in
+its tape code what it expects of a drive past the early warning.
+
 ## What QS/400 would have to change
 
 For a QS/400 handoff, in the order of how much a partition needs each.

@@ -43,6 +43,20 @@ const NETD: Service = Service {
     ready_within: READY_WITHIN,
 };
 
+/// The pool service: the storage pools, their virtual disks and the
+/// media library. Before the partition manager, which asks it for a
+/// partition's disks; after it when stopping, so every partition has
+/// ended before a pool is stopped.
+pub const POOLD: Service = Service {
+    name: "poold",
+    binary: "/qsvs/bin/qsvspoold",
+    args: &[],
+    order: 22,
+    needs: &[],
+    // Assembling a pool reads its labels and may repair a parity set.
+    ready_within: Duration::from_secs(120),
+};
+
 /// The partition manager: it owns every partition's VMM. Its
 /// partitions go on when it is started again.
 pub const PARTD: Service = Service {
@@ -66,7 +80,7 @@ pub const TOOLS: Service = Service {
 
 /// The base services.
 #[cfg(not(test_hooks))]
-pub static TABLE: &[Service] = &[STGD, LOGD, NETD, PARTD, TOOLS];
+pub static TABLE: &[Service] = &[STGD, LOGD, NETD, POOLD, PARTD, TOOLS];
 
 /// The base services and, in a test image, the test hooks' two.
 #[cfg(test_hooks)]
@@ -74,6 +88,7 @@ pub static TABLE: &[Service] = &[
     STGD,
     LOGD,
     NETD,
+    POOLD,
     PARTD,
     TOOLS,
     crate::hooks::FLAKY,
@@ -97,7 +112,10 @@ mod tests {
         // No service is the VMM: the partition manager starts one
         // for each partition it activates, and nothing else does.
         assert!(TABLE.iter().all(|s| !s.binary.ends_with("qsvmm")));
-        assert_eq!(TABLE[order[3]].name, "partd");
+        // The pool service before the partition manager, which asks it
+        // for a partition's disks.
+        assert_eq!(TABLE[order[3]].name, "poold");
+        assert_eq!(TABLE[order[4]].name, "partd");
         assert!(
             TABLE
                 .iter()

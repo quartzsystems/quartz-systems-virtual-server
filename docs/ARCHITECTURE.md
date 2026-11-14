@@ -72,7 +72,10 @@ a partition, and what it cannot do yet without firmware variables
 **Virtual devices.** A partition does its I/O through virtio devices on
 a PCI bus: virtio-scsi for disks, tape and optical, virtio-net backed
 by vhost-net, a virtio console and virtio-rng. Phase 3 has virtio-scsi
-with disk LUNs and virtio-rng. A virtual disk's backing store is opened
+with disk LUNs and virtio-rng; Phase 5 a read-only optical drive and a
+tape drive, each on a virtio-scsi function and a slot of its own, and
+IPL source D, which loads the media UKI from the ISO in the first
+optical drive. A virtual disk's backing store is opened
 for direct I/O and a guest's flush is a flush of the host's device: the
 guest's crash consistency is its own and rests on that. Beside the
 virtio devices are four that virtio has no place for and a kernel
@@ -146,9 +149,18 @@ the host's for that alone: a partition's disk can look the same. The
 host takes the disk the firmware started it from and the members that
 disk's label names.
 
-**Storage.** A storage pool is an xfs file system and a virtual disk is
-a raw file in it. Protection is the software RAID QS/400 has, served to
-the kernel as a block device through ublk, with the pool's xfs on top.
+**Storage.** A storage pool is one protected set of whole disks (none,
+mirrored, RAID 5 or RAID 6, QS/400's `protect`) served to the kernel
+through ublk, with one xfs file system on it. Its size is fixed when it
+is made. Every disk of a pool carries a member label; the labels are
+the truth, and a disk without a label of this host is never taken
+without a typed confirmation. A virtual disk is a raw file in a pool,
+thin or thick, held by one partition at a time and handed to its VMM
+open. A pool that fills holds the partitions writing to it rather than
+fail their writes. The media library of optical images and AWSTAPE
+tape volumes is in the pool the operator designates. The pool service
+is a service of its own, apart from the load source's
+(`docs/STORAGE.md`, `docs/POOLD.md`).
 
 **Virtual Ethernet.** A virtual Ethernet is a VLAN-aware kernel bridge.
 Each partition adapter is a tap device on it, driven by vhost-net; a
@@ -218,10 +230,11 @@ restarts the service by the rules of every service. When those end the
 restarts, `/data` has no server: that is the fatal code `B2003000`
 (`docs/REFCODES.md`).
 
-Two things follow that an operator should know. After a power loss the
-whole data partition is written again, not only what was in flight:
-there is no write-intent bitmap (storage pools will need one in
-`protect` before Phase 5). And a mirrored pair has no third party: if
+Two things follow that an operator should know. After a power loss
+only the regions the set's write-intent bitmap had set are written
+again, not the whole data partition (since Phase 5: the bitmap is kept
+in the tails of the set label's copies). And a mirrored pair has no
+third party: if
 each disk is started alone in turn, each records the other as missing
 and goes on, and when both are back nothing on them says which the
 operator wants.

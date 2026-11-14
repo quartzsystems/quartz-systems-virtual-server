@@ -25,6 +25,10 @@ pub mod key {
     pub const F1: &str = "\x1bOP";
     /// F3.
     pub const F3: &str = "\x1bOR";
+    /// F5.
+    pub const F5: &str = "\x1b[15~";
+    /// F6.
+    pub const F6: &str = "\x1b[17~";
     /// F7.
     pub const F7: &str = "\x1b[18~";
     /// F8.

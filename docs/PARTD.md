@@ -76,12 +76,12 @@ and `Settings` (`part/resource`, `docs/RESOURCES.md`), `Status`,
 | 1 | create | name | the definition, with its ID and serial number assigned | the name is not one or is taken (`QVS1001`, `QVS1005`); the host has as many partitions as it is set to (`QVS2006`) |
 | 2 | get definition | ID | the definition | no such partition (`QVS2001`) |
 | 3 | change definition | definition | | activated (`QVS2002`); a fixed field differs (`QVS1006`); the definition's own errors; the name is taken; the default profile is not the partition's (`QVS1007`) |
-| 4 | delete | ID | | activated. Its profiles go with it; its backing stores are left alone |
+| 4 | delete | ID, its disks too | | activated. Its profiles go with it. Its virtual disks are deleted first when asked, every one or none (the pool service's messages); otherwise they are left alone |
 | 5 | list profiles | ID | their names | |
 | 6 | get profile | ID, name | the profile | no such profile (`QVS2004`) |
 | 7 | put profile | ID, profile | | every error of the profile (`QVS11xx`, `QVS12xx`). The first profile of a partition becomes its default. A partition may be running: its profile is the next activation's |
 | 8 | delete profile | ID, name | | it is the default profile (`QVS2007`) |
-| 9 | activate | ID, profile name (empty: the default), an IPL source or none, a keylock position or none | the resources it was given | activated already; no such profile, or no default (`QVS2005`); the profile's errors; a section a later phase brings (`QVS2106`); a backing store that is not there (`QVS2110`); a resource that is not available (`QVS2101` to `QVS2105`); the VMM could not be started (`QVS2107`); the host is shutting down (`QVS2010`) |
+| 9 | activate | ID, profile name (empty: the default), an IPL source or none, a keylock position or none | the resources it was given | activated already; no such profile, or no default (`QVS2005`); the profile's errors; source D with no optical device (`QVS1219`); a section a later phase brings (`QVS2106`); a host path in a release image (`QVS1218`), or one that is not there (`QVS2110`); a virtual disk or medium the pool service cannot give (its messages, `QVS2112` when it does not answer); a resource that is not available (`QVS2101` to `QVS2105`); the VMM could not be started (`QVS2107`); the host is shutting down (`QVS2010`) |
 | 10 | shut down | ID | | not activated (`QVS2003`); shutting down already (`QVS2009`) |
 | 11 | restart | ID | | the same |
 | 12 | host resources | | installed, configurable and available processors and memory, the reserved cores, each pool | |
@@ -93,6 +93,10 @@ and `Settings` (`part/resource`, `docs/RESOURCES.md`), `Status`,
 | 18 | change settings | settings | | a value out of range (`QVS2201`). The pools are not changed by this |
 | 19 | end all | | how many partitions are being ended | |
 | 20 | subscribe | | nothing; then every event, a frame each, for as long as the connection is open | |
+| 21 | load media | ID, slot, name | | not running (`QVS2003`); no optical or tape device in the slot (`QVS2113`); the pool service's messages; the VMM refused (`QVS2115`) |
+| 22 | unload media | ID, slot, forced | the medium's name | the same; the partition prevents its removal and it is not forced (`QVS2114`) |
+| 23 | media | ID | each optical and tape device: slot, kind, the medium, whether the partition prevents its removal | not running |
+| 24 | named | pool, virtual disk | the profiles that name it, each `PROD profile NORMAL slot 2` | |
 
 **Activate** answers when the VMM has been started: the partition is
 then Starting, and a list or the events say how it goes on. The two
@@ -131,18 +135,41 @@ dropped.
 2. The resources are resolved (`docs/RESOURCES.md`).
 3. The control groups are set: the pools as they are with this
    partition holding its part, then the partition's own group.
-4. `qsvmm` is started in that group, in a session of its own, with its
-   standard error appended to `/run/partd/<ID>.report`. Its whole
+4. The pool service is asked to hold the profile's virtual disks and
+   the media its optical and tape devices load, all at once
+   (`docs/POOLD.md`); it hands each over open.
+5. `qsvmm` is started in that group, in a session of its own, with its
+   standard error appended to `/run/partd/<ID>.report`, and the held
+   files as its descriptors 3 and on, in order. Its whole
    configuration is written to its standard input (`docs/VMM.md`): the
    resolved processors and their host threads, the memory, the IPL
-   source, the keylock, IPL type and console mode, the units.
-5. What the partition holds is recorded in `/run/partd/<ID>.record`.
-6. The partition is Starting. Each line of the report that is a
+   source, the keylock, IPL type and console mode, the units and the
+   optical and tape devices, a held file named by its
+   `/proc/self/fd/N` path.
+6. What the partition holds is recorded in `/run/partd/<ID>.record`.
+7. The partition is Starting. Each line of the report that is a
    reference code of the table becomes its current code, is published,
    and is posted through PID 1; `C2005090` makes it Running.
-7. When the VMM ends, what it held is given back, its group is
-   removed, the end's code is posted, and the table above says what
-   follows.
+8. When the VMM ends, what it held is given back (the pool service
+   releases its disks and media), its group is removed, the end's code
+   is posted, and the table above says what follows.
+
+## Media while a partition runs
+
+A medium is loaded into an optical or tape device, or unloaded, by
+requests 21 and 22: the partition manager has the pool service hold
+it, then hands it to the VMM over the VMM's control socket
+(`docs/VMM.md`). What a guest does by itself, an eject or an unload,
+the VMM reports as a line `MEDIA <slot> unloaded <name>`; the
+partition manager gives the medium back. A guest's restart loads what
+was loaded when it restarted.
+
+## A pool that fails
+
+The partition manager asks the pool service for the pools' states
+every two seconds. When a pool is Failed, every active partition with
+a virtual disk in it is ended (its control group killed), and is in
+Error with `QVS2111` naming the pool. Partitions in other pools run on.
 
 The report is the VMM's, which a guest may have got at. A line is read
 to 512 characters, only a code the host's table has is taken from it,
@@ -196,5 +223,5 @@ the host.
   functions, the guest's own reference codes: the service channel,
   Phase 7.
 - Any change to a running partition's resources.
-- `BLOCKED(phase4)`: a partition's history is in memory and in the host's log: a partition manager started again has the codes of the activations that still run, not the older ones.
-- `BLOCKED(phase4)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event.
+- `BLOCKED(phase5)`: a partition's history is in memory and in the host's log: a partition manager started again has the codes of the activations that still run, not the older ones.
+- `BLOCKED(phase5)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event.

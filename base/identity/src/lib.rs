@@ -247,6 +247,48 @@ pub fn ensure(dir: &Path, host: &str, serial: &str, now: i64) -> io::Result<bool
     Ok(true)
 }
 
+/// Bytes of base64 text; `None` when it is not base64.
+fn unbase64(text: &str) -> Option<Vec<u8>> {
+    let value = |c: u8| -> Option<u32> {
+        Some(u32::from(match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        }))
+    };
+    let clean: Vec<u8> = text.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+    let body: Vec<u8> = clean.iter().copied().take_while(|b| *b != b'=').collect();
+    let mut out = Vec::with_capacity(body.len() * 3 / 4);
+    for chunk in body.chunks(4) {
+        let mut n = 0u32;
+        for (i, c) in chunk.iter().enumerate() {
+            n |= value(*c)? << (18 - 6 * i);
+        }
+        let bytes = n.to_be_bytes();
+        out.extend_from_slice(&bytes[1..chunk.len()]);
+    }
+    Some(out)
+}
+
+/// The host's public key, from its key in `dir`. It stays the host's
+/// for as long as the identity does: what the host knows its own
+/// disks by.
+pub fn public_key(dir: &Path) -> io::Result<[u8; 32]> {
+    let text = fs::read_to_string(dir.join(KEY_FILE))?;
+    let b64: String = text.lines().filter(|l| !l.starts_with("-----")).collect();
+    let bad = || io::Error::other("the identity's key is not one");
+    let der = unbase64(&b64).ok_or_else(bad)?;
+    // PKCS #8 of an Ed25519 key ends with its 32-byte seed.
+    let seed: [u8; 32] = der
+        .get(der.len().saturating_sub(32)..)
+        .and_then(|s| s.try_into().ok())
+        .ok_or_else(bad)?;
+    Ok(SigningKey::from_bytes(&seed).verifying_key().to_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +306,19 @@ mod tests {
             (len, 2 + n)
         };
         (bytes[0], &bytes[head..head + len], &bytes[head + len..])
+    }
+
+    #[test]
+    fn the_public_key_is_read_back_from_the_key_file() {
+        let dir = std::env::temp_dir().join(format!("identity-pk-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let key = SigningKey::from_bytes(&[9; 32]);
+        write_private(&dir.join(KEY_FILE), &pem("PRIVATE KEY", &pkcs8(&key))).unwrap();
+        assert_eq!(public_key(&dir).unwrap(), key.verifying_key().to_bytes());
+        assert_eq!(unbase64("aGVsbG8="), Some(b"hello".to_vec()));
+        assert_eq!(unbase64("a$"), None);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

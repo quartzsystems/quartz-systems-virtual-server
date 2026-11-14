@@ -75,6 +75,39 @@ fn valid_path(path: &str) -> bool {
     path.starts_with('/') && path.len() > 1 && !path.contains('\0') && !path.contains("/../")
 }
 
+/// What a unit is kept in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Backing<'a> {
+    /// A virtual disk of a storage pool.
+    Vdisk {
+        /// The pool.
+        pool: &'a str,
+        /// The disk.
+        name: &'a str,
+    },
+    /// A file or a block device of the host: a test image's.
+    Path(&'a str),
+}
+
+/// Whether `name` is a virtual disk's or a medium's name: 1 to 32
+/// letters, digits, `-` and `_`, a letter first.
+pub fn valid_store_name(name: &str) -> bool {
+    (1..=32).contains(&name.len())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        && name.as_bytes()[0].is_ascii_alphabetic()
+}
+
+/// A unit's backing store as written: `POOL/NAME`, or an absolute path.
+pub fn backing(written: &str) -> Option<Backing<'_>> {
+    if written.starts_with('/') {
+        return valid_path(written).then_some(Backing::Path(written));
+    }
+    let (pool, name) = written.split_once('/')?;
+    (valid_name(pool) && valid_store_name(name)).then_some(Backing::Vdisk { pool, name })
+}
+
 /// Every error of a definition.
 pub fn definition(definition: &Definition) -> Vec<Issued> {
     let mut errors = Vec::new();
@@ -282,7 +315,7 @@ fn storage(profile: &Profile, errors: &mut Vec<Issued>) {
             {
                 errors.push(qvsmsg::LUN_TWICE.with(&[&slot, &lun]));
             }
-            if !valid_path(&unit.backing) {
+            if backing(&unit.backing).is_none() {
                 errors.push(qvsmsg::BACKING_INVALID.with(&[&slot, &lun, &unit.backing]));
             } else if seen.iter().any(|(_, u)| u.backing == unit.backing) {
                 errors.push(qvsmsg::BACKING_TWICE.with(&[&slot, &lun, &unit.backing]));
@@ -312,10 +345,13 @@ fn later(profile: &Profile, errors: &mut Vec<Issued>) {
     }
     for (kind, devices) in [("optical", &profile.optical), ("tape", &profile.tape)] {
         for device in devices {
-            if let Some(media) = device.media.as_deref().filter(|m| !valid_path(m)) {
+            if let Some(media) = device.media.as_deref().filter(|m| !valid_store_name(m)) {
                 errors.push(qvsmsg::MEDIA_INVALID.with(&[kind, &device.slot.to_string(), media]));
             }
         }
+    }
+    if profile.boot.source == crate::profile::IplSource::D && profile.optical.is_empty() {
+        errors.push(qvsmsg::NO_OPTICAL.with(&[]));
     }
     for (i, device) in profile.physical_io.iter().enumerate() {
         let location = &device.location;
@@ -351,15 +387,8 @@ pub fn profile(profile: &Profile, limits: Limits) -> Vec<Issued> {
 /// The first section of `profile` that a later phase brings, as the
 /// message an activation refuses it with; `None` when it uses none.
 pub fn not_yet(profile: &Profile) -> Option<Issued> {
-    use crate::profile::IplSource;
     let refuse = |what: &str, phase: u32| qvsmsg::NOT_YET.with(&[what, &phase.to_string()]);
-    if profile.boot.source == IplSource::D {
-        Some(refuse("IPL source D", 5))
-    } else if !profile.optical.is_empty() {
-        Some(refuse("A virtual optical device", 5))
-    } else if !profile.tape.is_empty() {
-        Some(refuse("A virtual tape device", 5))
-    } else if !profile.ethernet.is_empty() {
+    if !profile.ethernet.is_empty() {
         Some(refuse("A virtual Ethernet adapter", 6))
     } else if !profile.physical_io.is_empty() {
         Some(refuse("Physical I/O", 10))
@@ -529,11 +558,10 @@ mod tests {
             required: true,
         });
         assert_eq!(profile(&p, LIMITS), []);
+        // Optical and tape devices and IPL source D are Phase 5's: taken.
         let refused = not_yet(&p).unwrap();
         assert!(refused.is(&qvsmsg::NOT_YET));
-        assert!(refused.text.contains("optical") && refused.text.contains("Phase 5"));
-        p.optical.clear();
-        assert!(not_yet(&p).unwrap().text.contains("Phase 6"));
+        assert!(refused.text.contains("Phase 6"));
         p.ethernet.clear();
         assert!(not_yet(&p).unwrap().text.contains("Phase 10"));
         p.physical_io.clear();
@@ -542,7 +570,10 @@ mod tests {
             ..Boot::default()
         };
         assert_eq!(profile(&p, LIMITS), []);
-        assert!(not_yet(&p).unwrap().text.contains("IPL source D"));
+        assert_eq!(not_yet(&p), None);
+        // Source D with no optical device is refused.
+        p.optical.clear();
+        assert_eq!(ids(&profile(&p, LIMITS)), [qvsmsg::NO_OPTICAL.id]);
 
         let mut p = sample::dedicated();
         p.ethernet.push(EthernetAdapter {
@@ -552,7 +583,7 @@ mod tests {
         });
         p.tape.push(MediaDevice {
             slot: 9,
-            media: Some("tape.img".into()),
+            media: Some("/tmp/tape.img".into()),
         });
         p.physical_io.push(PhysicalIo {
             location: "a b".into(),

@@ -169,8 +169,7 @@ its disk's serial number, its size and its state.
 | Failed | is there and failed I/O; the host runs on the other |
 | Missing | was not found; the host runs on the other. Its location code and serial number are the ones it had |
 
-Under them, the machine's other disks, as not configured: storage pools
-arrive in a later phase.
+Under them, how many other disks the machine has; option 6 shows each.
 
 **1. Start mirrored protection** adds a disk to a load source of one
 disk. Choose the disk from the list of those not configured and confirm
@@ -192,6 +191,45 @@ it and the work goes on. When it says both units are in step the load
 source is protected again, and the host starts from either disk.
 
 **5. Display the units again** reads the states anew.
+
+**6. Display disk configuration** shows every disk of the host by its
+location code, serial number and size, and what it is: the load
+source; a unit of one of this host's storage pools, with the pool and
+the unit's state; a hot spare of a pool; not configured; or foreign,
+with what is on it (another host's pool, a partition table, a file
+system, another volume manager's label). A foreign disk is taken only
+when its name is typed to confirm that it is erased.
+
+**7. Work with storage pools** lists the pools: each with its
+protection, its state (with the work's percent while it rebuilds or
+resynchronizes), its size and how much of it is allocated; `*` marks
+the one that holds the media library. Type an option by a pool:
+
+| Option | Does |
+|---|---|
+| 5 | displays the pool: its size, allocated and provisioned bytes, each unit by location code, serial, size and state, and the rebuild or resynchronization with its progress. It follows the work |
+| 6 | puts a disk in the place of a unit that failed or is missing: choose the disk, type its name to confirm. It is rebuilt while the host runs |
+| 7 | adds a hot spare: choose the disk, type its name to confirm |
+| 8 | takes a hot spare away: choose it, type its name. It is not configured afterwards |
+| 2 | renames the pool, while no partition uses it |
+| 4 | deletes the pool, when it holds no virtual disk and no media: type its name to confirm. Its disks are not configured afterwards |
+| 9 | makes the pool the media repository: type its name to confirm |
+
+**F6 creates a pool**: its name and protection (`none`, `mirrored`,
+`raid5`, `raid6`), then the disks: `1` by each member, `2` by each
+hot spare, from those not configured and the foreign ones. The next
+display shows the pool's capacity and lists the disks that hold what
+is not this host's; typing the pool's name confirms, and every disk
+chosen is erased. **F7 imports an image** into the media library from
+a device of the host: an optical drive's whole disc (`sr0`, the file
+left empty), or a file of a removable volume (`sdb1` and its path).
+The import runs while the host does; the history says when it ends.
+
+**8. Display virtual disks** and **9. Display media library** show the
+virtual disks of every pool (size, allocated, thin or thick, which
+partition and slot hold it) and the library's optical images and tape
+volumes, with the line that they are managed from QS/MC. Nothing of
+them is changed here.
 
 ### 3. Configure management network
 
@@ -260,9 +298,11 @@ The console edits no state file itself.
 | the host name, the display zone, the time servers | PID 1 | writes `host.toml`, takes the name and the zone into use; the network service then reads the time servers again |
 | power off, restart | PID 1 | the orderly shutdown |
 | a disk added or replaced | the storage service | prepares the disk, keeps the set's label, rebuilds |
+| a storage pool made, a unit replaced, a hot spare added or taken away, a pool renamed or deleted, the media repository designated, an image imported | the pool service | `docs/POOLD.md` |
 | the unit to keep, of two that ran apart | the storage service | writes the kept unit's label to both disks, assembles the set |
 | service tools users | the console service's own users' store | `users.db`, written beside and renamed, as `svcusers` does |
 
 The users have no other owner: nothing but the local console signs
 anyone on. The logs are read, never written. The partitions are read
-too, from the partition manager, and nothing of them is changed here.
+too, from the partition manager, and nothing of them is changed here;
+so are the virtual disks and the media library, from the pool service.

@@ -7,6 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+poold = { path = "../../stg/poold", version = "0.1.0" }
 stgd = { path = "../../base/stgd", version = "0.1.0" }
 release = { path = "../release", version = "0.1.0" }
 hostinv = { path = "../hostinv", version = "0.1.0" }
@@ -21,6 +22,8 @@ partd = { path = "../../part/partd", version = "0.1.0" }
 qsvmm = { path = "../../vmm/qsvmm", version = "0.1.0" }
 devices = { path = "../../vmm/devices", version = "0.1.0" }
 hex.workspace = true
+ipc.workspace = true
+loadsource = { path = "../../base/loadsource", version = "0.1.0" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix = { workspace = true, features = ["termios", "mount"] }

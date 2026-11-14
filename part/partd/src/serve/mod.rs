@@ -73,7 +73,14 @@ pub struct Service {
     pub installed_mib: u64,
     /// The host's serial number.
     pub serial: String,
+    /// The pool service's socket.
+    pub pools: PathBuf,
+    /// Whether a host path may back a unit: a test image's.
+    pub host_paths: bool,
 }
+
+/// How often the pools are asked whether one failed.
+const POOL_LOOK: Duration = Duration::from_secs(2);
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Manager<Machine>> {
     shared.lock().unwrap_or_else(PoisonError::into_inner)
@@ -249,6 +256,22 @@ fn workers(shared: &Shared, service: &Service, started: Receiver<Watch>) {
             lock(&ticked).tick();
         }
     });
+    let (watched, pools) = (shared.clone(), service.pools.clone());
+    thread::spawn(move || {
+        let mut client = poold::proto::Client::new(&pools);
+        loop {
+            thread::sleep(POOL_LOOK);
+            let Ok(list) = poold::proto::Calls::pools(&mut client) else {
+                continue;
+            };
+            for pool in list
+                .iter()
+                .filter(|p| p.state == poold::proto::state::FAILED)
+            {
+                lock(&watched).pool_failed(&pool.name);
+            }
+        }
+    });
     let (manager, control) = (shared.clone(), service.control_socket.clone());
     let marker = service.run_dir.join(RUN).join(AUTO_STARTED);
     thread::spawn(move || auto_start(&manager, &control, &marker));
@@ -260,6 +283,9 @@ pub fn run(service: &Service) -> io::Error {
         cgroups: service.cgroups.clone(),
         run: service.run_dir.join(RUN),
         vmm: service.vmm.clone(),
+        pools: service.pools.clone(),
+        partitions: service.run_dir.join("partitions"),
+        host_paths: service.host_paths,
     };
     if let Err(e) = fs::create_dir_all(&paths.run) {
         return e;

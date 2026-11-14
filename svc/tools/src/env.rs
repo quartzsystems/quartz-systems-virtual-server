@@ -53,6 +53,7 @@ pub struct Env {
     control: Client,
     net: NetClient,
     storage: StorageClient,
+    pools: poold::proto::Client,
     store: Store,
     /// The host name, as last seen in PID 1's status.
     name: String,
@@ -69,6 +70,7 @@ impl Env {
             control: Client::new(appliance.control_socket()),
             net: NetClient::new(appliance.net_socket()),
             storage: StorageClient::of(&appliance),
+            pools: poold::proto::Client::new(poold::proto::socket(release::RUN_DIR)),
             store: Store::at(appliance.state_dir()),
             name: release::NAME.into(),
         }
@@ -90,6 +92,12 @@ impl Env {
             .status()
             .ok()
             .filter(|status| !status.protection.is_empty())
+    }
+
+    /// The pool service: the storage pools, the virtual disks, the media
+    /// library.
+    pub fn pools(&mut self) -> &mut poold::proto::Client {
+        &mut self.pools
     }
 
     /// Start mirrored protection with `disk`.

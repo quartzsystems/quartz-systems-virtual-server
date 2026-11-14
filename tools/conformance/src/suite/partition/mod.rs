@@ -34,7 +34,7 @@ mod devices;
 mod life;
 pub mod manager;
 mod pull;
-mod qs400;
+pub mod qs400;
 mod resources;
 
 use std::path::{Path, PathBuf};

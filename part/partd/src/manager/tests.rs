@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 
 use model::{IplSource, Keylock, Units, sample};
+use poold::proto::{Given, Want};
+use qvsmsg::Issued;
 use resource::cgroup::Step;
 use resource::{Host, Pool, Processors, Settings, Topology};
 
@@ -31,6 +33,12 @@ pub struct Fake {
     pub log: Vec<String>,
     pub refuse_launch: Option<String>,
     pub missing: Vec<String>,
+    pub held: Vec<(u32, Want)>,
+    pub controls: Vec<(u32, String)>,
+    pub control_answer: Option<String>,
+    pub refuse_hold: Option<Issued>,
+    pub refuse_host_paths: bool,
+    pub deleted: Vec<(String, String)>,
 }
 
 impl System for Fake {
@@ -72,6 +80,42 @@ impl System for Fake {
     }
     fn exists(&self, backing: &str) -> bool {
         !self.missing.iter().any(|m| m == backing)
+    }
+    fn hold(&mut self, id: u32, wants: &[Want]) -> Result<Vec<Given>, Vec<Issued>> {
+        if let Some(refused) = &self.refuse_hold {
+            return Err(vec![refused.clone()]);
+        }
+        Ok(wants
+            .iter()
+            .map(|w| {
+                self.held.push((id, w.clone()));
+                Given {
+                    want: w.clone(),
+                    bytes: 1 << 30,
+                    capacity_mib: 1024,
+                    protected: false,
+                }
+            })
+            .collect())
+    }
+    fn give_back(&mut self, id: u32, wants: &[Want]) {
+        self.held
+            .retain(|(i, w)| *i != id || (!wants.is_empty() && !wants.contains(w)));
+    }
+    fn control(&mut self, id: u32, line: &str, _with: Option<&Want>) -> Result<String, String> {
+        self.controls.push((id, line.to_string()));
+        Ok(self.control_answer.clone().unwrap_or_else(|| {
+            line.split_whitespace()
+                .nth(2)
+                .map_or("ok".into(), |name| format!("ok {name}"))
+        }))
+    }
+    fn host_paths(&self) -> bool {
+        !self.refuse_host_paths
+    }
+    fn delete_vdisks(&mut self, disks: &[(String, String)]) -> Vec<Issued> {
+        self.deleted.extend_from_slice(disks);
+        Vec::new()
     }
 }
 
@@ -191,7 +235,7 @@ fn definitions_and_profiles_are_kept_and_a_bad_profile_gives_every_error() {
     );
     // And the ID of a partition that still exists is not given again.
     assert_eq!(again.create("THIRD".into()).unwrap().id, 3);
-    again.delete(second).unwrap();
+    again.delete(second, false).unwrap();
     assert_eq!(again.create("FOURTH".into()).unwrap().id, 2);
 }
 
@@ -252,7 +296,7 @@ fn what_cannot_be_created_or_changed_says_why() {
         [qvsmsg::PARTITION_ACTIVE.id]
     );
     assert_eq!(
-        ids(&m.delete(id).unwrap_err()),
+        ids(&m.delete(id, false).unwrap_err()),
         [qvsmsg::PARTITION_ACTIVE.id]
     );
     assert_eq!(
@@ -544,13 +588,13 @@ fn the_keylock_is_the_definition_s_unless_the_activation_says() {
     assert!(config.contains("keylock = \"secure\"") && config.contains("side = \"a\""));
     assert!(config.contains("vcpus = 4") && !config.contains("pin"));
     assert_eq!(m.list().remove(0).profile, "SHARED");
-    // The sections of later phases, and IPL source D, are refused by
-    // the phase that brings them.
+    // IPL source D wants an optical drive; the sections of later
+    // phases are refused by the phase that brings them.
     m.ended(id, Ended::Exit(0));
     let refused = m
         .activate(id, String::new(), Some(IplSource::D), None)
         .unwrap_err();
-    assert!(refused[0].is(&qvsmsg::NOT_YET) && refused[0].text.contains("Phase 5"));
+    assert!(refused[0].is(&qvsmsg::NO_OPTICAL));
     let mut later = m.profile(id, "NORMAL".into()).unwrap();
     later.name = "NET".into();
     later.ethernet.push(model::EthernetAdapter {

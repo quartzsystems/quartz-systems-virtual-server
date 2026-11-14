@@ -155,8 +155,12 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// The units of every adapter, opened.
-fn open_units(partition: &Partition) -> Result<Vec<Vec<Arc<dyn Unit>>>, Stop> {
+/// The units of every adapter, opened, each holding the partition
+/// when its store has no room (`hold`).
+fn open_units(
+    partition: &Partition,
+    hold: &Arc<machine::hold::Held>,
+) -> Result<Vec<Vec<Arc<dyn Unit>>>, Stop> {
     let mut adapters = Vec::with_capacity(partition.adapters.len());
     for adapter in &partition.adapters {
         let mut luns = Vec::with_capacity(adapter.units.len());
@@ -172,7 +176,8 @@ fn open_units(partition: &Partition) -> Result<Vec<Vec<Arc<dyn Unit>>>, Stop> {
             };
             let store = HostStore::open(&unit.backing).map_err(|e| unreadable(e.to_string()))?;
             let lun = Lun::new(Box::new(store), &unit.serial)
-                .ok_or_else(|| unreadable("not a disk unit".into()))?;
+                .ok_or_else(|| unreadable("not a disk unit".into()))?
+                .with_hold(hold.clone());
             luns.push(Arc::new(lun) as Arc<dyn Unit>);
         }
         adapters.push(luns);
@@ -362,7 +367,9 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     let control =
         media::bind(&options.socket_dir(config.id)).map_err(not_built("the control socket"))?;
 
-    let adapters = open_units(partition)?;
+    let pause = Arc::new(machine::pause::Pause::default());
+    let hold = Arc::new(machine::hold::Held::new(pause.clone()));
+    let adapters = open_units(partition, &hold)?;
     let load_blocks = adapters[0][0].blocks();
     let (drives, drive_units) = media::open(partition).map_err(|e| Stop {
         code: &refcode::PARTITION_DISK_UNREADABLE,
@@ -428,7 +435,7 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     console::spawn(listener, built.serial.clone(), clients).map_err(not_built("threads"))?;
     media::spawn(control, drives.clone()).map_err(not_built("threads"))?;
     vcpu::install_kick().map_err(not_built("signals"))?;
-    let processors = start_processors(vcpus, &built, &ends, &memory, &config.pin)
+    let processors = start_processors(vcpus, &built, &ends, &memory, &config.pin, &pause)
         .map_err(not_built("threads"))?;
     spawn_signal_watch(ends.clone(), processors).map_err(not_built("threads"))?;
     post(&refcode::PARTITION_STARTED, &loaded.loaded.words());
@@ -454,6 +461,7 @@ fn start_processors(
     ends: &Sender<(End, String)>,
     memory: &Arc<devices::Memory>,
     pin: &[u32],
+    pause: &Arc<machine::pause::Pause>,
 ) -> io::Result<Vec<Processor>> {
     let mut processors = Vec::with_capacity(vcpus.len());
     for (index, created) in (0u32..).zip(vcpus) {
@@ -465,8 +473,11 @@ fn start_processors(
             report: report.clone(),
             memory: memory.clone(),
             pin: pin.get(index as usize).copied(),
+            pause: pause.clone(),
         };
-        processors.push((vcpu::spawn(created, index, wiring)?, report));
+        let thread = vcpu::spawn(created, index, wiring)?;
+        pause.register(&thread);
+        processors.push((thread, report));
     }
     Ok(processors)
 }

@@ -11,8 +11,12 @@ use model::{AutoStart, Definition, Environment, IplSource, Keylock, Limits, Prof
 use qvsmsg::Issued;
 use resource::{Current, HostResources, Pool, Processors, Settings};
 
+use model::validate::{Backing, backing};
+use poold::proto::Want;
+
+use super::life::media_kind;
 use super::{Manager, Partition, System};
-use crate::proto::{Event, Partitions, Posted, Refused, Status};
+use crate::proto::{Event, MediaSlot, Partitions, Posted, Refused, State, Status};
 use crate::store::{Kept, MAX_PROFILES};
 
 fn one(message: Issued) -> Refused {
@@ -20,6 +24,32 @@ fn one(message: Issued) -> Refused {
 }
 
 impl<S: System> Manager<S> {
+    /// A running partition's name and what its device in `slot` takes.
+    fn media_slot(&self, id: u32, slot: u32) -> Result<(String, poold::proto::Kind), Refused> {
+        let partition = self.partition(id)?;
+        let name = partition.definition.name.clone();
+        if !matches!(partition.state, State::Starting | State::Running) {
+            return Err(one(qvsmsg::PARTITION_NOT_ACTIVE.with(&[&name])));
+        }
+        let kind = partition
+            .profiles
+            .get(&partition.last_profile)
+            .and_then(|p| media_kind(p, slot))
+            .ok_or_else(|| one(qvsmsg::MEDIA_SLOT_MISSING.with(&[&name, &slot.to_string()])))?;
+        Ok((name, kind))
+    }
+
+    /// Record the medium in `slot` of a running partition; what was
+    /// there before.
+    fn set_medium(&mut self, id: u32, slot: u32, medium: Option<String>) -> Option<String> {
+        let run = self.partitions.get_mut(&id)?.run.as_mut()?;
+        if let Some((_, m)) = run.media.iter_mut().find(|(s, _)| *s == slot) {
+            return std::mem::replace(m, medium);
+        }
+        run.media.push((slot, medium));
+        None
+    }
+
     /// What validation takes of the settings.
     pub(crate) fn limits(&self) -> Limits {
         Limits {
@@ -236,8 +266,27 @@ impl<S: System> Partitions for Manager<S> {
         Ok(())
     }
 
-    fn delete(&mut self, id: u32) -> Result<(), Refused> {
-        let name = self.idle(id)?.definition.name.clone();
+    fn delete(&mut self, id: u32, disks: bool) -> Result<(), Refused> {
+        let partition = self.idle(id)?;
+        let name = partition.definition.name.clone();
+        if disks {
+            // Its virtual disks go first: when one cannot, nothing does.
+            let mut named: Vec<(String, String)> = Vec::new();
+            for profile in partition.profiles.values() {
+                for (_, unit) in profile.units() {
+                    if let Some(Backing::Vdisk { pool, name }) = backing(&unit.backing) {
+                        let disk = (pool.to_string(), name.to_string());
+                        if !named.contains(&disk) {
+                            named.push(disk);
+                        }
+                    }
+                }
+            }
+            let refused = self.system.delete_vdisks(&named);
+            if !refused.is_empty() {
+                return Err(refused);
+            }
+        }
         self.store
             .delete(id)
             .map_err(|e| one(qvsmsg::STATE_NOT_KEPT.with(&["The partition's deletion", &e])))?;
@@ -321,9 +370,8 @@ impl<S: System> Partitions for Manager<S> {
         let result = self
             .resolve(id, &profile, source)
             .and_then(|(profile, current)| {
-                self.launch(id, &profile, current.clone(), source, keylock)
+                self.launch(id, &profile, current.clone(), source, keylock, None)
                     .map(|()| current)
-                    .map_err(one)
             });
         if let Err(errors) = &result {
             // A partition that is activated already is not one whose
@@ -437,6 +485,127 @@ impl<S: System> Partitions for Manager<S> {
     }
 
     fn subscribe(&mut self) {}
+
+    fn load_media(&mut self, id: u32, slot: u32, name: String) -> Result<(), Refused> {
+        let (partition, kind) = self.media_slot(id, slot)?;
+        if !model::validate::valid_store_name(&name) {
+            return Err(one(qvsmsg::MEDIA_NAME_INVALID.with(&[&name])));
+        }
+        let want = Want {
+            kind,
+            pool: String::new(),
+            name: name.clone(),
+            slot,
+        };
+        let given = self.system.hold(id, std::slice::from_ref(&want))?;
+        let (cap, protected) = given
+            .first()
+            .map_or((0, false), |g| (g.capacity_mib, g.protected));
+        let line = format!("load {slot} {name} {cap} {protected}");
+        match self.system.control(id, &line, Some(&want)) {
+            Ok(answer) if answer.starts_with("ok") => {
+                // What was there before is given back.
+                let old = self.set_medium(id, slot, Some(name));
+                if let Some(old) = old {
+                    self.system.give_back(id, &[Want { name: old, ..want }]);
+                }
+                Ok(())
+            }
+            other => {
+                self.system.give_back(id, &[want]);
+                let why = other.unwrap_or_else(|e| e);
+                Err(one(qvsmsg::MEDIA_REFUSED.with(&[
+                    &partition,
+                    &slot.to_string(),
+                    why.trim_start_matches("refused ").trim(),
+                ])))
+            }
+        }
+    }
+
+    fn unload_media(&mut self, id: u32, slot: u32, forced: bool) -> Result<String, Refused> {
+        let (partition, kind) = self.media_slot(id, slot)?;
+        let answer = self
+            .system
+            .control(id, &format!("unload {slot} {forced}"), None);
+        match answer {
+            Ok(a) if a.starts_with("ok ") => {
+                let name = a.trim_start_matches("ok ").trim().to_string();
+                self.set_medium(id, slot, None);
+                self.system.give_back(
+                    id,
+                    &[Want {
+                        kind,
+                        pool: String::new(),
+                        name: name.clone(),
+                        slot,
+                    }],
+                );
+                Ok(name)
+            }
+            Ok(a) if a.contains("prevented") => Err(one(
+                qvsmsg::MEDIA_PREVENTED.with(&[&partition, &slot.to_string()])
+            )),
+            other => {
+                let why = other.unwrap_or_else(|e| e);
+                Err(one(qvsmsg::MEDIA_REFUSED.with(&[
+                    &partition,
+                    &slot.to_string(),
+                    why.trim_start_matches("refused ").trim(),
+                ])))
+            }
+        }
+    }
+
+    fn media(&mut self, id: u32) -> Result<Vec<MediaSlot>, Refused> {
+        self.media_slot(id, 0).or_else(|e| {
+            // Slot 0 is never a device: only whether it runs is asked.
+            if e.iter().any(|m| m.is(&qvsmsg::MEDIA_SLOT_MISSING)) {
+                Ok((String::new(), poold::proto::Kind::Image))
+            } else {
+                Err(e)
+            }
+        })?;
+        let answer = self.system.control(id, "media", None).unwrap_or_default();
+        Ok(answer
+            .lines()
+            .filter_map(|l| {
+                let mut w = l.split_whitespace();
+                let slot = w.next()?.parse().ok()?;
+                let kind = w.next()?.to_string();
+                let name = w.next()?;
+                let prevented = w.next()? == "true";
+                Some(MediaSlot {
+                    slot,
+                    kind,
+                    name: if name == "-" {
+                        String::new()
+                    } else {
+                        name.to_string()
+                    },
+                    prevented,
+                })
+            })
+            .collect())
+    }
+
+    fn named(&mut self, pool: String, name: String) -> Vec<String> {
+        let wanted = format!("{pool}/{name}");
+        let mut out = Vec::new();
+        for partition in self.partitions.values() {
+            for profile in partition.profiles.values() {
+                for (slot, unit) in profile.units() {
+                    if unit.backing == wanted {
+                        out.push(format!(
+                            "{} profile {} slot {slot}",
+                            partition.definition.name, profile.name
+                        ));
+                    }
+                }
+            }
+        }
+        out
+    }
 }
 
 impl<S: System> Manager<S> {

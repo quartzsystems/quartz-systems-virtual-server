@@ -331,6 +331,7 @@ dependencies = [
  "netlink",
  "ntp",
  "partd",
+ "poold",
  "qsvmm",
  "qsvshook",
  "qvsmsg",
@@ -661,6 +662,7 @@ dependencies = [
  "ipl",
  "partd",
  "refcode",
+ "tape",
  "virtio-queue",
  "vm-memory",
  "vmm-sys-util",
@@ -1326,9 +1328,11 @@ dependencies = [
 name = "partd"
 version = "0.1.0"
 dependencies = [
+ "fdpass",
  "ipc",
  "libc",
  "model",
+ "poold",
  "qsvmm",
  "qvsmsg",
  "refcode",
@@ -1370,6 +1374,30 @@ dependencies = [
  "loadsource",
  "protect",
  "uuid",
+]
+
+[[package]]
+name = "poold"
+version = "0.1.0"
+dependencies = [
+ "abrec",
+ "appliance",
+ "blockdev",
+ "diskimg",
+ "fdpass",
+ "ipc",
+ "loadsource",
+ "media",
+ "pool",
+ "protect",
+ "qvsmsg",
+ "refcode",
+ "rustix",
+ "state",
+ "supervise",
+ "ublk",
+ "uuid",
+ "vdisk",
 ]
 
 [[package]]
@@ -1430,8 +1458,11 @@ dependencies = [
  "devices",
  "hex",
  "hostinv",
+ "ipc",
+ "loadsource",
  "netd",
  "partd",
+ "poold",
  "qsvmm",
  "refcode",
  "release",
@@ -1517,9 +1548,22 @@ version = "0.1.0"
 dependencies = [
  "hostinv",
  "partd",
+ "poold",
  "release",
  "resource",
  "supervise",
+]
+
+[[package]]
+name = "qsvspoold"
+version = "0.1.0"
+dependencies = [
+ "hostinv",
+ "identity",
+ "partd",
+ "poold",
+ "refcode",
+ "release",
 ]
 
 [[package]]
@@ -1539,10 +1583,13 @@ dependencies = [
  "appliance",
  "console",
  "hostinv",
+ "ipc",
  "model",
  "netd",
  "panels",
  "partd",
+ "pool",
+ "poold",
  "refcode",
  "release",
  "resource",
@@ -1621,6 +1668,7 @@ name = "release"
 version = "0.1.0"
 dependencies = [
  "appliance",
+ "pool",
  "supervise",
  "vrm",
 ]

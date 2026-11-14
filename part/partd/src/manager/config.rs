@@ -4,9 +4,24 @@
 
 //! The configuration a VMM is started with: a profile, resolved.
 
+use std::collections::BTreeMap;
+
 use model::{ConsoleMode, Definition, IplSource, IplType, Keylock, Profile};
-use qsvmm::config::{Adapter, Config, Unit};
+use qsvmm::config::{Adapter, Config, Optical, TapeDrive, Unit};
 use resource::{Current, Vcpus};
+
+/// What the units and devices are kept in, as `qsvmm` names them: a
+/// file given to it (`/proc/self/fd/N`) or a host path.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Stores {
+    /// A unit's backing store, by its slot and unit number.
+    pub units: BTreeMap<(u32, u32), String>,
+    /// An optical device's medium by its slot: the file and its name.
+    pub optical: BTreeMap<u32, (String, String)>,
+    /// A tape device's volume by its slot: the file, its name, its
+    /// capacity in MiB and its write protection.
+    pub tape: BTreeMap<u32, (String, String, u64, bool)>,
+}
 
 /// The serial number of a unit whose profile gives none: the
 /// partition's, the slot and the unit.
@@ -24,6 +39,7 @@ pub fn build(
     vcpus: &Vcpus,
     source: IplSource,
     keylock: Keylock,
+    stores: &Stores,
 ) -> Config {
     let adapters = profile
         .scsi
@@ -35,7 +51,12 @@ pub fn build(
                 .iter()
                 .map(|unit| Unit {
                     lun: unit.lun,
-                    backing: unit.backing.clone().into(),
+                    backing: stores
+                        .units
+                        .get(&(adapter.slot, unit.lun))
+                        .cloned()
+                        .unwrap_or_else(|| unit.backing.clone())
+                        .into(),
                     serial: unit
                         .serial
                         .clone()
@@ -70,8 +91,34 @@ pub fn build(
             .to_string(),
         ),
         adapters,
-        optical: Vec::new(),
-        tape: Vec::new(),
+        optical: profile
+            .optical
+            .iter()
+            .map(|o| {
+                let medium = stores.optical.get(&o.slot);
+                Optical {
+                    slot: o.slot,
+                    serial: unit_serial(definition, o.slot, 0),
+                    media: medium.map(|(path, _)| path.into()),
+                    name: medium.map(|(_, name)| name.clone()).unwrap_or_default(),
+                }
+            })
+            .collect(),
+        tape: profile
+            .tape
+            .iter()
+            .map(|t| {
+                let volume = stores.tape.get(&t.slot);
+                TapeDrive {
+                    slot: t.slot,
+                    serial: unit_serial(definition, t.slot, 0),
+                    volume: volume.map(|(path, ..)| path.into()),
+                    name: volume.map(|(_, name, ..)| name.clone()).unwrap_or_default(),
+                    capacity_mib: volume.map_or(0, |(_, _, cap, _)| *cap),
+                    protected: volume.is_some_and(|(.., p)| *p),
+                }
+            })
+            .collect(),
     }
 }
 
@@ -105,6 +152,7 @@ mod tests {
             &vcpus,
             IplSource::Recorded,
             Keylock::Manual,
+            &Stores::default(),
         );
         assert_eq!(config.vcpus, 4);
         assert_eq!(config.threads_per_core, 2);
@@ -141,6 +189,7 @@ mod tests {
             &vcpus,
             IplSource::B,
             Keylock::Normal,
+            &Stores::default(),
         );
         assert_eq!((config.vcpus, config.pin.len()), (6, 0));
         assert_eq!(config.side, "b");

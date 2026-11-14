@@ -53,6 +53,21 @@ pub mod command {
     /// encoded as its client encodes it; the answer comes back as
     /// `hex`. The harness decodes it.
     pub const PARTD: &str = "partd";
+    /// `poold <hex>`: one request to the pool service's socket, as its
+    /// client encodes it; the answer comes back as `hex`.
+    pub const POOLD: &str = "poold";
+    /// `upload <name> <device>`: upload the whole of a block device of
+    /// the host (a further disk QEMU gives it, holding an image) to the
+    /// pool service as the image `name`, through its streamed upload.
+    /// `upload <name> <device> <bytes>` stops after that many bytes and
+    /// drops the connection: an upload cut off.
+    pub const UPLOAD: &str = "upload";
+    /// `rm <path>`: remove a file: a state file a suite has the host
+    /// make again.
+    pub const RM: &str = "rm";
+    /// `punch <path> <offset> <bytes>`: give a file's blocks back, as a
+    /// guest's discard of a thin virtual disk does.
+    pub const PUNCH: &str = "punch";
     /// `partition pid <id>`: the process of the partition's VMM.
     /// `partition kill <id> <TERM|KILL|USR1>`: signal it. `partition
     /// send <id> <text>`: type a line at the partition's console.

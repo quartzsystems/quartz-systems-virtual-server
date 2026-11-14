@@ -83,25 +83,11 @@ fn lines(status: &Status, others: &[Disk]) -> Vec<String> {
     }
     out.push(String::new());
     // The display has room for two; the selection lists them all.
-    out.push(if others.len() > 2 {
-        format!(
-            "Other disks, not configured ({}, the first two):",
-            others.len()
-        )
-    } else {
-        "Other disks, not configured:".to_string()
-    });
-    if others.is_empty() {
-        out.push("      (None)".to_string());
-    }
-    for disk in others.iter().take(2) {
-        out.push(format!(
-            "      {} {} {:>9}",
-            kit::fit(&disk.location, 23),
-            kit::fit(&disk.serial, 18),
-            kit::size(disk.bytes)
-        ));
-    }
+    // The other disks are option 6's: here, how many.
+    out.push(format!(
+        "Other disks: {} (option 6 shows each and what it is)",
+        others.len()
+    ));
     out
 }
 
@@ -140,6 +126,10 @@ impl Panel<Env, Outcome> for DiskUnits {
                 (1, "Start mirrored protection"),
                 (2, "Replace a failed unit"),
                 (5, "Display the units again"),
+                (6, "Display disk configuration"),
+                (7, "Work with storage pools"),
+                (8, "Display virtual disks"),
+                (9, "Display media library"),
             ],
             "F1=Help   F3=Exit   F12=Cancel",
         )
@@ -164,6 +154,10 @@ impl Panel<Env, Outcome> for DiskUnits {
                 None => Flow::Error("No unit is missing or failed.".into()),
             },
             Some(5) | None => Flow::Stay,
+            Some(6) => Flow::Push(Box::new(crate::pools::DiskConfig)),
+            Some(7) => Flow::Push(Box::new(crate::pools::Pools)),
+            Some(8) => Flow::Push(Box::new(crate::pools::Vdisks)),
+            Some(9) => Flow::Push(Box::new(crate::pools::Media)),
             Some(_) => Flow::Error("Selection not valid.".into()),
         }
     }
@@ -184,8 +178,10 @@ impl Panel<Env, Outcome> for DiskUnits {
                 "2 puts another disk in the place of a unit that is missing or",
                 "failed and rebuilds it while the host runs.",
                 "",
-                "The other disks of the machine are listed as not configured:",
-                "storage pools arrive in a later release.",
+                "6 shows every disk of the host and what it is. 7 works with the",
+                "storage pools: made, watched, a unit replaced, hot spares, the",
+                "media repository, an image imported. 8 and 9 show the virtual",
+                "disks and the media library, which are managed from QS/MC.",
             ],
         }
     }
@@ -440,7 +436,7 @@ mod tests {
         assert!(shown[3].starts_with("   1  P0000-B00-D10-F0"));
         assert!(shown[3].ends_with("671.0 MB  Active"));
         assert!(shown[4].ends_with("Resuming, rebuilding 40%"));
-        assert!(shown.last().unwrap().contains("(None)"));
+        assert!(shown.last().unwrap().starts_with("Other disks: 0 "));
         assert_eq!(failed_unit(&status), None);
     }
 

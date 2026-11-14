@@ -181,3 +181,19 @@ pub fn is_root() -> bool {
     // SAFETY: `geteuid` takes nothing and cannot fail.
     unsafe { libc::geteuid() == 0 }
 }
+
+/// A processor's thread, by its handle, to be brought out of the guest
+/// by a signal from another thread.
+/// The handle is kept as std gives it: a number, which is a pointer
+/// to musl and a number to glibc.
+#[derive(Clone, Copy)]
+pub struct Kick(pub std::os::unix::thread::RawPthread);
+
+// SAFETY: the handle is of a processor's thread, taken while it was
+// running; those threads live as long as the process does.
+unsafe impl vmm_sys_util::signal::Killable for Kick {
+    #[allow(clippy::unnecessary_cast, clippy::useless_conversion)]
+    fn pthread_handle(&self) -> libc::pthread_t {
+        self.0 as libc::pthread_t
+    }
+}

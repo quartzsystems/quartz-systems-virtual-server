@@ -221,6 +221,104 @@ fn partd_request(rest: &str) -> Vec<String> {
         })
 }
 
+/// One request to the pool service, as the harness encoded it.
+fn poold_request(rest: &str) -> Vec<String> {
+    let Ok(request) = hex::decode(rest.trim()) else {
+        return error("poold <hex>");
+    };
+    poold::proto::Client::new(poold::proto::socket(release::RUN_DIR))
+        .exchange(&request)
+        .map_or_else(error, |answer| {
+            vec![format!("{} {}", word::HEX, hex::encode(answer))]
+        })
+}
+
+/// Upload a block device of the host as an image, whole or cut off.
+fn upload(rest: &str) -> Vec<String> {
+    use std::io::Read;
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    let (Some(name), Some(device)) = (words.first(), words.get(1)) else {
+        return error("upload <name> <device> [<bytes>]");
+    };
+    let node = format!("/dev/{device}");
+    let Ok(mut file) = std::fs::File::open(&node) else {
+        return error(format!("{node}: cannot be opened"));
+    };
+    let size = loadsource::disks::disk_bytes(device);
+    let client = poold::proto::Client::new(poold::proto::socket(release::RUN_DIR));
+    if let Some(cut) = words.get(2).and_then(|b| b.parse::<u64>().ok()) {
+        // Said to be the whole size, then cut off: the service must
+        // keep nothing of it.
+        let mut part = (&mut file).take(cut);
+        let mut stream =
+            match std::os::unix::net::UnixStream::connect(poold::proto::socket(release::RUN_DIR)) {
+                Ok(s) => s,
+                Err(e) => return error(e),
+            };
+        let request = poold::proto::Request::Upload {
+            name: (*name).to_string(),
+            bytes: size,
+        };
+        let sent = ipc::frame::write_frame(&mut stream, &ipc::encode(&request))
+            .map_err(|e| e.to_string())
+            .and_then(|()| {
+                ipc::frame::read_frame_max(&mut stream, poold::proto::MAX_FRAME)
+                    .map_err(|e| e.to_string())
+            })
+            .and_then(|_| std::io::copy(&mut part, &mut stream).map_err(|e| e.to_string()));
+        return match sent {
+            Ok(n) => vec![format!("{} cut after {n}", word::OK)],
+            Err(e) => error(e),
+        };
+    }
+    match client.upload_from(name, size, &mut file) {
+        Ok(Ok(image)) => vec![format!(
+            "{} {} {} {}",
+            word::OK,
+            image.name,
+            image.label,
+            image.bytes
+        )],
+        Ok(Err(refused)) => error(
+            refused
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; "),
+        ),
+        Err(e) => error(e),
+    }
+}
+
+/// Punch a hole in a file, its size kept.
+fn punch(rest: &str) -> Vec<String> {
+    use rustix::fs::{FallocateFlags, fallocate};
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    let [path, offset, bytes] = words.as_slice() else {
+        return error("punch <path> <offset> <bytes>");
+    };
+    let (Ok(offset), Ok(bytes)) = (offset.parse::<u64>(), bytes.parse::<u64>()) else {
+        return error("punch <path> <offset> <bytes>");
+    };
+    let done = OpenOptions::new()
+        .write(true)
+        .open(path)
+        .map_err(|e| e.to_string())
+        .and_then(|f| {
+            fallocate(
+                &f,
+                FallocateFlags::PUNCH_HOLE | FallocateFlags::KEEP_SIZE,
+                offset,
+                bytes,
+            )
+            .map_err(|e| e.to_string())
+        });
+    match done {
+        Ok(()) => vec![word::OK.to_string()],
+        Err(e) => error(format!("{path}: {e}")),
+    }
+}
+
 /// The partition hook's commands: what the harness does to a VMM
 /// that no request to the partition manager does.
 fn partition(rest: &str) -> Vec<String> {
@@ -325,8 +423,16 @@ fn copy(rest: &str) -> Vec<String> {
     }
 }
 
-fn scsi_probe(device: &str) -> Vec<String> {
-    match crate::partition::probe::probe(Path::new(device)) {
+fn scsi_probe(rest: &str) -> Vec<String> {
+    use crate::partition::probe;
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    let done = match words.as_slice() {
+        ["optical", first, second] => probe::optical(Path::new(first), Path::new(second)),
+        ["tape", volume] => probe::tape(Path::new(volume)),
+        [device] => probe::probe(Path::new(device)),
+        _ => Err("scsiprobe <device> | optical <image> <image> | tape <volume>".into()),
+    };
+    match done {
         Ok(lines) => lines
             .into_iter()
             .map(|line| format!("{} {line}", word::LINE))
@@ -514,6 +620,13 @@ fn answer(line: &str) -> Vec<String> {
         command::LOAD => load(rest),
         command::SUM => sum(rest),
         command::PARTD => partd_request(rest),
+        command::POOLD => poold_request(rest),
+        command::UPLOAD => upload(rest),
+        command::PUNCH => punch(rest),
+        command::RM => match std::fs::remove_file(rest.trim()) {
+            Ok(()) => vec![word::OK.to_string()],
+            Err(e) => error(format!("{rest}: {e}")),
+        },
         command::THREADS => threads(rest),
         command::TASKS => tasks(),
         command::CURR => curr(),

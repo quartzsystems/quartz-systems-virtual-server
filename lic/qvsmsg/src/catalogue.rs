@@ -12,6 +12,9 @@
 //! | `QVS20xx` | requests to the partition manager |
 //! | `QVS21xx` | activation and resources |
 //! | `QVS22xx` | shared processor pools and host settings |
+//! | `QVS30xx` | storage pools and their disks |
+//! | `QVS31xx` | virtual disks |
+//! | `QVS32xx` | the media library |
 
 use crate::Message;
 
@@ -140,7 +143,7 @@ catalogue! {
     /// A backing store that is no absolute path.
     BACKING_INVALID = "QVS1208",
         "The backing store of unit &2 in slot &1 is not valid: &3",
-        "A unit's backing store is the absolute path of a file or of a block device on the host, with no .. in it.";
+        "A unit's backing store is a virtual disk of a storage pool, written as the pool's name and the disk's name: POOL1/PRODLS. In a test image it may also be the absolute path of a file or a block device on the host, with no .. in it.";
     /// One backing store for two units.
     BACKING_TWICE = "QVS1209",
         "The backing store of unit &2 in slot &1 is another unit's too: &3",
@@ -164,7 +167,7 @@ catalogue! {
     /// Media that is no absolute path.
     MEDIA_INVALID = "QVS1214",
         "The media of the virtual &1 device in slot &2 is not valid: &3",
-        "The media loaded into a virtual device is the absolute path of a file on the host, with no .. in it. Leave it out for an empty device.";
+        "The medium loaded into a virtual device at activation is an image (optical) or a volume (tape) of the media library, by its name: 1 to 32 letters, digits, - and _, a letter first. Leave it out for an empty device.";
     /// A location code that is not shaped like one.
     LOCATION_INVALID = "QVS1215",
         "Location code &1 is not valid.",
@@ -178,6 +181,14 @@ catalogue! {
         "The units of the virtual SCSI adapter in slot &1 are not numbered from 0 without a gap.",
         "An adapter with &2 units has the unit numbers 0 to &3. Number the units in order from 0.";
 
+    /// A unit backed by a host path in a release image.
+    BACKING_NOT_VDISK = "QVS1218",
+        "The backing store of unit &2 in slot &1 is not a virtual disk: &3.",
+        "A unit's backing store is a virtual disk of a storage pool, written as the pool's name and the disk's name: POOL1/PRODLS. Make a virtual disk with the pool service and name it here.";
+    /// IPL source D with no optical device.
+    NO_OPTICAL = "QVS1219",
+        "The profile's IPL source is D and it has no optical device.",
+        "IPL source D reads the installation media in the partition's first optical device. Give the profile an [[optical]] device with the media, or choose another source.";
     /// A request names a partition that does not exist.
     PARTITION_MISSING = "QVS2001",
         "Partition &1 does not exist.",
@@ -267,6 +278,26 @@ catalogue! {
         "Partition &1 cannot be activated: the backing store of unit &3 in slot &2 is not there: &4",
         "The file or block device the profile names for the unit does not exist on the host. Nothing was started. Correct the profile, or bring the disk back.";
 
+    /// A storage pool a partition needs is not usable.
+    POOL_UNAVAILABLE = "QVS2111",
+        "Partition &1 cannot be activated: storage pool &2 is &3.",
+        "The partition's virtual disks are in a pool that is failed or has not been assembled. Look at the pool in Work with storage pools; a failed pool's units are to be replaced, or it is to be made again from a saved copy.";
+    /// The pool service did not answer.
+    POOLS_UNREACHABLE = "QVS2112",
+        "Partition &1 cannot be activated: the pool service did not answer: &2.",
+        "The partition's virtual disks and media are handed out by the pool service. Look at its state in the host's status; it is started again by itself after a fault.";
+    /// A request for a slot that has no optical or tape device.
+    MEDIA_SLOT_MISSING = "QVS2113",
+        "Partition &1 has no optical or tape device in slot &2.",
+        "Media are loaded into the optical and tape devices the partition's profile gave it at its activation.";
+    /// The guest prevents a medium's removal.
+    MEDIA_PREVENTED = "QVS2114",
+        "Partition &1 has prevented the removal of the medium in slot &2.",
+        "The partition is using the medium. End its use in the partition, or unload it with force, which the partition sees as the medium taken out.";
+    /// A media request the VMM refused.
+    MEDIA_REFUSED = "QVS2115",
+        "The medium in slot &2 of partition &1 was not changed: &3.",
+        "The partition's VMM could not do what was asked of the device. The device is as it was.";
     /// A host setting out of range.
     SETTING_INVALID = "QVS2201",
         "Setting &1 cannot be &2.",
@@ -307,4 +338,144 @@ catalogue! {
     POOL_CORES_NEEDED = "QVS2210",
         "The default pool's running partitions need its cores: &1 processing units and &2 virtual processors on &3 cores.",
         "The change would take cores out of the default pool that the partitions running in it are entitled to, or need to have a core for each virtual processor. Choose other cores, or shut a partition down first.";
+    /// A storage pool's name breaks the naming rule.
+    SPOOL_NAME_INVALID = "QVS3001",
+        "Storage pool name &1 is not valid.",
+        "A storage pool's name is 1 to 10 characters: the letters A to Z, the digits 0 to 9 and the underscore, with a letter first.";
+    /// A second storage pool of one name.
+    SPOOL_EXISTS = "QVS3002",
+        "A storage pool named &1 exists.",
+        "Every storage pool of a host has a name of its own. Choose another.";
+    /// No such storage pool.
+    SPOOL_MISSING = "QVS3003",
+        "There is no storage pool &1.",
+        "The host's storage pools are listed in Work with storage pools.";
+    /// The wrong number of disks for a protection.
+    SPOOL_MEMBERS = "QVS3004",
+        "Protection &1 takes &2 to &3 disks; &4 were chosen.",
+        "No protection is one disk, mirrored two, RAID 5 three or more and RAID 6 four or more, 18 at most. Hot spares are chosen apart from these.";
+    /// A disk the host does not have.
+    DISK_MISSING = "QVS3005",
+        "There is no disk &1.",
+        "The host's disks are listed in Display disk configuration.";
+    /// A disk that is the host's for something else.
+    DISK_TAKEN = "QVS3006",
+        "Disk &1 cannot be used: &2.",
+        "A disk of a storage pool is one the host has nothing else on: not the load source, not another pool's unit or hot spare, not in use.";
+    /// A disk with what is not this host's on it.
+    DISK_FOREIGN = "QVS3007",
+        "Disk &1 holds what is not this host's: &2.",
+        "The disk has data the host did not put there, or belongs to another host's pool. It is taken only when the request confirms that what is on it may be erased: type the disk's name to confirm.";
+    /// A disk too small for a pool.
+    DISK_TOO_SMALL = "QVS3008",
+        "Disk &1 is too small for a storage pool.",
+        "A pool disk holds an 8 MiB record partition and a member partition of 256 MiB at least; a replacement or a hot spare is at least as large as the pool's units.";
+    /// Disks of different logical block sizes.
+    BLOCK_SIZES = "QVS3009",
+        "The disks chosen have different logical block sizes: &1.",
+        "A pool's disks have one logical block size. Choose disks that do.";
+    /// A hot spare smaller than the units.
+    SPARE_TOO_SMALL = "QVS3010",
+        "Disk &1 is smaller than the pool's units and cannot be its hot spare.",
+        "A hot spare takes a failed unit's place whole: it is at least as large as the pool's smallest unit.";
+    /// A pool larger than a file system is made.
+    SPOOL_TOO_LARGE = "QVS3011",
+        "The pool would be &1 bytes; a storage pool is at most &2 bytes.",
+        "A pool's file system is made at 64 TiB at most. Choose fewer or smaller disks, and make another pool of the rest.";
+    /// A pool that is not empty.
+    SPOOL_NOT_EMPTY = "QVS3012",
+        "Storage pool &1 holds &2 virtual disks and &3 media, and cannot be deleted.",
+        "A pool is deleted when it holds nothing. Delete its virtual disks and its media first.";
+    /// A pool a partition uses.
+    SPOOL_IN_USE = "QVS3013",
+        "Storage pool &1 is in use by partition &2.",
+        "Shut the partition down first.";
+    /// A pool that cannot be used.
+    SPOOL_NOT_ACTIVE = "QVS3014",
+        "Storage pool &1 is &2.",
+        "A pool is used while it is Active, Degraded, Rebuilding or Resynchronizing. A failed pool has lost more units than its protection covers.";
+    /// A unit that cannot be replaced.
+    UNIT_NOT_REPLACEABLE = "QVS3015",
+        "Unit &2 of storage pool &1 cannot be replaced: &3.",
+        "A unit is replaced when it has failed or is missing, by a disk at least as large that the host has nothing else on.";
+    /// A pool that could not be made.
+    SPOOL_NOT_MADE = "QVS3016",
+        "Storage pool &1 was not made: &2.",
+        "The disks chosen may hold part of the pool. They can be chosen again: a pool is made over what is on them.";
+    /// A hot spare that cannot be added or removed.
+    SPOOL_SPARES = "QVS3017",
+        "Hot spare &1: &2.",
+        "A pool with protection has up to 8 hot spares, each at least as large as its units.";
+    /// The pool service's file system or devices failed.
+    STORAGE_FAILED = "QVS3018",
+        "The pool service could not &1: &2.",
+        "The host's log has more. Try again; if it fails again, a disk may be failing.";
+    /// A virtual disk's name breaks the rule.
+    VDISK_NAME_INVALID = "QVS3101",
+        "Virtual disk name &1 is not valid.",
+        "A virtual disk's name is 1 to 32 letters, digits, - and _, with a letter first.";
+    /// A virtual disk's size out of range.
+    VDISK_SIZE_INVALID = "QVS3102",
+        "A virtual disk's size is &1 to &2 MiB, not &3.",
+        "Sizes are whole megabytes.";
+    /// A second virtual disk of one name.
+    VDISK_EXISTS = "QVS3103",
+        "Storage pool &1 has a virtual disk named &2.",
+        "Choose another name.";
+    /// No such virtual disk.
+    VDISK_MISSING = "QVS3104",
+        "There is no virtual disk &2 in storage pool &1.",
+        "The pool's virtual disks are listed by the pool service.";
+    /// A virtual disk another partition holds.
+    VDISK_HELD = "QVS3105",
+        "Virtual disk &1 is held by partition &2.",
+        "A virtual disk is given to one partition at a time, and is grown or deleted while no partition holds it.";
+    /// A virtual disk made smaller.
+    VDISK_SHRINK = "QVS3106",
+        "Virtual disk &1 cannot be made &2 MiB: a virtual disk only grows.",
+        "A guest's data would be lost. Make a new, smaller disk and copy to it from the partition.";
+    /// No room for a thick disk.
+    SPOOL_NO_ROOM = "QVS3107",
+        "Storage pool &1 has no room for &2 MiB.",
+        "A thick disk's space is allocated when it is made. Make it thin, smaller, or in another pool.";
+    /// A virtual disk a profile names.
+    VDISK_NAMED = "QVS3108",
+        "Virtual disk &1 is named by &2.",
+        "A disk a partition's profile names is deleted only when the request says so, and the profile then names a disk that is not there.";
+    /// No pool is the media repository.
+    NO_REPOSITORY = "QVS3201",
+        "No storage pool is the media repository.",
+        "Optical images and tape volumes are kept in the pool the operator designates in Work with storage pools.";
+    /// A media name breaks the rule.
+    MEDIA_NAME_INVALID = "QVS3202",
+        "Media name &1 is not valid.",
+        "A name of the media library is 1 to 32 letters, digits, - and _, with a letter first.";
+    /// A second medium of one name.
+    MEDIA_EXISTS = "QVS3203",
+        "The media library has a &1 named &2.",
+        "Choose another name.";
+    /// No such medium.
+    MEDIA_MISSING = "QVS3204",
+        "There is no &1 &2 in the media library.",
+        "The library's images and volumes are listed by the pool service.";
+    /// A medium in use.
+    MEDIA_HELD = "QVS3205",
+        "&1 is in use by partition &2.",
+        "Unload it from the partition's device first.";
+    /// Not an ISO 9660 image.
+    NOT_ISO = "QVS3206",
+        "&1 is not an ISO 9660 image.",
+        "An optical image has an ISO 9660 primary volume descriptor at block 16 and 2048-byte blocks. Nothing of it was kept.";
+    /// An upload of the wrong size.
+    UPLOAD_SIZE = "QVS3207",
+        "The image &1 is not the size it was said to be, or is not whole 2048-byte blocks.",
+        "An image is uploaded whole, in one request that says its size; one that is cut off leaves nothing.";
+    /// A tape volume's description that is not one.
+    VOLUME_INVALID = "QVS3208",
+        "Tape volume &1 cannot be made: &2.",
+        "A volume identifier is 1 to 6 of A to Z and 0 to 9; a volume's capacity is 16 MiB to 16 TiB.";
+    /// An import already under way.
+    IMPORT_BUSY = "QVS3209",
+        "An import into the media library is under way.",
+        "One import from a device of the host runs at a time. The history says when it ends.";
 }

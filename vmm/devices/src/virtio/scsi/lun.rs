@@ -7,7 +7,8 @@
 //! host is asked for anything, and data moves through one buffer of a
 //! fixed size however much the guest asks for.
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::backing::{Backing, Bounce};
@@ -72,6 +73,20 @@ struct Counters {
     refused: AtomicU64,
 }
 
+/// What a disk does when its store has no room for a write: a thin
+/// virtual disk whose pool is full. The write waits, and is tried
+/// again; nothing reaches the guest as an error.
+pub trait Hold: Send + Sync {
+    /// A write found no room. Called before each try again, `first`
+    /// the first time for this write; returns when it is time to try.
+    fn wait(&self, first: bool);
+    /// The write that waited is done.
+    fn done(&self);
+}
+
+/// `ENOSPC`.
+const NO_SPACE: i32 = 28;
+
 /// One disk LUN.
 pub struct Lun {
     backing: Box<dyn Backing>,
@@ -79,6 +94,7 @@ pub struct Lun {
     blocks: u64,
     block_bytes: u32,
     counters: Counters,
+    hold: Option<Arc<dyn Hold>>,
 }
 
 impl Lun {
@@ -97,7 +113,35 @@ impl Lun {
             blocks,
             block_bytes,
             counters: Counters::default(),
+            hold: None,
         })
+    }
+
+    /// The LUN, with writes that find no room waiting by `hold`.
+    #[must_use]
+    pub fn with_hold(mut self, hold: Arc<dyn Hold>) -> Self {
+        self.hold = Some(hold);
+        self
+    }
+
+    /// Do `op` on the store, waiting by the hold for as long as it
+    /// finds no room.
+    fn room<T>(&self, mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+        let mut waited = false;
+        loop {
+            match (op(), &self.hold) {
+                (Err(e), Some(hold)) if e.raw_os_error() == Some(NO_SPACE) => {
+                    hold.wait(!waited);
+                    waited = true;
+                }
+                (result, hold) => {
+                    if waited && let Some(hold) = hold {
+                        hold.done();
+                    }
+                    return result;
+                }
+            }
+        }
     }
 
     /// Blocks of the LUN.
@@ -117,7 +161,8 @@ impl Lun {
     }
 
     fn flush(&self) -> Result<(), Sense> {
-        self.backing.flush().map_err(|_| Sense::WRITE_ERROR)?;
+        self.room(|| self.backing.flush())
+            .map_err(|_| Sense::WRITE_ERROR)?;
         self.counters.flushes.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
@@ -293,8 +338,7 @@ impl Lun {
             let n = left.min(bounce.len());
             let chunk = &mut bounce.bytes()[..n];
             data_out.read_exact(chunk).map_err(|_| Failure::Overrun)?;
-            self.backing
-                .write_at(chunk, offset)
+            self.room(|| self.backing.write_at(chunk, offset))
                 .map_err(|_| Sense::WRITE_ERROR)?;
             offset += n as u64;
             left -= n;
@@ -365,7 +409,7 @@ impl Lun {
             let done = if discarding {
                 self.backing.discard(offset, bytes)
             } else {
-                self.backing.write_zeroes(offset, bytes)
+                self.room(|| self.backing.write_zeroes(offset, bytes))
             };
             if done.is_ok() {
                 return Ok(0);
@@ -384,8 +428,7 @@ impl Lun {
         while left > 0 {
             #[allow(clippy::cast_possible_truncation)] // the smaller is a usize
             let n = left.min(whole as u64) as usize;
-            self.backing
-                .write_at(&buffer[..n], offset)
+            self.room(|| self.backing.write_at(&buffer[..n], offset))
                 .map_err(|_| Sense::WRITE_ERROR)?;
             offset += n as u64;
             left -= n as u64;
@@ -544,6 +587,90 @@ mod tests {
         fn write_zeroes(&self, offset: u64, bytes: u64) -> std::io::Result<()> {
             self.0.write_zeroes(offset, bytes)
         }
+    }
+
+    /// A store that is full for a number of writes, then has room.
+    struct Full(Arc<MemoryStore>, std::sync::atomic::AtomicU32);
+
+    impl Backing for Full {
+        fn bytes(&self) -> u64 {
+            self.0.bytes()
+        }
+        fn block_bytes(&self) -> u32 {
+            self.0.block_bytes()
+        }
+        fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<()> {
+            self.0.read_at(buf, offset)
+        }
+        fn write_at(&self, buf: &[u8], offset: u64) -> std::io::Result<()> {
+            if self.1.load(Ordering::Relaxed) > 0 {
+                self.1.fetch_sub(1, Ordering::Relaxed);
+                return Err(std::io::Error::from_raw_os_error(28));
+            }
+            self.0.write_at(buf, offset)
+        }
+        fn flush(&self) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn can_discard(&self) -> bool {
+            false
+        }
+        fn discard_zeroes(&self) -> bool {
+            false
+        }
+        fn discard(&self, _: u64, _: u64) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn write_zeroes(&self, offset: u64, bytes: u64) -> std::io::Result<()> {
+            self.0.write_zeroes(offset, bytes)
+        }
+    }
+
+    #[derive(Default)]
+    struct Counted {
+        firsts: std::sync::atomic::AtomicU32,
+        waits: std::sync::atomic::AtomicU32,
+        dones: std::sync::atomic::AtomicU32,
+    }
+
+    impl Hold for Counted {
+        fn wait(&self, first: bool) {
+            if first {
+                self.firsts.fetch_add(1, Ordering::Relaxed);
+            }
+            self.waits.fetch_add(1, Ordering::Relaxed);
+        }
+        fn done(&self) {
+            self.dones.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn a_write_that_finds_no_room_waits_and_is_done_without_an_error() {
+        let store = Arc::new(MemoryStore::new(64 * 512, false));
+        let full = Full(store.clone(), std::sync::atomic::AtomicU32::new(3));
+        let hold = Arc::new(Counted::default());
+        let lun = Lun::new(Box::new(full), "THIN")
+            .unwrap()
+            .with_hold(hold.clone());
+        let data = vec![0x5Au8; 512];
+        let mut bounce = Bounce::new(CHUNK_BYTES);
+        let cdb = [0x2A, 0, 0, 0, 0, 1, 0, 0, 1, 0];
+        let mut out = &data[..];
+        let done = lun.run(&cdb, 1, &mut out, &mut std::io::sink(), &mut bounce);
+        assert_eq!(done, Ok(0), "no error reaches the guest");
+        assert_eq!(hold.firsts.load(Ordering::Relaxed), 1);
+        assert_eq!(hold.waits.load(Ordering::Relaxed), 3);
+        assert_eq!(hold.dones.load(Ordering::Relaxed), 1);
+        let mut back = vec![0u8; 512];
+        store.read_at(&mut back, 512).unwrap();
+        assert_eq!(back, data);
+        // Without a hold the write fails as before.
+        let full = Full(store, std::sync::atomic::AtomicU32::new(1));
+        let lun = Lun::new(Box::new(full), "THICK").unwrap();
+        let mut out = &data[..];
+        let failed = lun.run(&cdb, 1, &mut out, &mut std::io::sink(), &mut bounce);
+        assert_eq!(failed, Err(Failure::Check(Sense::WRITE_ERROR)));
     }
 
     fn lun(discardable: bool) -> (Lun, Arc<MemoryStore>) {

@@ -25,6 +25,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::mpsc::Sender;
 
 use model::{Definition, Keylock, Profile};
+use poold::proto::{Given, Want};
 use qvsmsg::Issued;
 use resource::cgroup::Step;
 use resource::{Current, Held, Host};
@@ -109,6 +110,20 @@ pub trait System {
     fn log(&mut self, line: &str);
     /// Whether a backing store is there: a file or a block device.
     fn exists(&self, backing: &str) -> bool;
+    /// Have the pool service give the partition `id` what `wants`
+    /// names, held for it: each open file is kept by the machine until
+    /// the VMM is started with it, or the medium loaded. What each is.
+    fn hold(&mut self, id: u32, wants: &[Want]) -> Result<Vec<Given>, Vec<Issued>>;
+    /// Give back what `id` holds: `wants`, or everything when empty.
+    fn give_back(&mut self, id: u32, wants: &[Want]);
+    /// Send the VMM of `id` a line on its control socket, with the
+    /// file held for `with`. Its answer.
+    fn control(&mut self, id: u32, line: &str, with: Option<&Want>) -> Result<String, String>;
+    /// Whether a host path may back a unit: in a test image only.
+    fn host_paths(&self) -> bool;
+    /// Delete virtual disks, each its pool and its name: the messages
+    /// of those that were not.
+    fn delete_vdisks(&mut self, disks: &[(String, String)]) -> Vec<Issued>;
 }
 
 /// A partition while it is activated.
@@ -126,6 +141,10 @@ pub(crate) struct Run {
     pub(crate) again: bool,
     /// When it was asked to end; it is killed a while after.
     pub(crate) asked: Option<u64>,
+    /// Each optical and tape device's slot and the medium it has now.
+    pub(crate) media: Vec<(u32, Option<String>)>,
+    /// A storage pool it uses that failed: it was ended for that.
+    pub(crate) lost: Option<String>,
 }
 
 /// One partition.

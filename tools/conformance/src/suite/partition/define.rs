@@ -177,7 +177,7 @@ pub fn define(run: &Run<'_>) -> Result<String, String> {
         }
     }
     // A deleted partition's ID is free again; one that exists keeps its own.
-    said(partd(&mut guest)?.delete(ids[1]))?;
+    said(partd(&mut guest)?.delete(ids[1], false))?;
     let again = said(partd(&mut guest)?.create("FOURTH".into()))?;
     if again.id != ids[1] || again.serial != kept[1].0.serial {
         return Err(format!(

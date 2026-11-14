@@ -10,6 +10,8 @@
 //! - [`platform`]: KVM's interrupt routing and eventfds for the devices.
 //! - [`vcpu`]: a processor's boot state and its run loop.
 
+pub mod hold;
+pub mod pause;
 pub mod platform;
 pub mod vcpu;
 

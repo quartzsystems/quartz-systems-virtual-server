@@ -1,0 +1,30 @@
+[package]
+name = "poold"
+description = "The pool service: storage pools assembled from their disks' labels and served through ublk, their units' failures, rebuilds and hot spares, virtual disks, the media library, and the open files partitions hold, over a local socket"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+appliance = { path = "../../base/appliance", version = "0.1.0" }
+fdpass = { path = "../../base/fdpass", version = "0.1.0" }
+loadsource = { path = "../../base/loadsource", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+refcode = { path = "../../lic/refcode", version = "0.1.0" }
+pool = { path = "../pool", version = "0.1.0" }
+vdisk = { path = "../vdisk", version = "0.1.0" }
+media = { path = "../media", version = "0.1.0" }
+abrec.workspace = true
+blockdev.workspace = true
+diskimg.workspace = true
+ipc.workspace = true
+protect.workspace = true
+ublk.workspace = true
+rustix.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

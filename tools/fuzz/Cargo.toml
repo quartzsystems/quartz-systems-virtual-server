@@ -14,6 +14,7 @@ name = "qsvsfuzz"
 path = "src/main.rs"
 
 [dependencies]
+tape = { path = "../../stg/tape", version = "0.1.0" }
 ipl = { path = "../../vmm/ipl", version = "0.1.0" }
 devices = { path = "../../vmm/devices", version = "0.1.0" }
 arch = { path = "../../vmm/arch", version = "0.1.0" }

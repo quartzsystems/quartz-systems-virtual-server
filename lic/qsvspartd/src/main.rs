@@ -44,6 +44,9 @@ fn main() {
         threads,
         installed_mib: hostinv::memory_mib(&roots),
         serial,
+        pools: poold::proto::socket(release::RUN_DIR),
+        // A unit backed by a host path is a test image's alone.
+        host_paths: cfg!(test_hooks),
     };
     // It returns only when it could not start.
     let e = run(&service);

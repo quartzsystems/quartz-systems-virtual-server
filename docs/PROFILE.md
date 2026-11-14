@@ -115,8 +115,15 @@ slot = 2
 
 [[scsi.lun]]
 lun = 0
-backing = "/dev/sdb"
+backing = "POOL1/PRODLS"
 serial = "PROD-LS"
+
+[[optical]]
+slot = 3
+media = "QS400V1R1"
+
+[[tape]]
+slot = 4
 ```
 
 ### `[processors]`
@@ -147,7 +154,7 @@ The table may be left out; then it is as below.
 
 | Key | Value | Left out |
 |---|---|---|
-| `source` | the IPL source. `a` or `b`: that side. `recorded`: the side the partition itself asked for, in its LIC record: the side it asked for one IPL, which is then cleared, else its default side, else side A. `d`, installation media, is accepted and refused at activation until Phase 5 | `recorded` |
+| `source` | the IPL source. `a` or `b`: that side. `recorded`: the side the partition itself asked for, in its LIC record: the side it asked for one IPL, which is then cleared, else its default side, else side A. `d`: the installation media in the partition's first optical device (the lowest slot); a profile with `d` and no optical device is refused (`QVS1219`) | `recorded` |
 | `type` | `unattended`, or `attended`: the IPL stops at its menu. With the keylock in the manual position an IPL is attended whatever this says | `unattended` |
 | `console` | `serial` or `local`. A partition has no display, so `serial` is the one that gives it a console | `serial` |
 
@@ -163,14 +170,30 @@ partition's console and its service channel), and its units,
 | Key | Value | Left out |
 |---|---|---|
 | `lun` | the unit number. An adapter's units are numbered from 0 without a gap | required |
-| `backing` | what the unit is kept in: the absolute path of a file or a block device on the host. It is opened for direct I/O, and a block device exclusively. Phase 5 puts a virtual disk of a storage pool here | required |
+| `backing` | what the unit is kept in: a virtual disk of a storage pool, `POOL/NAME` (`docs/STORAGE.md`). The pool service holds it for the partition at activation and hands it over open for direct I/O; a disk is held by one partition at a time. In a test image the absolute path of a file or a block device on the host is accepted too, for the suites of earlier phases; a release image refuses one at activation (`QVS1218`) | required |
 | `serial` | the unit's serial number as the guest sees it: 1 to 20 letters, digits, `-` and `_`. It should stay the same for as long as the guest is to know the disk | the partition's serial number, the slot and the unit: `8GQ2W01-2-0` |
 
 The load source is the lowest unit of the adapter in the lowest slot.
 A profile with no unit is refused. Two units may not have one backing
 store or one serial number. A backing store that is not there does not
-make a profile invalid: it fails the activation, by name
-(`QVS2110`).
+make a profile invalid: it fails the activation, by name (a virtual
+disk: `QVS3104`, a pool that cannot be used: `QVS3014`; a host path in
+a test image: `QVS2110`).
+
+### `[[optical]]` and `[[tape]]`: virtual optical and tape devices
+
+Each device has a slot of its own and is a virtio-scsi function of its
+own (`docs/VMM.md`). Four of each at most.
+
+| Key | Value | Left out |
+|---|---|---|
+| `slot` | 2 to 255 | required |
+| `media` | the medium loaded at activation: an optical image's name, or a tape volume's, in the media library (1 to 32 letters, digits, `-` and `_`, a letter first) | an empty device |
+
+The unit's serial number is the partition's, the slot and 0. A medium
+is loaded and unloaded while the partition runs by the partition
+manager's requests (`docs/PARTD.md`); a guest's restart loads what was
+loaded when it restarted, not what the profile says.
 
 ### The sections later phases bring
 
@@ -181,7 +204,6 @@ names the phase that brings it.
 | Section | Keys | Phase |
 |---|---|---|
 | `[[ethernet]]` | `slot`; `vlan`, 1 to 4094; `mac`, optional, six pairs of hexadecimal digits and no group address | 6 |
-| `[[optical]]`, `[[tape]]` | `slot`; `media`, optional, an absolute path | 5 |
 | `[[physical_io]]` | `location`, a location code (`docs/LOCATION.md`); `required`, optional | 10 |
 
 An adapter of any kind has a slot of its own: a slot is used once in a
@@ -200,7 +222,7 @@ its partition runs is the next activation's.
 
 ## Not here yet
 
-- `BLOCKED(phase4)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
-- Virtual disks in storage pools, optical and tape devices, IPL source
-  D: Phase 5. Virtual Ethernet adapters: Phase 6. The service channel
-  and console attach: Phase 7. Physical I/O: Phase 10.
+- `BLOCKED(phase5)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
+- Virtual Ethernet adapters: Phase 6. The service channel and console
+  attach: Phase 7. Physical I/O, a whole physical disk or tape drive
+  given to a partition: Phase 10.

@@ -51,6 +51,8 @@ pub const CONTROL_SOCKET: &str = "/run/qsvsinit.sock";
 
 /// Where the service binaries are in the initramfs.
 pub const BIN_DIR: &str = "/qsvs/bin";
+/// Where storage pools are mounted, each under its name.
+pub const POOLS_DIR: &str = "/pools";
 
 /// The argument PID 1 gives the Service Tools console to have it ask
 /// which load-source unit to keep, and nothing else.
@@ -85,6 +87,21 @@ pub static LOAD_SOURCE: LoadSourceNames = LoadSourceNames {
     resume_magic: *b"QSVSRSM\0",
     resume_map_magic: *b"QSVSRMAP",
     intent_magic: *b"QSVSIMAP",
+};
+
+/// What a pool disk carries that is QS/VS's own. These are on every
+/// disk of a storage pool: none may change.
+pub static POOL_DISK: pool::PoolDiskNames = pool::PoolDiskNames {
+    record_type: 0x6c1e_8a3d_57f2_4b9e_9a0c_3d4e_51b7_02f8,
+    member_type: 0x2b9d_4f61_0e8c_4a73_b5d2_8f17_c6a9_e430,
+    record_name: "QSVSPOOL-R",
+    member_name: "QSVSPOOL",
+    label_magic: *b"QSVSPOOL",
+    resume_magic: *b"QSVSPRSM",
+    resume_map_magic: *b"QSVSPRMP",
+    intent_magic: *b"QSVSPIMP",
+    ppl_magic: *b"QSVSPPPL",
+    parity_state_magic: *b"QSVSPSTA",
 };
 
 /// QS/VS as the base crates see it. The caller says how an event is
@@ -286,6 +303,22 @@ mod tests {
         assert_eq!(&n.resume_map_magic, b"QSVSRMAP");
         assert_eq!(&n.intent_magic, b"QSVSIMAP");
         assert!(n.slot_b_path.contains(n.vendor));
+    }
+
+    /// What is on every pool disk. A change here orphans them.
+    #[test]
+    fn a_pool_disk_s_names_are_what_its_disks_carry() {
+        let n = &POOL_DISK;
+        assert_eq!(n.record_type, 0x6c1e_8a3d_57f2_4b9e_9a0c_3d4e_51b7_02f8);
+        assert_eq!(n.member_type, 0x2b9d_4f61_0e8c_4a73_b5d2_8f17_c6a9_e430);
+        assert_eq!((n.record_name, n.member_name), ("QSVSPOOL-R", "QSVSPOOL"));
+        assert_eq!(&n.label_magic, b"QSVSPOOL");
+        assert_eq!(&n.resume_magic, b"QSVSPRSM");
+        assert_eq!(&n.resume_map_magic, b"QSVSPRMP");
+        assert_eq!(&n.intent_magic, b"QSVSPIMP");
+        assert_eq!(&n.ppl_magic, b"QSVSPPPL");
+        assert_eq!(&n.parity_state_magic, b"QSVSPSTA");
+        assert_ne!(n.record_type, LOAD_SOURCE.record_type);
     }
 
     #[test]

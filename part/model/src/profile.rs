@@ -124,8 +124,9 @@ ipc::wire_struct!(Memory {
 pub struct Lun {
     /// The logical unit number.
     pub lun: u32,
-    /// What the unit is kept in: a path on the host, a file or a block
-    /// device. Phase 5 puts a virtual disk of a storage pool here.
+    /// What the unit is kept in: a virtual disk of a storage pool,
+    /// `POOL/NAME`; in a test image also a path on the host, a file or
+    /// a block device.
     pub backing: String,
     /// The serial number the guest sees; made from the partition's
     /// when left out.
@@ -243,14 +244,13 @@ pub struct EthernetAdapter {
 ipc::wire_struct!(EthernetAdapter { slot, vlan, mac });
 
 /// `[[optical]]` and `[[tape]]`: a virtual optical or tape device.
-/// Phase 5.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct MediaDevice {
     /// The virtual slot.
     pub slot: u32,
-    /// The media loaded at activation: a path on the host; none when
-    /// left out.
+    /// The medium loaded at activation: an image (optical) or a volume
+    /// (tape) of the media library, by its name; none when left out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media: Option<String>,
 }

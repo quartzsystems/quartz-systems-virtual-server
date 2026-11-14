@@ -34,7 +34,7 @@ use devices::platform::{MsiRoute, Platform, Requests};
 use devices::virtio::scsi::backing::Bounce;
 use devices::virtio::scsi::backing::memory::MemoryStore;
 use devices::virtio::scsi::lun::Lun;
-use devices::virtio::scsi::{serve_control, serve_requests};
+use devices::virtio::scsi::{Unit, serve_control, serve_requests};
 use devices::virtio::{Activation, VirtioDevice, VirtioPci, rng};
 use ipl::lic::{ConsoleMode, Keylock, Settings};
 use ipl::{SIDE_A_PATH, SIDE_B_PATH, Side};
@@ -516,8 +516,185 @@ fn report(data: &[u8]) {
     }
 }
 
+fn iso_seeds() -> Vec<Vec<u8>> {
+    let k = kernel();
+    let mut image = ipl::iso::build(
+        "QS400_V1R1M0",
+        &[(ipl::MEDIA_PATH, &k), ("QS400/MEDIA.MAN", b"x")],
+    );
+    // The descriptors and the directories: the files' bytes need not be carried.
+    image.truncate(64 * 1024);
+    vec![image]
+}
+
+fn iso(data: &[u8]) {
+    const LIMIT: usize = 1 << 20;
+    for bytes in [data.len() as u64, 64 << 20] {
+        if let Ok(mut volume) = ipl::iso::Volume::open(Cursor::new(data), bytes) {
+            for path in [
+                ipl::MEDIA_PATH,
+                "EFI",
+                "QS400/MEDIA.MAN",
+                "A/B/C/D/E/F/G/H/I",
+            ] {
+                if let Ok(file) = volume.read_file(path, LIMIT) {
+                    assert!(file.len() <= LIMIT);
+                }
+            }
+        }
+    }
+}
+
+/// An image of `blocks` 2048-byte blocks for the optical target.
+fn optical_drive() -> devices::virtio::scsi::optical::Optical {
+    let d = devices::virtio::scsi::optical::Optical::new("FUZZ-OPT").expect("a drive");
+    let image = MemoryStore::new(64 * 2048, false);
+    let _ = d.load(Box::new(image), "FUZZ");
+    d
+}
+
+fn optical_seeds() -> Vec<Vec<u8>> {
+    let cdbs: [&[u8]; 10] = [
+        &[0x00, 0, 0, 0, 0, 0],
+        &[0x12, 0, 0, 0, 96, 0],
+        &[0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        &[0x28, 0, 0, 0, 0, 4, 0, 0, 2, 0],
+        &[0x43, 2, 0, 0, 0, 0, 0, 0, 100, 0],
+        &[0x46, 2, 0, 0, 0, 0, 0, 0, 255, 0],
+        &[0x4A, 1, 0, 0, 0x10, 0, 0, 0, 8, 0],
+        &[0x5A, 0, 0x2A, 0, 0, 0, 0, 0, 255, 0],
+        &[0x1B, 0, 0, 0, 2, 0],
+        &[0x51, 0, 0, 0, 0, 0, 0, 0, 34, 0],
+    ];
+    cdbs.iter()
+        .map(|c| {
+            let mut input = vec![0u8; 32];
+            input[..c.len()].copy_from_slice(c);
+            input
+        })
+        .collect()
+}
+
+/// Commands, 32 bytes each, carried out one after another on one drive.
+fn optical(data: &[u8]) {
+    let drive = optical_drive();
+    let mut bounce = Bounce::new(64 * 1024);
+    for cdb in data.chunks(32) {
+        let _ = drive.run(cdb, 1, &mut io::empty(), &mut io::sink(), &mut bounce);
+    }
+}
+
+fn tape_seeds() -> Vec<Vec<u8>> {
+    let cdbs: [&[u8]; 12] = [
+        &[0x00, 0, 0, 0, 0, 0],
+        &[0x05, 0, 0, 0, 0, 0],
+        &[0x0A, 0, 0, 0, 80, 0],
+        &[0x10, 0, 0, 0, 1, 0],
+        &[0x01, 0, 0, 0, 0, 0],
+        &[0x08, 2, 0, 1, 0, 0],
+        &[0x11, 1, 0, 0, 1, 0],
+        &[0x11, 3, 0, 0, 0, 0],
+        &[0x34, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        &[0x2B, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        &[0x15, 0x10, 0, 0, 12, 0],
+        &[0x1A, 0, 0x3F, 0, 255, 0],
+    ];
+    cdbs.iter()
+        .map(|c| {
+            let mut input = vec![0u8; 32];
+            input[..c.len()].copy_from_slice(c);
+            input.extend_from_slice(&[0, 0, 0x10, 8, 0, 0, 0, 0, 0, 0, 2, 0]);
+            input.extend_from_slice(&[0xC1; 80]);
+            input
+        })
+        .collect()
+}
+
+/// A tape volume held in memory for the tape target.
+#[derive(Clone, Default)]
+struct MemTape(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl tape::Store for MemTape {
+    fn size(&self) -> io::Result<u64> {
+        Ok(self.0.lock().map_or(0, |v| v.len() as u64))
+    }
+    fn read_at(&self, buf: &mut [u8], at: u64) -> io::Result<()> {
+        let v = self.0.lock().map_err(|_| io::Error::other("poisoned"))?;
+        let at = usize::try_from(at).map_err(io::Error::other)?;
+        let src = v
+            .get(at..at.saturating_add(buf.len()))
+            .ok_or_else(|| io::Error::other("past the end"))?;
+        buf.copy_from_slice(src);
+        Ok(())
+    }
+    fn write_at(&self, buf: &[u8], at: u64) -> io::Result<()> {
+        let mut v = self.0.lock().map_err(|_| io::Error::other("poisoned"))?;
+        let at = usize::try_from(at).map_err(io::Error::other)?;
+        if v.len() < at + buf.len() {
+            v.resize(at + buf.len(), 0);
+        }
+        v[at..at + buf.len()].copy_from_slice(buf);
+        Ok(())
+    }
+    fn truncate(&self, len: u64) -> io::Result<()> {
+        let mut v = self.0.lock().map_err(|_| io::Error::other("poisoned"))?;
+        v.resize(usize::try_from(len).map_err(io::Error::other)?, 0);
+        Ok(())
+    }
+    fn sync(&self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Commands of 32 bytes, each followed by the data-out the bytes give,
+/// on one drive with a small volume; the image is the guest's to have
+/// damaged, so it is mounted again from what it was written to.
+fn tape(data: &[u8]) {
+    let drive = devices::virtio::scsi::tape::Tape::new("FUZZ-TAP").expect("a drive");
+    let volume = MemTape::default();
+    let _ = drive.mount(Box::new(volume.clone()), "FUZZ", 16 << 20, false);
+    let mut bounce = Bounce::new(1 << 20);
+    let mut rest = data;
+    while rest.len() >= 32 {
+        let (cdb, after) = rest.split_at(32);
+        let mut out = after;
+        let _ = drive.run(cdb, 1, &mut out, &mut io::sink(), &mut bounce);
+        rest = &after[after.len() - out.len()..];
+        if rest.len() == after.len() {
+            rest = &rest[rest.len().min(16)..];
+        }
+    }
+    // What was written reads back as a volume, damaged or not.
+    if let Ok(mut m) = tape::Medium::mount(volume, 16 << 20, false) {
+        let mut buf = vec![0u8; 4096];
+        for _ in 0..64 {
+            if matches!(m.read(&mut buf), Ok(tape::Read::EndOfData) | Err(_)) {
+                break;
+            }
+        }
+    }
+}
+
 /// Every target.
 pub const TARGETS: &[Target] = &[
+    Target {
+        name: "iso",
+        about: "the installation media's ISO 9660 volume, as IPL source D reads it",
+        seeds: iso_seeds,
+        run: iso,
+    },
+    Target {
+        name: "optical",
+        about: "SCSI commands to a virtual optical drive",
+        seeds: optical_seeds,
+        run: optical,
+    },
+    Target {
+        name: "tape",
+        about: "SCSI commands and their data to a virtual tape drive, and its volume read back",
+        seeds: tape_seeds,
+        run: tape,
+    },
     Target {
         name: "gpt",
         about: "the load source's partition table",

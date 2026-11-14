@@ -11,6 +11,7 @@ build = "build.rs"
 supervise = { path = "../../base/supervise", version = "0.1.0" }
 vrm.workspace = true
 appliance = { path = "../../base/appliance", version = "0.1.0" }
+pool = { path = "../../stg/pool", version = "0.1.0" }
 
 [build-dependencies]
 vrm.workspace = true

@@ -13,13 +13,46 @@
 //! | it could not IPL the partition | Not activated, with the message |
 //! | it failed, the guest faulted, or it was killed | Error, with the reference code and how it ended; not started again |
 
-use model::{IplSource, Keylock};
+use model::validate::{Backing, backing};
+use model::{IplSource, Keylock, Profile};
+use poold::proto::{Kind, Want};
 use qsvmm::end::End;
 use qvsmsg::Issued;
 use resource::cgroup;
 use resource::{Current, Held};
 
 use super::{Ended, MAX_LINE, Manager, Record, Run, System, config};
+use config::Stores;
+
+/// The media a profile loads at activation: each optical and tape
+/// device's slot and its medium.
+pub(crate) fn profile_media(profile: &Profile) -> Vec<(u32, Option<String>)> {
+    profile
+        .optical
+        .iter()
+        .chain(&profile.tape)
+        .map(|d| (d.slot, d.media.clone()))
+        .collect()
+}
+
+/// What a medium in `slot` is to the pool service: an image for an
+/// optical device, a volume for a tape device.
+pub(crate) fn media_kind(profile: &Profile, slot: u32) -> Option<Kind> {
+    if profile.optical.iter().any(|o| o.slot == slot) {
+        Some(Kind::Image)
+    } else if profile.tape.iter().any(|t| t.slot == slot) {
+        Some(Kind::Volume)
+    } else {
+        None
+    }
+}
+
+/// What the pool service is asked to hold for one key of a launch.
+enum Key {
+    Unit(u32, u32),
+    Optical(u32, String),
+    Tape(u32, String),
+}
 use crate::proto::{Event, State};
 
 /// A line of a VMM's report as a reference code and its text, when it
@@ -71,24 +104,23 @@ impl<S: System> Manager<S> {
         if let Some(refused) = model::validate::not_yet(profile) {
             return Err(vec![refused]);
         }
-        if source == Some(IplSource::D) {
-            return Err(vec![qvsmsg::NOT_YET.with(&["IPL source D", "5"])]);
+        if source == Some(IplSource::D) && profile.optical.is_empty() {
+            return Err(vec![qvsmsg::NO_OPTICAL.with(&[])]);
         }
-        // A unit that is not there fails the activation here, by name,
-        // not a VMM a moment later.
-        let missing: Vec<Issued> = profile
-            .units()
-            .into_iter()
-            .filter(|(_, unit)| !self.system.exists(&unit.backing))
-            .map(|(slot, unit)| {
-                qvsmsg::BACKING_MISSING.with(&[
-                    name,
-                    &slot.to_string(),
-                    &unit.lun.to_string(),
-                    &unit.backing,
-                ])
-            })
-            .collect();
+        // A host path is a test image's; one that is not there fails
+        // the activation here, by name, not a VMM a moment later. A
+        // virtual disk is checked by the pool service as it is held.
+        let mut missing = Vec::new();
+        for (slot, unit) in profile.units() {
+            let (slot, lun) = (slot.to_string(), unit.lun.to_string());
+            if let Some(Backing::Path(path)) = backing(&unit.backing) {
+                if !self.system.host_paths() {
+                    missing.push(qvsmsg::BACKING_NOT_VDISK.with(&[&slot, &lun, path]));
+                } else if !self.system.exists(path) {
+                    missing.push(qvsmsg::BACKING_MISSING.with(&[name, &slot, &lun, path]));
+                }
+            }
+        }
         if !missing.is_empty() {
             return Err(missing);
         }
@@ -99,7 +131,70 @@ impl<S: System> Manager<S> {
         Ok((profile_name.to_string(), current))
     }
 
-    /// Start the VMM of `id` holding `current`. The partition is then
+    /// Have the pool service hold the virtual disks and media of an
+    /// activation of `id` with `profile`, the media as `media` says.
+    /// What the VMM is to name each by.
+    fn hold_stores(
+        &mut self,
+        id: u32,
+        profile: &Profile,
+        media: &[(u32, Option<String>)],
+    ) -> Result<Stores, Vec<Issued>> {
+        let mut wants = Vec::new();
+        let mut keys = Vec::new();
+        for (slot, unit) in profile.units() {
+            if let Some(Backing::Vdisk { pool, name }) = backing(&unit.backing) {
+                wants.push(Want {
+                    kind: Kind::Vdisk,
+                    pool: pool.to_string(),
+                    name: name.to_string(),
+                    slot,
+                });
+                keys.push(Key::Unit(slot, unit.lun));
+            }
+        }
+        for (slot, medium) in media {
+            let (Some(name), Some(kind)) = (medium, media_kind(profile, *slot)) else {
+                continue;
+            };
+            wants.push(Want {
+                kind,
+                pool: String::new(),
+                name: name.clone(),
+                slot: *slot,
+            });
+            keys.push(match kind {
+                Kind::Image => Key::Optical(*slot, name.clone()),
+                _ => Key::Tape(*slot, name.clone()),
+            });
+        }
+        let mut stores = Stores::default();
+        if wants.is_empty() {
+            return Ok(stores);
+        }
+        let given = self.system.hold(id, &wants)?;
+        for (i, (key, g)) in keys.into_iter().zip(&given).enumerate() {
+            // The files are the VMM's from descriptor 3 on, in order.
+            let path = format!("/proc/self/fd/{}", 3 + i);
+            match key {
+                Key::Unit(slot, lun) => {
+                    stores.units.insert((slot, lun), path);
+                }
+                Key::Optical(slot, name) => {
+                    stores.optical.insert(slot, (path, name));
+                }
+                Key::Tape(slot, name) => {
+                    stores
+                        .tape
+                        .insert(slot, (path, name, g.capacity_mib, g.protected));
+                }
+            }
+        }
+        Ok(stores)
+    }
+
+    /// Start the VMM of `id` holding `current`, with its media as
+    /// `media` says, or as the profile does. The partition is then
     /// Starting.
     pub(crate) fn launch(
         &mut self,
@@ -108,22 +203,27 @@ impl<S: System> Manager<S> {
         current: Current,
         source: Option<IplSource>,
         keylock: Option<Keylock>,
-    ) -> Result<(), Issued> {
+        media: Option<Vec<(u32, Option<String>)>>,
+    ) -> Result<(), Vec<Issued>> {
         let Some(partition) = self.partitions.get(&id) else {
-            return Err(qvsmsg::PARTITION_MISSING.with(&[&id.to_string()]));
+            return Err(vec![qvsmsg::PARTITION_MISSING.with(&[&id.to_string()])]);
         };
         let name = partition.definition.name.clone();
-        let Some(profile) = partition.profiles.get(profile_name) else {
-            return Err(qvsmsg::PROFILE_MISSING.with(&[&name, profile_name]));
+        let Some(profile) = partition.profiles.get(profile_name).cloned() else {
+            return Err(vec![qvsmsg::PROFILE_MISSING.with(&[&name, profile_name])]);
         };
+        let definition = partition.definition.clone();
+        let media = media.unwrap_or_else(|| profile_media(&profile));
+        let stores = self.hold_stores(id, &profile, &media)?;
         let vcpus = self.host.vcpus(&current.processors);
         let written = config::build(
-            &partition.definition,
-            profile,
+            &definition,
+            &profile,
             &current,
             &vcpus,
             source.unwrap_or(profile.boot.source),
-            keylock.unwrap_or(partition.definition.keylock),
+            keylock.unwrap_or(definition.keylock),
+            &stores,
         );
         let text = qsvmm::config::render(&written);
         let group = cgroup::partition_group(id, &current.processors);
@@ -147,8 +247,9 @@ impl<S: System> Manager<S> {
             Ok(pid) => pid,
             Err(e) => {
                 self.system.remove_group(&group);
+                self.system.give_back(id, &[]);
                 let _ = self.apply_base();
-                return Err(qvsmsg::VMM_NOT_STARTED.with(&[&name, &e]));
+                return Err(vec![qvsmsg::VMM_NOT_STARTED.with(&[&name, &e])]);
             }
         };
         let sequence = self.sequence;
@@ -172,6 +273,8 @@ impl<S: System> Manager<S> {
                 keylock,
                 again: false,
                 asked: None,
+                media,
+                lost: None,
             });
             partition.last_profile = profile_name.to_string();
             partition.message = None;
@@ -211,6 +314,10 @@ impl<S: System> Manager<S> {
         // The line is the VMM's, which a guest may have got at: it is
         // bounded, and only a code of the table is taken from it.
         let line: String = line.chars().take(MAX_LINE).collect();
+        if let Some(rest) = line.strip_prefix("MEDIA ") {
+            self.media_unloaded(id, rest);
+            return;
+        }
         let Some((code, text)) = code_of(&line) else {
             if !quiet {
                 let name = self
@@ -247,6 +354,7 @@ impl<S: System> Manager<S> {
         let name = partition.definition.name.clone();
         self.system.remove_group(&run.group);
         self.system.record(id, None);
+        self.system.give_back(id, &[]);
         if let Err(e) = self.apply_base() {
             self.system.log(&format!("resource controls: {e}"));
         }
@@ -293,7 +401,15 @@ impl<S: System> Manager<S> {
         }
 
         let stopping = self.ending.is_some();
-        let again = if asked {
+        let again = if let Some(pool) = &run.lost {
+            // Ended for a pool that failed under it.
+            let message = qvsmsg::POOL_UNAVAILABLE.with(&[&name, pool, "Failed"]);
+            if let Some(partition) = self.partitions.get_mut(&id) {
+                partition.message = Some(message);
+            }
+            self.set_state(id, State::Error);
+            false
+        } else if asked {
             // The partition manager shut it down, however it went.
             self.set_state(id, State::NotActivated);
             run.again && !stopping
@@ -340,24 +456,22 @@ impl<S: System> Manager<S> {
         let result = if asked {
             // It is Not activated now: resolved anew.
             self.resolve(id, &run.profile, None)
-                .and_then(|(profile, current)| {
-                    self.launch(id, &profile, current, None, None)
-                        .map_err(|e| vec![e])
-                })
+                .and_then(|(profile, current)| self.launch(id, &profile, current, None, None, None))
         } else {
             // Still Starting or Running: the state goes back to
             // Starting through the launch.
             if let Some(partition) = self.partitions.get_mut(&id) {
                 partition.state = State::NotActivated;
             }
+            // What the guest had loaded, it has again.
             self.launch(
                 id,
                 &run.profile,
                 run.current.clone(),
                 Some(IplSource::Recorded),
                 run.keylock,
+                Some(run.media.clone()),
             )
-            .map_err(|e| vec![e])
         };
         if let Err(errors) = result {
             self.not_activated(id, &errors);
@@ -402,6 +516,67 @@ impl<S: System> Manager<S> {
         }
     }
 
+    /// The VMM of `id` says the guest took the medium out of a device:
+    /// `<slot> unloaded <name>`. It is given back.
+    fn media_unloaded(&mut self, id: u32, said: &str) {
+        let mut words = said.split_whitespace();
+        let (Some(slot), Some("unloaded")) =
+            (words.next().and_then(|s| s.parse().ok()), words.next())
+        else {
+            return;
+        };
+        let Some(partition) = self.partitions.get_mut(&id) else {
+            return;
+        };
+        let profile = partition.profiles.get(&partition.last_profile).cloned();
+        let Some(run) = partition.run.as_mut() else {
+            return;
+        };
+        let mut gone = None;
+        for (s, medium) in &mut run.media {
+            if *s == slot {
+                gone = medium.take();
+            }
+        }
+        let kind = profile.as_ref().and_then(|p| media_kind(p, slot));
+        if let (Some(name), Some(kind)) = (gone, kind) {
+            let want = Want {
+                kind,
+                pool: String::new(),
+                name,
+                slot,
+            };
+            self.system.give_back(id, &[want]);
+        }
+    }
+
+    /// A storage pool failed: every active partition with a unit in it
+    /// is ended, and is in Error when it has.
+    pub fn pool_failed(&mut self, pool: &str) {
+        let prefix = format!("{pool}/");
+        let mut kill = Vec::new();
+        for partition in self.partitions.values_mut() {
+            let uses = partition
+                .profiles
+                .get(&partition.last_profile)
+                .is_some_and(|p| {
+                    p.units()
+                        .iter()
+                        .any(|(_, u)| u.backing.starts_with(&prefix))
+                });
+            if let Some(run) = partition.run.as_mut()
+                && uses
+                && run.lost.is_none()
+            {
+                run.lost = Some(pool.to_string());
+                kill.push(run.group.clone());
+            }
+        }
+        for group in kill {
+            self.system.kill(&group);
+        }
+    }
+
     /// What time does: a VMM that was asked to end and has not is
     /// killed. Called every second or so.
     pub fn tick(&mut self) {
@@ -442,6 +617,12 @@ impl<S: System> Manager<S> {
             keylock: None,
             again: false,
             asked: None,
+            media: partition
+                .profiles
+                .get(&record.profile)
+                .map(profile_media)
+                .unwrap_or_default(),
+            lost: None,
         });
         partition.last_profile.clone_from(&record.profile);
         partition.state = State::Starting;

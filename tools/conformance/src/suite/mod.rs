@@ -14,6 +14,7 @@ pub mod base;
 pub mod install;
 pub mod partition;
 pub mod slotb;
+pub mod storage;
 
 use std::cell::RefCell;
 use std::env;
@@ -122,6 +123,7 @@ pub fn names() -> Vec<&'static str> {
     names.extend(base::SUITES.iter().map(|s| s.0));
     names.extend(install::SUITES.iter().map(|s| s.0));
     names.extend(partition::SUITES.iter().map(|s| s.0));
+    names.extend(storage::SUITES.iter().map(|s| s.0));
     names
 }
 
@@ -208,7 +210,8 @@ impl Suite {
         let suites = base::SUITES
             .iter()
             .chain(install::SUITES)
-            .chain(partition::SUITES);
+            .chain(partition::SUITES)
+            .chain(storage::SUITES);
         for (name, suite) in suites {
             if wanted(name) {
                 done(vec![self.base_suite(name, *suite)?]);
@@ -437,10 +440,15 @@ mod tests {
     fn there_are_phase_0_s_suite_and_those_of_each_phase_since() {
         // Phase 0's, Phase 1's ten, Phase 2's thirteen and the two
         // beside them, Phase 3's ten (its eleventh, the fuzz targets,
-        // is the build tool's), and Phase 4's sixteen.
-        assert_eq!(names().len(), 1 + 10 + 13 + 2 + 10 + 16);
+        // is the build tool's), Phase 4's sixteen, and Phase 5's (its
+        // fuzz targets and the earlier suites are the build tool's).
         assert_eq!(
-            names()[26..],
+            names().len(),
+            1 + 10 + 13 + 2 + 10 + 16 + storage::SUITES.len()
+        );
+        assert_eq!(storage::SUITES.len(), 17);
+        assert_eq!(
+            names()[26..52],
             [
                 "partition-boot",
                 "partition-scsi",

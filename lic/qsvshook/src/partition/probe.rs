@@ -45,6 +45,7 @@ struct Answer {
     response: u8,
     status: u8,
     sense: (u8, u8),
+    marks: u8,
     data: Vec<u8>,
 }
 
@@ -63,6 +64,10 @@ fn text(e: impl std::fmt::Display) -> String {
 
 impl Probe {
     fn new(lun: Lun) -> Result<Self, String> {
+        Self::of(std::sync::Arc::new(lun))
+    }
+
+    fn of(unit: std::sync::Arc<dyn Unit>) -> Result<Self, String> {
         let memory = Memory::from_ranges(&[(GuestAddress(0), 0x10_0000)]).map_err(text)?;
         let mut queue = Queue::new(QUEUE_SIZE).map_err(text)?;
         queue.set_desc_table_address(Some(DESC), Some(0));
@@ -72,8 +77,8 @@ impl Probe {
         Ok(Self {
             memory,
             queue,
-            luns: vec![std::sync::Arc::new(lun)],
-            bounce: Bounce::new(1 << 16),
+            luns: vec![unit],
+            bounce: Bounce::new(1 << 20),
             descriptors: 0,
             offered: 0,
         })
@@ -140,7 +145,8 @@ impl Probe {
         self.memory
             .read_slice(&mut response, GuestAddress(RESPONSE_AT))
             .map_err(text)?;
-        let mut data = vec![0u8; used.saturating_sub(RESPONSE_BYTES) as usize];
+        let given = used.saturating_sub(RESPONSE_BYTES).min(room);
+        let mut data = vec![0u8; given as usize];
         self.memory
             .read_slice(&mut data, GuestAddress(IN_AT))
             .map_err(text)?;
@@ -148,7 +154,8 @@ impl Probe {
             used,
             response: response[11],
             status: response[10],
-            sense: (response[12 + 2], response[12 + 12]),
+            sense: (response[12 + 2] & 0x0F, response[12 + 12]),
+            marks: response[12 + 2] & 0xE0,
             data,
         })
     }
@@ -311,4 +318,192 @@ fn no_requests(p: &mut Probe, lines: &mut Vec<String>) -> Result<(), String> {
         lines.push(format!("{what} is used with nothing written"));
     }
     Ok(())
+}
+
+/// A whole image read through an optical drive and compared with the
+/// file, an eject, another image loaded, a write and malformed commands
+/// refused. `first` and `second` are images of the media library.
+pub fn optical(first: &Path, second: &Path) -> Result<Vec<String>, String> {
+    use devices::virtio::scsi::backing::ImageFile;
+    use devices::virtio::scsi::optical::Optical;
+    let open = |p: &Path| {
+        std::fs::File::open(p)
+            .and_then(ImageFile::new)
+            .map_err(|e| format!("{}: {e}", p.display()))
+    };
+    let drive = std::sync::Arc::new(Optical::new("PROBE-OPT").ok_or("a drive")?);
+    drive.load(Box::new(open(first)?), "FIRST")?;
+    let mut p = Probe::of(drive.clone())?;
+    let mut lines = Vec::new();
+    // The power-on and the load are told, once each.
+    let mut told = 0;
+    while p.ask(0, &[0, 0, 0, 0, 0, 0], &[], 0)?.status == STATUS_CHECK {
+        told += 1;
+        if told > 3 {
+            return Err("the drive never became ready".into());
+        }
+    }
+    let inquiry = p.ask(0, &[0x12, 0, 0, 0, 36, 0], &[], 36)?;
+    if inquiry.data.first() != Some(&5) {
+        return Err(format!("the inquiry said {:?}", inquiry.data));
+    }
+    let cap = p.ask(0, &[0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0], &[], 8)?;
+    let blocks = u64::from(u32::from_be_bytes([
+        cap.data[0],
+        cap.data[1],
+        cap.data[2],
+        cap.data[3],
+    ])) + 1;
+    let file = std::fs::read(first).map_err(text)?;
+    let mut at = 0u64;
+    while at < blocks {
+        let n = (blocks - at).min(256);
+        let mut cdb = [0u8; 10];
+        cdb[0] = 0x28;
+        cdb[2..6].copy_from_slice(&u32::try_from(at).map_err(text)?.to_be_bytes());
+        cdb[7..9].copy_from_slice(&u16::try_from(n).map_err(text)?.to_be_bytes());
+        let read = p.ask(0, &cdb, &[], u32::try_from(n * 2048).map_err(text)?)?;
+        let from = usize::try_from(at * 2048).map_err(text)?;
+        if read.data != file[from..from + read.data.len()] || read.data.len() as u64 != n * 2048 {
+            return Err(format!(
+                "blocks {at} to {} read otherwise than the file",
+                at + n
+            ));
+        }
+        at += n;
+    }
+    lines.push(format!(
+        "{blocks} blocks of 2048 bytes read through the drive, the same as the image"
+    ));
+    let write = p.ask(0, &[0x2A, 0, 0, 0, 0, 0, 0, 0, 1, 0], &[0u8; 2048], 0)?;
+    if (write.status, write.sense.0) != (STATUS_CHECK, 0x07) {
+        return Err(format!(
+            "a write was answered {}/{:#x}",
+            write.status, write.sense.0
+        ));
+    }
+    lines.push("a write refused: data protect".into());
+    for bad in [
+        &[0xFFu8; 16][..],
+        &[0x28, 0, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0xFF, 0xFF, 0][..],
+        &[0x43, 0, 0, 0, 0, 0, 0, 0, 0, 0xC0][..],
+    ] {
+        let a = p.ask(0, bad, &[], 512)?;
+        if a.status != STATUS_CHECK {
+            return Err(format!("a malformed command {bad:02x?} was answered good"));
+        }
+    }
+    lines.push("malformed commands refused with a check condition".into());
+    // Prevented: the host's unload fails unless forced, the guest's
+    // eject is refused.
+    p.ask(0, &[0x1E, 0, 0, 0, 1, 0], &[], 0)?;
+    if drive.unload(false).is_ok() {
+        return Err("a prevented medium was unloaded without force".into());
+    }
+    let eject = p.ask(0, &[0x1B, 0, 0, 0, 2, 0], &[], 0)?;
+    if eject.status != STATUS_CHECK {
+        return Err("a prevented eject was done".into());
+    }
+    p.ask(0, &[0x1E, 0, 0, 0, 0, 0], &[], 0)?;
+    p.ask(0, &[0x1B, 0, 0, 0, 2, 0], &[], 0)?;
+    if drive.loaded().is_some() {
+        return Err("the guest's eject left the medium".into());
+    }
+    lines.push("removal prevented: the host's unload refused, the guest's eject refused; allowed, the guest's eject unloads".into());
+    drive.load(Box::new(open(second)?), "SECOND")?;
+    let changed = p.ask(0, &[0, 0, 0, 0, 0, 0], &[], 0)?;
+    if (changed.status, changed.sense) != (STATUS_CHECK, (6, 0x28)) {
+        return Err("the new medium was not told by a unit attention".into());
+    }
+    lines.push("another image loaded: told by a unit attention".into());
+    Ok(lines)
+}
+
+/// A tape volume written and read through a tape drive: blocks and
+/// filemarks, the end of data, the early warning and the end of the
+/// volume, a write-protected volume refusing writes.
+pub fn tape(volume: &Path) -> Result<Vec<String>, String> {
+    use devices::virtio::scsi::tape::Tape;
+    let rw = || {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(volume)
+            .map_err(|e| format!("{}: {e}", volume.display()))
+    };
+    let drive = std::sync::Arc::new(Tape::new("PROBE-TAP").ok_or("a drive")?);
+    drive
+        .mount(Box::new(rw()?), "PROBE", 16 << 20, false)
+        .map_err(text)?;
+    let mut p = Probe::of(drive.clone())?;
+    let mut lines = Vec::new();
+    while p.ask(0, &[0, 0, 0, 0, 0, 0], &[], 0)?.status == STATUS_CHECK {}
+    let label = [0xE5u8; 80];
+    let block = vec![0x42u8; 65536];
+    let w = |n: u32| {
+        let b = n.to_be_bytes();
+        [0x0A, 0, b[1], b[2], b[3], 0]
+    };
+    p.ask(0, &w(80), &label, 0)?;
+    p.ask(0, &[0x10, 0, 0, 0, 1, 0], &[], 0)?;
+    p.ask(0, &w(65536), &block, 0)?;
+    p.ask(0, &[0x10, 0, 0, 0, 2, 0], &[], 0)?;
+    p.ask(0, &[0x01, 0, 0, 0, 0, 0], &[], 0)?;
+    let r = |n: u32| {
+        let b = n.to_be_bytes();
+        [0x08, 2, b[1], b[2], b[3], 0]
+    };
+    let first = p.ask(0, &r(262_144), &[], 262_144)?;
+    if first.data != label {
+        return Err("the label read back otherwise".into());
+    }
+    let mark = p.ask(0, &r(65536), &[], 65536)?;
+    if (mark.status, mark.marks & 0x80) != (STATUS_CHECK, 0x80) {
+        return Err("the filemark was not reported".into());
+    }
+    let data = p.ask(0, &r(262_144), &[], 262_144)?;
+    if data.data != block {
+        return Err("the data block read back otherwise".into());
+    }
+    p.ask(0, &r(16), &[], 16)?;
+    p.ask(0, &r(16), &[], 16)?;
+    let end = p.ask(0, &r(16), &[], 16)?;
+    if (end.status, end.sense.0) != (STATUS_CHECK, 0x08) {
+        return Err(format!(
+            "the end of data was answered {}/{:#x}",
+            end.status, end.sense.0
+        ));
+    }
+    lines.push("a label, a filemark, a 64 KiB block and two filemarks written and read back; the filemark reported, the end of data a blank check".into());
+    // Written until the end: the early warning, then the end.
+    let mut warned = false;
+    let mut overflowed = false;
+    for _ in 0..1000 {
+        let a = p.ask(0, &w(65536), &block, 0)?;
+        if a.status == STATUS_CHECK && a.sense.0 == 0 && a.marks & 0x40 != 0 {
+            warned = true;
+        }
+        if a.status == STATUS_CHECK && a.sense.0 == 0x0D {
+            overflowed = true;
+            break;
+        }
+    }
+    if !warned || !overflowed {
+        return Err(format!(
+            "written to the end: early warning {warned}, end {overflowed}"
+        ));
+    }
+    lines.push("written to the end of a 16 MiB volume: the early warning first, then the end of the volume with nothing written".into());
+    drive.unmount(true).map_err(text)?;
+    let ro = std::fs::File::open(volume).map_err(text)?;
+    drive
+        .mount(Box::new(ro), "PROBE", 16 << 20, true)
+        .map_err(text)?;
+    while p.ask(0, &[0, 0, 0, 0, 0, 0], &[], 0)?.status == STATUS_CHECK {}
+    let refused = p.ask(0, &w(80), &label, 0)?;
+    if (refused.status, refused.sense.0) != (STATUS_CHECK, 0x07) {
+        return Err("a write-protected volume took a write".into());
+    }
+    lines.push("write-protected: a write refused with data protect".into());
+    Ok(lines)
 }

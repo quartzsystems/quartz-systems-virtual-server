@@ -11,7 +11,10 @@ built and waits for Cody to confirm the rule, 17 and 22 are decided in
 Phase 8, and 19 stays open. Phase 3 raised 23 to 28, and 29 was
 answered with them; the Phase 4 handoff answered 23 to 28, which are
 closed below, and left 6, 17, 19 and 22 as they were. Phase 4 raised
-30 to 33. Step 0 of Phase 5 closed 19 with QS/400's handoff 15.
+30 to 33. Step 0 of Phase 5 closed 19 with QS/400's handoff 15; the
+Phase 5 handoff confirmed 30 and 33 as built, left 31 as it is, put 32
+with the kernel pin's next change, and left 6, 17 and 22 unchanged.
+Phase 5 raised 34 to 36.
 
 ## Open
 
@@ -47,19 +50,6 @@ need an owner both can ask: PID 1, or a service of their own. The
 Phase 3 handoff: decide in Phase 8, when QSI may need to manage them.
 Nothing changed.
 
-### 30. What a profile's IPL type is
-
-The handoff gives a profile's boot section three fields: the IPL
-source, the IPL type and the console mode. QS/400's LIC record has no
-field of that name beside the source: it has the keylock position and
-a mode for the next IPL, normal or manual. The IPL type was taken to
-be whether the IPL is attended: `type = "unattended"` or `"attended"`
-in a profile, written as the record's mode for the next IPL, with the
-keylock in the manual position making an IPL attended whatever the
-profile says (`docs/PROFILE.md`, `vmm/ipl/src/lic.rs`). If QS/MC's
-wizard means something else by it, the field's values change and
-nothing else does.
-
 ### 31. A VMM ended by a signal that the partition manager did not send
 
 `qsvmm` that takes `SIGTERM` ends in order with exit code 50, "ended by
@@ -68,7 +58,7 @@ activated. When something else did, the partition manager cannot tell
 an operator's act from an accident, and leaves the partition Not
 activated too, not in Error (`docs/PARTD.md`). Nothing in a release
 image sends that signal but the partition manager, so the case is the
-test hooks' alone. Recommended: leave it.
+test hooks' alone. Left as it is (Phase 5 handoff).
 
 ### 32. The kernel is built for 64 threads
 
@@ -76,24 +66,37 @@ test hooks' alone. Recommended: leave it.
 QS/400. A host with more threads than that shows 64 of them, and its
 partitions can be given no others. Not a matter of this phase, and the
 kernel pin is QS/400's: a larger value is a change to the fragment
-there and here, in a commit of its own. Recommended: raise it with
-the kernel pin's next move, before the first machine that has more.
+there and here, in a commit of its own. Not now (Phase 5 handoff): it
+moves with the kernel pin's next change, in QS/400 and here together.
 
-### 33. What a processing unit is worth where a core has two threads
+### 34. A held partition's state for QS/MC (NEEDS-CODY)
 
-A unit is one core's worth of time, and a core with SMT has two
-threads' worth: a capped partition's quota is its units times two, in
-thread time (`docs/RESOURCES.md`). A partition whose load keeps both
-threads of each of its virtual processors busy is so held to exactly
-its units. One that keeps a single thread busy can hold a core for up
-to twice the wall-clock time its units say, because core scheduling
-keeps the core's other thread idle beside it and idle time is charged
-to nobody. The other choice, a quota of the units in thread time,
-holds such a partition to its units of cores and gives a partition
-that uses both threads half of what it is entitled to. Measured under
-full load, as the handoff's suite does, the first is exact; it is the
-one built. Recommended: confirm, or say which load the cap is to be
-exact for.
+A partition whose thin virtual disk found its pool full is held: its
+processors are stopped, it stays Running, and its current reference
+code is `A2005160` until it goes on by itself (`docs/STORAGE.md`). The
+handoff decided this and asks Cody to confirm that Running with an
+attention code is how QS/MC should see it, rather than a state of its
+own.
+
+### 35. A copy of a virtual disk
+
+QS/400's `xfsfmt` makes a pool's xfs without reflink, so a copy of a
+virtual disk would be a whole copy of its bytes. It is left out
+(`docs/PHASE5.md`). Recommended: when QS/MC's template partitions need
+it, have `xfsfmt` gain the reflink feature (and the reverse mapping it
+takes) in QS/400, and copy by `FICLONE` here.
+
+### 36. Tape from QS/400
+
+The virtual tape drive answers what Linux's `st` driver sends, and its
+behaviour is shown at the device (`pool-tape`). A save of a library by
+QS/400 to it and a restore to another partition were not run: QS/400's
+tape code has never met a drive, real or virtual (its `docs/INSTALL.md`
+says so), and its handling of the early warning (a block written again
+after `ENOSPC`, then `EOV1` labels) needs `st`'s own behaviour past the
+warning, which this drive gives as SSC has it. Recommended: run
+QS/400's `INZTAP`, `SAVLIB` and `RSTLIB` against this drive as the
+first thing of Phase 10, beside the pass-through to a real one.
 
 ## Closed
 
@@ -262,3 +265,13 @@ exact for.
     unit in step to the other, and a stale unit comes back by what was
     written while it was away. The suite `mirror-power-pull` shows the
     copy bounded after each of its twenty cuts.
+
+30. **What a profile's IPL type is.** Confirmed as built (Phase 5
+    handoff): `attended` or `unattended`, with the keylock in manual
+    making an IPL attended whatever the profile says
+    (`docs/PROFILE.md`).
+33. **What a processing unit is worth where a core has two threads.**
+    Confirmed as built (Phase 5 handoff): a capped partition's quota is
+    its units times two in thread time, exact under full load.
+    `docs/RESOURCES.md` says what a load that keeps one thread busy
+    gets.

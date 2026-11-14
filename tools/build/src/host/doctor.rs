@@ -108,6 +108,22 @@ fn guest_image() -> Row {
     }
 }
 
+/// QS/400's installation ISO `pool-install` installs from. Without it
+/// that suite cannot run; the rest of the pipeline does not need it.
+fn install_iso() -> Row {
+    use conformance::suite::storage::QS400_ISO_ENV;
+    let name = format!("QS/400 installation ISO ({QS400_ISO_ENV})");
+    match conformance::suite::storage::qs400_iso() {
+        Ok(path) => row(
+            &name,
+            true,
+            format!("{} has the media UKI and an INSTALL.RSP", path.display()),
+            false,
+        ),
+        Err(e) => row(&name, false, e, false),
+    }
+}
+
 fn headers(ctx: &Ctx) -> Row {
     let name = "license headers";
     match super::header::check(&ctx.paths.repo) {
@@ -145,6 +161,7 @@ pub fn rows(ctx: &Ctx) -> Vec<Row> {
         nested(required),
         ovmf(),
         guest_image(),
+        install_iso(),
         headers(ctx),
         neutral(ctx),
     ]

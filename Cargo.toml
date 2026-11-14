@@ -12,6 +12,7 @@ members = [
     "lic/qsvsnetd",
     "lic/qsvsstgd",
     "lic/qsvspartd",
+    "lic/qsvspoold",
     "lic/qsvsinstall",
     # The test hooks: built into a test image only.
     "lic/qsvshook",
@@ -51,6 +52,7 @@ members = [
     "stg/pool",
     "stg/vdisk",
     "stg/media",
+    "stg/poold",
     "stg/tape",
 ]
 

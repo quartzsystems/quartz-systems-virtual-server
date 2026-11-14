@@ -71,6 +71,10 @@ pub const REQUIRED_Y: &[&str] = &[
     "CHR_DEV_SG",
     "SCSI_FC_ATTRS",
     "SCSI_QLA_FC",
+    // Imports into the media library (Phase 5) from a removable volume,
+    // beside the installer's drive, ISO 9660 and USB storage.
+    "JOLIET",
+    "EXFAT_FS",
     // The ESP and the firmware boot entries.
     "VFAT_FS",
     "NLS_CODEPAGE_437",

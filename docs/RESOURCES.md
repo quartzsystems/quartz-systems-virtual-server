@@ -153,6 +153,18 @@ threads a core is `U x T x 100000` microseconds in each period of
 thread, and one thread's time where it has two: half the core either
 way.
 
+This is exact for a load that keeps both threads of each of the
+partition's virtual processors busy, which is how it was measured
+(confirmed with Phase 5's handoff, `docs/OPEN_QUESTIONS.md` item 33).
+**A load that keeps one thread of a core busy** gets more than its
+units in wall-clock time: its quota is spent at half the rate, while
+core scheduling keeps the core's other thread idle beside it and that
+idle time is charged to nobody. A capped partition of 0.50 units
+whose work runs on one thread can so hold a core for up to the whole
+period, twice what its units say. A quota in thread time of the units
+alone would hold such a partition to its units of cores, and give a
+partition that uses both threads half of what it is entitled to.
+
 **Core scheduling.** Each `qsvmm` gives itself a core scheduling cookie
 before it starts any thread (`prctl(PR_SCHED_CORE)`), so all its
 threads share one and no other process has it. The kernel then runs
@@ -210,7 +222,7 @@ there since Phase 0: `CPUSETS`, `CGROUP_SCHED`, `FAIR_GROUP_SCHED`,
 
 ## Not here yet
 
-- `BLOCKED(phase4)`: the kernel is built for 64 threads (`NR_CPUS=64`, the pinned configuration's); a host with more shows 64.
-- `BLOCKED(phase4)`: cores are given without regard to sockets or to memory's place: a partition's cores and its huge pages may be on different NUMA nodes.
-- `BLOCKED(phase4)`: only 2 MB pages; 1 GiB pages are not used.
+- `BLOCKED(phase5)`: the kernel is built for 64 threads (`NR_CPUS=64`, the pinned configuration's); a host with more shows 64.
+- `BLOCKED(phase5)`: cores are given without regard to sockets or to memory's place: a partition's cores and its huge pages may be on different NUMA nodes.
+- `BLOCKED(phase5)`: only 2 MB pages; 1 GiB pages are not used.
 - Any change to a running partition's resources: not in this phase.

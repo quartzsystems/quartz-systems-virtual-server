@@ -201,8 +201,9 @@ ipc::rpc! {
     /// auto start. Only while the partition is not activated.
     3 => fn change / Change (definition: Definition) -> Result<(), Refused>;
     /// Delete a partition and its profiles. Only while it is not
-    /// activated. Its backing stores are left alone.
-    4 => fn delete / Delete (id: u32) -> Result<(), Refused>;
+    /// activated. Its virtual disks are deleted with it when `disks`,
+    /// and kept otherwise.
+    4 => fn delete / Delete (id: u32, disks: bool) -> Result<(), Refused>;
     /// The names of a partition's profiles.
     5 => fn profiles / ListProfiles (id: u32) -> Result<Vec<String>, Refused>;
     /// One profile.
@@ -245,7 +246,38 @@ ipc::rpc! {
     19 => fn end_all / EndAll () -> u32;
     /// Every event from now on follows on this connection.
     20 => fn subscribe / Subscribe () -> ();
+    /// Load the image or mount the volume `name` of the media library
+    /// into the optical or tape device in `slot` of a running partition.
+    21 => fn load_media / LoadMedia (id: u32, slot: u32, name: String) -> Result<(), Refused>;
+    /// Unload the medium of the device in `slot`; when the partition
+    /// prevents its removal, only `forced`. The medium's name.
+    22 => fn unload_media / UnloadMedia (id: u32, slot: u32, forced: bool) -> Result<String, Refused>;
+    /// The optical and tape devices of a running partition, and what
+    /// each has.
+    23 => fn media / Media (id: u32) -> Result<Vec<MediaSlot>, Refused>;
+    /// The profiles that name the virtual disk `name` of `pool`: each
+    /// as `PROD profile NORMAL slot 2`.
+    24 => fn named / Named (pool: String, name: String) -> Vec<String>;
 }
+
+/// An optical or tape device of a running partition.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MediaSlot {
+    /// Its slot.
+    pub slot: u32,
+    /// `optical` or `tape`.
+    pub kind: String,
+    /// The medium's name; empty for none.
+    pub name: String,
+    /// Whether the partition prevents its removal.
+    pub prevented: bool,
+}
+ipc::wire_struct!(MediaSlot {
+    slot,
+    kind,
+    name,
+    prevented
+});
 
 /// The socket of the partition manager whose run directory is `run_dir`.
 pub fn socket(run_dir: &str) -> std::path::PathBuf {

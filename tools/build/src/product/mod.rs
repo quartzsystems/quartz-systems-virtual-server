@@ -25,7 +25,14 @@ use release::LOAD_SOURCE;
 pub const INIT: &str = "qsvsinit";
 
 /// The service packages, `/qsvs/bin/<name>` in every initramfs.
-pub const SERVICES: [&str; 5] = ["qsvsstgd", "qsvslogd", "qsvsnetd", "qsvspartd", "qsvstools"];
+pub const SERVICES: [&str; 6] = [
+    "qsvsstgd",
+    "qsvslogd",
+    "qsvsnetd",
+    "qsvspoold",
+    "qsvspartd",
+    "qsvstools",
+];
 
 /// The VMM's package, `/qsvs/bin/qsvmm` in a slot's initramfs. The
 /// partition manager starts one for each partition it activates.
@@ -73,6 +80,7 @@ const RELEASE_PACKAGES: &[Package] = &[
     package(SERVICES[2]),
     package(SERVICES[3]),
     package(SERVICES[4]),
+    package(SERVICES[5]),
     package(VMM),
     package(INSTALLER),
 ];
@@ -83,6 +91,7 @@ const TEST_PACKAGES: &[Package] = &[
     package(SERVICES[2]),
     package(SERVICES[3]),
     package(SERVICES[4]),
+    package(SERVICES[5]),
     package(VMM),
     package(INSTALLER),
     package(HOOK),
@@ -212,6 +221,7 @@ mod tests {
                 "qsvsstgd",
                 "qsvslogd",
                 "qsvsnetd",
+                "qsvspoold",
                 "qsvspartd",
                 "qsvstools",
                 "qsvmm",
@@ -225,6 +235,7 @@ mod tests {
                 "qsvsstgd",
                 "qsvslogd",
                 "qsvsnetd",
+                "qsvspoold",
                 "qsvspartd",
                 "qsvstools",
                 "qsvmm",
@@ -239,7 +250,7 @@ mod tests {
         let manifest = std::fs::read_to_string(repo.join("Cargo.toml")).unwrap();
         for name in names(Image::Test) {
             // Service Tools is the one that is not Licensed Internal Code.
-            let member = if name == SERVICES[4] {
+            let member = if name == "qsvstools" {
                 "svc/tools".to_string()
             } else if name == VMM {
                 format!("vmm/{name}")

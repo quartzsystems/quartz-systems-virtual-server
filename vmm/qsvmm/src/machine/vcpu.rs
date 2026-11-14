@@ -95,6 +95,8 @@ pub struct Wiring {
     pub memory: Arc<Memory>,
     /// The host thread a dedicated processor's thread stays on.
     pub pin: Option<u32>,
+    /// Set while the partition is held.
+    pub pause: Arc<super::pause::Pause>,
 }
 
 /// The signal that brings a processor's thread out of the guest. Its
@@ -265,6 +267,9 @@ fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
         );
     }
     loop {
+        if wiring.pause.paused() {
+            wiring.pause.park(&vcpu);
+        }
         match vcpu.run() {
             Ok(VcpuExit::IoIn(port, data)) => {
                 wiring.io.read(u64::from(port), data);

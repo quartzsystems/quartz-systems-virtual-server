@@ -24,8 +24,8 @@ guest's LIC record, by the IPL loader alone.
 | 1 | PID 1 and base system: the supervised service table, state, logging, the management network and time, the host inventory, the A/B record with slot confirmation, the orderly shutdown | `docs/PHASE1.md` |
 | 2 | Installer, ISO and Service Tools: the installer and its ISO, the mirrored load source with its storage service, the Service Tools console | `docs/PHASE2.md` |
 | 3 | VMM core: `qsvmm`, and one QS/400 system taken from a disk image to a completed IPL in a partition | `docs/PHASE3.md` |
-| **4 (current)** | Partition manager, profiles, processors and memory: `partd`, definitions and profiles, activation with resource accounting, dedicated and shared processors, huge-page memory, the state machine, auto start | `docs/PHASE4.md` |
-| 5 | Virtual storage, optical and tape | |
+| 4 | Partition manager, profiles, processors and memory: `partd`, definitions and profiles, activation with resource accounting, dedicated and shared processors, huge-page memory, the state machine, auto start | `docs/PHASE4.md` |
+| **5 (current)** | Virtual storage, optical and tape: storage pools, virtual disks, the media library, optical and tape devices, IPL source D | `docs/PHASE5.md` |
 | 6 | Virtual Ethernet | |
 | 7 | Partition service interface | |
 | 8 | QSI host server and QS/MC integration | |
@@ -34,7 +34,7 @@ guest's LIC record, by the IPL loader alone.
 | 11 | Release engineering and hardening | |
 
 Work that is not done is listed in the current phase's record,
-`docs/PHASE4.md`. Code and documents mark it `BLOCKED(phase4): reason`
+`docs/PHASE5.md`. Code and documents mark it `BLOCKED(phase5): reason`
 (one line) or `NEEDS-CODY` (Cody's hardware or sign-off). No other
 marker form. The records of earlier phases keep the markers they were
 written with.
@@ -90,6 +90,12 @@ written with.
   Code that reads one does not panic on it, read or write outside what
   the guest was given, or allocate by a size it names. A new reader of
   guest bytes gets a target in `tools/fuzz`.
+- A release image's partition manager accepts only virtual disks of
+  storage pools as backing stores (`POOL/NAME`); a host path is a test
+  image's alone (`cfg(test_hooks)` in `qsvspartd`).
+- The pool service (`stg/poold`) is a service of its own, apart from
+  the load source's: a fault in pool code cannot take `/data` away.
+  The pool labels are the truth; `pools.toml` is written from them.
 - `qsvmm` opens what it needs as root and then runs as its partition's
   own unprivileged user (23000 plus the partition's ID) with no
   capability; it reports reference codes on standard error and the
@@ -112,7 +118,7 @@ written with.
   release artifact; the userland and manifest steps check.
 - No IBM text, product names or marks anywhere. The names in use are
   QS/VS, QS/MC and QS/400.
-- Anything not done is listed in `docs/PHASE4.md`.
+- Anything not done is listed in `docs/PHASE5.md`.
 
 ## Locked decisions
 
@@ -131,8 +137,9 @@ See `docs/ARCHITECTURE.md`. Short form:
   (`licpart::IplSource`), taken once an activation. Seven bytes at the reset vector end
   the partition when its guest restarts by a jump there; nothing of
   the VMM's runs before the guest's kernel.
-- **Virtual devices.** virtio over PCI only: scsi, net (vhost-net),
-  console, rng.
+- **Virtual devices.** virtio over PCI only: scsi (disks; an optical
+  drive and a tape drive each on a function of its own), net
+  (vhost-net), console, rng.
 - **Partition manager.** `partd`, a supervised service: definitions and
   profiles in state, activation with resource accounting, every `qsvmm`
   in its own control group, the states Not activated, Starting,
@@ -153,8 +160,14 @@ See `docs/ARCHITECTURE.md`. Short form:
   The keylock is the host's, written at every activation.
 - **Whose disks.** The host takes the disk it IPLed from and the
   members that disk's label names, and no other.
-- **Storage.** Storage pools are xfs file systems; virtual disks are raw
-  files; software RAID as on QS/400, presented through a ublk block device.
+- **Storage.** A storage pool is one protected set of whole disks
+  (none, mirrored, RAID 5, RAID 6; QS/400's `protect`) with one xfs on
+  it, presented through `ublk`, its size fixed when made, each disk
+  carrying a member label of this host. Virtual disks are raw files,
+  thin or thick, one partition's at a time, handed to its VMM open. A
+  pool that fills holds its partitions (`A2005160`). The media library
+  (optical images, AWSTAPE tape volumes) is in the pool designated as
+  the media repository (`docs/STORAGE.md`).
 - **Virtual Ethernet.** VLAN-aware kernel bridges, tap devices with
   vhost-net.
 - **Management.** QSI server on TCP 2300 with mutual TLS; the Service
@@ -216,7 +229,7 @@ tools/          host tools
     src/host/       doctor rows, the license header check, the neutrality check of base/, `test`, `fuzz`
   conformance/    the QEMU harness
     src/qemu/       launch, OVMF, serial capture, the serial port as a 24x80 grid, typed keys, golden files, firmware variables, image copies, the test hooks' channel
-    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3 and the sixteen of Phase 4, with the partition manager's client over the hooks' channel
+    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3 and the sixteen of Phase 4, with the partition manager's client over the hooks' channel; storage/ Phase 5's, with the pool service's client
     golden/         every installer and Service Tools screen, as text
   fuzz/           qsvsfuzz, the Rust fuzzer: LLVM's coverage counters, the mutator, the loop, a target for every reader of guest bytes
 base/           what every Quartz appliance needs; product-neutral
@@ -231,7 +244,8 @@ base/           what every Quartz appliance needs; product-neutral
   install/        the installer's screens and the answers of an unattended installation
   identity/       the host's key pair and self-signed certificate
   loadsource/     the load-source disks: which disks are the host's own, the GPT layout, the A/B record and the set's label on every disk, units that ran apart, the boot entries, the media's payload
-  stgd/           the storage service: the mirrored load source assembled, served through ublk, resynchronized, rebuilt; its socket
+  stgd/           the storage service: the mirrored load source assembled, served through ublk, resynchronized by its write-intent map, rebuilt; its socket
+  fdpass/         open files handed between processes over a Unix socket
 lic/            PID 1, release, installer, base services
   qsvsinit/       PID 1
     src/ipl/        the IPL in order: mounts and the host's control group, the command line, the storage step and the unit to keep, the clock, the state step, the partitions' memory; the hand-off to the installer
@@ -245,36 +259,44 @@ lic/            PID 1, release, installer, base services
   qsvsnetd/       base/netd run as QS/VS
   qsvsstgd/       base/stgd run as QS/VS, with QS/VS's inventory
   qsvspartd/      part/partd run as QS/VS, with QS/VS's cores, memory and serial number
+  qsvspoold/      stg/poold run as QS/VS, with QS/VS's pool disk names, inventory and identity
   qvsmsg/         the message catalogue: QVS messages, first-level and second-level text
   qsvsinstall/    the installer: base/install over QS/VS's media, disks and state
   qsvshook/       the test hooks' binary: the harness's channel, a failing service, the state churn
     src/partition/  what the partitions say, relayed to the serial port; the probe of requests no guest sends
-  release/        V1R0M0 over QS/400's vrm, the banner, the prefixes, the Appliance description, QS/VS's load-source names
+  release/        V1R0M0 over QS/400's vrm, the banner, the prefixes, the Appliance description, QS/VS's load-source and pool disk names
   refcode/        host reference codes (docs/REFCODES.md), the code of each base event, the poster
   hostinv/        the host inventory, the processors' threads, and the location codes (docs/LOCATION.md)
 vmm/            the VMM: one process for one partition
   arch/           x86_64 boot state: the memory map, page tables and GDT, registers, the zero page, the reset vector, the SMBIOS tables; CPUID and MSR policy with a core's sibling threads, the local APIC
   acpi/           the tables in place of firmware: RSDP, XSDT, FADT, MADT, MCFG, the DSDT
   devices/        the I/O port bus; the 16550, the CMOS clock, the reset line, the power-off register; the PCI bus, configuration space, MSI-X; virtio-pci, virtio-scsi, virtio-rng
-    src/virtio/scsi/  the command decoder, a disk LUN, the direct-I/O backing store
-  ipl/            the IPL loader: bounded GPT and FAT readers, the LIC record through licpart, the bzImage into guest memory
-  qsvmm/          the binary: the configuration it is given, the exit codes, the machine on KVM with huge-page memory, the processors' loop and their pinning, the serial log and console socket, the privilege drop
+    src/virtio/scsi/  the command decoder, a disk LUN and its hold for space, the optical drive, the tape drive, the backing stores
+  ipl/            the IPL loader: bounded GPT, FAT and ISO 9660 readers, the LIC record through licpart, the bzImage into guest memory, IPL source D
+  qsvmm/          the binary: the configuration it is given, the exit codes, the machine on KVM with huge-page memory, the processors' loop, their pinning and their pause, the serial log and console socket, the media control socket, the privilege drop
 part/           the partition manager
   model/          a partition's definition and its profiles, as state files and on the wire; validation with every error
   resource/       cores and memory: installed, configurable, available; what an activation gets; pools; the cgroup tree as a plan; partitions.toml
   partd/          the service: the socket's protocol, the partitions in state, the manager, and the machine behind it
     src/manager/    the partitions as they are: the requests, activation and the ends of a VMM, the configuration a VMM is given
     src/serve/      the service on Linux: control groups, starting qsvmm, watching it, auto start, taking up what runs
+stg/            storage
+  pool/           a pool's member label, a pool disk's layout, a pool to be made and its limits, what each disk is
+  vdisk/          virtual disks: raw files in a pool, thin or thick
+  media/          the media library: optical images, tape volumes, imports
+  tape/           a tape volume: the AWSTAPE image, a drive's view of it
+  poold/          the pool service: pools assembled from their labels, served through ublk, rebuilt; virtual disks, the library, what partitions hold; its socket
 svc/            Service Tools
-  tools/          qsvstools: QS/VS's menu, system status, the partition list and disk units over base/panels; the two sessions; the one panel PID 1 runs it for
-docs/           ARCHITECTURE, PHASE0, PHASE1, PHASE2, PHASE3, PHASE4, QS400_GUEST, VMM, PARTD, RESOURCES, PROFILE, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
+  tools/          qsvstools: QS/VS's menu, system status, the partition list, disk units, disk configuration and storage pools over base/panels; the two sessions; the one panel PID 1 runs it for
+docs/           ARCHITECTURE, PHASE0 to PHASE5, QS400_GUEST, VMM, PARTD, POOLD, STORAGE, RESOURCES, PROFILE, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
 ```
 
 Category folders are created as phases need them. The full set: `tools/`
 (host tools), `base/` (shared with QS/MC), `lic/` (PID 1, release,
 installer, base services), `vmm/`, `stg/`, `net/`, `qsi/`, `svc/`
 (Service Tools). Phase 2 has `tools/`, `base/`, `lic/` and `svc/`;
-Phase 3 adds `vmm/`, Phase 4 `part/` (the partition manager).
+Phase 3 adds `vmm/`, Phase 4 `part/` (the partition manager), Phase 5
+`stg/` (storage).
 
 ## Commands
 
@@ -285,7 +307,7 @@ with `QSVS_TARGET_DIR`.
 cargo run -p build -- doctor          host prerequisites, the license headers, base/ neutral
 cargo run -p build -- all             fetch, kernel, userland, initramfs, uki, disk, iso, manifest
 cargo run -p build -- all --test-image   the same with the test hooks, under <target>/test-image/
-cargo run -p build -- test            Phase 0's suite on the release image; the ten base suites, the fifteen of Phase 2, the ten of Phase 3 and the sixteen of Phase 4 on the test image; then the fuzz targets, 60 s each
+cargo run -p build -- test            Phase 0's suite on the release image; the ten base suites, the fifteen of Phase 2, the ten of Phase 3, the sixteen of Phase 4 and Phase 5's on the test image; then the fuzz targets, 60 s each
 cargo run -p build -- test --suite dhcp  one suite alone (--suite list names them)
 cargo run -p build -- test --media iso   boot the installation ISO to the installer's first screen
 QSVS_GOLDEN=update cargo run -p build -- test --suite install-serial   write the golden screens instead of comparing
@@ -294,7 +316,7 @@ cargo run -p build -- deny            cargo-deny and the C-linkage check
 cargo run -p build -- notices         rewrite lic/release/NOTICES.txt (--check in CI)
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvspartd -p qsvstools -p qsvsinstall -p qsvshook -p qsvmm --all-targets --target x86_64-unknown-linux-musl -- -D warnings
+cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvspoold -p qsvspartd -p qsvstools -p qsvsinstall -p qsvshook -p qsvmm --all-targets --target x86_64-unknown-linux-musl -- -D warnings
 cargo test --workspace
 QVS_MESSAGES=update cargo test -p qvsmsg   write the table of docs/MESSAGES.md from the catalogue
 ```
@@ -308,7 +330,9 @@ Environment: `QSVS_TARGET_DIR`, `QSVS_JOBS`, `QSVS_SIGNING_KEY`,
 `QSVS_OVMF_VARS`, `QSVS_QEMU`, `QSVS_NO_KVM`, `QSVS_BOOT_TIMEOUT`,
 `QSVS_ALLOW_NO_KVM` (`docs/PHASE0.md` says what each does), and
 `QSVS_QS400_IMAGE`, the QS/400 disk image the partition suites IPL
-(`docs/PHASE4.md` says how to make it).
+(`docs/PHASE4.md` says how to make it), and `QSVS_QS400_ISO`, QS/400's
+installation ISO with a response file, which `pool-install` uploads and
+installs from (`docs/PHASE5.md`).
 `QSVS_TEST_HOOKS` is the build's own: the userland step sets it, on for
 a test image and off for a release image, whatever the caller has.
 
@@ -329,6 +353,15 @@ a test image and off for a release image, whatever the caller has.
 - `docs/PHASE4.md`: the partition manager, and before it the new pin:
   what exists, how to run it, what the pin broke, kernel additions,
   hashes, the acceptance table, what remains for a real machine.
+- `docs/PHASE5.md`: storage, and before it the new pin and the load
+  source's write-intent map: what exists, how to run it, kernel
+  additions, hashes, the acceptance table, what remains for a real
+  machine.
+- `docs/STORAGE.md`: pools, member labels, protection, virtual disks,
+  the media library, the tape image format, limits, what happens on
+  each failure.
+- `docs/POOLD.md`: the pool service's socket, which QSI's storage family
+  maps onto.
 - `docs/QS400_GUEST.md`: what an unmodified QS/400 does in a partition
   without firmware, what it reads of a partition's identity, and what
   QS/400 would have to change.
