@@ -1,0 +1,15 @@
+[package]
+name = "svcchan"
+description = "The service channel to the system in a partition, on the host's side: QS/400's protocol crate's frames read as hostile input, the hello checked, requests answered or timed out, pings and the not-responding rule"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The protocol: QS/400's crate, pinned with the others. Nothing of it is
+# restated here.
+qsipart.workspace = true
+
+[lints]
+workspace = true

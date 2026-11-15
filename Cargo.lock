@@ -361,6 +361,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "console-port"
+version = "0.1.0"
+dependencies = [
+ "qsipart",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2136,6 +2143,13 @@ dependencies = [
  "ipc",
  "libc",
  "rustix",
+]
+
+[[package]]
+name = "svcchan"
+version = "0.1.0"
+dependencies = [
+ "qsipart",
 ]
 
 [[package]]

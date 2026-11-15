@@ -51,6 +51,8 @@ members = [
     "part/partd",
     # The service channel, the console and dumps (Phase 7).
     "part/dump",
+    "part/svcchan",
+    "part/console",
     # Storage: pools, virtual disks, the media library, tape volumes.
     "stg/pool",
     "stg/vdisk",
@@ -90,6 +92,10 @@ svcusers = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = 
 # The guest's LIC record. The one QS/400-specific crate QS/VS depends on,
 # and only the IPL loader (vmm/ipl) uses it.
 licpart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+# The partition service channel's protocol (QS/400's docs/QSID.md): the
+# frames, the messages, the console as cells. The partition manager
+# alone speaks it; qsvmm carries its bytes.
+qsipart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
 
 # The rust-vmm crates the VMM is built on (docs/PHASE3.md says why each
 # passes deny).
