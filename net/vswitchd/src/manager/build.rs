@@ -90,11 +90,18 @@ impl<K: Kernel, E: Env> Core<K, E> {
         let mut port = None;
         let mut members = Vec::new();
         if let Some(u) = &s.uplink {
+            // The management interface is never taken, whatever the state
+            // file says.
+            let management = self.env.management();
             for location in &u.interfaces {
                 match self
                     .nic_name(location)
                     .and_then(|n| named(&links, &n).cloned())
                 {
+                    Some(l) if management.as_deref() == Some(l.name.as_str()) => self.env.post(
+                        &refcode::UPLINK_MISSING,
+                        &format!("{}, {location}: it is the management interface", s.name),
+                    ),
                     Some(l) => members.push(l),
                     None => self
                         .env

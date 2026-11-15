@@ -382,3 +382,26 @@ fn a_switch_built_from_state_with_its_interface_gone_is_internal_and_said() {
     let a = c.switches().get("A").cloned().unwrap();
     assert_eq!(c.status(&a).uplink_state, uplink_state::MISSING);
 }
+
+#[test]
+fn a_state_file_that_names_the_management_interface_does_not_take_it() {
+    let state = Switches {
+        limits: Limits::default(),
+        switches: vec![Switch {
+            name: "A".into(),
+            id: 1,
+            vlans: vec![10],
+            mtu: 1500,
+            uplink: Some(uplink(&[ETH0], None, None)),
+        }],
+    };
+    let mut c = Core::new(
+        FakeKernel::with(&["eth0", "eth1"]),
+        FakeEnv::with(&[("eth0", ETH0), ("eth1", ETH1)]),
+        state,
+    );
+    c.start(&[], true);
+    assert_eq!(c.kernel.master_of("eth0"), None);
+    assert!(!c.kernel.ipv6_off.contains("eth0"));
+    assert!(c.env.posted[0].1.contains("management"), "{:?}", c.env.posted);
+}
