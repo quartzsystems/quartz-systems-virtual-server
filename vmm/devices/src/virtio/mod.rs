@@ -11,6 +11,8 @@
 //!   processors' threads.
 //! - [`scsi`]: the SCSI host, with disk LUNs.
 //! - [`net`]: the network adapter, its data path vhost-net's.
+//! - [`console`]: the console with named ports: the service channel and
+//!   the console port.
 //! - [`rng`]: the entropy source.
 
 use std::io;
@@ -23,6 +25,7 @@ use vmm_sys_util::eventfd::EventFd;
 use crate::Memory;
 use crate::pci::Msix;
 
+pub mod console;
 pub mod net;
 pub mod rng;
 pub mod scsi;
@@ -38,6 +41,8 @@ pub const FEATURE_INDIRECT_DESC: u64 = 1 << 28;
 
 /// The virtio device type of a network adapter.
 pub const TYPE_NET: u32 = 1;
+/// The virtio device type of a console.
+pub const TYPE_CONSOLE: u32 = 3;
 /// The virtio device type of an entropy source.
 pub const TYPE_RNG: u32 = 4;
 /// The virtio device type of a SCSI host.

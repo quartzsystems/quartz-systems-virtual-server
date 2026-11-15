@@ -16,6 +16,7 @@
 //! | `devices` | reads and writes of the I/O ports, PCI configuration space and the virtio BARs |
 //! | `report` | what a VMM writes on its standard error, where text of the guest's can end up, as the partition manager reads it |
 //! | `netctrl` | guest memory with the virtio-net control queue in it, and a control request's bytes |
+//! | `console` | guest memory with the virtio-console control queues and a port's queues in it, and control messages' bytes |
 
 use std::fs::File;
 use std::io::{self, Cursor};
@@ -564,6 +565,111 @@ fn report(data: &[u8]) {
     }
 }
 
+fn console_seeds() -> Vec<Vec<u8>> {
+    use devices::virtio::console::control::{DEVICE_READY, Message, PORT_OPEN, PORT_READY};
+    // The driver's readiness, a port's, and its open, each in a
+    // descriptor of its own; then a buffer of bytes the guest sends.
+    let mut m = vec![0u8; 0x1_0000];
+    let mut descriptor = |index: usize, addr: u64, len: u32, flags: u16, next: u16| {
+        let at = DESC as usize + index * 16;
+        m[at..at + 8].copy_from_slice(&addr.to_le_bytes());
+        m[at + 8..at + 12].copy_from_slice(&len.to_le_bytes());
+        m[at + 12..at + 14].copy_from_slice(&flags.to_le_bytes());
+        m[at + 14..at + 16].copy_from_slice(&next.to_le_bytes());
+    };
+    descriptor(0, 0x8000, 8, 0, 0);
+    descriptor(1, 0x8100, 8, 0, 0);
+    descriptor(2, 0x8200, 8, 0, 0);
+    descriptor(3, 0x9000, 64, 2, 0);
+    for (i, head) in [0u16, 1, 2, 3].iter().enumerate() {
+        let at = AVAIL as usize + 4 + i * 2;
+        m[at..at + 2].copy_from_slice(&head.to_le_bytes());
+    }
+    m[AVAIL as usize + 2] = 4;
+    for (at, message) in [
+        (
+            0x8000,
+            Message {
+                id: 0,
+                event: DEVICE_READY,
+                value: 1,
+            },
+        ),
+        (
+            0x8100,
+            Message {
+                id: 1,
+                event: PORT_READY,
+                value: 1,
+            },
+        ),
+        (
+            0x8200,
+            Message {
+                id: 1,
+                event: PORT_OPEN,
+                value: 1,
+            },
+        ),
+    ] {
+        let bytes = message.bytes(&[]);
+        m[at..at + bytes.len()].copy_from_slice(&bytes);
+    }
+    m[0xA000..0xA004].copy_from_slice(b"QI\x01\x00");
+    vec![m]
+}
+
+/// Guest memory whose first bytes are the input, with the queues in it:
+/// the control queue's both ways, then a port's both ways, with its link
+/// connected and open; and the input in pieces as control messages.
+fn console(data: &[u8]) {
+    use devices::virtio::console::{self, Control, Link, control::MAX_WAITING};
+    let mut control = Control::new(&[
+        "systems.quartz.qsvs.service.0",
+        "systems.quartz.qsvs.console.0",
+    ]);
+    for message in data.chunks(8).take(256) {
+        control.from_guest(message, &|i| i == 0);
+    }
+    let Ok(memory) = Memory::from_ranges(&[(GuestAddress(0), QUEUE_MEMORY)]) else {
+        return;
+    };
+    let _ = memory.write_slice(&data[..data.len().min(QUEUE_MEMORY)], GuestAddress(0));
+    if let Some(mut queue) = queue_at(&memory, 64) {
+        console::serve_control_tx(&mut queue, &memory, &mut control, &|i| i == 1);
+    }
+    control.host(0, false);
+    control.host(1, true);
+    if let Some(mut queue) = queue_at(&memory, 64) {
+        console::fill_control_rx(&mut queue, &memory, &mut control);
+    }
+    let mut left = 0;
+    while control.take().is_some() {
+        left += 1;
+    }
+    assert!(left <= MAX_WAITING);
+    let Ok(link) = Link::new() else {
+        return;
+    };
+    let n = link.connect();
+    link.set_guest_open(true);
+    if let Some(mut queue) = queue_at(&memory, 64) {
+        console::serve_tx(&mut queue, &memory, &link);
+    }
+    let waiting = link.waiting_for_host();
+    assert!(waiting <= console::link::CAPACITY + console::MAX_CHAIN);
+    let sent = if waiting > 0 {
+        link.from_guest(n, waiting).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    assert!(sent.len() <= console::link::CAPACITY + console::MAX_CHAIN);
+    let _ = link.to_guest(n, &sent[..sent.len().min(console::link::CAPACITY)]);
+    if let Some(mut queue) = queue_at(&memory, 64) {
+        console::fill_rx(&mut queue, &memory, &link);
+    }
+}
+
 fn iso_seeds() -> Vec<Vec<u8>> {
     let k = kernel();
     let mut image = ipl::iso::build(
@@ -802,6 +908,12 @@ pub const TARGETS: &[Target] = &[
         about: "the virtio-net control queue and its requests",
         seeds: netctrl_seeds,
         run: netctrl,
+    },
+    Target {
+        name: "console",
+        about: "the virtio-console control queue and a port's queues",
+        seeds: console_seeds,
+        run: console,
     },
 ];
 
