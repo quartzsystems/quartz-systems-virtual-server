@@ -273,6 +273,12 @@ mod tests {
     ];
 
     #[test]
+    fn the_fragment_has_512_processors() {
+        let fragment = include_str!("../../../../kernel/config/qsvs.config");
+        assert!(fragment.lines().any(|l| l == "CONFIG_NR_CPUS=512"));
+    }
+
+    #[test]
     fn every_phase_6_symbol_is_checked_and_netfilter_stays_off() {
         for sym in PHASE6 {
             assert!(REQUIRED_Y.contains(sym), "{sym} is not in REQUIRED_Y");
