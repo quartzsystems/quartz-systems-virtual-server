@@ -256,8 +256,20 @@ impl<S: System> Manager<S> {
     }
 
     /// The system's hello: checked against the definition, its facts
-    /// kept, answered with the host's.
+    /// kept, answered with the host's. Its fields are the system's, and
+    /// bounded before anything is made of them.
     fn hello(&mut self, id: u32, h: &Hello) {
+        let bound = |s: &str, most: usize| -> String {
+            s.chars().filter(|c| !c.is_control()).take(most).collect()
+        };
+        let h = &Hello {
+            system: bound(&h.system, 16),
+            release: bound(&h.release, 16),
+            serial: bound(&h.serial, 16),
+            slot: bound(&h.slot, 4),
+            ipl_type: bound(&h.ipl_type, 4),
+            ..h.clone()
+        };
         let name = self.name_of(id);
         let host_name = format!("QS/VS {}", release::RELEASE);
         self.system
@@ -335,6 +347,21 @@ impl<S: System> Manager<S> {
 
     /// A reference code the system posted.
     fn system_code(&mut self, id: u32, r: &Refcode) {
+        let r = &Refcode {
+            code: r
+                .code
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(16)
+                .collect(),
+            text: r
+                .text
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(256)
+                .collect(),
+            ..r.clone()
+        };
         let now = self.system.now();
         let Some(p) = self.partitions.get_mut(&id) else {
             return;

@@ -13,6 +13,7 @@
 //! - [`store`]: the partitions in state.
 //! - [`manager`]: the partitions as they are, and what each request
 //!   and each end of a VMM does to them.
+//! - [`fuzzing`]: the fuzz target of what a system sends.
 //! - [`serve`]: the service: the machine behind the manager, the
 //!   socket, the watchers, auto start (Linux).
 //!
@@ -20,6 +21,7 @@
 
 #![deny(unsafe_code)]
 
+pub mod fuzzing;
 pub mod manager;
 pub mod proto;
 pub mod store;

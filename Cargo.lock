@@ -675,6 +675,7 @@ dependencies = [
  "devices",
  "ipl",
  "partd",
+ "qsipart",
  "refcode",
  "tape",
  "virtio-queue",

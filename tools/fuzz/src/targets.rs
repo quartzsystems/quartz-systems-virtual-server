@@ -17,6 +17,7 @@
 //! | `report` | what a VMM writes on its standard error, where text of the guest's can end up, as the partition manager reads it |
 //! | `netctrl` | guest memory with the virtio-net control queue in it, and a control request's bytes |
 //! | `console` | guest memory with the virtio-console control queues and a port's queues in it, and control messages' bytes |
+//! | `channel` | what a system sends on its service channel and console port, as the partition manager takes it |
 
 use std::fs::File;
 use std::io::{self, Cursor};
@@ -670,6 +671,38 @@ fn console(data: &[u8]) {
     }
 }
 
+fn channel_seeds() -> Vec<Vec<u8>> {
+    use qsipart::service::{FromSystem, Hello, Keylock, Refcode, State, SysState};
+    let mut seed = vec![40u8, 0b1000_0000];
+    for m in [
+        FromSystem::Hello(Hello {
+            version: 1,
+            caps: qsipart::caps::SERVICE_V1,
+            system: "QS400".into(),
+            release: "V1R2M0".into(),
+            serial: "K2M4101".into(),
+            slot: "A".into(),
+            ipl_type: "A".into(),
+            keylock: Keylock::Normal,
+        }),
+        FromSystem::Refcode(Refcode {
+            code: "C1001000".into(),
+            words: Vec::new(),
+            text: "IPL started".into(),
+            time_ms: 0,
+            current: true,
+        }),
+        FromSystem::State(State {
+            state: SysState::Complete,
+            fix_level: String::new(),
+            addresses: vec!["10.0.2.15/24".into()],
+        }),
+    ] {
+        seed.extend(m.encode().unwrap_or_default());
+    }
+    vec![seed]
+}
+
 fn iso_seeds() -> Vec<Vec<u8>> {
     let k = kernel();
     let mut image = ipl::iso::build(
@@ -914,6 +947,12 @@ pub const TARGETS: &[Target] = &[
         about: "the virtio-console control queue and a port's queues",
         seeds: console_seeds,
         run: console,
+    },
+    Target {
+        name: "channel",
+        about: "a system's service channel and console port, as the partition manager takes them",
+        seeds: channel_seeds,
+        run: partd::fuzzing::frames,
     },
 ];
 
