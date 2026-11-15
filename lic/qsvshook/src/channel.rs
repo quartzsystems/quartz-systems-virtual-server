@@ -200,11 +200,23 @@ fn load(megabytes: &str) -> Vec<String> {
 
 /// A file's length and the sum of its bytes.
 fn sum(path: &str) -> Vec<String> {
-    match fs::read(path) {
-        Ok(bytes) => {
-            let sum: u64 = bytes.iter().map(|b| u64::from(*b)).sum();
-            vec![format!("{} {} {sum}", word::OK, bytes.len())]
+    // A piece at a time: a dump is larger than the host's memory.
+    let summed = (|| -> std::io::Result<(u64, u64)> {
+        use std::io::Read;
+        let mut file = fs::File::open(path)?;
+        let mut piece = vec![0u8; 1 << 20];
+        let (mut bytes, mut sum) = (0u64, 0u64);
+        loop {
+            let n = file.read(&mut piece)?;
+            if n == 0 {
+                return Ok((bytes, sum));
+            }
+            bytes += n as u64;
+            sum += piece[..n].iter().map(|b| u64::from(*b)).sum::<u64>();
         }
+    })();
+    match summed {
+        Ok((bytes, sum)) => vec![format!("{} {bytes} {sum}", word::OK)],
         Err(e) => error(format!("{path}: {e}")),
     }
 }
