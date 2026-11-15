@@ -17,7 +17,9 @@
 //! links under `/sys/class/net`, each port's counters, the ports' record
 //! in the run directory.
 
+mod qs400;
 mod suites;
+mod tools;
 
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
@@ -34,8 +36,8 @@ use super::partition::manager::{self, Spec};
 use super::partition::{QSVS_MEMORY_MIB, fresh_host, host, launch, profile};
 use crate::qemu::image::{seed_volume, sparse_copy};
 use crate::qemu::session::Session;
-use crate::qemu::wire::{Ports, Station};
-use crate::qemu::{FIRST_UPLINK_PLACE, Far, UplinkNic};
+use crate::qemu::wire::Station;
+use crate::qemu::{Drive, FIRST_UPLINK_PLACE, Far, Launch, UplinkNic};
 
 /// The suites, in the order of the handoff.
 pub const SUITES: &[(&str, SuiteFn)] = &[
@@ -75,30 +77,49 @@ pub struct Net<'a> {
     pub station: Station,
 }
 
-/// Boot a host with `nics` uplink NICs to the station (and `user` more
-/// on QEMU's user network), with `guests` copies of the cheap guest's
-/// disk and `seeds` as their seed volumes (one a guest, or none) as
-/// further disks: guest `i`'s disk is `/dev/vd<b + 2i>`, its seed the
-/// next.
-pub fn boot<'a>(
-    run: &Run<'a>,
-    nics: usize,
-    user: &[Option<(u16, String, u16)>],
-    guests: usize,
-    seeds: &[Option<String>],
-    dhcp: bool,
-) -> Result<Net<'a>, String> {
+/// What a suite's host has.
+#[derive(Clone, Debug, Default)]
+pub struct Rig {
+    /// Uplink NICs to the station, each with its largest MTU or none.
+    pub nics: Vec<Option<u32>>,
+    /// More on QEMU's user network, each with a port forwarded or none.
+    pub user: Vec<Option<(u16, String, u16)>>,
+    /// Copies of the cheap guest's disk.
+    pub guests: usize,
+    /// Their seeds, by guest; none gives an empty one.
+    pub seeds: Vec<Option<String>>,
+    /// Whether the station answers DHCP.
+    pub dhcp: bool,
+    /// Further disks after the guests', as they are.
+    pub disks: Vec<PathBuf>,
+}
+
+impl Rig {
+    /// `nics` plain uplink NICs and `guests` cheap guests, with DHCP.
+    pub fn new(nics: usize, guests: usize) -> Self {
+        Self {
+            nics: vec![None; nics],
+            guests,
+            dhcp: true,
+            ..Self::default()
+        }
+    }
+}
+
+/// The launch of a host for `rig`, and the station on its uplinks. The
+/// cheap guest `i`'s disk is `/dev/vd<b + 2i>`, its seed the next.
+pub fn rig_launch(run: &Run<'_>, rig: &Rig, base: Launch) -> Result<(Launch, Station), String> {
     let image = run
         .release_disk
         .ok_or("the release image is not built; run `all` first")?;
-    fresh_host(run)?;
     let mut units: Vec<PathBuf> = Vec::new();
-    for i in 0..guests {
+    for i in 0..rig.guests {
         let disk = run.file(&format!("guest{i}.img"));
         sparse_copy(image, &disk)?;
         units.push(disk);
         let seed = run.file(&format!("seed{i}.img"));
-        let text = seeds
+        let text = rig
+            .seeds
             .get(i)
             .cloned()
             .flatten()
@@ -106,28 +127,47 @@ pub fn boot<'a>(
         seed_volume(&seed, release::SEED_LABEL, &text)?;
         units.push(seed);
     }
-    let ports = Station::ports(nics).map_err(|e| e.to_string())?;
-    let station = Station::start(&ports, dhcp).map_err(|e| e.to_string())?;
-    let mut l = launch(run, &units)?;
+    units.extend(rig.disks.iter().cloned());
+    let ports = Station::ports(rig.nics.len()).map_err(|e| e.to_string())?;
+    let station = Station::start(&ports, rig.dhcp).map_err(|e| e.to_string())?;
+    let mut l = base;
+    let first = l.extra.len();
+    for (i, path) in units.iter().enumerate() {
+        l.extra.push(Drive {
+            path: path.clone(),
+            serial: format!("QSVSUNIT{i}"),
+            place: l.pinned.then(|| u8::try_from(first + i).unwrap_or(0)),
+        });
+    }
+    if l.monitor.is_none() {
+        l.monitor = Some(run.socket("monitor.sock"));
+    }
+    let n = ports.len();
     l.uplinks = ports
         .iter()
+        .zip(&rig.nics)
         .enumerate()
-        .map(|(i, p)| UplinkNic {
+        .map(|(i, (p, mtu))| UplinkNic {
             mac: uplink_mac(i),
             far: Far::Station(*p),
+            mtu: *mtu,
         })
-        .chain(user.iter().enumerate().map(|(j, fwd)| UplinkNic {
-            mac: uplink_mac(nics + j),
+        .chain(rig.user.iter().enumerate().map(|(j, fwd)| UplinkNic {
+            mac: uplink_mac(n + j),
             far: Far::User(fwd.clone()),
+            mtu: None,
         }))
         .collect();
-    let guest = host(run, &l)?;
-    let _ = ports_of(&ports);
-    Ok(Net { guest, station })
+    Ok((l, station))
 }
 
-fn ports_of(p: &[Ports]) -> usize {
-    p.len()
+/// Boot a host of the test image for `rig` to its partition manager
+/// answering.
+pub fn boot<'a>(run: &Run<'a>, rig: &Rig) -> Result<Net<'a>, String> {
+    fresh_host(run)?;
+    let (l, station) = rig_launch(run, rig, launch(run, &[])?)?;
+    let guest = host(run, &l)?;
+    Ok(Net { guest, station })
 }
 
 /// The disk of guest `i` as the host has it.
