@@ -164,7 +164,9 @@ pub fn full(run: &Run<'_>) -> Result<String, String> {
     let spec = cheap("POOL1/GUEST");
     manager::activate(&mut guest, id, &spec).map_err(|e| manager::refused(&e))?;
     guest.seen(&posted(&refcode::PARTITION_HELD, ""), run.deadline())?;
-    let held = manager::status(&mut guest, id)?;
+    // A guest with no service channel is Running once the wait for one
+    // is over (Phase 7), held or not.
+    let held = manager::until(&mut guest, id, partd::State::Running, run.deadline())?;
     if held.state != partd::State::Running {
         return Err(format!("held, the partition is {}", held.state.word()));
     }

@@ -714,12 +714,8 @@ pub fn not_required(run: &Run<'_>) -> Result<String, String> {
     }
     manager::said(manager::partd(g)?.activate(id, "OPTIONAL".into(), None, None))?;
     guest_ready(g, "NETA", run.deadline())?;
-    let status = manager::partd(g)?
-        .list()
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|s| s.id == id)
-        .ok_or("no such partition")?;
+    // Running once the wait for a service channel is over (Phase 7).
+    let status = manager::until(g, id, partd::State::Running, run.deadline())?;
     let link = status.ethernet.first().map(|e| e.link);
     if status.state != partd::State::Running
         || link != Some(false)
