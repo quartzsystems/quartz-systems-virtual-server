@@ -199,9 +199,12 @@ impl Session {
         }
     }
 
-    /// Wait until `needle` is anywhere in the serial log.
+    /// Wait until `needle` is anywhere in the serial log, also where a
+    /// kernel message was written into the middle of its line.
     pub fn seen(&mut self, needle: &str, deadline: Instant) -> Result<(), String> {
-        self.wait_for(&format!("`{needle}`"), deadline, |log| log.contains(needle))
+        self.wait_for(&format!("`{needle}`"), deadline, |log| {
+            log.contains(needle) || without_kernel(log).contains(needle)
+        })
     }
 
     /// The last line of the serial log that has `needle`, once one has
@@ -311,5 +314,75 @@ impl Drop for Session {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+/// `log` without the kernel's messages: each `[ seconds.micros] ...`
+/// up to its line's end, wherever on a line it began.
+fn without_kernel(log: &str) -> String {
+    let bytes = log.as_bytes();
+    let mut out = String::with_capacity(log.len());
+    let mut from = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'['
+            && let Some(len) = stamp(&bytes[i..])
+        {
+            out.push_str(&log[from..i]);
+            let end = log[i + len..]
+                .find(NL)
+                .map_or(log.len(), |n| i + len + n + 1);
+            i = end;
+            from = end;
+        } else {
+            i += 1;
+        }
+    }
+    out.push_str(&log[from..]);
+    out
+}
+
+/// A line's end.
+const NL: char = '\x0a';
+
+/// The length of a kernel message's time stamp, `[` spaces, digits, `.`,
+/// six digits, `] `, at the start of `b`.
+fn stamp(b: &[u8]) -> Option<usize> {
+    let mut i = 1;
+    while b.get(i) == Some(&b' ') {
+        i += 1;
+    }
+    let whole = i;
+    while b.get(i).is_some_and(u8::is_ascii_digit) {
+        i += 1;
+    }
+    if i == whole || b.get(i) != Some(&b'.') {
+        return None;
+    }
+    i += 1;
+    let frac = i;
+    while b.get(i).is_some_and(u8::is_ascii_digit) {
+        i += 1;
+    }
+    (i - frac == 6 && b.get(i) == Some(&b']') && b.get(i + 1) == Some(&b' ')).then_some(i + 2)
+}
+
+#[cfg(test)]
+mod kernel_tests {
+    use super::without_kernel;
+
+    #[test]
+    fn a_kernel_message_inside_a_line_is_taken_out() {
+        let log = "REF A2007020 Pool unit failed: P[    1.950008] I/O error, dev vdb\x0d\x0aOOL1, unit 1\x0a";
+        assert_eq!(
+            without_kernel(log),
+            "REF A2007020 Pool unit failed: POOL1, unit 1\x0a"
+        );
+    }
+
+    #[test]
+    fn other_brackets_stay() {
+        let log = "unit(s) [0] pulled; [1.5] and [ 12.123456]x stay\x0a";
+        assert_eq!(without_kernel(log), log);
     }
 }
