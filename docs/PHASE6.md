@@ -16,7 +16,7 @@ It was built at QS/400 `0fc8afa` and moved to `a9d5c8a` at its end
 
 | # | Question | What was done |
 |---|---|---|
-| 35 | a copy of a virtual disk | left out until QS/MC needs template partitions; the reflink change to `xfsfmt` is a QS/400 handoff then |
+| 35 | a copy of a virtual disk | left out until QS/MC needs template partitions; since the pin, pools are made with reflink (below, "The pin") |
 | 36 | tape from QS/400 | as recommended: `INZTAP`, `SAVLIB` and `RSTLIB` against the virtual drive are the first thing of Phase 10 |
 | 34 | a held partition's state for QS/MC | still Cody's to confirm; nothing changed |
 | 32 | the kernel built for 64 threads | closed with the pin: `NR_CPUS=512` here and in QS/400 |
@@ -35,7 +35,7 @@ What it brings and what QS/VS did with it:
 | QS/400 change | Here |
 |---|---|
 | `NR_CPUS=512` in its kernel fragment | the same line in `kernel/config/qsvs.config` in the pin's commit, with a unit test of the build holding it; the kernel pin itself (6.18.55) did not move. Item 32 closed |
-| `xfsfmt`: reflink and reverse mapping by option | not used: a pool is still made without them. Whether pools made from now on take them is Cody's (item 35) |
+| `xfsfmt`: reflink and reverse mapping by option | a pool is made with them from now on (Cody, item 35), held by a unit test of the pool service; the load source's `/data` is not |
 | `protect`: parity set maps of members out of service | not used yet: the pool service keeps no map for parity pools (`BLOCKED` below) |
 | `tape`: `st` past the early warning | nothing to change: the virtual drive is not QS/400's tape code |
 | `xfsfmt`: one allocation group, the inode chunk after the log | a load source's and a pool's xfs bytes are new; nothing on an installed disk is read differently |
@@ -306,5 +306,4 @@ below).
 - [ ] NEEDS-CODY: an uplink on the Dell machine to a switch port carrying tagged VLANs.
 - [ ] NEEDS-CODY: an LACP bond against a real switch.
 - [ ] NEEDS-CODY: a 5250 session to a partition from a workstation.
-- [ ] NEEDS-CODY: whether pools made from now on take `xfsfmt`'s reflink option (`docs/OPEN_QUESTIONS.md` item 35).
 - Phase 5's list for a real machine (`docs/PHASE5.md`) still stands.

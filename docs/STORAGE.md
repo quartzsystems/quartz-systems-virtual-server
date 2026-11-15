@@ -191,10 +191,15 @@ again each second; when it is done, `C2005160` and the partition goes
 on. QS/MC sees a held partition as Running with that attention code
 (`docs/OPEN_QUESTIONS.md` item 34, confirmed).
 
-**No copy.** A copy of a virtual disk, for a template partition, would
-be a reflink; QS/400's `xfsfmt` makes xfs with CRCs, ftype, finobt,
-inobtcount and bigtime, and without reflink. So there is none
-(`docs/PHASE5.md`).
+**No copy yet.** A copy of a virtual disk, for a template partition,
+is to be a reflink (`FICLONE`), a request of the pool service's when
+QS/MC needs template partitions (`docs/OPEN_QUESTIONS.md` item 35). A
+pool made since the end of Phase 6 has the reflink feature and the
+reverse mapping it takes (QS/400's `xfsfmt` by option, with CRCs,
+ftype, finobt, inobtcount and bigtime); the kernel reserves about 1.8%
+of the pool for their btrees at mount, counted as used. A pool made
+before has neither and will copy by bytes. The load source's `/data`
+is made without them.
 
 ## The media library
 

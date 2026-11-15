@@ -51,22 +51,6 @@ port. If it is wanted later, as a VLAN sub-interface of the uplink's
 bond that the bridge never sees, with its own trial as `netd` has
 today, and never a VLAN a partition is on.
 
-### 35. A copy of a virtual disk (answered by the Phase 6 handoff)
-
-QS/400's `xfsfmt` makes a pool's xfs without reflink, so a copy of a
-virtual disk would be a whole copy of its bytes. It is left out
-(`docs/PHASE5.md`). Decided: `xfsfmt` gains the reflink feature, and
-the reverse mapping it takes, in QS/400; QS/VS then copies a virtual
-disk by `FICLONE`, a request of the pool service's, when QS/MC's
-template partitions need it. A pool made before that has no reflink
-and copies by bytes. The Phase 6 handoff: left out until QS/MC needs
-template partitions. QS/400's `xfsfmt` has reflink and the reverse
-mapping by option since the pin at the end of Phase 6 (`a9d5c8a`);
-QS/VS's pools are still made without them. NEEDS-CODY: whether pools
-made from now on take the option, so that they can copy by `FICLONE`
-later (recommended: yes; it costs a little space for the reverse
-mapping and changes nothing of a pool made before).
-
 ## Decided, waiting on QS/400
 
 ### 36. Tape from QS/400 (answered by the Phase 6 handoff)
@@ -287,3 +271,10 @@ handoff took it as recommended.
     in `kernel/config/qsvs.config`, each in a commit of its own. A
     partition's guest sees more than 64 processors when its QS/400 is
     built at that commit or later.
+35. **A copy of a virtual disk.** Decided on 2026-11-14, as
+    recommended: a pool made since the end of Phase 6 is made with
+    `xfsfmt`'s reflink option and the reverse mapping it takes
+    (QS/400 `a9d5c8a`), about 1.8% of the pool reserved at mount. The
+    copy itself, by `FICLONE`, is a request of the pool service's when
+    QS/MC needs template partitions; a pool made before copies by
+    bytes (`docs/STORAGE.md`).

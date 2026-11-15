@@ -230,15 +230,12 @@ fn spares_of(found: &[Found]) -> Vec<Spare> {
         .collect()
 }
 
-/// Make the pool's xfs file system on its device.
-fn format(node: &Path, blocks: u64, name: &str, now: u64) -> Result<(), String> {
-    let mut dev = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(node)
-        .map_err(|e| format!("{}: {e}", node.display()))?;
+/// What a pool's xfs is made with: 4 KiB sectors, the pool's name as
+/// its label, and reflink with the reverse mapping, so that a virtual
+/// disk can later be copied by `FICLONE` (`docs/STORAGE.md`).
+fn options(uuid: Uuid, name: &str, now: u64) -> xfsfmt::Options {
     let mut options = xfsfmt::Options::new(
-        uuid()?,
+        uuid,
         xfsfmt::Timestamp {
             secs: i64::try_from(now).unwrap_or(0),
             nsecs: 0,
@@ -246,6 +243,18 @@ fn format(node: &Path, blocks: u64, name: &str, now: u64) -> Result<(), String> 
     );
     options.label = name.chars().take(12).collect();
     options.sector_size = 4096;
+    options.reflink = true;
+    options
+}
+
+/// Make the pool's xfs file system on its device.
+fn format(node: &Path, blocks: u64, name: &str, now: u64) -> Result<(), String> {
+    let mut dev = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(node)
+        .map_err(|e| format!("{}: {e}", node.display()))?;
+    let options = options(uuid()?, name, now);
     let bytes = (blocks * 4096).min(xfsfmt::MAX_BYTES);
     xfsfmt::format(&mut dev, bytes, &options).map_err(text)?;
     dev.sync_all().map_err(text)
@@ -358,4 +367,17 @@ pub fn remove_spare(
 /// The pool's mount point under `pools`.
 pub fn mount_point(pools: &Path, name: &str) -> PathBuf {
     pools.join(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pool_is_made_with_reflink() {
+        let o = options(Uuid::nil(), "A_LONG_POOL_NAME", 1);
+        assert!(o.reflink);
+        assert_eq!(o.sector_size, 4096);
+        assert_eq!(o.label, "A_LONG_POOL_");
+    }
 }
