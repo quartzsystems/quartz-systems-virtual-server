@@ -4,7 +4,7 @@
  2=Rename 4=Delete 5=Display 6=Replace unit 7=Add spare 8=Remove spare 9=Media
 
  Opt Name        Protection State                Size  Used
-     TOOLS1      mirrored  Active                 2.0 GB    1%
+     TOOLS1      mirrored  Active                 2.0 GB    3%
 
  * holds the media library
 
