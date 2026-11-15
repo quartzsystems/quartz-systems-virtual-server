@@ -44,10 +44,25 @@ Nothing in QS/VS's code had to change for it. QS/400's `main` has
 moved on since (`qsipart`, `qsid`, a partition's console port as a
 display: the partition service channel), which is Phase 7's.
 
-The partition suites' guest is still QS/400 built at `0fc8afa`: its
-kernel has `NR_CPUS=64`, which none of the suites' partitions comes
-near. A partition given more than 64 processors needs a QS/400 built
-at this pin or later.
+The partition suites' guest is QS/400 built at this pin too
+(`qs400-V1R1M0-dd7ee2bf2c07.img`, and its ISO with the response file,
+`QS400-V1R1M0-69ff60ab494b.iso`, as `docs/PHASE5.md` says how), so its
+kernel has `NR_CPUS=512` as well.
+
+**Every suite again at the pin.** On the working tree at `a4b9348`
+and after, on 2026-11-15: every suite of `build test` and the 13 fuzz
+targets passed, after three fixes, none of them in the product:
+
+- the pool suites that pull a disk saw `A2007020` late or not at all:
+  the kernel's I/O errors of the pulled disk were written into the
+  middle of its line on the serial port. The harness now also matches
+  a line with the kernel's messages taken out of it (`0ad2fcc`);
+- `pool-tools`' golden screens: a new pool shows 3% used, not 1%,
+  the room the kernel keeps for reflink (`7b96d0f`);
+- the QS/400 suites need the guest media of the pin (above).
+
+`partition-ipl-a` failed once on a guest kernel fault (below, "Found
+while testing") and passed the eleven times it was run after.
 
 ## What exists
 
@@ -280,6 +295,20 @@ below).
   over the console's screen. `net-live` reads its screens before the
   partition runs and makes its live changes without reading them,
   checking the state file and the traffic.
+- **A guest kernel faults now and then in a partition under the
+  harness.** Once in twelve runs of `partition-ipl-a` at the pin,
+  QS/400's kernel reported its memory accounting wrong (`Bad
+  rss-counter state`) and then a general protection fault, 15 s into
+  the IPL; the logs of earlier phases have three more such faults,
+  one of the cheap guest (its stack found corrupted 0.17 s into its
+  boot, `net-host-unreachable`) and two of QS/400 (`partition-recorded`
+  and `partition-end`, Phase 4). Each kernel was tainted by a warning
+  first, which `quiet` kept from the log. Forty IPLs of the same guest
+  in `qsvmm` run directly in WSL, a level of nesting less and without
+  huge pages, had none. The partition there is four levels deep
+  (Hyper-V, WSL's KVM, QEMU, the partition), where a fault of nested
+  virtualization cannot be told from one of the VMM's; what settles it
+  is a soak on a real machine (below).
 
 ## Found while building
 
@@ -300,10 +329,12 @@ below).
 - What Phase 5 left undone and this did not touch is still as `docs/PHASE5.md`, `docs/PARTD.md`, `docs/PROFILE.md` and `docs/RESOURCES.md` list it.
 
 - `BLOCKED(phase6)`: a parity pool keeps no map of a member out of service; QS/400's `protect` has one since the pin, and a unit coming back is still rebuilt whole.
+- `BLOCKED(phase6)`: the guest kernel faults seen now and then under the harness ("Found while testing") are not explained: not seen in forty IPLs one level of nesting less, and a real machine is needed to tell them from nested virtualization.
 
 ## For a real machine (NEEDS-CODY)
 
 - [ ] NEEDS-CODY: an uplink on the Dell machine to a switch port carrying tagged VLANs.
 - [ ] NEEDS-CODY: an LACP bond against a real switch.
 - [ ] NEEDS-CODY: a 5250 session to a partition from a workstation.
+- [ ] NEEDS-CODY: a soak on the Dell machine: QS/400 IPLed a few hundred times in a partition with huge pages and pinned processors, and the cheap guest likewise, to see whether the guest kernel faults of "Found while testing" happen without nested virtualization.
 - Phase 5's list for a real machine (`docs/PHASE5.md`) still stands.
