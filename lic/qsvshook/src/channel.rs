@@ -346,7 +346,15 @@ fn partition(rest: &str) -> Vec<String> {
                 "KILL" => Signal::KILL,
                 // Has `qsvmm` say what state its processors are in.
                 "USR1" => Signal::USR1,
-                other => return error(format!("partition kill <id> TERM|KILL|USR1, not {other}")),
+                // The whole VMM stopped and let go on: a system that
+                // does nothing, its service daemon too.
+                "STOP" => Signal::STOP,
+                "CONT" => Signal::CONT,
+                other => {
+                    return error(format!(
+                        "partition kill <id> TERM|KILL|USR1|STOP|CONT, not {other}"
+                    ));
+                }
             };
             match pid() {
                 Some(pid) => done(kill_process(pid, signal)),

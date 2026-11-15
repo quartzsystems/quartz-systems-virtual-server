@@ -14,6 +14,7 @@ pub mod base;
 pub mod install;
 pub mod network;
 pub mod partition;
+pub mod service;
 pub mod slotb;
 pub mod storage;
 
@@ -126,6 +127,7 @@ pub fn names() -> Vec<&'static str> {
     names.extend(partition::SUITES.iter().map(|s| s.0));
     names.extend(storage::SUITES.iter().map(|s| s.0));
     names.extend(network::SUITES.iter().map(|s| s.0));
+    names.extend(service::SUITES.iter().map(|s| s.0));
     names
 }
 
@@ -215,7 +217,8 @@ impl Suite {
             .chain(install::SUITES)
             .chain(partition::SUITES)
             .chain(storage::SUITES)
-            .chain(network::SUITES);
+            .chain(network::SUITES)
+            .chain(service::SUITES);
         for (name, suite) in suites {
             if wanted(name) {
                 done(vec![self.base_suite(name, *suite)?]);
@@ -448,8 +451,16 @@ mod tests {
         // fuzz targets and the earlier suites are the build tool's).
         assert_eq!(
             names().len(),
-            1 + 10 + 13 + 2 + 10 + 16 + storage::SUITES.len() + network::SUITES.len()
+            1 + 10
+                + 13
+                + 2
+                + 10
+                + 16
+                + storage::SUITES.len()
+                + network::SUITES.len()
+                + service::SUITES.len()
         );
+        assert_eq!(service::SUITES.len(), 17);
         assert_eq!(storage::SUITES.len(), 17);
         assert_eq!(network::SUITES.len(), 15);
         assert_eq!(

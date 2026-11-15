@@ -33,7 +33,9 @@ impl Calls for Partd<'_> {
         let line = format!("{} {}", command::PARTD, hex::encode(ipc::encode(req)));
         let lines = self
             .channel
-            .ask_within(&line, Duration::from_secs(20))
+            // A shut down or a panel function waits for the system's
+            // answer: twenty seconds at most.
+            .ask_within(&line, Duration::from_secs(45))
             .map_err(io::Error::other)?;
         let answer = lines
             .first()

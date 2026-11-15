@@ -11,11 +11,15 @@
 //!
 //! - [`relay`]: the service, `qsvshook partition`.
 //! - [`console`]: a viewer of a partition's console, and a dump's read.
+//! - [`hostile`]: a test image as a partition that floods its service
+//!   port, when a suite marks one of its disks.
 //! - [`probe`]: requests no guest kernel sends, made of a real host
 //!   device through the virtio-scsi device itself.
 
 #[cfg(target_os = "linux")]
 pub mod console;
+#[cfg(target_os = "linux")]
+pub mod hostile;
 #[cfg(target_os = "linux")]
 pub mod probe;
 #[cfg(target_os = "linux")]

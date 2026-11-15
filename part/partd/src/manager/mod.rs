@@ -529,7 +529,11 @@ impl<S: System> Manager<S> {
         }
         partition.history.push_back(posted.clone());
         let condition = posted.code.starts_with('A') || posted.code.starts_with('B');
+        // A note of the channel's progress is the history's, not where
+        // the partition is.
+        let note = posted.source == Source::Host && posted.code.starts_with("C2009");
         let current = match posted.source {
+            Source::Host if note => None,
             Source::System => Some(posted.clone()),
             // The host's own while the system has posted none, after
             // its VMM has ended, and for a condition of the host's.

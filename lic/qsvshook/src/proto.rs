@@ -69,7 +69,7 @@ pub mod command {
     /// guest's discard of a thin virtual disk does.
     pub const PUNCH: &str = "punch";
     /// `partition pid <id>`: the process of the partition's VMM.
-    /// `partition kill <id> <TERM|KILL|USR1>`: signal it. `partition
+    /// `partition kill <id> <TERM|KILL|USR1|STOP|CONT>`: signal it. `partition
     /// send <id> <text>`: type a line at the partition's console.
     pub const PARTITION: &str = "partition";
     /// `threads <pid>`: the threads of a process, a `line` each: its
