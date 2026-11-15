@@ -216,6 +216,7 @@ pub fn auto_start(guest: &mut Session, id: u32, order: u32, delay_secs: u32) -> 
         enabled: true,
         order,
         delay_secs,
+        ..model::AutoStart::default()
     };
     // Only while the partition is not activated: partd refuses a
     // definition's change otherwise.

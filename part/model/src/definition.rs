@@ -18,6 +18,9 @@ pub const USER_BASE: u32 = 23000;
 pub const SERIAL_LEN: usize = 7;
 /// The longest auto start delay, in seconds: an hour.
 pub const MAX_DELAY_SECS: u32 = 3600;
+/// How long auto start waits for a partition's IPL to complete, unless
+/// its definition says.
+pub const DEFAULT_WAIT_SECS: u32 = 600;
 
 /// The user and group of the partition `id`'s `qsvmm`.
 pub fn user_of(id: u32) -> u32 {
@@ -72,7 +75,7 @@ impl Keylock {
 
 /// `[auto_start]`: whether the partition is activated when the host
 /// has started, and when among the others.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AutoStart {
     /// Whether it is.
@@ -84,12 +87,47 @@ pub struct AutoStart {
     /// Seconds to wait before it, after the one before.
     #[serde(default)]
     pub delay_secs: u32,
+    /// Whether the next one waits until this one's system has reported
+    /// its IPL complete, or `wait_secs` have passed.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub wait: bool,
+    /// The longest that wait, in seconds.
+    #[serde(default = "default_wait", skip_serializing_if = "is_default_wait")]
+    pub wait_secs: u32,
 }
 ipc::wire_struct!(AutoStart {
     enabled,
     order,
-    delay_secs
+    delay_secs,
+    wait,
+    wait_secs
 });
+
+impl Default for AutoStart {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            order: 0,
+            delay_secs: 0,
+            wait: false,
+            wait_secs: DEFAULT_WAIT_SECS,
+        }
+    }
+}
+
+fn default_wait() -> u32 {
+    DEFAULT_WAIT_SECS
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's signature
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's signature
+fn is_default_wait(secs: &u32) -> bool {
+    *secs == DEFAULT_WAIT_SECS
+}
 
 /// A partition's definition.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -217,6 +255,8 @@ mod tests {
                 enabled: true,
                 order: 10,
                 delay_secs: 30,
+                wait: true,
+                wait_secs: 120,
             },
             created: 1_794_000_000,
         };

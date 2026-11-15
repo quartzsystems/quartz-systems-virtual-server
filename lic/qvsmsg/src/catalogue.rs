@@ -12,6 +12,7 @@
 //! | `QVS20xx` | requests to the partition manager |
 //! | `QVS21xx` | activation and resources |
 //! | `QVS22xx` | shared processor pools and host settings |
+//! | `QVS23xx` | the service channel: shut down, the panel, dumps, the console |
 //! | `QVS30xx` | storage pools and their disks |
 //! | `QVS31xx` | virtual disks |
 //! | `QVS32xx` | the media library |
@@ -45,7 +46,7 @@ catalogue! {
     /// An auto start delay out of range.
     DELAY_INVALID = "QVS1004",
         "Auto start delay &1 is not valid.",
-        "The delay before a partition is started automatically is 0 to &2 seconds.";
+        "The delay before a partition is started automatically, and the longest wait for its IPL to complete, are 0 to &2 seconds; the wait is 1 second at least.";
     /// A second partition of one name.
     NAME_IN_USE = "QVS1005",
         "Partition name &1 is already in use.",
@@ -374,6 +375,75 @@ catalogue! {
     POOL_CORES_NEEDED = "QVS2210",
         "The default pool's running partitions need its cores: &1 processing units and &2 virtual processors on &3 cores.",
         "The change would take cores out of the default pool that the partitions running in it are entitled to, or need to have a core for each virtual processor. Choose other cores, or shut a partition down first.";
+    /// A shut down that needs the system, of a partition without the
+    /// service channel.
+    NO_CHANNEL = "QVS2301",
+        "Partition &1 has no service channel: a &2 shut down cannot be asked of its system.",
+        "The system in the partition has not opened its service channel, or its release has none, or the channel is down. A delayed or operating-system shut down is carried out by the system itself and needs the channel. Shut the partition down immediately instead, or wait for the channel to come up.";
+    /// A delay out of the range the system takes.
+    DELAY_OUT_OF_RANGE = "QVS2302",
+        "Shut down delay &1 is not valid.",
+        "A delayed shut down's delay is 0 to &2 seconds. The system ends its jobs within the delay and then powers down.";
+    /// The system refused a request, with its own message.
+    SYSTEM_REFUSED = "QVS2303",
+        "Partition &1 refused the request: &2 &3",
+        "The system in the partition did not carry the request out and said why with its own message, given here with its identifier. Look at the system's own messages for more, then ask again.";
+    /// The system did not answer a request in time.
+    SYSTEM_SILENT = "QVS2304",
+        "Partition &1 did not answer the request in &2 seconds.",
+        "The request was sent on the service channel and neither an acceptance nor a refusal came back. The system may be busy or not responding. Look at its current reference code; shut it down immediately if it does not recover.";
+    /// A shut down asked of the system did not end in time.
+    SHUTDOWN_FORCED = "QVS2305",
+        "Partition &1 was shut down immediately: its &2 shut down had not ended after &3 seconds.",
+        "The system accepted the shut down but its virtual machine had not ended when the time allowed had passed, so the host stopped it. The system's next IPL is an abnormal one. The time allowed is a setting of partitions.toml.";
+    /// A control panel function the host does not offer.
+    PANEL_FUNCTION_INVALID = "QVS2306",
+        "Control panel function &1 is not one of a partition's.",
+        "A partition's functions are 01, 02, 03, 08, 11 to 19, 20, 21, 22 and 34 (docs/PANEL.md). Choose one of them.";
+    /// A function that needs the keylock in manual.
+    PANEL_NOT_MANUAL = "QVS2307",
+        "Control panel function &1 needs the keylock in manual; partition &2's is &3.",
+        "A function that changes or interrupts the system is carried out only with the keylock in the manual position. The keylock is the host's: change it in the definition, or for one activation, then activate the partition again.";
+    /// A function's argument that is not one.
+    PANEL_ARGUMENT_INVALID = "QVS2308",
+        "Control panel function &1: &2 is not valid.",
+        "Function 02 selects the IPL source (A, B or D), the IPL type (attended or unattended) and the keylock (normal, manual, auto or secure) of the next activation. Give values of those.";
+    /// Function 34 of a partition that is not held.
+    NOT_HELD = "QVS2309",
+        "Partition &1 is not held: its memory is not kept.",
+        "Function 34 takes a dump again from the memory of a partition held in Error after a terminal reference code or a guest fault. Use function 22 or ask for a dump of a running partition instead.";
+    /// No pool holds the media repository, where dumps are kept.
+    DUMPS_NO_REPOSITORY = "QVS2310",
+        "No storage pool holds the media repository: partition &1's dump cannot be kept.",
+        "Dumps are kept in the dumps directory of the storage pool designated as the media repository. Designate a pool with Work with storage pools, then ask again.";
+    /// A dump that was not written whole.
+    DUMP_NOT_WRITTEN = "QVS2311",
+        "Partition &1's dump was not written: &2.",
+        "Nothing of the dump is kept. When the pool was full, delete dumps or virtual disks the host no longer needs, or lower the number of dumps kept, and take the dump again.";
+    /// A dump that is not there.
+    DUMP_MISSING = "QVS2312",
+        "Partition &1 has no dump &2.",
+        "List the partition's dumps to see their names. A dump may have been removed to keep the partition within its limits.";
+    /// A second dump while one is being taken.
+    DUMP_BUSY = "QVS2313",
+        "A dump of partition &1 is being taken.",
+        "One dump of a partition is taken at a time. Wait for it to end, then ask again.";
+    /// A second viewer of a partition's console.
+    CONSOLE_IN_USE = "QVS2314",
+        "Partition &1's console has a viewer.",
+        "One client at a time has a partition's console. Ask to take it over to detach the other viewer, or wait for it to detach.";
+    /// The console has shown nothing yet.
+    CONSOLE_EMPTY = "QVS2315",
+        "Partition &1's console has shown nothing yet.",
+        "The system has not sent its console's screen. It sends it once its IPL has started; ask again in a moment.";
+    /// The system says it is other than its definition.
+    IDENTITY_DIFFERS = "QVS2316",
+        "Partition &1's system says its &2 is &3; the definition has &4.",
+        "The system read its identity from its own LIC record or its system values, and it differs from what the host gives the partition. The partition runs on. When the disk is another partition's, correct the profile; otherwise IPL the system again so it reads what the host wrote.";
+    /// The service channel was closed for what the system sent.
+    CHANNEL_CLOSED = "QVS2317",
+        "Partition &1's service channel was closed: &2.",
+        "The system sent what is not the partition service protocol, or more than it allows. The channel is closed and the partition runs on; it is opened again when the system's service daemon says hello again.";
     /// A storage pool's name breaks the naming rule.
     SPOOL_NAME_INVALID = "QVS3001",
         "Storage pool name &1 is not valid.",

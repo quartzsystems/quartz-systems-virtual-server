@@ -89,8 +89,9 @@ pub fn build(
         ),
         console: Some(
             match profile.boot.console {
+                // Every mode but serial is the console port.
                 ConsoleMode::Serial => "serial",
-                ConsoleMode::Local => "local",
+                ConsoleMode::Local | ConsoleMode::Partition => "partition",
             }
             .to_string(),
         ),

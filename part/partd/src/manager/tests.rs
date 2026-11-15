@@ -594,7 +594,7 @@ fn the_keylock_is_the_definition_s_unless_the_activation_says() {
     assert!(config.contains("keylock = \"manual\""), "{config}");
     assert!(config.contains("side = \"recorded\""));
     assert!(config.contains("ipl_type = \"unattended\""));
-    assert!(config.contains("console = \"serial\""));
+    assert!(config.contains("console = \"partition\""));
     m.ended(id, Ended::Exit(0));
     m.activate(
         id,
@@ -808,6 +808,7 @@ fn auto_start_is_in_the_order_of_the_definitions() {
             enabled,
             order,
             delay_secs: delay,
+            ..model::AutoStart::default()
         };
         m.change(definition).unwrap();
     }

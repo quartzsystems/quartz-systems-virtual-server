@@ -193,12 +193,24 @@ ipc::wire_enum!(IplType { 0 => Unattended, 1 => Attended });
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ConsoleMode {
-    /// The serial port: the one that gives a partition a console.
+    /// The serial port: for a system older than the console port.
     Serial,
-    /// The display, which a partition does not have.
+    /// The display, which a partition does not have: given the console
+    /// port, as `partition` is.
     Local,
+    /// The console port of the service channel (`docs/SERVICE.md`): the
+    /// console as a full screen.
+    Partition,
 }
-ipc::wire_enum!(ConsoleMode { 0 => Serial, 1 => Local });
+ipc::wire_enum!(ConsoleMode { 0 => Serial, 1 => Local, 2 => Partition });
+
+impl ConsoleMode {
+    /// Whether the partition's console is its console port: every mode
+    /// but serial.
+    pub fn console_port(self) -> bool {
+        self != ConsoleMode::Serial
+    }
+}
 
 /// `[boot]`.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -223,7 +235,7 @@ impl Default for Boot {
         Self {
             source: IplSource::Recorded,
             ipl_type: IplType::Unattended,
-            console: ConsoleMode::Serial,
+            console: ConsoleMode::Partition,
         }
     }
 }

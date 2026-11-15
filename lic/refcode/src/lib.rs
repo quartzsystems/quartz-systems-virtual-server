@@ -250,6 +250,13 @@ pub const PARTITION_POWERED_OFF: RefCode = progress("C2005100", "Partition power
 pub const PARTITION_RESTART: RefCode = progress("C2005110", "Partition ended for a restart");
 /// A partition held for its pool's space goes on: the pool has room.
 pub const PARTITION_RESUMED: RefCode = progress("C2005160", "Partition resumed");
+/// A dump was begun: the processors are stopped while it is written.
+pub const PARTITION_DUMP_STARTED: RefCode = progress("C2005180", "Partition dump started");
+/// How far a dump is, in percent of the memory.
+pub const PARTITION_DUMP_PROGRESS: RefCode = progress("C2005181", "Partition dump in progress");
+/// A dump was written whole, with its size; a running partition's
+/// processors go on.
+pub const PARTITION_DUMP_WRITTEN: RefCode = progress("C2005185", "Partition dump written");
 
 // C2006xxx: the partition manager.
 
@@ -262,6 +269,32 @@ pub const PARTITION_ADOPTED: RefCode = progress("C2006010", "Partition found run
 pub const AUTO_START_STARTED: RefCode = progress("C2006020", "Partition auto start started");
 /// Every one of them was tried.
 pub const AUTO_START_DONE: RefCode = progress("C2006030", "Partition auto start complete");
+
+// C2009xxx: the service channel, the panel and dumps, the partition
+// manager's (docs/SERVICE.md).
+
+/// The system in a partition opened its service channel, with its
+/// release and the version both sides speak.
+pub const CHANNEL_UP: RefCode = progress("C2009000", "Partition service channel connected");
+/// A system whose kernel was entered did not open the service channel:
+/// it is Running with none.
+pub const NO_CHANNEL: RefCode = progress("C2009005", "Partition has no service channel");
+/// A system that stopped answering pings answers again.
+pub const RESPONDING: RefCode = progress("C2009020", "Partition responding again");
+/// A delayed shut down was asked of the system, with the delay.
+pub const SHUTDOWN_DELAYED: RefCode = progress("C2009040", "Partition delayed shut down requested");
+/// An operating-system shut down was asked of the system.
+pub const SHUTDOWN_SYSTEM: RefCode =
+    progress("C2009041", "Partition operating system shut down requested");
+/// A partition is held: its processors stopped and its memory kept,
+/// after a terminal reference code.
+pub const PARTITION_KEPT: RefCode = progress("C2009050", "Partition held with its memory");
+/// A dump was removed to keep the partition's dumps within the limits.
+pub const DUMP_REMOVED: RefCode = progress("C2009060", "Partition dump removed");
+/// A control panel function was carried out, with its number.
+pub const PANEL_DONE: RefCode = progress("C2009070", "Partition control panel function");
+/// An uplink of a switch a partition's adapter is on has carrier again.
+pub const ADAPTER_UPLINK_BACK: RefCode = progress("C2009080", "Partition adapter uplink back");
 
 // A2005xxx: a partition that cannot IPL, and one that ended badly.
 
@@ -319,6 +352,12 @@ pub const PARTITION_VMM_ERROR: RefCode = attention("A2005130", "Partition ended 
 pub const PARTITION_ENDED: RefCode = attention("A2005140", "Partition ended by the host");
 /// The VMM was killed.
 pub const PARTITION_KILLED: RefCode = attention("A2005150", "Partition VMM killed");
+/// The guest faulted in a way the VMM survives: its processors are
+/// stopped and its memory kept, for a dump.
+pub const PARTITION_FAULT_HELD: RefCode =
+    attention("A2005170", "Partition held after a guest fault");
+/// A dump could not be written whole, with why; nothing of it is kept.
+pub const PARTITION_DUMP_FAILED: RefCode = attention("A2005180", "Partition dump not written");
 /// A write found the partition's pool full: its processors are
 /// stopped until there is room, and it stays Running.
 pub const PARTITION_HELD: RefCode = attention("A2005160", "Partition held for storage pool space");
@@ -335,6 +374,22 @@ pub const PARTITION_STATE_INVALID: RefCode = attention("A2006030", "Partition st
 pub const CONTROLS_NOT_SET: RefCode = attention("A2006040", "Resource controls not set");
 /// The partitions did not all end before the host's shutdown went on.
 pub const PARTITIONS_NOT_ENDED: RefCode = attention("A2006090", "Partitions not ended in time");
+
+// A2009xxx: attention from the service channel.
+
+/// The system sent what is not the protocol: its channel is closed and
+/// the partition runs on.
+pub const CHANNEL_CLOSED: RefCode = attention("A2009010", "Partition service channel closed");
+/// The system stopped answering pings on the service port.
+pub const NOT_RESPONDING: RefCode = attention("A2009020", "Partition not responding");
+/// The system's hello does not match the partition's definition, with
+/// what differs.
+pub const IDENTITY_DIFFERS: RefCode = attention("A2009030", "Partition identity differs");
+/// A delayed or operating-system shut down did not end in time and the
+/// partition was shut down immediately.
+pub const SHUTDOWN_FORCED: RefCode = attention("A2009040", "Partition shut down forced");
+/// The uplink of a switch a partition's adapter is on lost carrier.
+pub const ADAPTER_UPLINK_LOST: RefCode = attention("A2009080", "Partition adapter uplink lost");
 
 // C2007xxx: storage pools, the pool service.
 
@@ -479,10 +534,22 @@ pub const ALL: &[&RefCode] = &[
     &PARTITION_POWERED_OFF,
     &PARTITION_RESTART,
     &PARTITION_RESUMED,
+    &PARTITION_DUMP_STARTED,
+    &PARTITION_DUMP_PROGRESS,
+    &PARTITION_DUMP_WRITTEN,
     &PARTD_STARTED,
     &PARTITION_ADOPTED,
     &AUTO_START_STARTED,
     &AUTO_START_DONE,
+    &CHANNEL_UP,
+    &NO_CHANNEL,
+    &RESPONDING,
+    &SHUTDOWN_DELAYED,
+    &SHUTDOWN_SYSTEM,
+    &PARTITION_KEPT,
+    &DUMP_REMOVED,
+    &PANEL_DONE,
+    &ADAPTER_UPLINK_BACK,
     &POOLD_STARTED,
     &POOL_ASSEMBLED,
     &POOL_CREATED,
@@ -539,12 +606,19 @@ pub const ALL: &[&RefCode] = &[
     &PARTITION_VMM_ERROR,
     &PARTITION_ENDED,
     &PARTITION_KILLED,
+    &PARTITION_FAULT_HELD,
+    &PARTITION_DUMP_FAILED,
     &PARTITION_HELD,
     &PARTITION_NOT_ACTIVATED,
     &AUTO_START_FAILED,
     &PARTITION_STATE_INVALID,
     &CONTROLS_NOT_SET,
     &PARTITIONS_NOT_ENDED,
+    &CHANNEL_CLOSED,
+    &NOT_RESPONDING,
+    &IDENTITY_DIFFERS,
+    &SHUTDOWN_FORCED,
+    &ADAPTER_UPLINK_LOST,
     &POOL_NOT_ASSEMBLED,
     &POOL_UNIT_FAILED,
     &POOL_REBUILD_FAILED,

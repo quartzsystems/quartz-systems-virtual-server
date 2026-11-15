@@ -22,6 +22,7 @@ pub fn definition() -> Definition {
             enabled: true,
             order: 10,
             delay_secs: 0,
+            ..AutoStart::default()
         },
         created: 1_794_000_000,
     }
@@ -108,7 +109,7 @@ mod tests {
             "sharing = \"uncapped\"",
             "source = \"recorded\"",
             "type = \"unattended\"",
-            "console = \"serial\"",
+            "console = \"partition\"",
             "[[scsi]]",
             "[[scsi.lun]]",
         ] {

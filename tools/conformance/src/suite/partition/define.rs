@@ -46,6 +46,7 @@ pub fn define(run: &Run<'_>) -> Result<String, String> {
         enabled: false,
         order: 7,
         delay_secs: 30,
+        ..model::AutoStart::default()
     };
     said(partd(&mut guest)?.change(changed.clone()))?;
     for id in &ids {

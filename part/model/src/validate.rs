@@ -134,6 +134,12 @@ pub fn definition(definition: &Definition) -> Vec<Issued> {
             &MAX_DELAY_SECS.to_string(),
         ]));
     }
+    if !(1..=MAX_DELAY_SECS).contains(&definition.auto_start.wait_secs) {
+        errors.push(qvsmsg::DELAY_INVALID.with(&[
+            &definition.auto_start.wait_secs.to_string(),
+            &MAX_DELAY_SECS.to_string(),
+        ]));
+    }
     errors
 }
 

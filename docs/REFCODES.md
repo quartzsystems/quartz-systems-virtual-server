@@ -75,6 +75,7 @@ installed host's history starts with its first IPL.
 | `C2006xxx`, `A2006xxx` | the partition manager (`partd`): its start, partitions found running, auto start, an activation that failed before a VMM ran |
 | `C2007xxx`, `A2007xxx` | storage pools and the media library (`poold`, the pool service): assembly, creation, resynchronization and rebuild, hot spares, imports, how full a pool is |
 | `C2008xxx`, `A2008xxx` | virtual switches (`vswitchd`, the switch service): its start, switches made, changed and deleted, an uplink's carrier lost and back, a switch not built |
+| `C2009xxx`, `A2009xxx` | the partition manager's service channel to each system (`partd`, `docs/SERVICE.md`): the channel up, closed or silent, the shut down asked of a system and one forced, a partition held with its memory, dumps removed for the limits, the control panel functions, an adapter's uplink |
 
 Later phases take further blocks (QSI) and record them here.
 
@@ -185,10 +186,22 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2005100` | Partition powered off | the guest powered off: exit code 0 |
 | `C2005110` | Partition ended for a restart | the guest asked for a restart: exit code 10. `qsvmm` does not restart in place: the partition manager activates the partition again |
 | `C2005160` | Partition resumed | a partition held for its pool's space has room again: its processors run, and the write that found the pool full was done |
+| `C2005180` | Partition dump started | the partition's processors are stopped and its memory and processor state are being written to a dump (`docs/DUMPS.md`) |
+| `C2005181` | Partition dump in progress | how far the dump is, in percent of the partition's memory, every tenth |
+| `C2005185` | Partition dump written | the dump is whole, with its size and the bytes it takes; a running partition's processors go on |
 | `C2006000` | Partition manager started | with the partitions defined and those found running |
 | `C2006010` | Partition found running | a partition that ran while the partition manager did not is watched again, with its name |
 | `C2006020` | Partition auto start started | with the number of partitions flagged to start with the host |
 | `C2006030` | Partition auto start complete | every flagged partition was tried, with how many were activated |
+| `C2009000` | Partition service channel connected | the system said hello on its service port, with its release and the protocol version both sides speak |
+| `C2009005` | Partition has no service channel | the partition's kernel was entered and its system did not open the service port in the time set: it is Running without one |
+| `C2009020` | Partition responding again | a system that was not responding answers pings again |
+| `C2009040` | Partition delayed shut down requested | the system accepted a controlled power down, with the delay |
+| `C2009041` | Partition operating system shut down requested | the system accepted an immediate power down |
+| `C2009050` | Partition held with its memory | the system posted a terminal reference code and halted: its processors are stopped and its memory kept for a dump; the terminal code stays its current one |
+| `C2009060` | Partition dump removed | the oldest dump of the partition was removed to keep its dumps within their number and size |
+| `C2009070` | Partition control panel function | a function that acts on the partition was carried out, with its number |
+| `C2009080` | Partition adapter uplink back | the uplink of a switch one of the partition's adapters is on has carrier again |
 | `C2007000` | Pool service started | with the pools found and how many were assembled |
 | `C2007010` | Storage pool assembled | a pool's units were found by their labels, its set opened and its file system mounted, with its name, protection and state |
 | `C2007015` | Storage pool created | with its name, protection, units and capacity |
@@ -246,11 +259,18 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2005140` | Partition ended by the host | `qsvmm` was sent `SIGTERM`: exit code 50 |
 | `A2005150` | Partition VMM killed | `qsvmm` was killed by a signal, with the signal |
 | `A2005160` | Partition held for storage pool space | a write to a thin virtual disk found its pool full: the partition's processors are stopped, it stays Running, nothing reaches the guest as an error, and it goes on by itself (`C2005160`) when the pool has room |
+| `A2005170` | Partition held after a guest fault | a triple fault, a halt with nothing to wake it, an entry KVM refused or an exit the VMM does not handle: the processors are stopped and the memory kept, the partition is in Error until it is dumped, shut down or restarted |
+| `A2005180` | Partition dump not written | a dump could not be written whole, with why: nothing of it is kept |
 | `A2006010` | Partition not activated | an activation failed before `qsvmm` ran, with the partition's name and the message |
 | `A2006020` | Partition not started automatically | a partition flagged to start with the host could not be activated, with its name and the message; the others are still tried |
 | `A2006030` | Partition state not valid | a definition, a profile or `partitions.toml` was refused, with the file and the reason |
 | `A2006040` | Resource controls not set | a control group could not be made or a value written, with the file and the error |
 | `A2006090` | Partitions not ended in time | at the host's shutdown the partition manager did not report every partition ended; the shutdown goes on |
+| `A2009010` | Partition service channel closed | the system sent what is not the protocol: the channel is closed until the system says hello again, and the partition runs on |
+| `A2009020` | Partition not responding | the system has not answered pings on its service port for three intervals; nothing is done to it (`C2009020` when it answers again) |
+| `A2009030` | Partition identity differs | the system's hello names another serial number, side or keylock than the host gave it, with which |
+| `A2009040` | Partition shut down forced | a delayed or operating-system shut down had not ended in its time and the partition was shut down immediately |
+| `A2009080` | Partition adapter uplink lost | the uplink of a switch one of the partition's adapters is on lost carrier: its outside traffic stopped |
 | `A2007010` | Storage pool not assembled | a pool's units were found but its set could not be opened or its file system mounted, with the pool and why; only the partitions that use it are affected |
 | `A2007020` | Pool unit failed | a unit was taken out of service or not found, with the pool, the unit, its location code and serial number |
 | `A2007030` | Pool rebuild not finished | a rebuild or resynchronization stopped, with the pool and why |

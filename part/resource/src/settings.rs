@@ -37,6 +37,93 @@ fn default_reserved_cores() -> u32 {
     DEFAULT_RESERVED_CORES
 }
 
+/// `[service]`: how long the host waits for what it asks of a system,
+/// and the dumps it keeps of each partition (`docs/SERVICE.md`,
+/// `docs/DUMPS.md`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields, default)]
+pub struct Service {
+    /// Seconds after a delayed shut down's delay before it is forced.
+    pub delayed_grace_secs: u32,
+    /// Seconds an operating-system shut down is given before it is
+    /// forced.
+    pub system_timeout_secs: u32,
+    /// Seconds each partition is given to shut down through its system
+    /// at the host's own shut down, before it is ended immediately.
+    pub host_timeout_secs: u32,
+    /// Seconds after the kernel is entered within which a system opens
+    /// its service channel; after them it is Running without one.
+    pub channel_wait_secs: u32,
+    /// The most dumps kept of one partition.
+    pub max_dumps: u32,
+    /// The most MiB the dumps of one partition take together.
+    pub max_dump_mib: u64,
+}
+ipc::wire_struct!(Service {
+    delayed_grace_secs,
+    system_timeout_secs,
+    host_timeout_secs,
+    channel_wait_secs,
+    max_dumps,
+    max_dump_mib
+});
+
+impl Default for Service {
+    fn default() -> Self {
+        Self {
+            delayed_grace_secs: 120,
+            system_timeout_secs: 300,
+            host_timeout_secs: 300,
+            channel_wait_secs: 60,
+            max_dumps: 3,
+            max_dump_mib: 256 * 1024,
+        }
+    }
+}
+
+impl Service {
+    /// Whether every value is the default: the table is then left out.
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Each value out of its range.
+    fn errors(&self, errors: &mut Vec<Issued>) {
+        let ranges: [(&str, u64, u64, u64); 6] = [
+            (
+                "delayed_grace_secs",
+                self.delayed_grace_secs.into(),
+                0,
+                3600,
+            ),
+            (
+                "system_timeout_secs",
+                self.system_timeout_secs.into(),
+                10,
+                3600,
+            ),
+            ("host_timeout_secs", self.host_timeout_secs.into(), 10, 3600),
+            ("channel_wait_secs", self.channel_wait_secs.into(), 5, 600),
+            ("max_dumps", self.max_dumps.into(), 1, 32),
+            ("max_dump_mib", self.max_dump_mib, 64, u64::MAX),
+        ];
+        for (name, value, least, most) in ranges {
+            if !(least..=most).contains(&value) {
+                let range = if most == u64::MAX {
+                    format!("{least} or more")
+                } else {
+                    format!("{least} to {most}")
+                };
+                errors.push(qvsmsg::SETTING_INVALID.with(&[
+                    &format!("service.{name}"),
+                    &value.to_string(),
+                    &range,
+                ]));
+            }
+        }
+    }
+}
+
 /// A shared processor pool that has a name.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -81,6 +168,9 @@ pub struct Settings {
     /// serial number and kept, so they never change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mac_prefix: Option<String>,
+    /// The service channel's timeouts and the dumps kept.
+    #[serde(default, skip_serializing_if = "Service::is_default")]
+    pub service: Service,
 }
 ipc::wire_struct!(Settings {
     max_partitions,
@@ -88,7 +178,8 @@ ipc::wire_struct!(Settings {
     reserved_cores,
     reserved_memory_mib,
     pools,
-    mac_prefix
+    mac_prefix,
+    service
 });
 
 /// The least memory a host may be told to keep for itself, in MiB:
@@ -104,6 +195,7 @@ impl Default for Settings {
             reserved_memory_mib: None,
             pools: Vec::new(),
             mac_prefix: None,
+            service: Service::default(),
         }
     }
 }
@@ -166,6 +258,7 @@ impl Settings {
                 &format!("{MAX_POOLS} pools at most"),
             ]));
         }
+        self.service.errors(&mut errors);
         for (i, pool) in self.pools.iter().enumerate() {
             if !model::valid_name(&pool.name) || pool.name == model::profile::DEFAULT_POOL {
                 errors.push(qvsmsg::POOL_NAME_INVALID.with(&[&pool.name]));
