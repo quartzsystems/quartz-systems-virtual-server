@@ -24,6 +24,7 @@ members = [
     "lic/qvsmsg",
     # Service Tools: QS/VS's menu and its host-specific panels.
     "svc/tools",
+    "qsi/server",
     # Base: what every Quartz appliance needs, product-neutral. QS/MC pins
     # these from this repository.
     "base/appliance",
@@ -96,6 +97,11 @@ licpart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "
 # frames, the messages, the console as cells. The partition manager
 # alone speaks it; qsvmm carries its bytes.
 qsipart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "30e18c2e5ff4896bbb56a754760c530dfa96c26c" }
+# QSI: the messages and families, the session, and the trust rules
+# (QS/400's docs/QSI.md). The QSI host server alone speaks them.
+qsi = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "30e18c2e5ff4896bbb56a754760c530dfa96c26c" }
+qsisess = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "30e18c2e5ff4896bbb56a754760c530dfa96c26c" }
+qsitrust = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "30e18c2e5ff4896bbb56a754760c530dfa96c26c" }
 
 # The rust-vmm crates the VMM is built on (docs/PHASE3.md says why each
 # passes deny).

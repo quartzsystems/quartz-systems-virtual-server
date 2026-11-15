@@ -1,0 +1,19 @@
+[package]
+name = "qsiserver"
+description = "The QSI host server: the only listener a QS/VS host has. Mutual TLS by QS/400's trust crate, its session, pairing, and every request of the host's families translated to the services that own the state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# QSI's messages, session and trust rules: QS/400's crates, pinned with
+# the others. Nothing of them is restated here.
+qsi.workspace = true
+qsisess.workspace = true
+qsitrust.workspace = true
+state = { path = "../../base/state", version = "0.1.0" }
+serde.workspace = true
+
+[lints]
+workspace = true
