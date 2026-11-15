@@ -96,9 +96,21 @@ signal that killed it, with the partition's name and that code.
 
 The `C2006` and `A2006` blocks are the partition manager's own: that
 it started and what it found running, auto start, an activation that
-failed before any VMM ran. The last code posted about a partition is
-its current reference code, and the partition manager keeps a history
-for each.
+failed before any VMM ran. The `C2009` and `A2009` blocks are its too,
+about each partition's service channel (`docs/SERVICE.md`): the
+channel connected, closed or silent, a shut down asked of the system
+and one forced, a partition held with its memory, a dump removed, a
+panel function, an adapter's uplink. A `C2009` code of progress is a
+note of the history and never the current code.
+
+Since Phase 7 the system in a partition posts its own codes on its
+service channel: they are QS/400's, in its own families, and go into
+the partition's history marked as the system's beside the host's,
+never through PID 1. A partition's current reference code is the
+system's while it posts them, the host's before the system has posted
+one and after the VMM ends, and the host's for a condition of the
+host's: `docs/SERVICE.md` says which. The partition manager keeps a
+history of the last 256 for each, on disk.
 
 ## The storage service and `B2003000`
 
