@@ -12,6 +12,7 @@ pub mod serial;
 pub mod session;
 pub mod term;
 pub mod vars;
+pub mod wire;
 
 use std::env;
 use std::ffi::OsString;
@@ -41,6 +42,29 @@ pub struct Drive {
     /// same location code whichever other disks are there.
     pub place: Option<u8>,
 }
+
+/// A further NIC of the host, an uplink candidate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UplinkNic {
+    /// Its MAC address.
+    pub mac: String,
+    /// What is on its far side.
+    pub far: Far,
+}
+
+/// What is on an uplink NIC's far side.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Far {
+    /// The harness's station (`wire`), over QEMU's `dgram` backend.
+    Station(wire::Ports),
+    /// QEMU's user network, with a port of the harness's host forwarded
+    /// to an address and port on it: `(host port, guest address, port)`.
+    User(Option<(u16, String, u16)>),
+}
+
+/// The PCI device number of the first uplink NIC: its location code is
+/// the same whatever else the machine has.
+pub const FIRST_UPLINK_PLACE: u8 = 0x18;
 
 /// How to launch the guest.
 // Each flag is a switch of its own on QEMU's command line.
@@ -95,6 +119,8 @@ pub struct Launch {
     /// virtual machine: memory the outer host brings in while a nested
     /// guest runs has reached that guest damaged (`docs/PHASE3.md`).
     pub prealloc: bool,
+    /// Further NICs after the management one, at fixed places.
+    pub uplinks: Vec<UplinkNic>,
 }
 
 /// The PCI device number of a pinned disk's place.
@@ -260,6 +286,21 @@ pub fn args(l: &Launch) -> Vec<OsString> {
         }
         None => a.extend(["-nic", "none"].map(OsString::from)),
     }
+    for (i, up) in l.uplinks.iter().enumerate() {
+        let backend = match &up.far {
+            Far::Station(p) => format!(
+                "dgram,id=up{i},local.type=inet,local.host=127.0.0.1,local.port={},remote.type=inet,remote.host=127.0.0.1,remote.port={}",
+                p.qemu, p.harness
+            ),
+            Far::User(None) => format!("user,id=up{i}"),
+            Far::User(Some((host, guest, port))) => {
+                format!("user,id=up{i},hostfwd=tcp:127.0.0.1:{host}-{guest}:{port}")
+            }
+        };
+        a.extend(["-netdev".into(), backend.into(), "-device".into()]);
+        let place = u32::from(FIRST_UPLINK_PLACE) + u32::try_from(i).unwrap_or(0);
+        a.push(format!("virtio-net-pci,netdev=up{i},mac={},addr={place:#x}", up.mac).into());
+    }
     if !l.oem.is_empty() {
         let values: Vec<String> = l.oem.iter().map(|v| format!("value={v}")).collect();
         a.push("-smbios".into());
@@ -294,6 +335,7 @@ mod tests {
             keys: false,
             pinned: false,
             prealloc: false,
+            uplinks: Vec::new(),
         }
     }
 

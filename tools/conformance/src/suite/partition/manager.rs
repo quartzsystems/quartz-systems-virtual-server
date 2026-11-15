@@ -89,6 +89,8 @@ pub struct Spec {
     pub backing: Vec<String>,
     /// The load source's serial number.
     pub serial: Option<String>,
+    /// The virtual Ethernet adapters.
+    pub ethernet: Vec<model::EthernetAdapter>,
 }
 
 impl Spec {
@@ -107,6 +109,7 @@ impl Spec {
             console: ConsoleMode::Serial,
             backing: vec![backing.to_string()],
             serial: None,
+            ethernet: Vec::new(),
         }
     }
 
@@ -168,7 +171,7 @@ impl Spec {
                     })
                     .collect(),
             }],
-            ethernet: Vec::new(),
+            ethernet: self.ethernet.clone(),
             optical: Vec::new(),
             tape: Vec::new(),
             physical_io: Vec::new(),

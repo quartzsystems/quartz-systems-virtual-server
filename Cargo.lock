@@ -346,6 +346,8 @@ dependencies = [
  "thiserror",
  "users",
  "uuid",
+ "vswitch",
+ "vswitchd",
 ]
 
 [[package]]
