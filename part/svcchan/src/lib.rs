@@ -317,6 +317,13 @@ impl Channel {
         (out, send)
     }
 
+    /// The host has the system's processors stopped: its silence is
+    /// the host's doing, and the not-responding rule starts again from
+    /// `now` when they run.
+    pub fn excuse(&mut self, now: u64) {
+        self.answered_at = now;
+    }
+
     /// The requests that still wait, by their tags: the channel went
     /// away under them.
     pub fn abandon(&mut self) -> Vec<(u64, Ask)> {

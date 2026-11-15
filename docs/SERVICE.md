@@ -114,6 +114,9 @@ later version is passed over, never nonsense.
 The host pings every 10 seconds while the channel is up. A system that
 has answered nothing for three intervals is **not responding**:
 `A2009020`, an event, and its current code; nothing is done to it.
+While the host has its processors stopped (held, a dump being taken,
+held for its pool's space) its silence is not counted; the three
+intervals start again when they run.
 When it answers again: `C2009020`, an event, and the current code is
 the system's again.
 

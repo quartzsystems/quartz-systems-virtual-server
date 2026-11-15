@@ -741,7 +741,17 @@ impl<S: System> Manager<S> {
             let Some(p) = self.partitions.get_mut(&id) else {
                 continue;
             };
+            // Held, dumped or waiting for space, its processors are
+            // stopped by the host: it is not the system that is silent.
+            let stopped = p.run.as_ref().is_some_and(|r| r.kept)
+                || p.dumping.is_some()
+                || p.current.as_ref().is_some_and(|c| {
+                    c.source == Source::Host && c.code == refcode::PARTITION_HELD.code
+                });
             if let Some(c) = p.service.channel.as_mut() {
+                if stopped {
+                    c.excuse(now);
+                }
                 (happened, send) = c.tick(now);
             }
             for frame in send {

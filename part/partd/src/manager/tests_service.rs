@@ -315,6 +315,14 @@ fn a_terminal_code_holds_the_partition_with_its_memory() {
     assert_eq!(s.state, State::Error);
     assert!(s.service.kept);
     assert_eq!(s.code, "B1001234", "the terminal code stays current");
+    // Its processors are stopped: its silence is not its own.
+    for _ in 0..6 {
+        m.system.now += 10;
+        m.tick();
+    }
+    let s = status(&mut m, id);
+    assert_eq!(s.code, "B1001234", "held, it is not called not responding");
+    assert!(!m.history(id).unwrap().iter().any(|p| p.code == "A2009020"));
     // It still holds what it held: no activation, but a dump and an
     // immediate shut down.
     assert!(m.activate(id, String::new(), None, None).is_err());
