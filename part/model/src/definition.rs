@@ -156,6 +156,11 @@ pub struct Definition {
     pub auto_start: AutoStart,
     /// When it was created, in seconds since the epoch.
     pub created: u64,
+    /// Its revision: the partition manager's, one more at every write,
+    /// 0 in a file older than revisions. What a caller gives is not
+    /// kept.
+    #[serde(default)]
+    pub revision: u64,
 }
 ipc::wire_struct!(Definition {
     id,
@@ -165,7 +170,8 @@ ipc::wire_struct!(Definition {
     keylock,
     default_profile,
     auto_start,
-    created
+    created,
+    revision
 });
 
 impl Document for Definition {
@@ -259,6 +265,7 @@ mod tests {
                 wait_secs: 120,
             },
             created: 1_794_000_000,
+            revision: 0,
         };
         let text = state::store::render(&definition).unwrap();
         assert!(text.contains("environment = \"QS/400\""), "{text}");

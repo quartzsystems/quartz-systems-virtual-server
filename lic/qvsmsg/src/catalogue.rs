@@ -263,6 +263,22 @@ catalogue! {
     TOO_MANY_PROFILES = "QVS2011",
         "Partition &1 already has &2 profiles, the most a partition has.",
         "Delete a profile the partition no longer needs, or replace one by giving the new profile its name.";
+    /// A new profile names one the partition has.
+    PROFILE_EXISTS = "QVS2012",
+        "Partition &1 has a profile &2.",
+        "A new profile takes a name the partition has no profile of. To replace the one there, read it and give the revision it was read at.";
+    /// A profile changed since the revision a request was made at.
+    PROFILE_CHANGED = "QVS2013",
+        "Partition &1's profile &2 is not at revision &3.",
+        "It was changed or deleted since it was read, by another console or at the host. Read it again and make the change on what it is now.";
+    /// A definition changed since the revision a request was made at.
+    DEFINITION_CHANGED = "QVS2014",
+        "Partition &1's definition is not at revision &2.",
+        "It was changed since it was read, by another console or at the host. Read it again and make the change on what it is now.";
+    /// Save current of a partition that holds nothing.
+    NOTHING_TO_SAVE = "QVS2015",
+        "Partition &1 is not activated: it has no current configuration to save.",
+        "Its current configuration is what its activation gave it. Activate it first, or put a profile.";
 
     /// Too few cores for a dedicated partition's minimum.
     PROCESSORS_NOT_AVAILABLE = "QVS2101",

@@ -65,6 +65,7 @@ wait_secs = 600          # or this long
 | `auto_start.wait` | whether the next partition is started only when this one's system has reported its IPL complete (`docs/SERVICE.md`), or `wait_secs` have passed; left out, `false` | while not activated |
 | `auto_start.wait_secs` | the longest that wait: 1 to 3600; left out, 600 | while not activated |
 | `created` | when it was created, in seconds since the epoch | never |
+| `revision` | the partition manager's: one more at every write of the definition, left out (0) in a file older than revisions (`docs/PARTD.md`, "Revisions") | by the partition manager alone |
 
 ### The serial number
 
@@ -136,6 +137,10 @@ vlan = 10
 tagged = [20]
 mac = "02:5a:3c:00:01:05"
 ```
+
+A profile also has `revision`, the partition manager's own: one more at
+every write of it, left out (0) in a file older than revisions; what a
+caller gives is not kept (`docs/PARTD.md`, "Revisions").
 
 ### `[processors]`
 

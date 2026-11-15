@@ -23,6 +23,7 @@ mod console;
 mod dumps;
 mod life;
 mod panel;
+mod profiles;
 mod requests;
 mod service;
 
@@ -453,6 +454,19 @@ impl<S: System> Manager<S> {
             Event::Defined { name, exists, .. } => {
                 format!("{name}: {}", if *exists { "defined" } else { "deleted" })
             }
+            Event::Profile {
+                name,
+                profile,
+                revision,
+                default,
+                ..
+            } => match revision {
+                Some(r) => format!(
+                    "{name}: profile {profile} at revision {r}{}",
+                    if *default { ", the default" } else { "" }
+                ),
+                None => format!("{name}: profile {profile} deleted"),
+            },
             Event::Channel { name, service, .. } => format!(
                 "{name}: service channel {}{}",
                 if service.up { "up" } else { "down" },

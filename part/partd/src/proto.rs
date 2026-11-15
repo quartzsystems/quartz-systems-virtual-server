@@ -289,6 +289,21 @@ pub enum Event {
         /// When.
         time: u64,
     },
+    /// One of its profiles was put, deleted or made the default.
+    Profile {
+        /// The partition.
+        id: u32,
+        /// Its name.
+        name: String,
+        /// The profile.
+        profile: String,
+        /// Its revision now; none when it was deleted.
+        revision: Option<u64>,
+        /// Whether it is the partition's default now.
+        default: bool,
+        /// When.
+        time: u64,
+    },
 }
 ipc::wire_enum!(Event {
     0 => State { id, name, state, time },
@@ -297,6 +312,7 @@ ipc::wire_enum!(Event {
     3 => Defined { id, name, exists, time },
     4 => Channel { id, name, service, time },
     5 => Dump { id, name, dump, error, time },
+    6 => Profile { id, name, profile, revision, default, time },
 });
 
 impl Event {
@@ -308,10 +324,27 @@ impl Event {
             | Event::Resources { id, .. }
             | Event::Defined { id, .. }
             | Event::Channel { id, .. }
-            | Event::Dump { id, .. } => *id,
+            | Event::Dump { id, .. }
+            | Event::Profile { id, .. } => *id,
         }
     }
 }
+
+/// One profile of a partition, as listed with its revision.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProfileEntry {
+    /// Its name.
+    pub name: String,
+    /// Its revision.
+    pub revision: u64,
+    /// Whether it is the partition's default.
+    pub default: bool,
+}
+ipc::wire_struct!(ProfileEntry {
+    name,
+    revision,
+    default
+});
 
 /// What a request that failed answers with: every message.
 pub type Refused = Vec<Issued>;
@@ -415,6 +448,22 @@ ipc::rpc! {
     32 => fn console / Console (id: u32, take_over: bool) -> Result<bool, Refused>;
     /// The console's screen as it is now, alone.
     33 => fn screen / Screen (id: u32) -> Result<ScreenCapture, Refused>;
+    /// Put a profile only when it is at `revision`: `None` for a new
+    /// one, refused when one of its name is there. Its new revision.
+    34 => fn put_profile_at / PutProfileAt (id: u32, profile: Profile, revision: Option<u64>) -> Result<u64, Refused>;
+    /// Save an activated partition's current configuration (the
+    /// profile it runs with, with what its activation gave it) as the
+    /// profile `name`, at `revision` as [`Calls::put_profile_at`]. Its
+    /// new revision.
+    35 => fn save_current / SaveCurrent (id: u32, name: String, revision: Option<u64>) -> Result<u64, Refused>;
+    /// Create a partition called `name` with its first profile, which
+    /// is its default; when the profile is refused, nothing is kept.
+    36 => fn create_with / CreateWith (name: String, profile: Profile) -> Result<Definition, Refused>;
+    /// Change a definition only when it is at `revision`. Its new
+    /// revision.
+    37 => fn change_at / ChangeAt (definition: Definition, revision: u64) -> Result<u64, Refused>;
+    /// A partition's profiles with their revisions, by name.
+    38 => fn profile_entries / ProfileEntries (id: u32) -> Result<Vec<ProfileEntry>, Refused>;
 }
 
 /// The most bytes of a dump in one frame of a read.

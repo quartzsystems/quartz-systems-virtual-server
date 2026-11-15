@@ -177,6 +177,7 @@ impl Spec {
             optical: Vec::new(),
             tape: Vec::new(),
             physical_io: Vec::new(),
+            revision: 0,
         }
     }
 }

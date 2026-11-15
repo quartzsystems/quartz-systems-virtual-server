@@ -25,6 +25,7 @@ pub fn definition() -> Definition {
             ..AutoStart::default()
         },
         created: 1_794_000_000,
+        revision: 0,
     }
 }
 
@@ -66,6 +67,7 @@ pub fn dedicated() -> Profile {
         optical: Vec::new(),
         tape: Vec::new(),
         physical_io: Vec::new(),
+        revision: 0,
     }
 }
 

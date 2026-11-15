@@ -361,6 +361,8 @@ fn what_cannot_be_created_or_changed_says_why() {
     changed.default_profile = "SHARED".into();
     changed.auto_start.enabled = true;
     m.change(changed.clone()).unwrap();
+    // Kept as given, at the next revision.
+    changed.revision += 1;
     assert_eq!(m.definition(id).unwrap(), changed);
     assert_eq!(
         ids(&m.delete_profile(id, "SHARED".into()).unwrap_err()),
@@ -885,6 +887,112 @@ fn auto_start_is_in_the_order_of_the_definitions() {
             (1, "A".to_string(), 5)
         ]
     );
+}
+
+#[test]
+fn a_write_at_a_stale_revision_is_refused_and_events_say_each_revision() {
+    let scratch = Scratch::new("revisions");
+    let mut m = scratch.manager();
+    let (events, seen) = mpsc::channel();
+    m.subscribe(events);
+    let id = partition(&mut m, "A");
+    let entries = m.profile_entries(id).unwrap();
+    assert_eq!(
+        entries
+            .iter()
+            .map(|e| (e.name.as_str(), e.revision, e.default))
+            .collect::<Vec<_>>(),
+        [("NORMAL", 1, true), ("SHARED", 1, false)]
+    );
+    // The first profile made the definition's default: revision 2.
+    let definition = m.definition(id).unwrap();
+    assert_eq!(definition.revision, 2);
+    // A put at the revision read; then the same again is stale.
+    let mut normal = m.profile(id, "NORMAL".into()).unwrap();
+    normal.memory.desired_mib = normal.memory.minimum_mib;
+    assert_eq!(m.put_profile_at(id, normal.clone(), Some(1)).unwrap(), 2);
+    let stale = m.put_profile_at(id, normal.clone(), Some(1)).unwrap_err();
+    assert_eq!(ids(&stale), [qvsmsg::PROFILE_CHANGED.id]);
+    // A new one with no revision; a name that is there without one.
+    let mut other = normal.clone();
+    other.name = "OTHER".into();
+    assert_eq!(m.put_profile_at(id, other.clone(), None).unwrap(), 1);
+    let there = m.put_profile_at(id, other, None).unwrap_err();
+    assert_eq!(ids(&there), [qvsmsg::PROFILE_EXISTS.id]);
+    // A revision of a profile deleted since is stale too.
+    m.delete_profile(id, "OTHER".into()).unwrap();
+    let gone = m.put_profile_at(id, normal.clone(), Some(7)).unwrap_err();
+    assert_eq!(ids(&gone), [qvsmsg::PROFILE_CHANGED.id]);
+    // A definition changed at its revision, then stale.
+    let mut d = m.definition(id).unwrap();
+    d.keylock = Keylock::Manual;
+    assert_eq!(m.change_at(d.clone(), 2).unwrap(), 3);
+    let stale = m.change_at(d, 2).unwrap_err();
+    assert_eq!(ids(&stale), [qvsmsg::DEFINITION_CHANGED.id]);
+    // A plain put still bumps the revision a console reads.
+    m.put_profile(id, normal).unwrap();
+    assert_eq!(m.profile(id, "NORMAL".into()).unwrap().revision, 3);
+    // Every put, delete and new default is an event with its revision.
+    let said: Vec<(String, Option<u64>, bool)> = seen
+        .try_iter()
+        .filter_map(|e| match e {
+            Event::Profile {
+                profile,
+                revision,
+                default,
+                ..
+            } => Some((profile, revision, default)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        said,
+        [
+            ("NORMAL".into(), Some(1), true),
+            ("SHARED".into(), Some(1), false),
+            ("NORMAL".into(), Some(2), true),
+            ("OTHER".into(), Some(1), false),
+            ("OTHER".into(), None, false),
+            ("NORMAL".into(), Some(3), true),
+        ]
+    );
+}
+
+#[test]
+fn the_current_configuration_is_saved_and_a_partition_is_created_with_its_profile() {
+    let scratch = Scratch::new("current");
+    let mut m = scratch.manager();
+    let id = partition(&mut m, "A");
+    let refused = m.save_current(id, "NOW".into(), None).unwrap_err();
+    assert_eq!(ids(&refused), [qvsmsg::NOTHING_TO_SAVE.id]);
+    run(&mut m, id);
+    let given = m.list()[0].current.clone().unwrap();
+    assert_eq!(m.save_current(id, "NOW".into(), None).unwrap(), 1);
+    let saved = m.profile(id, "NOW".into()).unwrap();
+    let Processors::Dedicated { cores } = &given.processors else {
+        panic!("the sample is dedicated");
+    };
+    assert_eq!(saved.processors.desired as usize, cores.len());
+    assert_eq!(saved.memory.desired_mib, given.memory_mib);
+    assert!(model::validate::profile(&saved, m.limits()).is_empty());
+    // Saved again only at its revision.
+    let stale = m.save_current(id, "NOW".into(), None).unwrap_err();
+    assert_eq!(ids(&stale), [qvsmsg::PROFILE_EXISTS.id]);
+    assert_eq!(m.save_current(id, "NOW".into(), Some(1)).unwrap(), 2);
+
+    // Created with its first profile, its default; a profile refused
+    // leaves nothing.
+    let mut profile = sample::dedicated();
+    profile.scsi[0].luns[0].backing = "/dev/B".into();
+    profile.scsi[0].luns[0].serial = None;
+    let b = m.create_with("B".into(), profile.clone()).unwrap();
+    assert_eq!(b.default_profile, "NORMAL");
+    assert_eq!(m.profile_entries(b.id).unwrap().len(), 1);
+    profile.memory.desired_mib = 0;
+    let before = m.list().len();
+    assert!(m.create_with("C".into(), profile).is_err());
+    assert_eq!(m.list().len(), before);
+    assert!(!m.list().iter().any(|s| s.name == "C"));
 }
 
 #[test]

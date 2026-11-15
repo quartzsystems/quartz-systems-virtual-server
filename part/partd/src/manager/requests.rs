@@ -17,8 +17,8 @@ use poold::proto::Want;
 use super::life::media_kind;
 use super::{Manager, Partition, System};
 use crate::proto::{
-    DumpInfo, Event, MediaSlot, PanelArgs, Partitions, Posted, Refused, ScreenCapture, Shutdown,
-    State, Status,
+    DumpInfo, Event, MediaSlot, PanelArgs, Partitions, Posted, ProfileEntry, Refused,
+    ScreenCapture, Shutdown, State, Status,
 };
 use crate::store::{Kept, MAX_PROFILES};
 
@@ -183,6 +183,57 @@ impl<S: System> Manager<S> {
             .map_err(|e| one(qvsmsg::STATE_NOT_KEPT.with(&["The partition's definition", &e])))
     }
 
+    /// Create a profile or replace the one of its name: its revision.
+    pub(crate) fn put_kept(&mut self, id: u32, profile: Profile) -> Result<u64, Refused> {
+        let partition = self.partition(id)?;
+        let mut profile = profile;
+        let errors = model::validate::profile(&profile, self.limits());
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        let new = !partition.profiles.contains_key(&profile.name);
+        if new && partition.profiles.len() >= MAX_PROFILES {
+            return Err(one(qvsmsg::TOO_MANY_PROFILES
+                .with(&[&partition.definition.name, &MAX_PROFILES.to_string()])));
+        }
+        let mut definition = partition.definition.clone();
+        profile.revision = partition
+            .profiles
+            .get(&profile.name)
+            .map_or(1, |p| p.revision + 1);
+        // An adapter saved without an address is given one, kept from then on.
+        if profile.ethernet.iter().any(|a| a.mac.is_none()) {
+            let prefix = self.kept_prefix()?;
+            for a in &mut profile.ethernet {
+                if a.mac.is_none() {
+                    a.mac = Some(vswitch::mac::text(&vswitch::mac::made(prefix, id, a.slot)));
+                }
+            }
+        }
+        let errors = self.ethernet_errors(id, &profile);
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        self.store
+            .save_profile(id, &profile)
+            .map_err(|e| one(qvsmsg::STATE_NOT_KEPT.with(&["The profile", &e])))?;
+        // The first profile of a partition is its default.
+        if definition.default_profile.is_empty() {
+            definition.default_profile.clone_from(&profile.name);
+            definition.revision += 1;
+            self.keep_definition(&definition)?;
+        }
+        let name = definition.name.clone();
+        let (profile_name, revision) = (profile.name.clone(), profile.revision);
+        if let Some(partition) = self.partitions.get_mut(&id) {
+            partition.profiles.insert(profile.name.clone(), profile);
+            partition.definition = definition;
+        }
+        self.defined(id, &name, true);
+        self.profile_changed(id, &profile_name);
+        Ok(revision)
+    }
+
     /// The settings with `pools` in place of theirs, when no pool is
     /// in error against the host and what runs.
     fn with_pools(&self, pools: Vec<Pool>) -> Result<Settings, Refused> {
@@ -313,6 +364,7 @@ impl<S: System> Partitions for Manager<S> {
             default_profile: String::new(),
             auto_start: AutoStart::default(),
             created: self.system.now(),
+            revision: 1,
         };
         self.keep_definition(&definition)?;
         let kept = Kept {
@@ -330,8 +382,11 @@ impl<S: System> Partitions for Manager<S> {
 
     fn change(&mut self, definition: Definition) -> Result<(), Refused> {
         let id = definition.id;
+        let mut definition = definition;
         let partition = self.idle(id)?;
         let old = &partition.definition;
+        let old_default = old.default_profile.clone();
+        definition.revision = old.revision + 1;
         let mut errors = model::validate::definition(&definition);
         for (field, same) in [
             ("serial number", old.serial == definition.serial),
@@ -360,10 +415,18 @@ impl<S: System> Partitions for Manager<S> {
         }
         self.keep_definition(&definition)?;
         let name = definition.name.clone();
+        let new_default = definition.default_profile.clone();
         if let Some(partition) = self.partitions.get_mut(&id) {
             partition.definition = definition;
         }
         self.defined(id, &name, true);
+        if new_default != old_default {
+            for profile in [old_default, new_default] {
+                if !profile.is_empty() {
+                    self.profile_changed(id, &profile);
+                }
+            }
+        }
         Ok(())
     }
 
@@ -411,47 +474,7 @@ impl<S: System> Partitions for Manager<S> {
     }
 
     fn put_profile(&mut self, id: u32, profile: Profile) -> Result<(), Refused> {
-        let partition = self.partition(id)?;
-        let mut profile = profile;
-        let errors = model::validate::profile(&profile, self.limits());
-        if !errors.is_empty() {
-            return Err(errors);
-        }
-        let new = !partition.profiles.contains_key(&profile.name);
-        if new && partition.profiles.len() >= MAX_PROFILES {
-            return Err(one(qvsmsg::TOO_MANY_PROFILES
-                .with(&[&partition.definition.name, &MAX_PROFILES.to_string()])));
-        }
-        let mut definition = partition.definition.clone();
-        // An adapter saved without an address is given one, kept from then on.
-        if profile.ethernet.iter().any(|a| a.mac.is_none()) {
-            let prefix = self.kept_prefix()?;
-            for a in &mut profile.ethernet {
-                if a.mac.is_none() {
-                    a.mac = Some(vswitch::mac::text(&vswitch::mac::made(prefix, id, a.slot)));
-                }
-            }
-        }
-        let errors = self.ethernet_errors(id, &profile);
-        if !errors.is_empty() {
-            return Err(errors);
-        }
-        self.store
-            .save_profile(id, &profile)
-            .map_err(|e| one(qvsmsg::STATE_NOT_KEPT.with(&["The profile", &e])))?;
-        // The first profile of a partition is its default.
-        let first = definition.default_profile.is_empty();
-        if first {
-            definition.default_profile.clone_from(&profile.name);
-            self.keep_definition(&definition)?;
-        }
-        let name = definition.name.clone();
-        if let Some(partition) = self.partitions.get_mut(&id) {
-            partition.profiles.insert(profile.name.clone(), profile);
-            partition.definition = definition;
-        }
-        self.defined(id, &name, true);
-        Ok(())
+        self.put_kept(id, profile).map(|_| ())
     }
 
     fn delete_profile(&mut self, id: u32, name: String) -> Result<(), Refused> {
@@ -472,6 +495,7 @@ impl<S: System> Partitions for Manager<S> {
             partition.profiles.remove(&name);
         }
         self.defined(id, &partition_name, true);
+        self.profile_changed(id, &name);
         Ok(())
     }
 
@@ -818,6 +842,51 @@ impl<S: System> Partitions for Manager<S> {
             },
             frame: if serial { None } else { frame },
         })
+    }
+
+    fn put_profile_at(
+        &mut self,
+        id: u32,
+        profile: Profile,
+        revision: Option<u64>,
+    ) -> Result<u64, Refused> {
+        self.profile_at(id, &profile.name, revision)?;
+        self.put_kept(id, profile)
+    }
+
+    fn save_current(
+        &mut self,
+        id: u32,
+        name: String,
+        revision: Option<u64>,
+    ) -> Result<u64, Refused> {
+        let profile = self.current_as(id, &name)?;
+        self.profile_at(id, &name, revision)?;
+        self.put_kept(id, profile)
+    }
+
+    fn create_with(&mut self, name: String, profile: Profile) -> Result<Definition, Refused> {
+        let definition = self.create(name)?;
+        let id = definition.id;
+        match self.put_kept(id, profile) {
+            Ok(_) => self.definition(id),
+            Err(refused) => {
+                // Nothing of it is kept.
+                let _ = self.delete(id, false);
+                Err(refused)
+            }
+        }
+    }
+
+    fn change_at(&mut self, definition: Definition, revision: u64) -> Result<u64, Refused> {
+        self.definition_at(&definition, revision)?;
+        let id = definition.id;
+        self.change(definition)?;
+        self.partition(id).map(|p| p.definition.revision)
+    }
+
+    fn profile_entries(&mut self, id: u32) -> Result<Vec<ProfileEntry>, Refused> {
+        self.entries(id)
     }
 
     fn named(&mut self, pool: String, name: String) -> Vec<String> {

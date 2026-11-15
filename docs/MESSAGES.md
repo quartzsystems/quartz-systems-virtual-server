@@ -30,6 +30,7 @@ wording.
 | `QVS20xx` | requests to the partition manager |
 | `QVS21xx` | activation and resources |
 | `QVS22xx` | shared processor pools and host settings |
+| `QVS23xx` | the partition service channel: shut down, panel functions, dumps, the console |
 | `QVS30xx` | storage pools and their disks (the pool service) |
 | `QVS31xx` | virtual disks |
 | `QVS32xx` | the media library |
@@ -99,6 +100,10 @@ wording.
 | `QVS2009` | Partition &1 is already shutting down. | The partition was asked to shut down and its VMM has not ended yet. A list shows when it is not activated. |
 | `QVS2010` | Partition &1 cannot be activated: the host is shutting down. | The host is ending its partitions before it powers off or restarts. Activate the partition when the host has started again. |
 | `QVS2011` | Partition &1 already has &2 profiles, the most a partition has. | Delete a profile the partition no longer needs, or replace one by giving the new profile its name. |
+| `QVS2012` | Partition &1 has a profile &2. | A new profile takes a name the partition has no profile of. To replace the one there, read it and give the revision it was read at. |
+| `QVS2013` | Partition &1's profile &2 is not at revision &3. | It was changed or deleted since it was read, by another console or at the host. Read it again and make the change on what it is now. |
+| `QVS2014` | Partition &1's definition is not at revision &2. | It was changed since it was read, by another console or at the host. Read it again and make the change on what it is now. |
+| `QVS2015` | Partition &1 is not activated: it has no current configuration to save. | Its current configuration is what its activation gave it. Activate it first, or put a profile. |
 | `QVS2101` | Partition &1 needs &2 dedicated processors; &3 are available. | The profile's minimum number of processors is more than the cores that no running partition holds and that the shared partitions of the default pool do not need. Shut down a partition, lower the profile's minimum, or use shared processors. |
 | `QVS2102` | Partition &1 needs &2 processing units in pool &3; &4 are available. | The profile's minimum processing units are more than the pool has left: its running partitions are entitled to the rest. Shut down a partition of the pool, lower the profile's minimum, or use another pool. |
 | `QVS2103` | Partition &1 needs &2 virtual processors; pool &3 has &4 cores. | Each virtual processor of a partition runs on a core of its pool, so a partition cannot have more virtual processors than its pool has cores. Lower the profile's minimum, or use a pool with more cores. |

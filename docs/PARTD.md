@@ -118,6 +118,24 @@ and `Settings` (`part/resource`, `docs/RESOURCES.md`), `Status`,
 | 31 | read dump | ID, name | its size; then its bytes on this connection, a frame of at most 128 KiB each, and an empty frame | no such dump |
 | 32 | console | ID, take over | whether it is the serial port's; then the console on this connection, both ways | another viewer has it and this one does not take over (`QVS2314`) |
 | 33 | screen | ID | the console's whole frame as it is, and its text | nothing shown yet (`QVS2315`) |
+| 34 | put profile at | ID, the profile, the revision it was read at (none for a new one) | its new revision | as put profile; a name that is there with no revision (`QVS2012`); not at that revision, or deleted since (`QVS2013`) |
+| 35 | save current | ID, a profile's name, the revision as 34 | its new revision | not activated (`QVS2015`); as 34 |
+| 36 | create with | a name, the first profile | the definition, the profile its default | as create and as put profile; when the profile is refused nothing is kept |
+| 37 | change at | the definition, the revision it was read at | its new revision | as change; not at that revision (`QVS2014`) |
+| 38 | profile entries | ID | each profile's name and revision, and whether it is the default | no such partition |
+
+**Revisions.** Every definition and profile has a revision, one more
+at every write the partition manager makes of it, 0 in a file older
+than revisions. What a caller gives in the field is not kept. The
+requests that carry a revision (34, 35, 37) are refused when it is not
+the one kept, so two clients cannot both write over what one of them
+read: QSI's profile put and save current map onto them
+(`docs/QSISERVER.md`). The requests without one (3, 7) write as before
+and move the revision on. **Save current** (35) is the profile an
+activated partition runs with, with what its activation gave it as the
+desired processors and memory, its minimum and maximum widened to take
+them. **Create with** (36) is a create and a put profile as one: a
+profile refused deletes the partition it made.
 
 **Activate** answers when the VMM has been started: the partition is
 then Starting, and a list or the events say how it goes on. The two
@@ -166,6 +184,7 @@ the subscribers on the socket and written to the host's log.
 | defined | the ID and name, and whether the definition still exists: a partition was created, changed or deleted, or a profile of it was |
 | channel | the ID and name, and the service channel as the list has it: up, none, responding, held, the system's name, release, fix level and addresses, the version and capabilities: when it comes up or goes, stops or starts answering, or the system reports a change |
 | dump | the ID and name, a dump's name, and why it was not written when it was not |
+| profile | the ID and name, a profile's name, its revision now (none when it was deleted), and whether it is the default: a profile was put or deleted, or the default moved to or from it |
 
 The list (request 0) has the same of the channel in each partition's
 `service`.

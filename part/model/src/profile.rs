@@ -355,6 +355,11 @@ pub struct Profile {
     /// Physical I/O.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub physical_io: Vec<PhysicalIo>,
+    /// Its revision: the partition manager's, one more at every write,
+    /// 0 in a file older than revisions. What a caller gives is not
+    /// kept.
+    #[serde(default)]
+    pub revision: u64,
 }
 ipc::wire_struct!(Profile {
     name,
@@ -365,7 +370,8 @@ ipc::wire_struct!(Profile {
     ethernet,
     optical,
     tape,
-    physical_io
+    physical_io,
+    revision
 });
 
 impl Profile {
