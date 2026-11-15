@@ -142,6 +142,114 @@ refuse by itself with spanning tree off (a BPDU) and cannot tell apart
 unit test of the build says so. The bridge, VLAN filtering, bonding,
 tun and vhost-net were Phase 0's.
 
+## Running
+
+```
+cargo run -p build -- all
+cargo run -p build -- all --test-image
+cargo run -p build -- test --suite net-uplink
+cargo run -p build -- fuzz --target netctrl
+NL_LIVE=1 unshare -rn cargo test -p nl --test live
+NL_LIVE=1 unshare -rn cargo test -p vswitchd --test live
+```
+
+The partition suites' cheap guest is the release image, so `all` comes
+first. `net-qs400` takes `QSVS_QS400_ISO`, as `pool-install` does.
+
+## The suites
+
+The harness gives the host further NICs, uplink candidates at fixed PCI
+places (`P0000-B00-D18-F0-E0` and on), on QEMU's `dgram` backend: their
+far side is the harness's station (`tools/conformance/src/qemu/wire.rs`),
+which sees every frame with its tags, answers DHCP, ARP and echo, and
+pings. `net-qs400`'s uplink is on QEMU's user network instead, with a
+port of the harness's host forwarded to QS/400's telnet port. Every
+host has its own management NIC on QEMU's user network and its own
+seed volume, first among its disks (below, "Found while testing"). The
+switches are made as the host keeps them: `vswitch.toml` written
+through the test hooks' channel and the switch service started again;
+Service Tools makes and changes them in suites 1, 7 and 10. What the
+kernel has is read through the channel: `/sys/class/net`, each tap's
+counters, the bridge's `brforward`, the ports' record.
+
+| # | Suite | What it shows (working tree, `8b29fd9`) |
+|---|---|---|
+| 1 | `net-switch-create` | Service Tools option 3, 3, F6 made PRODNET with VLANs 10 and 20; there after a host restart and after a power pull; six golden screens |
+| 2 | `net-internal` | on an internal switch, A and B on VLAN 10 sent 19 frames each and were sent 19: each was sent no more than the other sent; C on VLAN 20 sent 11 and was sent 0 |
+| 3 | `net-uplink` | a partition got its address by DHCP from the station through the uplink, its frames tagged VLAN 10, 10 of 10 echoes; with VLAN 10 native, 10 of 10 untagged and no frame tagged |
+| 4 | `net-tagged` | A, at a static address on tagged VLAN 20, asked the station for the time with its tag and answered 10 of 10 echoes on it; B's DHCP on VLAN 30, not listed, never left its port, and 20 broadcasts on VLAN 30 from outside reached it 0 times |
+| 5 | `net-may-not` | access adapters on VLAN 10: A's DHCP tagged VLAN 20 and B's tagged with its own VLAN 10 dropped at their ports (13 frames each sent, no IPv4 of either on the uplink). The other two checks are below |
+| 6 | `net-host-unreachable` | A on an internal switch asked the host's management address, B on another switch asked A: no address or route of the host's on any bridge or tap, IPv6 off on each, forwarding off, neither partition sent a single frame back (nothing of the host's answered), none of A's left by the other switch |
+| 7 | `net-management` | the management interface refused as an uplink from Service Tools (`QVS4102`, golden screen); another taken; the management line `10.0.2.15/24 on eth0, gateway 10.0.2.2` the same after |
+| 8 | `net-uplink-loss` | a two-member bond: one member's link down, `A2008025` naming `P0000-B00-D18-F0-E0` and 5 of 5 echoes through the other; both down, `A2008020` naming `...-D19-...`; one back, `C2008020` naming it and 5 of 5 echoes again |
+| 9 | `net-qs400` | QS/400 installed in 59 s from a copy of its ISO whose response file has `ip` and `gateway`; its telnet port answered from the harness's side, and a 5250 session negotiated as IBM-3179-2 read the sign-on display |
+| 10 | `net-live` | MTU 9000: 10 of 10 echoes of 8972 bytes end to end; VLAN 30 added from Service Tools under traffic, 10 of 10 echoes; the uplink moved to another interface, 10 of 10 there and 0 on the first; an interface of 1500 refused for it (`QVS4105`, golden screen) |
+| 11 | `net-service-kill` | the switch service killed three times under 120 echoes: 0 lost, its port found again each time; a partition activated after got its port and an address |
+| 12 | `net-vmm-kill` | a `qsvmm` killed: its tap and port gone within seconds, the other's untouched; the partition manager killed and started again: the other's port the only one left, its counters going on |
+| 13 | `net-not-required` | switch GONE taken from the host's state under a profile that names it: the required adapter refused with `QVS2117 ... slot 5 has no port: ... switch GONE, which does not exist.`; not required, the partition runs with its adapter's link down and no port |
+| 14 | `net-counters` | the counters of suite 2's traffic (A and B each sent 19 and were sent 19, C 11 and 0) and the bridge's table: each partition's address static on its port |
+| 15 | `net-throughput` | the baseline below |
+| 16 | the `netctrl` fuzz target | 233,046 runs in 60 s, no finding |
+| 17 | every earlier suite | below, "Acceptance" |
+
+**Suite 5's other two checks.** A frame from another source address,
+and a guest that sets its own address through the control queue, need
+a guest that does either, and neither the cheap guest nor QS/400 does
+by itself (QS/400's `ADPTADR` needs a line description made at its
+console). They are shown where they can be made to happen: `net/nl`'s
+live test writes a frame of another source into a partition's tap and
+the locked port drops it, and nobody else's traffic changes; the
+device's unit tests set an address through the control queue and see
+it recorded and answered and not passed on, and the port still passes
+only the profile's address (the same lock). `BLOCKED(phase6)` below
+says what is left for a QEMU run.
+
+## The throughput baseline
+
+From the harness's station through the uplink to a partition on
+PRODNET and back: ICMP echoes in rounds of 50, each waited out, three
+levels deep (WSL, QEMU, the partition), on 2026-11-15:
+
+| Echo size | Through | Rate | Both ways |
+|---|---|---|---|
+| 1472 bytes (full frames) | 2000 of 2000 in 0.35 s | 5,742 replies/s | 139.1 Mb/s |
+| 56 bytes | 2000 of 2000 in 0.19 s | 10,430 replies/s | 16.4 Mb/s |
+
+Sent all at once, a third of the 2000 full frames were lost in the
+queues, and a burst of ten 9000-byte frames lost one or two; one at a
+time none were. No threshold: it is a baseline. Between two partitions
+on one switch there is nothing to measure yet: the cheap guest makes
+no traffic on demand, and QS/400 has no load generator (`BLOCKED`
+below).
+
+## Found while testing
+
+- **A host took a guest's seed.** A suite's host disk is not
+  installed, and at its IPL it applies the first seed volume it finds:
+  a guest's, attached beside it as a further disk. One with a VLAN gave
+  the host a VLAN interface on its only NIC, the uplink candidate,
+  which took every frame of that VLAN before the bridge saw it. The
+  host had also taken that NIC for management, being its only one.
+  Every network suite's host now has its own management NIC and its
+  own seed volume, first among its disks. Nothing in the product: a
+  real host is installed, and then reads no seed.
+- **The switch service took the management interface from state.** A
+  `vswitch.toml` naming the management interface as an uplink was
+  built: the check was the request's alone. It is now the build's too
+  (`ca2f6c7`, with a unit test).
+- **A bridge counts a frame before it drops it for its VLAN.** The
+  bridge device's own receive counter goes up for frames it then drops
+  because the bridge itself is in no VLAN, so it says nothing of what
+  reached the host. `net-host-unreachable` reads the partitions' ports
+  instead: a partition with no other neighbour that is sent nothing
+  had no answer from the host.
+- **`QVS2117` quoted a message with its full stop**, and ended in two.
+- **Service Tools on the serial port and a partition's output.** The
+  test hooks relay partitions' serial lines to the host's serial port,
+  over the console's screen. `net-live` reads its screens before the
+  partition runs and makes its live changes without reading them,
+  checking the state file and the traffic.
+
 ## Found while building
 
 - **A dummy link says its largest MTU is 0**, meaning no limit of its
@@ -155,11 +263,8 @@ tun and vhost-net were Phase 0's.
 
 ## Not done
 
-- `BLOCKED(phase6)`: the conformance harness has no network for uplinks yet, and suites 1 to 15 and 17 have not run.
-- `BLOCKED(phase6)`: the vhost-net data path has not run: WSL gives an ordinary user no `/dev/vhost-net`, so its first run is under QEMU.
-- `BLOCKED(phase6)`: Section 6 (`docs/QS400_GUEST.md`) is answered from QS/400's source at the pin, not yet from a run.
-- `BLOCKED(phase6)`: the throughput baseline is not measured.
-- `BLOCKED(phase6)`: golden screens of the new network panels are not written.
+- `BLOCKED(phase6)`: suite 5's frame of another source and an address set through the control queue are shown in `net/nl`'s live test and the device's unit tests, not under QEMU: no guest of the suites does either by itself.
+- `BLOCKED(phase6)`: no throughput figure between two partitions on one switch: the cheap guest makes no traffic on demand and QS/400 has no load generator; the uplink's is above.
 - `BLOCKED(phase6)`: a VLAN of a running partition's port is not added to or taken from it live; a tagged VLAN added to an adapter applies at its next activation.
 - What Phase 5 left undone and this did not touch is still as `docs/PHASE5.md`, `docs/PARTD.md`, `docs/PROFILE.md` and `docs/RESOURCES.md` list it.
 
