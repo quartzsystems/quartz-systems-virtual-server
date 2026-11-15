@@ -77,8 +77,31 @@ pub fn console(run: &Run<'_>) -> Result<String, String> {
     ))
 }
 
-/// Suite 8: during an attended IPL from source D the installer's first
-/// screen is on the console port.
+/// The installed system's sign-on on the console port, the install's
+/// codes through the channel before it: how many the system posted.
+fn installed_sign_on(
+    guest: &mut crate::qemu::session::Session,
+    id: u32,
+    golden: &str,
+    first: &str,
+) -> Result<usize, String> {
+    // The system's name is the response file's.
+    qs400_golden("signon", golden, first, &[2], 12).map_err(|e| format!("{e}\n{first}"))?;
+    let codes: Vec<String> = super::history(guest, id)?
+        .into_iter()
+        .filter(|p| p.source == partd::proto::Source::System)
+        .map(|p| p.code)
+        .collect();
+    for want in ["A6005008", "C6004001", "C6004090", "C6004190", "C6001090"] {
+        if !codes.iter().any(|c| c == want) {
+            return Err(format!("the system did not post {want}: {codes:?}"));
+        }
+    }
+    Ok(codes.len())
+}
+
+/// Suite 8: during an IPL from source D the installer's screen is on
+/// the console port; at the pin, the installed system's, after it.
 pub fn install(run: &Run<'_>) -> Result<String, String> {
     crate::suite::partition::fresh_host(run)?;
     let iso = qs400_iso()?;
@@ -124,15 +147,41 @@ pub fn install(run: &Run<'_>) -> Result<String, String> {
     ))?;
     let deadline = ipl_patience(run);
     // An ISO with a response file installs unattended: its status
-    // screen; without one, the attended installer's first screen.
+    // screen; without one, the attended installer's first screen. At
+    // the pin, QS/400's installer takes its console mode from a LIC
+    // record alone, and a blank disk has none: it draws on serial
+    // (A6005008), and the console port first shows the installed
+    // system, IPLed again with the mode the host wrote.
     let wanted = [
         "Install Licensed Internal Code - Status",
         "Install Licensed Internal Code",
         "IPL or Install the System",
         "Select a Language",
+        "Sign On",
     ];
     let (i, first) = wait_screen(&mut guest, id, &wanted, deadline)?;
-    let golden = ["lic-status", "lic-menu", "no-os", "language"][i];
+    let long = first
+        .lines()
+        .nth(9)
+        .is_some_and(|l| l.contains("Program/procedure"));
+    let signon = if long { "sign-on-pwdlvl2" } else { "sign-on" };
+    let golden = ["lic-status", "lic-menu", "no-os", "language", signon][i];
+    if i == 4 {
+        let codes = installed_sign_on(&mut guest, id, golden, &first)?;
+        let s = manager::status(&mut guest, id)?;
+        said(partd(&mut guest)?.shut_down(id))?;
+        manager::ended(&mut guest, id, run.deadline())?;
+        return Ok(format!(
+            "an IPL from source D with QS/400's ISO in the optical device: QS/400's installer \
+             had no console mode and drew on serial (A6005008, BLOCKED(phase7) in \
+             docs/PHASE7.md), its codes through the channel ({} of the system's), then the \
+             installed system on the console port as QS/400's golden signon/{golden}; the \
+             partition {} with code {}",
+            codes,
+            s.state.word(),
+            s.code
+        ));
+    }
     if i == 0 {
         // The marks move as it goes: the title, then every step.
         qs400_golden("install", golden, &first, &[], 1).map_err(|e| format!("{e}\n{first}"))?;
@@ -194,6 +243,13 @@ pub fn tools(run: &Run<'_>) -> Result<String, String> {
         std::thread::sleep(Duration::from_millis(200));
     }
     let id = manager::partition(&mut guest, "PROD")?;
+    // The partition's lines would be drawn over the screen.
+    channel(&mut guest)?.ask(&format!(
+        "{} {} {}",
+        qsvshook::proto::command::PUT,
+        qsvshook::proto::QUIET,
+        hex::encode(b"1")
+    ))?;
     tools_sign_on(&mut guest, USER, PASSWORD, deadline)?;
     option(&mut guest, 1, "Work with System Status", deadline)?;
     guest.type_keys(term::F11)?;
@@ -204,7 +260,10 @@ pub fn tools(run: &Run<'_>) -> Result<String, String> {
     let until = ipl_patience(run);
     let list = loop {
         let text = guest.grid().text();
-        if let Some(row) = text.lines().find(|l| l.contains("PROD")) {
+        if let Some(row) = text
+            .lines()
+            .find(|l| l.split_whitespace().nth(1) == Some("PROD"))
+        {
             let code = row.split_whitespace().nth(3).unwrap_or("").to_string();
             if codes.last() != Some(&code) {
                 codes.push(code);

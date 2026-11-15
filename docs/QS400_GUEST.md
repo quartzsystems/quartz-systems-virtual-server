@@ -484,6 +484,33 @@ What QS/400 would have to change, found so far:
    service daemon from outside (`dbgkill` takes the storage service's
    jobs only). A `dbgkill JOB(*QSID)` would let the suite stop the
    daemon alone.
+5. **The console port for an installation from media.** `slic` takes
+   its console mode from the LIC record alone
+   (`lic/slic/src/ipl/display.rs`), and a blank disk has none, so its
+   installer, IPLed from source D, uses the default, the local display.
+   A partition has none: `A6005008`, and the installer's screens are
+   on the serial port alone. The installed system, IPLed again from the
+   load source, finds the mode the host wrote to the new record and is
+   on the console port. With no record and the console port present,
+   the installer should take the port; a kernel command-line key the
+   IPL loader passes for source D would do as well.
+   (`service-install-console` checks what there is.)
+6. **Keylock after an automatic install.** After the installer's own
+   re-IPL, the system said its keylock was normal though the host wrote
+   manual to the record: `slic` logged `mode Normal from LIC override`,
+   the install's override for its next IPL. The host says so
+   (`A2009030`) and the partition runs on; the override should say the
+   host's keylock or be cleared when the host writes one.
+7. **Two faults met in the suites.** Under load on the build host, two
+   QS/400 IPLs failed inside the guest: `memory allocation of
+   3468972977995967440 bytes failed` once storage management had
+   started, then a triple fault; and a page fault with reserved bits
+   (`Bad pagetable: 000d`) after `C6001090`, then a panic in a standard
+   channel and kernel oopses. Both were three levels of virtualization
+   deep while another QEMU workload ran in the same WSL machine; every
+   other IPL of the same image in the suites was clean. The host held
+   the first as a guest fault (`A2005170`), as designed. Not known to
+   be QS/400's.
 
 ## What QS/400 would have to change
 

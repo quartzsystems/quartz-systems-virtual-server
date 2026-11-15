@@ -159,6 +159,7 @@ cargo run -p build -- fuzz --target channel --secs 60
 
 - `BLOCKED(phase7)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event (carried from Phase 4, `docs/PARTD.md`).
 - `BLOCKED(phase7)`: the host cannot tell beforehand whether a system has a service channel, and waits `channel_wait_secs` for it (`docs/OPEN_QUESTIONS.md` item 38); QS/400 would say so in its LIC record.
+- `BLOCKED(phase7)`: QS/400's installer IPLed from source D onto a blank disk has no LIC record and so no console mode, and draws on the serial port alone (`A6005008`); the console port shows the system once it has IPLed from its load source (`docs/QS400_GUEST.md`, the service channel, item 5).
 - Not in Phase 7, and not started: QSI, pairing and any network listener; a console or any action on a partition from Service Tools; the system's own main storage dump; serviceable events; a change to a running partition's resources.
 
 ## For a real machine (NEEDS-CODY)
