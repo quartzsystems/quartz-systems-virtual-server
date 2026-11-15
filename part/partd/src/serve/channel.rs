@@ -119,14 +119,28 @@ fn connection(
             }
         }
     });
-    manager(shared).channel_up(id, port);
+    // Only while the activation it was made for is the partition's: a
+    // connection of an earlier VMM says nothing of this one.
+    let ours = |m: &crate::manager::Manager<super::machine::Machine>| m.channel_wanted(id, sequence);
+    {
+        let mut m = manager(shared);
+        if ours(&m) {
+            m.channel_up(id, port);
+        }
+    }
     let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
     let mut buf = vec![0u8; PIECE];
     let mut reader = stream;
     loop {
         match reader.read(&mut buf) {
             Ok(0) => break,
-            Ok(n) => manager(shared).channel_bytes(id, port, &buf[..n]),
+            Ok(n) => {
+                let mut m = manager(shared);
+                if !ours(&m) {
+                    break;
+                }
+                m.channel_bytes(id, port, &buf[..n]);
+            }
             Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
                 if !manager(shared).channel_wanted(id, sequence) {
                     break;
@@ -144,7 +158,10 @@ fn connection(
     }
     let _ = stream.shutdown(Shutdown::Both);
     let _ = writer.join();
-    manager(shared).channel_down(id, port);
+    let mut m = manager(shared);
+    if ours(&m) {
+        m.channel_down(id, port);
+    }
 }
 
 /// Keep `id`'s connection to `port`'s socket at `path` while its VMM of
