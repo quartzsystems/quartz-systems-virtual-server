@@ -9,15 +9,15 @@
 //! | Name | Type | Description |
 //! |---|---|---|
 //! | `CORE` | 1 (`NT_PRSTATUS`) | a processor: `elf_prstatus` of x86-64, its process number the processor's number plus 1 |
-//! | `QSVS` | 2 | a processor's special registers: its number, then [`Cpu::SPECIAL`] in order, eight bytes each |
-//! | `QSVS` | 1 | the header record: lines `key=value`, [`Header`]'s fields |
+//! | `QSVS` | `0x51530002` | a processor's special registers: its number, then [`Cpu::SPECIAL`] in order, eight bytes each |
+//! | `QSVS` | `0x51530001` | the header record: lines `key=value`, [`Header`]'s fields |
 
 /// `NT_PRSTATUS`.
 const NT_PRSTATUS: u32 = 1;
 /// The header record's type.
-const QSVS_HEADER: u32 = 1;
+const QSVS_HEADER: u32 = 0x5153_0001;
 /// A processor's special registers.
-const QSVS_SPECIAL: u32 = 2;
+const QSVS_SPECIAL: u32 = 0x5153_0002;
 /// The size of `elf_prstatus` on x86-64, and where its registers are.
 const PRSTATUS: usize = 336;
 const PR_REG: usize = 112;
