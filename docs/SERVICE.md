@@ -44,7 +44,7 @@ and so is what the host sends while the guest has the port closed.
 | The partition is | When |
 |---|---|
 | Starting | from its activation until its system reports its IPL `complete`; again when the system reports `ipl` |
-| Running | its system reported `complete`; or its kernel was entered and its system did not open the service port in the time set (`channel_wait_secs`, 60 s by default): it is marked as having **no service channel** and `C2009005` is in its history |
+| Running | its system reported `complete`; or its kernel was entered and its system did not open the service port in the time set (`channel_wait_secs`, 30 s by default): it is marked as having **no service channel** and `C2009005` is in its history |
 | Shutting down | a shut down asked of the system was accepted, or the system reported `ending`, or `down` without a terminal code, or the host asked its VMM to end, until the VMM ends |
 | Error | held with its memory after a terminal code or a guest fault (below); or its VMM failed or was killed, holding nothing |
 | Not activated | its VMM ended and nothing follows |

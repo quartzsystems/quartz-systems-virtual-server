@@ -468,7 +468,7 @@ What QS/400 would have to change, found so far:
 
 1. **Say in the LIC record that the system has a service channel.**
    The host cannot tell a system that has not opened the port yet from
-   one that never will, so it waits a minute for the second
+   one that never will, so it waits 30 seconds for the second
    (`docs/OPEN_QUESTIONS.md` item 38). A TLV the IPL loader reads would
    end the wait.
 2. **The hello's `ipl_type`.** QS/400's `docs/QSID.md` gives it as `A`,

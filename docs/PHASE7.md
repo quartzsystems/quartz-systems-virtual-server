@@ -154,3 +154,14 @@ cargo run -p build -- fuzz --target channel --secs 60
 
 `service-terminal` copies a dump out through a scratch disk and runs
 `readelf` on it, from binutils, on the machine that runs the harness.
+
+## Not done
+
+- `BLOCKED(phase7)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event (carried from Phase 4, `docs/PARTD.md`).
+- `BLOCKED(phase7)`: the host cannot tell beforehand whether a system has a service channel, and waits `channel_wait_secs` for it (`docs/OPEN_QUESTIONS.md` item 38); QS/400 would say so in its LIC record.
+- Not in Phase 7, and not started: QSI, pairing and any network listener; a console or any action on a partition from Service Tools; the system's own main storage dump; serviceable events; a change to a running partition's resources.
+
+## For a real machine (NEEDS-CODY)
+
+- `NEEDS-CODY`: a dump of a partition with tens of gigabytes of memory, timed on the Dell: the time, the bytes written and the bytes it takes in the pool, and the partition's processors stopped for that long. The build host dumped 4 GiB of a QS/400 partition in 11 s.
+- `NEEDS-CODY`: a console session watched by a person: QS/MC is not there yet, so a client of the partition manager's socket (the hooks' `console` in a test image) is all there is; whether the screen as the protocol carries it is what a person at QS/400's own console would see, and whether typing keeps up.

@@ -74,7 +74,7 @@ impl Default for Service {
             delayed_grace_secs: 120,
             system_timeout_secs: 300,
             host_timeout_secs: 300,
-            channel_wait_secs: 60,
+            channel_wait_secs: 30,
             max_dumps: 3,
             max_dump_mib: 256 * 1024,
         }

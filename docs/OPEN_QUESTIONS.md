@@ -60,12 +60,13 @@ today, and never a VLAN a partition is on.
 
 Nothing in a partition says beforehand whether its system has a service
 channel (`docs/SERVICE.md`, "States"): the host waits after the kernel
-was entered, `channel_wait_secs`, 60 s by default, and a system that has
+was entered, `channel_wait_secs`, 30 s by default, and a system that has
 not said hello by then is Running with none. A QS/400 of handoff 17
 says hello about three seconds after its kernel starts on the build
-host; three levels deep in the suites it is under thirty. The cost of
-the wait is that an older system, or QS/VS's own UKI as a guest, shows
-Starting for that minute. Recommended: keep 60 s, a setting; QS/400
+host, and three levels deep in the suites its whole IPL took under
+twenty. The cost of the wait is that an older system, or QS/VS's own
+UKI as a guest, shows Starting for those seconds. Recommended: keep
+30 s, a setting; QS/400
 could say in its LIC record that it has a channel (a TLV the IPL
 loader reads), and the host would then not wait for one that has
 none. That is QS/400's to add, and the host's to read once it is.

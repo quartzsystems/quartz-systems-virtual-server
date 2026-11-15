@@ -50,7 +50,7 @@ maximum_units = 1.5
 delayed_grace_secs = 120
 system_timeout_secs = 300
 host_timeout_secs = 300
-channel_wait_secs = 60
+channel_wait_secs = 30
 max_dumps = 3
 max_dump_mib = 262144
 ```
@@ -65,7 +65,7 @@ max_dump_mib = 262144
 | `service.delayed_grace_secs` | seconds after a delayed shut down's delay before it is forced: 0 to 3600 (`docs/SERVICE.md`) | 120 |
 | `service.system_timeout_secs` | seconds an operating-system shut down is given before it is forced: 10 to 3600 | 300 |
 | `service.host_timeout_secs` | seconds each partition is given to shut down through its system at the host's shut down: 10 to 3600 | 300 |
-| `service.channel_wait_secs` | seconds after the kernel is entered for a system to open its service channel: 5 to 600 | 60 |
+| `service.channel_wait_secs` | seconds after the kernel is entered for a system to open its service channel: 5 to 600 | 30 |
 | `service.max_dumps` | the most dumps kept of a partition: 1 to 32 (`docs/DUMPS.md`) | 3 |
 | `service.max_dump_mib` | the most MiB a partition's dumps take together: 64 or more | 262144 |
 
