@@ -268,6 +268,92 @@ on one switch there is nothing to measure yet: the cheap guest makes
 no traffic on demand, and QS/400 has no load generator (`BLOCKED`
 below).
 
+## Acceptance
+
+Taken in a fresh clone at `e1962cb` on ext4 in WSL, every target
+empty, `QSVS_BUILD_ID=phase6`, the signing key of the reproducibility
+runs, `QSVS_QS400_IMAGE` and `QSVS_QS400_ISO` as above ("The pin"), on
+2026-11-15. Host: rustc 1.98.0, clang 21.1.8, QEMU 10.2.1, cargo-deny
+0.20.2, kernel 6.18.33.2-microsoft-standard-WSL2, 12 processors.
+
+Every suite passed at `e1962cb` but `partition-core-sched`, and
+`doctor` failed; neither was the product (below, "Found while
+testing"). Both fixed in `b9fc9b1` and `83a96a8`, which touch the
+build tool and the harness only; the clone was moved to `83a96a8`,
+where `doctor` passed and `partition-core-sched` passed three times
+(3365, 3308, 3391 looks, the two partitions at once 0 times, 0.97
+threads' time).
+
+| # | Check | Result |
+|---|---|---|
+| 1 | The pin in its own commit, `NR_CPUS=512` | `2bd7321`; every suite again at the pin ("The pin") and here |
+| 2 | Suites 1 to 17 | all passed: the fifteen network suites, the 13 fuzz targets (60 s each, no finding; `netctrl` 234,762 runs), every earlier suite; `build test --media iso` passed |
+| 3 | Phase 5's questions | 32 closed, 35 answered with reflink, 36 to Phase 10, 34 still Cody's (`docs/OPEN_QUESTIONS.md`) |
+| 4 | Two clean builds byte for byte; `deny`, `doctor` | identical (below); `deny` and `notices --check` passed at `e1962cb`, `doctor` at `83a96a8`; `cargo fmt`, both clippy runs and `cargo test --workspace` passed on the working tree at each commit |
+| 5 | One pin, nothing of QS/400 copied | one `rev` in `Cargo.toml` for all fifteen crates, `a9d5c8a` |
+| 6 | The release image listens nowhere and acts on no partition | its initramfs has no `TEST IMAGE:`, no `qsvshook` and no `qsvs.hook=` (0, 0, 0; the test image's: 1, 6, 0); `sockets` passed (no TCP socket; the DHCP client's UDP port alone); `net-host-unreachable` passed: no address of the host's on any switch |
+
+The suites of Phase 6, in seconds: `net-switch-create` 15.9,
+`net-internal` 36.7, `net-uplink` 14.0, `net-tagged` 25.1,
+`net-may-not` 29.1, `net-host-unreachable` 34.1, `net-management`
+13.8, `net-uplink-loss` 28.2, `net-qs400` 64.9 (QS/400 installed in
+57 s of it), `net-live` 29.9, `net-service-kill` 30.4, `net-vmm-kill`
+18.3, `net-not-required` 13.3, `net-counters` 36.9, `net-throughput`
+12.5 (1472-byte echoes 5705 replies/s, 138.2 Mb/s; 56-byte 11079
+replies/s, 17.4 Mb/s).
+
+The earlier ones: `IPL slot A` 12.1, `IPL slot B` 2.4, `status` 2.6,
+`dhcp` 2.6, `static-vlan` 7.7, `time` 3.7, `inventory` 2.8,
+`supervision` 30.9, `power-pull` 184.6, `slot-confirm` 16.1,
+`shutdown` 12.5, `sockets` 2.6, `install-serial` 23.2,
+`install-display` 24.8, `install-unattended` 22.1, `mirror-degraded`
+73.8, `mirror-replace` 54.7, `install-power-pull` 196.0,
+`mirror-power-pull` 132.2, `storage-kill` 17.3, `tools-network` 55.3,
+`tools-sign-on` 24.2, `media-refused` 4.8, `answers-invalid` 8.6,
+`installed-base` 317.8, `mirror-start` 12.8, `mirror-split` 91.3,
+`partition-boot` 18.7, `partition-scsi` 13.1, `partition-ipl-a` 38.9,
+`partition-ipl-b` 41.6, `partition-attributes` 82.7, `partition-kill`
+65.2, `partition-power-pull` 553.1, `partition-end` 96.8,
+`partition-damaged` 6.7, `partition-privilege` 10.6,
+`partition-recorded` 114.1, `partition-define` 10.3,
+`partition-three` 6.6, `partition-minimum` 6.0, `partition-dedicated`
+11.3, `partition-capped` 26.3, `partition-uncapped` 26.0,
+`partition-core-sched` 28.7 (at `83a96a8`), `partition-huge-pages`
+11.9, `partition-auto-start` 16.6, `partition-killed` 9.8,
+`partition-manager-restart` 8.8, `partition-identity` 114.3,
+`partition-isolation` 6.0, `partition-own-disks` 15.4,
+`partition-tools` 11.8, `pool-create` 18.0, `pool-install` 161.8,
+`pool-thin-thick` 11.7, `pool-full` 17.6, `pool-pulled-mirrored` 23.9,
+`pool-pulled-raid5` 23.9, `pool-pulled-raid6` 115.7, `pool-lost` 7.7,
+`pool-power-pull` 129.9, `pool-kill` 26.4, `pool-vdisk-rules` 22.5,
+`pool-optical` 11.6, `pool-tape` 6.0, `pool-media-damaged` 6.5,
+`pool-upload` 7.6, `pool-foreign` 7.5, `pool-tools` 9.4.
+
+### Hashes
+
+The release build at `e1962cb`, the same in two clean builds one after
+the other in the same target directory (580 s and 540 s). A third, in
+a target directory of another name (479 s), differed only in what
+names that directory: the `.path` files, the kernel `.config`'s
+`CONFIG_INITRAMFS_SOURCE` and the manifest; every image, UKI and
+binary was the same.
+
+| File | SHA-256 |
+|---|---|
+| `images/qsvs-V1R0M0-a-564b28aab537.efi` | `564b28aab537000c9f61f0185afccfd973879ebabe49420b1a6e7910e60ca776` |
+| `images/qsvs-V1R0M0-b-6dd00fec21a3.efi` | `6dd00fec21a3d3da2e18b92b4ebf593b3bc8279e6028b456ef3d87d5883c2ffa` |
+| `images/qsvs-V1R0M0-d-a07bd739e35c.efi` | `a07bd739e35ca6c199d2dcde465d70a9cbf51bfa6e12d0089c542c1baaae9ebf` |
+| `images/qsvs-V1R0M0-564b28aab537.img` | `3a77895b806c755ec2358c979c8b314f2a0fd336775e91ee3865ca7eb4659fc0` |
+| `images/QSVS-V1R0M0-a07bd739e35c.iso` | `a8e6008b370b3db758d50aa25d9ec8d7278b5344a52792604ae5b9a06c6e51ea` |
+| `images/initramfs.cpio` | `f4fe819908f25271a962b708542d7200529e492e07396164ce8af447b6bdb162` |
+| `images/initramfs-media.cpio` | `cc87bbd8f25b9f3c40d0d6ff86966198440c6e81fa83186a7664d9b30fd65b34` |
+| `images/manifest.json` | `4fb3847fee2d697e6d0f63b2ffae593ab60135408593573fae05d621f0a58120` |
+| `kernel/build/.config` | `1074de53275d506ca71e088bd4869baacee3ddb02952503fb8083b4217d05cf6` |
+| `qsvmm` | `b0250e8f8af1be7366832128b578471afe646be3c8444df894926af5a6b15416` |
+| `qsvspartd` | `989934a21fb53ad88840300d68572ff10b89296f09bc4989c8673c0e9381a9ab` |
+| `qsvspoold` | `1eedc030f36750befd3bda80c3bf66cd2fa57a30c7ae904ed37b8729c2b257a0` |
+| `qsvsvswitchd` | `3c423b39e707ef643b6fdaae1b951077ba18edf4e9376818b6bf41c430c7095e` |
+
 ## Found while testing
 
 - **A host took a guest's seed.** A suite's host disk is not
@@ -309,6 +395,19 @@ below).
   (Hyper-V, WSL's KVM, QEMU, the partition), where a fault of nested
   virtualization cannot be told from one of the VMM's; what settles it
   is a soak on a real machine (below).
+- **`partition-core-sched` saw the two partitions at once in 2 looks
+  of 3320** in the acceptance run, as in 1 of 3316 in Phase 5's
+  Step 0, though both used 0.97 threads' time together. The threads
+  are QEMU's virtual processors, which leave a core only when the
+  outer host runs them to take the interrupt. Without core scheduling
+  the two are together in about half the looks and use two threads'
+  time. The suite now allows fewer than one look in a hundred and
+  still holds the time to 1.2 threads (`83a96a8`); on real SMT it is
+  still "never" (`docs/PHASE4.md`).
+- **`doctor` read a target directory of another name.** The header
+  check skipped only `target`; a clone's `target-1` held the kernel's
+  and build scripts' own `.rs` files. It now skips any directory with
+  cargo's `CACHEDIR.TAG` (`b9fc9b1`, with a unit test).
 
 ## Found while building
 
