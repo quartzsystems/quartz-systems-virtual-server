@@ -17,10 +17,11 @@ pub const HEADER: &str = "\
 // root directory of this project.
 ";
 
-/// Directories that hold no sources of ours: build output and dot
-/// directories (`.git`, `.cargo`, `.github`).
-fn skipped(name: &str) -> bool {
-    name == "target" || name.starts_with('.')
+/// Directories that hold no sources of ours: build output, by its name
+/// or cargo's `CACHEDIR.TAG` in it (a target directory of any name),
+/// and dot directories (`.git`, `.cargo`, `.github`).
+fn skipped(dir: &Path, name: &str) -> bool {
+    name == "target" || name.starts_with('.') || dir.join("CACHEDIR.TAG").is_file()
 }
 
 fn walk(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
@@ -30,7 +31,7 @@ fn walk(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if entry.file_type()?.is_dir() {
-            if !skipped(&name) {
+            if !skipped(&path, &name) {
                 walk(&path, files)?;
             }
         } else if name.ends_with(".rs") {
@@ -74,6 +75,27 @@ mod tests {
         assert!(!has_header(&format!("\n{HEADER}")));
         assert!(!has_header(&HEADER.replace("2026", "2025")));
         assert!(!has_header("fn main() {}\n"));
+    }
+
+    /// A target directory of another name inside the tree is not read.
+    #[test]
+    fn a_tagged_target_directory_is_skipped() {
+        let root = std::env::temp_dir().join(format!("qsvs-header-{}", std::process::id()));
+        let out = root.join("target-1/build");
+        fs::create_dir_all(&out).unwrap();
+        fs::write(out.join("gen.rs"), "fn x() {}\n").unwrap();
+        fs::write(root.join("lib.rs"), HEADER).unwrap();
+        assert_eq!(
+            check(&root).unwrap(),
+            (2, vec!["target-1/build/gen.rs".to_string()])
+        );
+        fs::write(
+            root.join("target-1/CACHEDIR.TAG"),
+            "Signature: 8a477f597d28d172789f06886806bc55\n",
+        )
+        .unwrap();
+        assert_eq!(check(&root).unwrap(), (1, Vec::new()));
+        fs::remove_dir_all(&root).unwrap();
     }
 
     /// The check itself, over this repository: CI's header check.
