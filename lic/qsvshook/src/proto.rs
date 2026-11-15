@@ -14,6 +14,9 @@ use supervise::control::{HostStatus, ServiceStatus};
 pub const END: &str = ".";
 /// The serial port the channel is on.
 pub const PORT: &str = "/dev/ttyS1";
+/// While this file is there, the partitions' lines are not relayed to
+/// the host's serial port: a suite that reads a screen there puts it.
+pub const QUIET: &str = "/run/qsvshook.quiet";
 
 /// The commands.
 pub mod command {

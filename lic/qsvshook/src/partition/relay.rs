@@ -40,6 +40,9 @@ pub fn console_socket(id: u32) -> PathBuf {
 }
 
 fn serial_line(line: &str) {
+    if Path::new(crate::proto::QUIET).exists() {
+        return;
+    }
     if let Ok(mut port) = OpenOptions::new().write(true).open(HOST_SERIAL) {
         let _ = port.write_all(format!("{line}\r\n").as_bytes());
     }
