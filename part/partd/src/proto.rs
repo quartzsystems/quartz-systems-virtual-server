@@ -8,7 +8,7 @@
 //! request is different: after `subscribe` is answered the connection
 //! stays open and every event follows on it, a frame each.
 
-use model::{Definition, IplSource, Keylock, Profile};
+use model::{Definition, IplSource, IplType, Keylock, Profile};
 use qvsmsg::Issued;
 use resource::{Current, HostResources, Pool, Settings};
 
@@ -30,14 +30,17 @@ pub fn report(run_dir: &std::path::Path, id: u32) -> std::path::PathBuf {
 pub enum State {
     /// It has no VMM and holds nothing.
     NotActivated,
-    /// Its VMM runs and has not yet entered the guest's kernel.
+    /// Its VMM runs and its system has not reported its IPL complete.
     Starting,
-    /// The guest runs.
+    /// The system's IPL is complete, or it has no service channel and
+    /// its kernel was entered.
     Running,
-    /// It was asked to end and has not yet.
+    /// A shut down was asked for, or the system is ending, and its VMM
+    /// has not ended yet.
     ShuttingDown,
-    /// Its VMM failed or was killed. It holds nothing, and can be
-    /// activated again.
+    /// Held with its memory after a terminal code or a guest fault (its
+    /// VMM is kept and it holds what it held), or its VMM failed or was
+    /// killed (it holds nothing and can be activated again).
     Error,
 }
 ipc::wire_enum!(State {
@@ -95,7 +98,48 @@ pub struct Status {
     /// Its virtual Ethernet adapters: the running profile's, or the
     /// default profile's when it is not activated.
     pub ethernet: Vec<Ethernet>,
+    /// Its service channel and what the system reported of itself.
+    pub service: Service,
 }
+
+/// A partition's service channel, and what the system reported.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // four facts apart
+pub struct Service {
+    /// Whether the channel is up: the system said hello on it.
+    pub up: bool,
+    /// Whether the system has none: its kernel was entered and it did
+    /// not open the service port in time.
+    pub none: bool,
+    /// Whether it answers pings.
+    pub responding: bool,
+    /// Whether it is held with its memory.
+    pub kept: bool,
+    /// The system's name.
+    pub system: String,
+    /// Its release, `V1R2M0`; empty until known.
+    pub release: String,
+    /// Its fix level; empty until known.
+    pub fix_level: String,
+    /// Its addresses, each `address/prefix`.
+    pub addresses: Vec<String>,
+    /// The protocol version both sides speak; 0 with no channel.
+    pub version: u16,
+    /// The capabilities both have.
+    pub caps: u64,
+}
+ipc::wire_struct!(Service {
+    up,
+    none,
+    responding,
+    kept,
+    system,
+    release,
+    fix_level,
+    addresses,
+    version,
+    caps
+});
 
 /// A virtual Ethernet adapter, as a list shows it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -127,11 +171,33 @@ ipc::wire_struct!(Status {
     last_end,
     message,
     pid,
-    ethernet
+    ethernet,
+    service
 });
 
+/// Who posted a reference code of a partition's history.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Source {
+    /// The host, about the partition (`docs/REFCODES.md`).
+    #[default]
+    Host,
+    /// The system in it, on its service channel.
+    System,
+}
+ipc::wire_enum!(Source { 0 => Host, 1 => System });
+
+impl Source {
+    /// As a history shows it.
+    pub fn word(self) -> &'static str {
+        match self {
+            Source::Host => "host",
+            Source::System => "system",
+        }
+    }
+}
+
 /// One reference code of a partition's history.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Posted {
     /// When, in seconds since the epoch.
     pub time: u64,
@@ -139,8 +205,18 @@ pub struct Posted {
     pub code: String,
     /// Its text.
     pub text: String,
+    /// Who posted it.
+    pub source: Source,
+    /// Its words 2 to 9, as the system gave them; none for a host code.
+    pub words: Vec<String>,
 }
-ipc::wire_struct!(Posted { time, code, text });
+ipc::wire_struct!(Posted {
+    time,
+    code,
+    text,
+    source,
+    words
+});
 
 /// Something that happened to a partition.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -188,12 +264,39 @@ pub enum Event {
         /// When.
         time: u64,
     },
+    /// Its service channel came up or went, it stopped or started
+    /// answering, or the system reported a change of itself.
+    Channel {
+        /// The partition.
+        id: u32,
+        /// Its name.
+        name: String,
+        /// The channel as it is now.
+        service: Service,
+        /// When.
+        time: u64,
+    },
+    /// A dump of it was written, or could not be.
+    Dump {
+        /// The partition.
+        id: u32,
+        /// Its name.
+        name: String,
+        /// The dump's name.
+        dump: String,
+        /// Why it was not written; none when it was.
+        error: Option<Issued>,
+        /// When.
+        time: u64,
+    },
 }
 ipc::wire_enum!(Event {
     0 => State { id, name, state, time },
     1 => Code { id, name, posted },
     2 => Resources { id, name, current, time },
     3 => Defined { id, name, exists, time },
+    4 => Channel { id, name, service, time },
+    5 => Dump { id, name, dump, error, time },
 });
 
 impl Event {
@@ -203,7 +306,9 @@ impl Event {
             Event::State { id, .. }
             | Event::Code { id, .. }
             | Event::Resources { id, .. }
-            | Event::Defined { id, .. } => *id,
+            | Event::Defined { id, .. }
+            | Event::Channel { id, .. }
+            | Event::Dump { id, .. } => *id,
         }
     }
 }
@@ -285,7 +390,171 @@ ipc::rpc! {
     /// Every virtual Ethernet adapter of a partition's profiles, with its
     /// switch and MAC address; of every partition with 0.
     25 => fn adapters / Adapters (id: u32) -> Vec<vswitchd::Adapter>;
+    /// Shut a partition down by `kind`, with `delay` for a delayed shut
+    /// down, activating it again when `restart`. Answers when the system
+    /// has accepted it, or at once when immediate.
+    26 => fn shut_down_as / ShutDownAs (id: u32, kind: Shutdown, delay: u32, restart: bool) -> Result<(), Refused>;
+    /// A control panel function, with its arguments: the text it
+    /// displays, empty when it displays nothing.
+    27 => fn panel / Panel (id: u32, function: u8, args: PanelArgs) -> Result<String, Refused>;
+    /// Dump a running or held partition, without restarting it. The
+    /// dump's name; it is written in the background, and an event says
+    /// when it is done.
+    28 => fn take_dump / TakeDump (id: u32) -> Result<String, Refused>;
+    /// A partition's dumps, oldest first.
+    29 => fn dumps / Dumps (id: u32) -> Result<Vec<DumpInfo>, Refused>;
+    /// Delete a dump.
+    30 => fn delete_dump / DeleteDump (id: u32, name: String) -> Result<(), Refused>;
+    /// Read a dump: its size, and then its bytes on this connection, a
+    /// frame of at most [`DUMP_PIECE`] each, to the end.
+    31 => fn read_dump / ReadDump (id: u32, name: String) -> Result<u64, Refused>;
+    /// Attach to a partition's console, taking it over from another
+    /// viewer when `take_over`: whether it is the serial port's bytes.
+    /// Then [`ConsoleOut`] follows on this connection, and the client
+    /// sends [`ConsoleIn`], until either side closes it.
+    32 => fn console / Console (id: u32, take_over: bool) -> Result<bool, Refused>;
+    /// The console's screen as it is now, alone.
+    33 => fn screen / Screen (id: u32) -> Result<ScreenCapture, Refused>;
 }
+
+/// The most bytes of a dump in one frame of a read.
+pub const DUMP_PIECE: usize = 128 * 1024;
+
+/// How a partition is shut down (`docs/SERVICE.md`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shutdown {
+    /// The system's controlled power down, with a delay; forced when the
+    /// delay and a grace period have passed.
+    Delayed,
+    /// The system's immediate power down; forced after a timeout.
+    System,
+    /// The VMM is stopped.
+    Immediate,
+}
+ipc::wire_enum!(Shutdown { 0 => Delayed, 1 => System, 2 => Immediate });
+
+impl Shutdown {
+    /// As a message names it.
+    pub fn word(self) -> &'static str {
+        match self {
+            Shutdown::Delayed => "delayed",
+            Shutdown::System => "operating system",
+            Shutdown::Immediate => "immediate",
+        }
+    }
+}
+
+/// Function 02's selection for the next activation; what is left out
+/// is not changed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PanelArgs {
+    /// The IPL source.
+    pub source: Option<IplSource>,
+    /// The IPL type.
+    pub ipl_type: Option<IplType>,
+    /// The keylock position.
+    pub keylock: Option<Keylock>,
+}
+ipc::wire_struct!(PanelArgs {
+    source,
+    ipl_type,
+    keylock
+});
+
+/// One dump of a partition.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DumpInfo {
+    /// Its name.
+    pub name: String,
+    /// When it was taken, in seconds since the epoch.
+    pub time: u64,
+    /// Its size.
+    pub bytes: u64,
+    /// The bytes it takes in the pool.
+    pub allocated: u64,
+    /// The partition's reference code when it was taken.
+    pub code: String,
+    /// Why it was taken.
+    pub reason: String,
+}
+ipc::wire_struct!(DumpInfo {
+    name,
+    time,
+    bytes,
+    allocated,
+    code,
+    reason
+});
+
+/// A partition's console screen, captured.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ScreenCapture {
+    /// Whether the console is the serial port's: there is then no frame.
+    pub serial: bool,
+    /// The whole frame.
+    pub frame: Option<qsipart::console::Frame>,
+    /// The screen as text, a line a row.
+    pub text: String,
+}
+ipc::wire_struct!(ScreenCapture {
+    serial,
+    frame,
+    text
+});
+
+/// What an attached console's client is sent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConsoleOut {
+    /// A whole frame: the first after attaching, and when the system
+    /// sent one.
+    Frame {
+        /// It.
+        frame: qsipart::console::Frame,
+    },
+    /// What changed.
+    Update {
+        /// It.
+        update: qsipart::console::Update,
+    },
+    /// The serial port's bytes, when that is the console.
+    Serial {
+        /// They.
+        bytes: Vec<u8>,
+    },
+    /// The client is detached: taken over, or the partition ended.
+    Ended {
+        /// Why.
+        why: String,
+    },
+}
+ipc::wire_enum!(ConsoleOut {
+    0 => Frame { frame },
+    1 => Update { update },
+    2 => Serial { bytes },
+    3 => Ended { why },
+});
+
+/// What an attached console's client sends.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConsoleIn {
+    /// A key, for the console port.
+    Key {
+        /// It.
+        key: qsipart::console::Key,
+    },
+    /// Ask for a whole frame.
+    Refresh,
+    /// Bytes for the serial port, when that is the console.
+    Bytes {
+        /// They.
+        bytes: Vec<u8>,
+    },
+}
+ipc::wire_enum!(ConsoleIn {
+    0 => Key { key },
+    1 => Refresh,
+    2 => Bytes { bytes },
+});
 
 /// An optical or tape device of a running partition.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -335,6 +604,52 @@ impl Client {
         ipc::frame::read_frame_max(&mut stream, MAX_FRAME)
     }
 
+    /// Attach to `id`'s console, taking it over when `take_over`:
+    /// whether it is the serial port's, and the connection.
+    pub fn console(
+        &self,
+        id: u32,
+        take_over: bool,
+    ) -> Result<Result<(bool, ConsoleSession), Refused>, ipc::WireError> {
+        let mut stream = std::os::unix::net::UnixStream::connect(&self.path)?;
+        stream.set_read_timeout(Some(ANSWER_WAIT))?;
+        ipc::frame::write_frame(
+            &mut stream,
+            &ipc::encode(&Request::Console { id, take_over }),
+        )?;
+        let answer = ipc::frame::read_frame_max(&mut stream, MAX_FRAME)?;
+        let attached: Result<bool, Refused> = ipc::decode(&answer)?;
+        Ok(attached.map(|serial| (serial, ConsoleSession { stream })))
+    }
+
+    /// Read `id`'s dump `name` into `out`: its size.
+    pub fn read_dump_into(
+        &self,
+        id: u32,
+        name: &str,
+        out: &mut dyn std::io::Write,
+    ) -> Result<Result<u64, Refused>, ipc::WireError> {
+        let mut stream = std::os::unix::net::UnixStream::connect(&self.path)?;
+        stream.set_read_timeout(Some(ANSWER_WAIT))?;
+        let request = Request::ReadDump {
+            id,
+            name: name.to_string(),
+        };
+        ipc::frame::write_frame(&mut stream, &ipc::encode(&request))?;
+        let answer = ipc::frame::read_frame_max(&mut stream, MAX_FRAME)?;
+        let size: Result<u64, Refused> = ipc::decode(&answer)?;
+        if size.is_ok() {
+            loop {
+                let piece = ipc::frame::read_frame_max(&mut stream, DUMP_PIECE)?;
+                if piece.is_empty() {
+                    break;
+                }
+                out.write_all(&piece)?;
+            }
+        }
+        Ok(size)
+    }
+
     /// Subscribe: the connection every event then arrives on.
     pub fn events(&self) -> Result<Events, ipc::WireError> {
         let mut stream = std::os::unix::net::UnixStream::connect(&self.path)?;
@@ -360,6 +675,40 @@ pub const MAX_FRAME: usize = 256 * 1024;
 /// disk before it answers, which on a busy host can take seconds.
 #[cfg(unix)]
 pub const ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// An attached console's connection.
+#[cfg(unix)]
+#[derive(Debug)]
+pub struct ConsoleSession {
+    stream: std::os::unix::net::UnixStream,
+}
+
+#[cfg(unix)]
+impl ConsoleSession {
+    /// Send keys, a refresh, or the serial port's bytes.
+    pub fn send(&mut self, message: &ConsoleIn) -> Result<(), ipc::WireError> {
+        ipc::frame::write_frame(&mut self.stream, &ipc::encode(message))
+    }
+
+    /// The next message for the viewer; waits `wait` at most.
+    pub fn next(&mut self, wait: std::time::Duration) -> Result<ConsoleOut, ipc::WireError> {
+        self.stream.set_read_timeout(Some(wait))?;
+        let frame = ipc::frame::read_frame_max(&mut self.stream, MAX_FRAME)?;
+        ipc::decode(&frame)
+    }
+
+    /// A second handle on the connection: one to read, one to send.
+    pub fn try_clone(&self) -> std::io::Result<Self> {
+        Ok(Self {
+            stream: self.stream.try_clone()?,
+        })
+    }
+
+    /// Detach.
+    pub fn close(self) {
+        let _ = self.stream.shutdown(std::net::Shutdown::Both);
+    }
+}
 
 /// A subscription.
 #[cfg(unix)]
@@ -413,6 +762,12 @@ mod tests {
                 mac: "02:5a:3c:00:03:05".into(),
                 link: true,
             }],
+            service: Service {
+                up: true,
+                release: "V1R2M0".into(),
+                addresses: vec!["10.0.2.15/24".into()],
+                ..Service::default()
+            },
         };
         let back: Status = ipc::decode(&ipc::encode(&status)).unwrap();
         assert_eq!(back, status);
@@ -430,6 +785,7 @@ mod tests {
                     time: 7,
                     code: "C2005100".into(),
                     text: "Partition powered off".into(),
+                    ..Posted::default()
                 },
             },
             Event::Resources {

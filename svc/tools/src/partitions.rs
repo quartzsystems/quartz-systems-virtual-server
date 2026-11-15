@@ -2,10 +2,11 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The partitions, for looking at: ID, name, state, reference code,
-//! and the processors and memory each holds now, as the partition
-//! manager says. Nothing here acts on a partition: that is the
-//! management console's.
+//! The partitions, for looking at: ID, name, state, the current
+//! reference code (the system's own while it posts them), the system's
+//! release, and the processors and memory each holds now, as the
+//! partition manager says. Nothing here acts on a partition: that is
+//! the management console's.
 
 use console::Screen;
 use panels::{Flow, Help, Named, Panel, PanelFlow, kit};
@@ -19,7 +20,8 @@ use crate::menu::Outcome;
 const ROWS: usize = 13;
 
 /// The list's heading.
-pub const HEADING: &str = " ID  Name        State          Reference  Processors     Memory";
+pub const HEADING: &str =
+    " ID  Name        State          Reference  Release  Processors     Memory";
 
 /// What a partition's processors are, in a few words.
 fn processors(processors: &Processors) -> String {
@@ -40,12 +42,18 @@ pub fn row(p: &Status) -> String {
         ),
         None => ("-".to_string(), "-".to_string()),
     };
+    let release = if p.service.release.is_empty() {
+        "-"
+    } else {
+        &p.service.release
+    };
     format!(
-        "{:>3}  {:<10}  {:<13}  {:<9}  {:<13}  {memory}",
+        "{:>3}  {:<10}  {:<13}  {:<9}  {:<7}  {:<13}  {memory}",
         p.id,
         p.name,
         p.state.word(),
         if p.code.is_empty() { "-" } else { &p.code },
+        release,
         held,
     )
     .trim_end()
@@ -141,8 +149,10 @@ impl Panel<Env, Outcome> for Partitions {
                 "follows them. Nothing can be done to a partition here.",
                 "",
                 "State is Not activated, Starting, Running, Shutting down or",
-                "Error. Reference is the code the partition posted last, as the",
-                "host saw it; the partition's own codes are on its console.",
+                "Error. Reference is the partition's current reference code:",
+                "its system's own while the system posts them on its service",
+                "channel, else the host's. Release is the system's, as it said",
+                "on its service channel; - when it has none.",
                 "",
                 "Processors is what the partition holds now: whole cores when",
                 "they are dedicated, or its processing units and its virtual",
@@ -192,6 +202,14 @@ mod tests {
             message: None,
             pid: 0,
             ethernet: Vec::new(),
+            service: partd::proto::Service {
+                release: if state == State::Running {
+                    "V1R2M0".into()
+                } else {
+                    String::new()
+                },
+                ..partd::proto::Service::default()
+            },
         }
     }
 
@@ -218,18 +236,22 @@ mod tests {
         ];
         assert_eq!(
             row(&all[0]),
-            "  1  PROD        Running        C2005090   2 dedicated    2048 MB"
+            "  1  PROD        Running        C2005090   V1R2M0   2 dedicated    2048 MB"
         );
         assert_eq!(
             row(&all[1]),
-            " 12  TESTSHARED  Starting       C2005090   0.50 on 1 shr  1024 MB"
+            " 12  TESTSHARED  Starting       C2005090   -        0.50 on 1 shr  1024 MB"
         );
         assert_eq!(
             row(&all[2]),
-            "  3  DEV         Not activated  -          -              -"
+            "  3  DEV         Not activated  -          -        -              -"
         );
         // The heading's columns are the rows'.
-        for (word, in_row) in [("State", "Running"), ("Reference", "C2005090")] {
+        for (word, in_row) in [
+            ("State", "Running"),
+            ("Reference", "C2005090"),
+            ("Release", "V1R2M0"),
+        ] {
             assert_eq!(HEADING.find(word), row(&all[0]).find(in_row));
         }
         assert!(all.iter().all(|p| row(p).len() <= 76));

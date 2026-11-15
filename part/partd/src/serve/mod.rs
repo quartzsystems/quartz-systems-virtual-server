@@ -17,8 +17,14 @@
 //!
 //! - [`machine`]: what the manager asks of the host.
 //! - [`watch`]: a VMM's report and its end.
+//! - [`channel`]: the connections of each service channel.
+//! - [`console`]: a console's viewer on the socket.
+//! - [`files`]: histories and dumps on disk.
 //! - [`sys`]: starting a process in its control group.
 
+pub mod channel;
+mod console;
+pub mod files;
 pub mod machine;
 mod sys;
 pub mod watch;
@@ -38,10 +44,10 @@ use resource::settings::HUGE_PAGE_MIB;
 use resource::{Host, Settings, Thread, Topology};
 use supervise::control::Calls as _;
 
-use crate::manager::{Ended, Manager, Record, System as _};
-use crate::proto::{self, MAX_FRAME, Partitions as _, RUN, Request};
+use crate::manager::{Answer, Ended, Manager, Port, Record, System as _};
+use crate::proto::{self, MAX_FRAME, Partitions as _, RUN, Refused, Request};
 use crate::store::Store;
-use machine::{Machine, Paths, Watch};
+use machine::{Back, Dumped, Machine, Paths, Watch};
 use watch::Shared;
 
 /// The file that says the partitions flagged to start with the host
@@ -139,7 +145,12 @@ fn records(paths: &Paths) -> Vec<Record> {
 }
 
 /// Take up what runs; what ended while nobody watched is ended now.
-fn adopt(shared: &Shared, paths: &Paths, watches: &mpsc::Sender<Watch>) -> usize {
+fn adopt(
+    shared: &Shared,
+    paths: &Paths,
+    watches: &mpsc::Sender<Watch>,
+    channels: &mpsc::Sender<u32>,
+) -> usize {
     let mut running = 0;
     for record in records(paths) {
         let group = paths.cgroups.join(resource::cgroup::partition_group(
@@ -152,6 +163,7 @@ fn adopt(shared: &Shared, paths: &Paths, watches: &mpsc::Sender<Watch>) -> usize
         manager.adopt(&record, &lines);
         if watch::populated(&group) {
             running += 1;
+            let _ = channels.send(record.id);
             let _ = watches.send(Watch {
                 id: record.id,
                 child: None,
@@ -167,12 +179,85 @@ fn adopt(shared: &Shared, paths: &Paths, watches: &mpsc::Sender<Watch>) -> usize
     running
 }
 
-/// One connection: a request and its answer, or a subscription.
-fn connection(shared: &Shared, mut stream: UnixStream) -> Result<(), ipc::WireError> {
+/// What a request that waits for the system answers: its result, or
+/// that the system did not answer in time.
+fn waited(answer: Answer, name: &str) -> Result<String, Refused> {
+    match answer {
+        Answer::Now(result) => result,
+        Answer::Later(rx) => rx
+            .recv_timeout(Duration::from_secs(svcchan::ANSWER_SECS + 5))
+            .unwrap_or_else(|_| {
+                Err(vec![
+                    qvsmsg::SYSTEM_SILENT.with(&[name, &svcchan::ANSWER_SECS.to_string()]),
+                ])
+            }),
+    }
+}
+
+/// A dump's bytes on the connection, after its size.
+fn read_dump(
+    shared: &Shared,
+    mut stream: UnixStream,
+    id: u32,
+    name: &str,
+) -> Result<(), ipc::WireError> {
+    let (size, dir) = {
+        let mut manager = lock(shared);
+        (
+            manager.read_dump(id, name.to_string()),
+            manager.system().dump_dir(id),
+        )
+    };
+    write_frame(&mut stream, &ipc::encode(&size))?;
+    let (Ok(_), Some(dir)) = (size, dir) else {
+        return Ok(());
+    };
+    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
+    let mut file = fs::File::open(dir.join(name))?;
+    console::send_file(&mut stream, &mut file)?;
+    Ok(())
+}
+
+/// One connection: a request and its answer, or a subscription, a
+/// console's viewer, a dump's bytes.
+fn connection(
+    shared: &Shared,
+    paths: &Paths,
+    mut stream: UnixStream,
+) -> Result<(), ipc::WireError> {
     stream.set_read_timeout(Some(REQUEST_WAIT))?;
     stream.set_write_timeout(Some(REQUEST_WAIT))?;
     let frame = read_frame_max(&mut stream, MAX_FRAME)?;
     let request: Request = ipc::decode(&frame)?;
+    match request {
+        Request::ShutDownAs {
+            id,
+            kind,
+            delay,
+            restart,
+        } => {
+            let (answer, name) = {
+                let mut manager = lock(shared);
+                let name = manager.name_of(id);
+                (manager.begin_shut_down(id, kind, delay, restart), name)
+            };
+            let result = waited(answer, &name).map(|_| ());
+            return write_frame(&mut stream, &ipc::encode(&result));
+        }
+        Request::Panel { id, function, args } => {
+            let (answer, name) = {
+                let mut manager = lock(shared);
+                let name = manager.name_of(id);
+                (manager.begin_panel(id, function, args), name)
+            };
+            return write_frame(&mut stream, &ipc::encode(&waited(answer, &name)));
+        }
+        Request::Console { id, take_over } => {
+            return console::serve(shared, &paths.serial(id), stream, id, take_over);
+        }
+        Request::ReadDump { id, name } => return read_dump(shared, stream, id, &name),
+        _ => {}
+    }
     if matches!(request, Request::Subscribe {}) {
         let (events, received) = mpsc::channel();
         lock(shared).subscribe(events);
@@ -221,7 +306,18 @@ fn auto_start(shared: &Shared, control: &Path, marker: &Path) {
         thread::sleep(Duration::from_secs(u64::from(*delay)));
         let result = lock(shared).activate(*id, String::new(), None, None);
         match result {
-            Ok(_) => activated += 1,
+            Ok(_) => {
+                activated += 1;
+                // The next waits for this one's IPL to complete, or the
+                // time its definition gives.
+                let wait = lock(shared).auto_wait(*id);
+                if let Some(secs) = wait {
+                    let give_up = Instant::now() + Duration::from_secs(u64::from(secs));
+                    while !lock(shared).ipl_complete(*id) && Instant::now() < give_up {
+                        thread::sleep(Duration::from_millis(500));
+                    }
+                }
+            }
             Err(errors) => {
                 let failed = &refcode::AUTO_START_FAILED;
                 let why = errors.first().map(ToString::to_string).unwrap_or_default();
@@ -241,6 +337,28 @@ fn auto_start(shared: &Shared, control: &Path, marker: &Path) {
     );
 }
 
+/// What the machine says in the background, taken up: a VMM's channel
+/// to be kept, a dump that is done.
+fn background(shared: &Shared, paths: &Paths, channels: Receiver<u32>, dumped: Receiver<Dumped>) {
+    let (manager, paths) = (shared.clone(), paths.clone());
+    thread::spawn(move || {
+        for id in channels {
+            let links = lock(&manager).system().links.clone();
+            let sockets = [
+                (Port::Service, paths.channel(id, Port::Service)),
+                (Port::Console, paths.channel(id, Port::Console)),
+            ];
+            channel::watch(&manager, &links, id, sockets);
+        }
+    });
+    let manager = shared.clone();
+    thread::spawn(move || {
+        for d in dumped {
+            lock(&manager).dumped(d.id, &d.name, d.result);
+        }
+    });
+}
+
 /// The threads that work beside the socket's: the watchers of the
 /// VMMs, the poster, the clock.
 fn workers(shared: &Shared, service: &Service, started: Receiver<Watch>) {
@@ -258,11 +376,24 @@ fn workers(shared: &Shared, service: &Service, started: Receiver<Watch>) {
             lock(&ticked).tick();
         }
     });
-    let (watched, pools) = (shared.clone(), service.pools.clone());
+    let (watched, pools, switches) = (
+        shared.clone(),
+        service.pools.clone(),
+        service.switches.clone(),
+    );
     thread::spawn(move || {
         let mut client = poold::proto::Client::new(&pools);
+        let switch_service = vswitchd::Client::new(&switches);
         loop {
             thread::sleep(POOL_LOOK);
+            if let Ok(all) = vswitchd::Calls::switches(&mut switch_service.clone()) {
+                let down: Vec<String> = all
+                    .into_iter()
+                    .filter(|s| s.uplink_state == vswitchd::uplink_state::DOWN)
+                    .filter_map(|s| s.switch.map(|s| s.name))
+                    .collect();
+                lock(&watched).uplinks(&down);
+            }
             let Ok(list) = poold::proto::Calls::pools(&mut client) else {
                 continue;
             };
@@ -289,6 +420,7 @@ pub fn run(service: &Service) -> io::Error {
         switches: service.switches.clone(),
         partitions: service.run_dir.join("partitions"),
         host_paths: service.host_paths,
+        state: service.state_dir.clone(),
     };
     if let Err(e) = fs::create_dir_all(&paths.run) {
         return e;
@@ -310,12 +442,20 @@ pub fn run(service: &Service) -> io::Error {
             }
         });
     }
-    let machine = Machine::new(paths.clone(), watch_to.clone(), post_to);
+    let (channels_to, channels) = mpsc::channel();
+    let (dumped_to, dumped) = mpsc::channel();
+    let back = Back {
+        channels: channels_to.clone(),
+        dumped: dumped_to,
+        history: files::history_writer(service.state_dir.clone()),
+    };
+    let machine = Machine::new(paths.clone(), watch_to.clone(), post_to, back);
     let mut manager = Manager::new(machine, store, host(service, settings), &service.serial);
     manager.start();
     let defined = manager.statuses().len();
     let shared: Shared = Arc::new(Mutex::new(manager));
-    let running = adopt(&shared, &paths, &watch_to);
+    background(&shared, &paths, channels, dumped);
+    let running = adopt(&shared, &paths, &watch_to, &channels_to);
     // The switch service closes the ports of partitions that ended while
     // no partition manager watched.
     {
@@ -355,10 +495,10 @@ pub fn run(service: &Service) -> io::Error {
         let Ok(stream) = stream else {
             continue;
         };
-        let shared = shared.clone();
+        let (shared, paths) = (shared.clone(), paths.clone());
         thread::spawn(move || {
             // A client that sends no request, or goes, is its own loss.
-            let _ = connection(&shared, stream);
+            let _ = connection(&shared, &paths, stream);
         });
     }
     io::Error::other("the socket was closed")

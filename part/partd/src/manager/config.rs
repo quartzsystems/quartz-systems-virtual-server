@@ -28,6 +28,9 @@ pub struct Stores {
     /// The virtio-console's ports, each its listening socket: the VMM's
     /// descriptors after the taps.
     pub ports: Vec<qsvmm::config::ConsolePort>,
+    /// The IPL type of this activation, when it is not the profile's:
+    /// control panel function 02's.
+    pub ipl_type: Option<IplType>,
 }
 
 /// The serial number of a unit whose profile gives none: the
@@ -84,7 +87,7 @@ pub fn build(
         side: source.word().to_string(),
         keylock: Some(keylock.word().to_string()),
         ipl_type: Some(
-            match profile.boot.ipl_type {
+            match stores.ipl_type.unwrap_or(profile.boot.ipl_type) {
                 IplType::Unattended => "unattended",
                 IplType::Attended => "attended",
             }

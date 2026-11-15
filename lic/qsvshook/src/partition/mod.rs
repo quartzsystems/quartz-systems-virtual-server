@@ -10,9 +10,12 @@
 //! path: nothing in it sends the partition manager a request to act.
 //!
 //! - [`relay`]: the service, `qsvshook partition`.
+//! - [`console`]: a viewer of a partition's console, and a dump's read.
 //! - [`probe`]: requests no guest kernel sends, made of a real host
 //!   device through the virtio-scsi device itself.
 
+#[cfg(target_os = "linux")]
+pub mod console;
 #[cfg(target_os = "linux")]
 pub mod probe;
 #[cfg(target_os = "linux")]

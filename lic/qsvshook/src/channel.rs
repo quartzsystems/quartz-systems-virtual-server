@@ -659,6 +659,8 @@ fn answer(line: &str) -> Vec<String> {
             rustix::mount::UnmountFlags::empty(),
         )),
         command::SCSI_PROBE => scsi_probe(rest),
+        command::CONSOLE => crate::partition::console::console(rest),
+        command::DUMP_READ => crate::partition::console::dump_read(rest),
         command::COPY => copy(rest),
         command::POWER_OFF => done(control().power_off()),
         command::RESTART => done(control().restart()),

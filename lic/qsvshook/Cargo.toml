@@ -23,6 +23,9 @@ qsvmm = { path = "../../vmm/qsvmm", version = "0.1.0" }
 devices = { path = "../../vmm/devices", version = "0.1.0" }
 hex.workspace = true
 ipc.workspace = true
+# The console's frames, kept as a viewer keeps them.
+qsipart.workspace = true
+qvsmsg = { path = "../qvsmsg", version = "0.1.0" }
 loadsource = { path = "../../base/loadsource", version = "0.1.0" }
 
 [target.'cfg(target_os = "linux")'.dependencies]

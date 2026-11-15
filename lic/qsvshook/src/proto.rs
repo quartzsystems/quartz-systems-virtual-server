@@ -98,6 +98,13 @@ pub mod command {
     /// of a host device, through the virtio-scsi device; a `line` for
     /// each thing seen.
     pub const SCSI_PROBE: &str = "scsiprobe";
+    /// `console <id> <view|take|second> <ms> [hex]`: a viewer of the
+    /// partition's console through the partition manager's socket
+    /// (`partition::console`); the screen as it was last shown.
+    pub const CONSOLE: &str = "console";
+    /// `dumpread <id> <name>`: a dump through the partition manager's
+    /// streamed read: `ok <bytes> <sum>`.
+    pub const DUMP_READ: &str = "dumpread";
 }
 
 /// The first words of an answer's lines.

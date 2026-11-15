@@ -1350,18 +1350,23 @@ dependencies = [
 name = "partd"
 version = "0.1.0"
 dependencies = [
+ "console-port",
+ "dump",
  "fdpass",
  "ipc",
  "libc",
  "model",
  "poold",
+ "qsipart",
  "qsvmm",
  "qvsmsg",
  "refcode",
+ "release",
  "resource",
  "rustix",
  "state",
  "supervise",
+ "svcchan",
  "vswitch",
  "vswitchd",
 ]
@@ -1497,7 +1502,9 @@ dependencies = [
  "netd",
  "partd",
  "poold",
+ "qsipart",
  "qsvmm",
+ "qvsmsg",
  "refcode",
  "release",
  "rustix",

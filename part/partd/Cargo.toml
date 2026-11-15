@@ -22,6 +22,13 @@ fdpass = { path = "../../base/fdpass", version = "0.1.0" }
 vswitch = { path = "../../net/vswitch", version = "0.1.0" }
 vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
 ipc.workspace = true
+# The service channel: QS/400's protocol crate, the channel's and the
+# console's state, and the form of a dump.
+qsipart.workspace = true
+svcchan = { path = "../svcchan", version = "0.1.0" }
+console-port = { path = "../console", version = "0.1.0" }
+dump = { path = "../dump", version = "0.1.0" }
+release = { path = "../../lic/release", version = "0.1.0" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix.workspace = true

@@ -14,7 +14,7 @@
 //! | it failed, the guest faulted, or it was killed | Error, with the reference code and how it ended; not started again |
 
 use model::validate::{Backing, backing};
-use model::{EthernetAdapter, IplSource, Keylock, Profile};
+use model::{EthernetAdapter, IplSource, IplType, Keylock, Profile};
 use poold::proto::{Kind, Want};
 use qsvmm::config::Net;
 use qsvmm::end::End;
@@ -49,6 +49,20 @@ pub(crate) fn media_kind(profile: &Profile, slot: u32) -> Option<Kind> {
     }
 }
 
+/// What an activation sets in place of the profile's and the
+/// definition's: none of it, unless said.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Overrides {
+    /// The IPL source.
+    pub(crate) source: Option<IplSource>,
+    /// The keylock position.
+    pub(crate) keylock: Option<Keylock>,
+    /// The media each device has, in place of the profile's.
+    pub(crate) media: Option<Vec<(u32, Option<String>)>>,
+    /// The IPL type.
+    pub(crate) ipl_type: Option<IplType>,
+}
+
 /// What the pool service is asked to hold for one key of a launch.
 enum Key {
     Unit(u32, u32),
@@ -79,7 +93,7 @@ impl<S: System> Manager<S> {
             .get(&id)
             .ok_or_else(|| vec![qvsmsg::PARTITION_MISSING.with(&[&id.to_string()])])?;
         let name = &partition.definition.name;
-        if partition.state.active() {
+        if partition.active() {
             return Err(vec![
                 qvsmsg::PARTITION_ACTIVE.with(&[name, partition.state.word()]),
             ]);
@@ -268,6 +282,54 @@ impl<S: System> Manager<S> {
         Ok(ports)
     }
 
+    /// The control groups set for `id` holding `current`, and its VMM
+    /// started in `group` with `text`: its process.
+    fn start_vmm(
+        &mut self,
+        id: u32,
+        group: &str,
+        current: &Current,
+        text: &str,
+    ) -> Result<u32, String> {
+        // The pools as they are with this partition holding its part:
+        // a dedicated partition's cores leave the default pool first.
+        let mut held = self.held();
+        held.push(Held {
+            partition: id,
+            current: current.clone(),
+        });
+        self.system
+            .apply(&cgroup::base(&self.host, &held))
+            .and_then(|()| {
+                self.system
+                    .apply(&cgroup::partition(&self.host, id, current))
+            })
+            .and_then(|()| self.system.launch(id, group, text))
+    }
+
+    /// The service channel's sockets into `stores`: the VMM's
+    /// descriptors after the taps. What was held is given back when they
+    /// cannot be made.
+    fn channel_stores(
+        &mut self,
+        id: u32,
+        name: &str,
+        stores: &mut Stores,
+    ) -> Result<(), Vec<Issued>> {
+        let taps = stores.net.iter().filter(|n| n.tap.is_some()).count();
+        match self.system.channel_sockets(id, 3 + stores.files + taps) {
+            Ok(ports) => {
+                stores.ports = ports;
+                Ok(())
+            }
+            Err(e) => {
+                self.system.give_back(id, &[]);
+                self.system.close_ports(id);
+                Err(vec![qvsmsg::VMM_NOT_STARTED.with(&[name, &e])])
+            }
+        }
+    }
+
     /// Start the VMM of `id` holding `current`, with its media as
     /// `media` says, or as the profile does. The partition is then
     /// Starting.
@@ -276,10 +338,14 @@ impl<S: System> Manager<S> {
         id: u32,
         profile_name: &str,
         current: Current,
-        source: Option<IplSource>,
-        keylock: Option<Keylock>,
-        media: Option<Vec<(u32, Option<String>)>>,
+        overrides: Overrides,
     ) -> Result<(), Vec<Issued>> {
+        let Overrides {
+            source,
+            keylock,
+            media,
+            ipl_type,
+        } = overrides;
         let Some(partition) = self.partitions.get(&id) else {
             return Err(vec![qvsmsg::PARTITION_MISSING.with(&[&id.to_string()])]);
         };
@@ -297,6 +363,8 @@ impl<S: System> Manager<S> {
                 return Err(refused);
             }
         };
+        self.channel_stores(id, &name, &mut stores)?;
+        stores.ipl_type = ipl_type;
         let vcpus = self.host.vcpus(&current.processors);
         let written = config::build(
             &definition,
@@ -309,23 +377,7 @@ impl<S: System> Manager<S> {
         );
         let text = qsvmm::config::render(&written);
         let group = cgroup::partition_group(id, &current.processors);
-
-        // The pools as they are with this partition holding its part:
-        // a dedicated partition's cores leave the default pool first.
-        let mut held = self.held();
-        held.push(Held {
-            partition: id,
-            current: current.clone(),
-        });
-        let started = self
-            .system
-            .apply(&cgroup::base(&self.host, &held))
-            .and_then(|()| {
-                self.system
-                    .apply(&cgroup::partition(&self.host, id, &current))
-            })
-            .and_then(|()| self.system.launch(id, &group, &text));
-        let pid = match started {
+        let pid = match self.start_vmm(id, &group, &current, &text) {
             Ok(pid) => pid,
             Err(e) => {
                 self.system.remove_group(&group);
@@ -343,6 +395,7 @@ impl<S: System> Manager<S> {
             current: current.clone(),
             pid,
             sequence,
+            state: State::Starting,
         };
         self.system.record(id, Some(&record));
         let time = self.system.now();
@@ -354,15 +407,21 @@ impl<S: System> Manager<S> {
                 group,
                 sequence,
                 keylock,
+                ipl_type,
                 again: false,
                 asked: None,
+                plan: None,
                 media,
                 lost: None,
                 ports,
+                kept: false,
+                uplinks_down: Vec::new(),
             });
             partition.last_profile = profile_name.to_string();
             partition.message = None;
             partition.last_end.clear();
+            partition.service = super::service::Service::fresh();
+            partition.console = console_port::Console::new();
         }
         self.set_state(id, State::Starting);
         self.publish(&Event::Resources {
@@ -389,11 +448,12 @@ impl<S: System> Manager<S> {
         self.code(id, code.code, &code.text_with(&detail), true);
     }
 
-    /// A line the VMM of `id` reported. A reference code becomes the
-    /// partition's current one; the code that says the guest's kernel
-    /// was entered makes the partition Running. With `quiet`, the line
-    /// is one read again by a manager that found the partition
-    /// running: nothing is posted for it a second time.
+    /// A line the VMM of `id` reported. A reference code goes into the
+    /// history; the code that says the guest's kernel was entered starts
+    /// the wait for its service channel; the one that says it is held
+    /// after a fault holds it in Error. With `quiet`, the line is one
+    /// read again by a manager that found the partition running: it is
+    /// in the history already, and nothing is posted for it again.
     pub fn report(&mut self, id: u32, line: &str, quiet: bool) {
         // The line is the VMM's, which a guest may have got at: it is
         // bounded, and only a code of the table is taken from it.
@@ -414,19 +474,17 @@ impl<S: System> Manager<S> {
             return;
         };
         let (code, text) = (code.to_string(), text.to_string());
-        self.code(id, &code, &text, !quiet);
-        let starting = self
-            .partitions
-            .get(&id)
-            .is_some_and(|p| p.state == State::Starting);
-        if code == refcode::PARTITION_STARTED.code && starting {
-            if quiet {
-                if let Some(partition) = self.partitions.get_mut(&id) {
-                    partition.state = State::Running;
-                }
-            } else {
-                self.set_state(id, State::Running);
-            }
+        if !quiet {
+            self.code(id, &code, &text, true);
+        }
+        let now = self.system.now();
+        if code == refcode::PARTITION_STARTED.code
+            && let Some(partition) = self.partitions.get_mut(&id)
+        {
+            partition.service.kernel_at = Some(now);
+        }
+        if code == refcode::PARTITION_FAULT_HELD.code {
+            self.kept(id);
         }
     }
 
@@ -436,6 +494,24 @@ impl<S: System> Manager<S> {
         let partition = self.partitions.get_mut(&id)?;
         let run = partition.run.take()?;
         let name = partition.definition.name.clone();
+        if let Some((_, viewer)) = partition.viewer.take() {
+            let _ = viewer.try_send(crate::proto::ConsoleOut::Ended {
+                why: "the partition ended".into(),
+            });
+        }
+        let waiting: Vec<u64> = partition.service.asks.iter().map(|(t, ..)| *t).collect();
+        partition.service.channel = None;
+        partition.service.facts.up = false;
+        partition.service.facts.responding = false;
+        partition.service.facts.kept = false;
+        for tag in waiting {
+            if let Some(at) = partition.service.asks.iter().position(|(t, ..)| *t == tag) {
+                let (_, _, to) = partition.service.asks.remove(at);
+                if let Some(to) = to {
+                    let _ = to.try_send(Err(vec![qvsmsg::PARTITION_ENDING.with(&[&name])]));
+                }
+            }
+        }
         self.system.remove_group(&run.group);
         self.system.record(id, None);
         self.system.give_back(id, &[]);
@@ -458,7 +534,9 @@ impl<S: System> Manager<S> {
             return;
         };
         let name = partition.definition.name.clone();
-        let asked = partition.state == State::ShuttingDown;
+        // Asked by the host to end at once; a shut down the system
+        // accepted ends by the system's own doing.
+        let asked = partition.run.as_ref().is_some_and(|r| r.asked.is_some());
         // The last attention code before the end says why.
         let before = partition
             .history
@@ -502,7 +580,9 @@ impl<S: System> Manager<S> {
             match end {
                 End::PoweredOff | End::Ended => {
                     self.set_state(id, State::NotActivated);
-                    false
+                    // A shut down with restart asked of the system that
+                    // powered off: activated again all the same.
+                    run.plan.is_some_and(|p| p.restart) && !stopping
                 }
                 End::Restart => !stopping,
                 End::NotIpled => {
@@ -525,7 +605,7 @@ impl<S: System> Manager<S> {
             }
         };
         if again {
-            self.again(id, &run, asked);
+            self.again(id, &run, asked && run.lost.is_none());
         } else if end == End::Restart && !asked {
             // A restart that is not to be: the host is stopping.
             self.set_state(id, State::NotActivated);
@@ -541,7 +621,15 @@ impl<S: System> Manager<S> {
         let result = if asked {
             // It is Not activated now: resolved anew.
             self.resolve(id, &run.profile, None)
-                .and_then(|(profile, current)| self.launch(id, &profile, current, None, None, None))
+                .and_then(|(profile, current)| {
+                    // This activation's keylock and IPL type are kept.
+                    let overrides = Overrides {
+                        keylock: run.keylock,
+                        ipl_type: run.ipl_type,
+                        ..Overrides::default()
+                    };
+                    self.launch(id, &profile, current, overrides)
+                })
         } else {
             // Still Starting or Running: the state goes back to
             // Starting through the launch.
@@ -553,9 +641,12 @@ impl<S: System> Manager<S> {
                 id,
                 &run.profile,
                 run.current.clone(),
-                Some(IplSource::Recorded),
-                run.keylock,
-                Some(run.media.clone()),
+                Overrides {
+                    source: Some(IplSource::Recorded),
+                    keylock: run.keylock,
+                    media: Some(run.media.clone()),
+                    ipl_type: run.ipl_type,
+                },
             )
         };
         if let Err(errors) = result {
@@ -590,9 +681,12 @@ impl<S: System> Manager<S> {
         }
         queue.remove(0);
         while let Some(next) = self.ending.as_ref().and_then(|q| q.first().copied()) {
-            let active = self.partitions.get(&next).is_some_and(|p| p.state.active());
+            let active = self
+                .partitions
+                .get(&next)
+                .is_some_and(super::Partition::active);
             if active {
-                self.begin_end(next, false);
+                self.end_for_host(next);
                 return;
             }
             if let Some(queue) = &mut self.ending {
@@ -663,8 +757,10 @@ impl<S: System> Manager<S> {
     }
 
     /// What time does: a VMM that was asked to end and has not is
-    /// killed. Called every second or so.
+    /// killed; the service channels' own timers. Called every second or
+    /// so.
     pub fn tick(&mut self) {
+        self.service_tick();
         let now = self.system.now();
         let overdue: Vec<String> = self
             .partitions
@@ -700,8 +796,12 @@ impl<S: System> Manager<S> {
             group: cgroup::partition_group(id, &record.current.processors),
             sequence: record.sequence,
             keylock: None,
+            ipl_type: None,
             again: false,
             asked: None,
+            plan: None,
+            kept: false,
+            uplinks_down: Vec::new(),
             media: partition
                 .profiles
                 .get(&record.profile)
@@ -716,10 +816,24 @@ impl<S: System> Manager<S> {
                 .unwrap_or_default(),
         });
         partition.last_profile.clone_from(&record.profile);
-        partition.state = State::Starting;
+        // The state it was in, as the last manager recorded it.
+        partition.state = if record.state.active() {
+            record.state
+        } else {
+            State::Starting
+        };
+        partition.service = super::service::Service::fresh();
         self.sequence = self.sequence.max(record.sequence + 1);
         for line in report {
             self.report(id, line, true);
+        }
+        // One kept before this manager started is kept still.
+        if self
+            .system
+            .control(id, "kept", None)
+            .is_ok_and(|a| a == "ok true")
+        {
+            self.kept(id);
         }
         let code = &refcode::PARTITION_ADOPTED;
         self.code(id, code.code, &code.text_with(&name), true);

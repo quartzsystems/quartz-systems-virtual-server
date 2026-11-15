@@ -43,6 +43,13 @@ pub struct Fake {
     pub ports: Vec<(u32, vswitch::port::PortSpec)>,
     pub refuse_port: Option<Issued>,
     pub reconciled: Vec<Vec<u32>>,
+    pub sent: Vec<(u32, super::Port, Vec<u8>)>,
+    pub closed: Vec<(u32, super::Port)>,
+    pub keep_asked: Vec<u32>,
+    pub no_repository: bool,
+    pub dump_orders: Vec<(u32, super::DumpOrder)>,
+    pub dumps: BTreeMap<u32, Vec<crate::proto::DumpInfo>>,
+    pub histories: BTreeMap<u32, Vec<crate::proto::Posted>>,
 }
 
 impl System for Fake {
@@ -137,6 +144,56 @@ impl System for Fake {
     fn reconcile_ports(&mut self, running: &[u32]) {
         self.reconciled.push(running.to_vec());
     }
+    fn channel_sockets(
+        &mut self,
+        _id: u32,
+        first: usize,
+    ) -> Result<Vec<qsvmm::config::ConsolePort>, String> {
+        Ok(vec![
+            qsvmm::config::ConsolePort {
+                name: qsipart::SERVICE_PORT.into(),
+                socket: format!("/proc/self/fd/{first}").into(),
+            },
+            qsvmm::config::ConsolePort {
+                name: qsipart::CONSOLE_PORT.into(),
+                socket: format!("/proc/self/fd/{}", first + 1).into(),
+            },
+        ])
+    }
+    fn send(&mut self, id: u32, port: super::Port, frame: Vec<u8>) {
+        self.sent.push((id, port, frame));
+    }
+    fn close_channel(&mut self, id: u32, port: super::Port) {
+        self.closed.push((id, port));
+    }
+    fn keep(&mut self, id: u32) -> Result<(), String> {
+        self.keep_asked.push(id);
+        Ok(())
+    }
+    fn dump_dir(&mut self, id: u32) -> Option<PathBuf> {
+        (!self.no_repository).then(|| PathBuf::from(format!("/pools/MEDIA/dumps/{id}")))
+    }
+    fn begin_dump(&mut self, id: u32, order: &super::DumpOrder) -> Result<(), String> {
+        self.dump_orders.push((id, order.clone()));
+        Ok(())
+    }
+    fn dumps(&mut self, id: u32) -> Vec<crate::proto::DumpInfo> {
+        self.dumps.get(&id).cloned().unwrap_or_default()
+    }
+    fn remove_dump(&mut self, id: u32, name: &str) -> bool {
+        let Some(all) = self.dumps.get_mut(&id) else {
+            return false;
+        };
+        let before = all.len();
+        all.retain(|d| d.name != name);
+        all.len() != before
+    }
+    fn keep_history(&mut self, id: u32, history: &[crate::proto::Posted]) {
+        self.histories.insert(id, history.to_vec());
+    }
+    fn kept_history(&mut self, id: u32) -> Vec<crate::proto::Posted> {
+        self.histories.get(&id).cloned().unwrap_or_default()
+    }
 }
 
 /// Eight cores of two threads and 8 GiB: seven cores and 6144 MiB for
@@ -198,11 +255,17 @@ fn ids(errors: &[qvsmsg::Issued]) -> Vec<&str> {
     errors.iter().map(|e| e.id.as_str()).collect()
 }
 
-/// Bring `id` to Running, as its VMM's report would.
+/// Bring `id` to Running, as its VMM's report would for a system with
+/// no service channel: the kernel entered, and the wait for a channel
+/// over.
 fn run(m: &mut Manager<Fake>, id: u32) {
     m.activate(id, String::new(), None, None).unwrap();
     m.report(id, "REF C2005000 Partition activation started: X", false);
     m.report(id, "REF C2005090 Partition started: X, side A", false);
+    assert_eq!(state(m, id), State::Starting);
+    m.system.now += u64::from(m.host.settings.service.channel_wait_secs);
+    m.tick();
+    m.system.now -= u64::from(m.host.settings.service.channel_wait_secs);
     assert_eq!(state(m, id), State::Running);
 }
 
@@ -575,7 +638,7 @@ fn a_report_is_bounded_and_only_a_code_of_the_table_is_taken() {
     assert_eq!(state(&mut m, id), State::Starting);
     assert!(m.system.log.iter().all(|l| l.len() < 600));
     // The history is bounded too.
-    for _ in 0..200 {
+    for _ in 0..super::HISTORY + 50 {
         m.report(id, "REF C2005020 Partition load-source table read", false);
     }
     assert_eq!(m.history(id).unwrap().len(), super::HISTORY);
@@ -781,6 +844,8 @@ fn a_manager_started_later_takes_up_the_partitions_that_run() {
     assert_eq!(new, ["C2006010", "C2006010"]);
     // They are watched again: one goes on to Running, both end.
     again.report(b, "REF C2005090 Partition started: B, side A", false);
+    again.system.now += u64::from(again.host.settings.service.channel_wait_secs);
+    again.tick();
     assert_eq!(state(&mut again, b), State::Running);
     again.ended(a, Ended::Exit(0));
     again.ended(b, Ended::Unknown);

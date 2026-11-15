@@ -12,30 +12,45 @@
 //! - [`life`]: activation, the VMM's reports, its end, and what
 //!   follows each kind of end.
 //! - [`config`]: the configuration a VMM is started with.
+//! - [`service`]: the service channel: the system's codes and states,
+//!   shut down asked of it, holding, pings.
+//! - [`console`]: the console port and its viewer.
+//! - [`panel`]: the control panel functions.
+//! - [`dumps`]: dumps taken from outside.
 
 mod config;
+mod console;
+mod dumps;
 mod life;
+mod panel;
 mod requests;
+mod service;
 
+pub use console::VIEWER_QUEUE;
+pub use dumps::valid_name as valid_dump_name;
 pub use life::code_of;
+pub use service::{Answer, Port};
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_service;
 
 use std::collections::{BTreeMap, VecDeque};
+use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
-use model::{Definition, Keylock, Profile};
+use model::{Definition, IplType, Keylock, Profile};
 use poold::proto::{Given, Want};
 use qvsmsg::Issued;
 use resource::cgroup::Step;
 use resource::{Current, Held, Host};
 use vswitch::port::PortSpec;
 
-use crate::proto::{Event, Posted, State, Status};
+use crate::proto::{DumpInfo, Event, PanelArgs, Posted, Source, State, Status};
 use crate::store::{Kept, Store};
 
-/// The reference codes kept of each partition.
-pub const HISTORY: usize = 64;
+/// The reference codes kept of each partition, in memory and on disk.
+pub const HISTORY: usize = 256;
 /// The longest line of a VMM's report that is read.
 pub const MAX_LINE: usize = 512;
 /// Seconds a VMM is given to end when asked, before it is killed.
@@ -79,14 +94,32 @@ pub struct Record {
     pub pid: u32,
     /// Its place in the order of activations.
     pub sequence: u64,
+    /// Its state when it was last written: rewritten at each change.
+    pub state: State,
 }
 ipc::wire_struct!(Record {
     id,
     profile,
     current,
     pid,
-    sequence
+    sequence,
+    state
 });
+
+/// A dump to be written: where, and what its header says.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DumpOrder {
+    /// Its file's name in the partition's dumps directory.
+    pub name: String,
+    /// The current reference code and its text.
+    pub code: String,
+    /// The code's text.
+    pub text: String,
+    /// When it was asked for.
+    pub time: u64,
+    /// Why: one word.
+    pub reason: String,
+}
 
 /// What the partition manager asks of the machine.
 pub trait System {
@@ -136,6 +169,49 @@ pub trait System {
     fn close_ports(&mut self, id: u32);
     /// Close every port of a partition not in `running`: at the start.
     fn reconcile_ports(&mut self, running: &[u32]);
+    /// Make the listening sockets of `id`'s service channel, named, for
+    /// its next VMM: kept by the machine until the VMM is started with
+    /// them, after the taps. The VMM's `[[port]]`s, `first` the
+    /// descriptor of the first.
+    fn channel_sockets(
+        &mut self,
+        id: u32,
+        first: usize,
+    ) -> Result<Vec<qsvmm::config::ConsolePort>, String>;
+    /// Send a frame to the system of `id` on `port`. It may be dropped
+    /// when the system does not take what it is sent.
+    fn send(&mut self, id: u32, port: Port, frame: Vec<u8>);
+    /// Close the connection of `port`: it is made again after a while.
+    fn close_channel(&mut self, id: u32, port: Port);
+    /// Have the VMM of `id` keep the partition: its processors stopped,
+    /// its memory kept.
+    fn keep(&mut self, id: u32) -> Result<(), String>;
+    /// The dumps directory of `id` in the pool that holds the media
+    /// repository; none when no pool does.
+    fn dump_dir(&mut self, id: u32) -> Option<PathBuf>;
+    /// Begin a dump of `id`'s VMM into its dumps directory. It is
+    /// written in the background, and [`Manager::dumped`] is told how
+    /// it went.
+    fn begin_dump(&mut self, id: u32, order: &DumpOrder) -> Result<(), String>;
+    /// The dumps of `id`, oldest first.
+    fn dumps(&mut self, id: u32) -> Vec<DumpInfo>;
+    /// Remove a dump of `id`; whether it was there.
+    fn remove_dump(&mut self, id: u32, name: &str) -> bool;
+    /// Keep `id`'s history on disk, whole.
+    fn keep_history(&mut self, id: u32, history: &[Posted]);
+    /// `id`'s history as it was kept.
+    fn kept_history(&mut self, id: u32) -> Vec<Posted>;
+}
+
+/// How a shut down asked of the system goes on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Plan {
+    /// Delayed or operating system.
+    pub(crate) kind: crate::proto::Shutdown,
+    /// Activated again afterwards.
+    pub(crate) restart: bool,
+    /// When it is forced.
+    pub(crate) deadline: u64,
 }
 
 /// A partition while it is activated.
@@ -148,30 +224,49 @@ pub(crate) struct Run {
     pub(crate) sequence: u64,
     /// The keylock position of this activation only.
     pub(crate) keylock: Option<Keylock>,
+    /// The IPL type of this activation only.
+    pub(crate) ipl_type: Option<IplType>,
     /// Whether to activate it again when it has ended: a restart the
     /// partition manager was asked for.
     pub(crate) again: bool,
     /// When it was asked to end; it is killed a while after.
     pub(crate) asked: Option<u64>,
+    /// A shut down the system accepted, and when it is forced.
+    pub(crate) plan: Option<Plan>,
     /// Each optical and tape device's slot and the medium it has now.
     pub(crate) media: Vec<(u32, Option<String>)>,
     /// A storage pool it uses that failed: it was ended for that.
     pub(crate) lost: Option<String>,
     /// Each Ethernet adapter's slot and whether its port was opened.
     pub(crate) ports: Vec<(u32, bool)>,
+    /// Held with its memory: its processors are stopped.
+    pub(crate) kept: bool,
+    /// The switches of its adapters whose uplink is down.
+    pub(crate) uplinks_down: Vec<String>,
 }
 
 /// One partition.
-#[derive(Clone, Debug)]
 pub(crate) struct Partition {
     pub(crate) definition: Definition,
     pub(crate) profiles: BTreeMap<String, Profile>,
     pub(crate) state: State,
     pub(crate) history: VecDeque<Posted>,
+    /// The current reference code (`docs/SERVICE.md`).
+    pub(crate) current: Option<Posted>,
     pub(crate) run: Option<Run>,
     pub(crate) last_profile: String,
     pub(crate) last_end: String,
     pub(crate) message: Option<Issued>,
+    /// The service channel of this activation.
+    pub(crate) service: service::Service,
+    /// The console port.
+    pub(crate) console: console_port::Console,
+    /// The viewer of the console and where its client is sent to.
+    pub(crate) viewer: Option<(u64, std::sync::mpsc::SyncSender<crate::proto::ConsoleOut>)>,
+    /// Function 02's selection for the next activation.
+    pub(crate) next: PanelArgs,
+    /// The dump being taken, and whether the IPL restarts after it.
+    pub(crate) dumping: Option<(String, bool)>,
 }
 
 impl Partition {
@@ -181,27 +276,39 @@ impl Partition {
             profiles: kept.profiles,
             state: State::NotActivated,
             history: VecDeque::new(),
+            current: None,
             run: None,
             last_profile: String::new(),
             last_end: String::new(),
             message: None,
+            service: service::Service::default(),
+            console: console_port::Console::new(),
+            viewer: None,
+            next: PanelArgs::default(),
+            dumping: None,
         }
     }
 
+    /// Whether it has a VMM: it holds what it was given.
+    pub(crate) fn active(&self) -> bool {
+        self.run.is_some()
+    }
+
     fn status(&self) -> Status {
-        let last = self.history.back();
+        let current = self.current.as_ref();
         Status {
             id: self.definition.id,
             name: self.definition.name.clone(),
             state: self.state,
-            code: last.map(|p| p.code.clone()).unwrap_or_default(),
-            text: last.map(|p| p.text.clone()).unwrap_or_default(),
+            code: current.map(|p| p.code.clone()).unwrap_or_default(),
+            text: current.map(|p| p.text.clone()).unwrap_or_default(),
             current: self.run.as_ref().map(|r| r.current.clone()),
             profile: self.last_profile.clone(),
             last_end: self.last_end.clone(),
             message: self.message.clone(),
             pid: self.run.as_ref().map_or(0, |r| r.pid),
             ethernet: self.ethernet(),
+            service: self.service.facts.clone(),
         }
     }
 
@@ -231,6 +338,14 @@ impl Partition {
         out.sort_by_key(|e| e.slot);
         out
     }
+
+    /// The last code the system posted, of its history.
+    fn last_system(&self) -> Option<&Posted> {
+        self.history
+            .iter()
+            .rev()
+            .find(|p| p.source == Source::System)
+    }
 }
 
 /// The partition manager.
@@ -248,6 +363,8 @@ pub struct Manager<S: System> {
     /// next one first. Once it has been asked for, nothing is
     /// activated.
     pub(crate) ending: Option<Vec<u32>>,
+    /// The next number for a request asked of a system, or a viewer.
+    pub(crate) next_tag: u64,
 }
 
 impl<S: System> Manager<S> {
@@ -264,7 +381,18 @@ impl<S: System> Manager<S> {
         }
         let partitions = kept
             .into_iter()
-            .map(|k| (k.definition.id, Partition::of(k)))
+            .map(|k| {
+                let id = k.definition.id;
+                let mut p = Partition::of(k);
+                // The history kept, its last code the current one.
+                let mut history: VecDeque<Posted> = system.kept_history(id).into();
+                while history.len() > HISTORY {
+                    history.pop_front();
+                }
+                p.current = history.back().cloned();
+                p.history = history;
+                (id, p)
+            })
             .collect();
         Self {
             system,
@@ -275,6 +403,7 @@ impl<S: System> Manager<S> {
             subscribers: Vec::new(),
             sequence: 1,
             ending: None,
+            next_tag: 1,
         }
     }
 
@@ -315,6 +444,21 @@ impl<S: System> Manager<S> {
             Event::Defined { name, exists, .. } => {
                 format!("{name}: {}", if *exists { "defined" } else { "deleted" })
             }
+            Event::Channel { name, service, .. } => format!(
+                "{name}: service channel {}{}",
+                if service.up { "up" } else { "down" },
+                if service.up && !service.responding {
+                    ", not responding"
+                } else {
+                    ""
+                }
+            ),
+            Event::Dump {
+                name, dump, error, ..
+            } => match error {
+                None => format!("{name}: dump {dump} written"),
+                Some(e) => format!("{name}: dump {dump} not written: {e}"),
+            },
         };
         self.system.log(&line);
         self.subscribers.retain(|s| s.send(event.clone()).is_ok());
@@ -336,6 +480,19 @@ impl<S: System> Manager<S> {
         }
         partition.state = state;
         let name = partition.definition.name.clone();
+        // What runs is recorded with its state, for a manager started
+        // after this one.
+        if let Some(run) = &partition.run {
+            let record = Record {
+                id,
+                profile: run.profile.clone(),
+                current: run.current.clone(),
+                pid: run.pid,
+                sequence: run.sequence,
+                state,
+            };
+            self.system.record(id, Some(&record));
+        }
         self.publish(&Event::State {
             id,
             name,
@@ -344,25 +501,54 @@ impl<S: System> Manager<S> {
         });
     }
 
-    /// Add a reference code to a partition's history and say so. With
-    /// `post`, PID 1 is given it too.
+    /// Add a host reference code to a partition's history and say so.
+    /// With `post`, PID 1 is given it too.
     pub(crate) fn code(&mut self, id: u32, code: &str, text: &str, post: bool) {
-        let time = self.system.now();
-        let Some(partition) = self.partitions.get_mut(&id) else {
-            return;
-        };
         let posted = Posted {
-            time,
+            time: self.system.now(),
             code: code.to_string(),
             text: text.to_string(),
+            source: Source::Host,
+            words: Vec::new(),
+        };
+        if post {
+            self.system.post(code, text);
+        }
+        self.add(id, posted, post);
+    }
+
+    /// Add `posted` to `id`'s history, keep it, make it the current
+    /// code when the rule says (`docs/SERVICE.md`), and say so when
+    /// `publish`.
+    pub(crate) fn add(&mut self, id: u32, posted: Posted, publish: bool) {
+        let Some(partition) = self.partitions.get_mut(&id) else {
+            return;
         };
         if partition.history.len() >= HISTORY {
             partition.history.pop_front();
         }
         partition.history.push_back(posted.clone());
+        let condition = posted.code.starts_with('A') || posted.code.starts_with('B');
+        let current = match posted.source {
+            Source::System => Some(posted.clone()),
+            // The host's own while the system has posted none, after
+            // its VMM has ended, and for a condition of the host's.
+            Source::Host
+                if !partition.service.system_posted || !partition.active() || condition =>
+            {
+                Some(posted.clone())
+            }
+            // A host code of progress while the system posts: the
+            // current code is the system's again.
+            Source::Host => partition.last_system().cloned(),
+        };
+        if current.is_some() {
+            partition.current = current;
+        }
+        let history: Vec<Posted> = partition.history.iter().cloned().collect();
         let name = partition.definition.name.clone();
-        if post {
-            self.system.post(code, text);
+        self.system.keep_history(id, &history);
+        if publish {
             self.publish(&Event::Code { id, name, posted });
         }
     }
@@ -387,5 +573,19 @@ impl<S: System> Manager<S> {
                 &refcode::CONTROLS_NOT_SET.text_with(&e),
             );
         }
+    }
+
+    /// A number of its own for a request asked of a system or a viewer.
+    pub(crate) fn tag(&mut self) -> u64 {
+        let tag = self.next_tag;
+        self.next_tag += 1;
+        tag
+    }
+
+    /// The partition `id`'s name, or its number when it has none.
+    pub(crate) fn name_of(&self, id: u32) -> String {
+        self.partitions
+            .get(&id)
+            .map_or_else(|| id.to_string(), |p| p.definition.name.clone())
     }
 }

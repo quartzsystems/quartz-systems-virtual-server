@@ -16,7 +16,10 @@ use poold::proto::Want;
 
 use super::life::media_kind;
 use super::{Manager, Partition, System};
-use crate::proto::{Event, MediaSlot, Partitions, Posted, Refused, State, Status};
+use crate::proto::{
+    DumpInfo, Event, MediaSlot, PanelArgs, Partitions, Posted, Refused, ScreenCapture, Shutdown,
+    State, Status,
+};
 use crate::store::{Kept, MAX_PROFILES};
 
 fn one(message: Issued) -> Refused {
@@ -148,7 +151,7 @@ impl<S: System> Manager<S> {
         errors
     }
 
-    fn partition(&self, id: u32) -> Result<&Partition, Refused> {
+    pub(crate) fn partition(&self, id: u32) -> Result<&Partition, Refused> {
         self.partitions
             .get(&id)
             .ok_or_else(|| one(qvsmsg::PARTITION_MISSING.with(&[&id.to_string()])))
@@ -157,7 +160,7 @@ impl<S: System> Manager<S> {
     /// The partition `id`, which must not be activated.
     fn idle(&self, id: u32) -> Result<&Partition, Refused> {
         let partition = self.partition(id)?;
-        if partition.state.active() {
+        if partition.active() {
             return Err(one(qvsmsg::PARTITION_ACTIVE
                 .with(&[&partition.definition.name, partition.state.word()])));
         }
@@ -255,6 +258,13 @@ impl<S: System> Manager<S> {
             return Err(one(qvsmsg::POOL_IN_USE.with(&[name, &running.to_string()])));
         }
         Ok(at)
+    }
+
+    /// How long auto start waits for `id`'s IPL to complete before the
+    /// next; none when its definition does not wait.
+    pub fn auto_wait(&self, id: u32) -> Option<u32> {
+        let auto = self.partitions.get(&id)?.definition.auto_start;
+        auto.wait.then_some(auto.wait_secs)
     }
 
     /// The partitions flagged to start with the host, in their order.
@@ -472,18 +482,35 @@ impl<S: System> Partitions for Manager<S> {
         source: Option<IplSource>,
         keylock: Option<Keylock>,
     ) -> Result<Current, Refused> {
+        // Function 02's selection, where the request names nothing.
+        let next = self.partitions.get(&id).map(|p| p.next).unwrap_or_default();
+        let source = source.or(next.source);
+        let keylock = keylock.or(next.keylock);
         let result = self
             .resolve(id, &profile, source)
             .and_then(|(profile, current)| {
-                self.launch(id, &profile, current.clone(), source, keylock, None)
+                let overrides = super::life::Overrides {
+                    source,
+                    keylock,
+                    media: None,
+                    ipl_type: next.ipl_type,
+                };
+                self.launch(id, &profile, current.clone(), overrides)
                     .map(|()| current)
             });
-        if let Err(errors) = &result {
-            // A partition that is activated already is not one whose
-            // activation failed.
-            let active = self.partitions.get(&id).is_some_and(|p| p.state.active());
-            if !active {
-                self.not_activated(id, errors);
+        match &result {
+            Ok(_) => {
+                if let Some(p) = self.partitions.get_mut(&id) {
+                    p.next = PanelArgs::default();
+                }
+            }
+            Err(errors) => {
+                // A partition that is activated already is not one whose
+                // activation failed.
+                let active = self.partitions.get(&id).is_some_and(Partition::active);
+                if !active {
+                    self.not_activated(id, errors);
+                }
             }
         }
         result
@@ -576,7 +603,7 @@ impl<S: System> Partitions for Manager<S> {
         let mut active: Vec<(u64, u32)> = self
             .partitions
             .values()
-            .filter(|p| p.state.active())
+            .filter(|p| p.active())
             .map(|p| (p.run.as_ref().map_or(0, |r| r.sequence), p.definition.id))
             .collect();
         // The last one activated is the first to end.
@@ -586,7 +613,7 @@ impl<S: System> Partitions for Manager<S> {
         let first = queue.first().copied();
         self.ending = Some(queue);
         if let Some(first) = first {
-            self.begin_end(first, false);
+            self.end_for_host(first);
         }
         count
     }
@@ -721,6 +748,78 @@ impl<S: System> Partitions for Manager<S> {
         out
     }
 
+    fn shut_down_as(
+        &mut self,
+        id: u32,
+        kind: Shutdown,
+        delay: u32,
+        restart: bool,
+    ) -> Result<(), Refused> {
+        // The socket's service waits for the system's answer; called here
+        // the request is only sent.
+        match self.begin_shut_down(id, kind, delay, restart) {
+            super::Answer::Now(result) => result.map(|_| ()),
+            super::Answer::Later(_) => Ok(()),
+        }
+    }
+
+    fn panel(&mut self, id: u32, function: u8, args: PanelArgs) -> Result<String, Refused> {
+        match self.begin_panel(id, function, args) {
+            super::Answer::Now(result) => result,
+            super::Answer::Later(_) => Ok(String::new()),
+        }
+    }
+
+    fn take_dump(&mut self, id: u32) -> Result<String, Refused> {
+        self.begin_dump(id, "request", false)
+    }
+
+    fn dumps(&mut self, id: u32) -> Result<Vec<DumpInfo>, Refused> {
+        self.partition(id)?;
+        Ok(self.system.dumps(id))
+    }
+
+    fn delete_dump(&mut self, id: u32, name: String) -> Result<(), Refused> {
+        let partition = self.partition(id)?.definition.name.clone();
+        if !super::dumps::valid_name(&name) || !self.system.remove_dump(id, &name) {
+            return Err(one(qvsmsg::DUMP_MISSING.with(&[&partition, &name])));
+        }
+        Ok(())
+    }
+
+    fn read_dump(&mut self, id: u32, name: String) -> Result<u64, Refused> {
+        let partition = self.partition(id)?.definition.name.clone();
+        self.system
+            .dumps(id)
+            .into_iter()
+            .find(|d| d.name == name)
+            .map(|d| d.bytes)
+            .ok_or_else(|| one(qvsmsg::DUMP_MISSING.with(&[&partition, &name])))
+    }
+
+    fn console(&mut self, id: u32, _take_over: bool) -> Result<bool, Refused> {
+        // Attaching is the socket's service's: it holds the connection.
+        self.console_mode(id)
+    }
+
+    fn screen(&mut self, id: u32) -> Result<ScreenCapture, Refused> {
+        let serial = self.console_mode(id)?;
+        let p = self.partition(id)?;
+        let frame = p.console.frame();
+        if !serial && frame.is_none() {
+            return Err(one(qvsmsg::CONSOLE_EMPTY.with(&[&p.definition.name])));
+        }
+        Ok(ScreenCapture {
+            serial,
+            text: if serial {
+                String::new()
+            } else {
+                p.console.text()
+            },
+            frame: if serial { None } else { frame },
+        })
+    }
+
     fn named(&mut self, pool: String, name: String) -> Vec<String> {
         let wanted = format!("{pool}/{name}");
         let mut out = Vec::new();
@@ -741,15 +840,17 @@ impl<S: System> Partitions for Manager<S> {
 }
 
 impl<S: System> Manager<S> {
-    fn end_one(&mut self, id: u32, again: bool) -> Result<(), Refused> {
+    /// Shut `id` down at once: a held partition too, and one whose
+    /// system is shutting it down.
+    pub(crate) fn end_one(&mut self, id: u32, again: bool) -> Result<(), Refused> {
         let partition = self.partition(id)?;
         let name = &partition.definition.name;
-        match partition.state {
-            crate::proto::State::ShuttingDown => Err(one(qvsmsg::PARTITION_ENDING.with(&[name]))),
-            state if !state.active() => {
-                Err(one(qvsmsg::PARTITION_NOT_ACTIVE.with(&[name, state.word()])))
-            }
-            _ => {
+        match &partition.run {
+            None => Err(one(
+                qvsmsg::PARTITION_NOT_ACTIVE.with(&[name, partition.state.word()])
+            )),
+            Some(run) if run.asked.is_some() => Err(one(qvsmsg::PARTITION_ENDING.with(&[name]))),
+            Some(_) => {
                 self.begin_end(id, again);
                 Ok(())
             }

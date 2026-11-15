@@ -3,9 +3,10 @@
 // root directory of this project.
 
 //! The partitions at the host's shutdown: the partition manager is
-//! asked to end every one before any service is stopped. The asking
-//! and the waiting are another thread's; the loop only looks whether
-//! it is done.
+//! asked to end every one before any service is stopped, each through
+//! its own system when it can be asked, in the reverse of the order
+//! they were activated in. The asking and the waiting are another
+//! thread's; the loop only looks whether it is done.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
@@ -14,9 +15,9 @@ use std::time::{Duration, Instant};
 
 use partd::{Calls as _, Client};
 
-/// What each partition is given to end: the partition manager's own
-/// grace for a VMM, and a moment more.
-const EACH: Duration = Duration::from_secs(partd::manager::END_GRACE_SECS + 3);
+/// What each partition is given to end beyond its system's time: the
+/// partition manager's own grace for a VMM, and a moment more.
+const GRACE: Duration = Duration::from_secs(partd::manager::END_GRACE_SECS + 5);
 /// How often the partitions are looked at.
 const PAUSE: Duration = Duration::from_millis(200);
 
@@ -32,11 +33,19 @@ pub fn end_all(socket: PathBuf) -> Receiver<Outcome> {
         let mut client = Client::new(socket);
         // No partition manager: nothing it started is watched, and
         // there is nobody to ask.
+        // Each is given the time the settings give a system to shut
+        // down at the host's shut down, then the VMM's grace.
+        let system = client
+            .settings()
+            .map_or(resource::Service::default().host_timeout_secs, |s| {
+                s.service.host_timeout_secs
+            });
+        let each = Duration::from_secs(u64::from(system)) + GRACE;
         let Ok(count) = client.end_all() else {
             let _ = done.send(Ok(0));
             return;
         };
-        let give_up = Instant::now() + EACH * count.max(1);
+        let give_up = Instant::now() + each * count.max(1);
         let result = loop {
             let active = client
                 .list()
