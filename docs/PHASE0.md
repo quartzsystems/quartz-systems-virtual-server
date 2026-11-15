@@ -9,13 +9,18 @@ Every QS/400 crate is a git dependency on
 `https://github.com/quartzsystems/quartz-systems-400` at one commit:
 
 ```
-0fc8afa5055d1dee0a05cf35edb58760f10607ab
+a9d5c8a4f139352bcdd255341053814e8cab58fc
 ```
 
-It was `main` on 2026-11-14 and has what Phase 5 needs of QS/400:
-handoff 15, the write-intent bitmap of `protect`'s mirrored set and
-the answers for storage pools (`docs/BUILDKIT.md` section 5;
-`docs/PHASE5.md`, Step 0). Phase 4 was built at `e035bea3`, which had
+It has QS/400's handoff 16: `NR_CPUS=512` in its kernel fragment (QS/VS
+sets the same in its own), `xfsfmt`'s reflink and reverse mapping by
+option, parity set maps of members out of service in `protect`, and
+`st`'s behaviour past the early warning in its tape code. Phase 6 was
+built at `0fc8afa5`, which had what Phase 5 needs of QS/400: handoff
+15, the write-intent bitmap of `protect`'s mirrored set and the
+answers for storage pools (`docs/BUILDKIT.md` section 5;
+`docs/PHASE5.md`, Step 0), and moved to this one at its end
+(`docs/PHASE6.md`, "The pin"). Phase 4 was built at `e035bea3`, which had
 the side of the next IPL and the console mode in `licpart`, the sides'
 paths in `diskimg`, and a QS/400 that knows a partition of QS/VS
 (`docs/PHASE4.md`, Step 0). Phases 2 and 3 were built at `03d64929`,

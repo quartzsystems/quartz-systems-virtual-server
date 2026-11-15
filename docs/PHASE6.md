@@ -9,7 +9,8 @@ virtual Ethernet adapters in profiles, a virtio-net device in the VMM
 over vhost-net, and uplinks to the physical network. There is still no
 service channel, console attach or QSI: the switch service is driven
 over a local socket, as the partition manager and the pool service are.
-No re-pin was needed: QS/400 stays at `0fc8afa`.
+It was built at QS/400 `0fc8afa` and moved to `a9d5c8a` at its end
+(below, "The pin").
 
 ## Answers to Phase 5's open questions
 
@@ -18,10 +19,35 @@ No re-pin was needed: QS/400 stays at `0fc8afa`.
 | 35 | a copy of a virtual disk | left out until QS/MC needs template partitions; the reflink change to `xfsfmt` is a QS/400 handoff then |
 | 36 | tape from QS/400 | as recommended: `INZTAP`, `SAVLIB` and `RSTLIB` against the virtual drive are the first thing of Phase 10 |
 | 34 | a held partition's state for QS/MC | still Cody's to confirm; nothing changed |
-| 6, 17, 22, 31, 32 | | unchanged |
+| 32 | the kernel built for 64 threads | closed with the pin: `NR_CPUS=512` here and in QS/400 |
+| 6, 17, 22, 31 | | unchanged |
 
 Phase 6 raised 37, management on a VLAN of a switch
 (`docs/OPEN_QUESTIONS.md`).
+
+## The pin
+
+QS/400 `a9d5c8a4f139352bcdd255341053814e8cab58fc` (its handoff 16), in
+a commit of its own once every suite of Phase 6 had passed at
+`0fc8afa`, and every suite run again after it (below, "Acceptance").
+What it brings and what QS/VS did with it:
+
+| QS/400 change | Here |
+|---|---|
+| `NR_CPUS=512` in its kernel fragment | the same line in `kernel/config/qsvs.config` in the pin's commit, with a unit test of the build holding it; the kernel pin itself (6.18.55) did not move. Item 32 closed |
+| `xfsfmt`: reflink and reverse mapping by option | not used: a pool is still made without them. Whether pools made from now on take them is Cody's (item 35) |
+| `protect`: parity set maps of members out of service | not used yet: the pool service keeps no map for parity pools (`BLOCKED` below) |
+| `tape`: `st` past the early warning | nothing to change: the virtual drive is not QS/400's tape code |
+| `xfsfmt`: one allocation group, the inode chunk after the log | a load source's and a pool's xfs bytes are new; nothing on an installed disk is read differently |
+
+Nothing in QS/VS's code had to change for it. QS/400's `main` has
+moved on since (`qsipart`, `qsid`, a partition's console port as a
+display: the partition service channel), which is Phase 7's.
+
+The partition suites' guest is still QS/400 built at `0fc8afa`: its
+kernel has `NR_CPUS=64`, which none of the suites' partitions comes
+near. A partition given more than 64 processors needs a QS/400 built
+at this pin or later.
 
 ## What exists
 
@@ -141,6 +167,11 @@ refuse by itself with spanning tree off (a BPDU) and cannot tell apart
 (a frame tagged with the port's own VLAN). `NETFILTER` stays off, and a
 unit test of the build says so. The bridge, VLAN filtering, bonding,
 tun and vhost-net were Phase 0's.
+
+With the pin: `NR_CPUS=512` (defconfig has 64), the most without
+`CPUMASK_OFFSTACK`, so that a host with more than 64 threads uses them
+all. It is a value, not a symbol buildkit checks, so a unit test of
+the build holds it in the fragment and the built `.config` was read.
 
 ## Running
 
@@ -268,9 +299,12 @@ below).
 - `BLOCKED(phase6)`: a VLAN of a running partition's port is not added to or taken from it live; a tagged VLAN added to an adapter applies at its next activation.
 - What Phase 5 left undone and this did not touch is still as `docs/PHASE5.md`, `docs/PARTD.md`, `docs/PROFILE.md` and `docs/RESOURCES.md` list it.
 
+- `BLOCKED(phase6)`: a parity pool keeps no map of a member out of service; QS/400's `protect` has one since the pin, and a unit coming back is still rebuilt whole.
+
 ## For a real machine (NEEDS-CODY)
 
 - [ ] NEEDS-CODY: an uplink on the Dell machine to a switch port carrying tagged VLANs.
 - [ ] NEEDS-CODY: an LACP bond against a real switch.
 - [ ] NEEDS-CODY: a 5250 session to a partition from a workstation.
+- [ ] NEEDS-CODY: whether pools made from now on take `xfsfmt`'s reflink option (`docs/OPEN_QUESTIONS.md` item 35).
 - Phase 5's list for a real machine (`docs/PHASE5.md`) still stands.

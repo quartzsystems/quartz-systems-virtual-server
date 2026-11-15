@@ -51,19 +51,6 @@ port. If it is wanted later, as a VLAN sub-interface of the uplink's
 bond that the bridge never sees, with its own trial as `netd` has
 today, and never a VLAN a partition is on.
 
-## Decided, waiting on QS/400
-
-### 32. The kernel is built for 64 threads
-
-`NR_CPUS=64` is what the pinned kernel configuration gives, here as in
-QS/400. A host with more threads than that shows 64 of them, and its
-partitions can be given no others. Decided: `NR_CPUS=512`, enough for a
-two-socket host of 128 cores a socket with SMT, set in QS/400's kernel
-fragment and in `kernel/config/qsvs.config` together, with the kernel
-pin's next change (the Phase 5 handoff), each in a commit of its own.
-QS/400 needs it too: a partition's guest kernel is QS/400's, and it
-sees no more processors than its own `NR_CPUS`.
-
 ### 35. A copy of a virtual disk (answered by the Phase 6 handoff)
 
 QS/400's `xfsfmt` makes a pool's xfs without reflink, so a copy of a
@@ -73,8 +60,14 @@ the reverse mapping it takes, in QS/400; QS/VS then copies a virtual
 disk by `FICLONE`, a request of the pool service's, when QS/MC's
 template partitions need it. A pool made before that has no reflink
 and copies by bytes. The Phase 6 handoff: left out until QS/MC needs
-template partitions; the reflink change to `xfsfmt` is a QS/400
-handoff then.
+template partitions. QS/400's `xfsfmt` has reflink and the reverse
+mapping by option since the pin at the end of Phase 6 (`a9d5c8a`);
+QS/VS's pools are still made without them. NEEDS-CODY: whether pools
+made from now on take the option, so that they can copy by `FICLONE`
+later (recommended: yes; it costs a little space for the reverse
+mapping and changes nothing of a pool made before).
+
+## Decided, waiting on QS/400
 
 ### 36. Tape from QS/400 (answered by the Phase 6 handoff)
 
@@ -288,3 +281,9 @@ handoff took it as recommended.
     Running, with `A2005160` as its current reference code until it goes
     on by itself, as built (`docs/STORAGE.md`). QSI carries the state
     and the code; QS/MC shows the code beside the state.
+32. **The kernel is built for 64 threads.** Closed with the pin at the
+    end of Phase 6 (`a9d5c8a`): `NR_CPUS=512`, enough for a two-socket
+    host of 128 cores a socket with SMT, in QS/400's kernel fragment and
+    in `kernel/config/qsvs.config`, each in a commit of its own. A
+    partition's guest sees more than 64 processors when its QS/400 is
+    built at that commit or later.
