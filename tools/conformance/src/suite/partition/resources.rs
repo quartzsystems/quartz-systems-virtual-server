@@ -704,7 +704,10 @@ pub fn core_scheduling(run: &Run<'_>) -> Result<String, String> {
         .map(|i| (after[i].0 - before[i].0) as f64 / 1e6 / (after[i].1 - before[i].1))
         .sum();
     let forced: u64 = (0..2).map(|i| after[i].2 - before[i].2).sum();
-    if together > 0 || each[0] == 0 || each[1] == 0 {
+    // QEMU's threads leave a core late (the IPI waits for the outer
+    // host to run them): a few looks in a hundred may catch it. Without
+    // core scheduling it is about half of them, and the time below.
+    if together * 100 >= samples || each[0] == 0 || each[1] == 0 {
         return Err(format!(
             "in {samples} looks at the core's two threads, both partitions ran at once \
              {together} time(s); each was seen running {each:?} times"
@@ -721,8 +724,8 @@ pub fn core_scheduling(run: &Run<'_>) -> Result<String, String> {
     Ok(format!(
         "a pool of one core (processors {}), two shared partitions each with one busy virtual \
          CPU: in {samples} looks at what the core's two threads run, {} and {} with a \
-         partition on a thread, never the two partitions at once; together they used {busy:.2} \
-         threads' time over {} s, and were kept idle beside each other for {} ms",
+         partition on a thread, the two partitions at once {together} time(s); together they \
+         used {busy:.2} threads' time over {} s, and were kept idle beside each other for {} ms",
         pool_cpus.trim(),
         each[0],
         each[1],
