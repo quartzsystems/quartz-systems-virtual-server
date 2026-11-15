@@ -63,6 +63,9 @@ const STATE: &str = "/data/state/vswitch.toml";
 /// The ports' record.
 const PORTS: &str = "/run/vswitchd/ports";
 
+/// The host's management NIC, on QEMU's user network.
+pub const MANAGEMENT_MAC: &str = "52:54:00:12:34:56";
+
 /// The MAC address of uplink NIC `i`.
 pub fn uplink_mac(i: usize) -> String {
     format!("52:54:00:aa:00:{:02x}", 0x10 + i)
@@ -107,12 +110,21 @@ impl Rig {
 }
 
 /// The launch of a host for `rig`, and the station on its uplinks. The
-/// cheap guest `i`'s disk is `/dev/vd<b + 2i>`, its seed the next.
+/// host's seed is `/dev/vdb`; the cheap guest `i`'s disk is
+/// `/dev/vd<c + 2i>`, its seed the next.
 pub fn rig_launch(run: &Run<'_>, rig: &Rig, base: Launch) -> Result<(Launch, Station), String> {
     let image = run
         .release_disk
         .ok_or("the release image is not built; run `all` first")?;
-    let mut units: Vec<PathBuf> = Vec::new();
+    // The host's own seed first: an unconfigured host takes the first
+    // seed volume it finds, and it is to be its own, naming its
+    // management NIC, never a guest's.
+    let host_seed = run.file("host-seed.img");
+    let host_toml = format!(
+        "schema_version = 1\n\n[host]\nname = \"vs-net\"\n\n[network]\ndevice = \"{MANAGEMENT_MAC}\"\n"
+    );
+    seed_volume(&host_seed, release::SEED_LABEL, &host_toml)?;
+    let mut units: Vec<PathBuf> = vec![host_seed];
     for i in 0..rig.guests {
         let disk = run.file(&format!("guest{i}.img"));
         sparse_copy(image, &disk)?;
@@ -138,6 +150,9 @@ pub fn rig_launch(run: &Run<'_>, rig: &Rig, base: Launch) -> Result<(Launch, Sta
             serial: format!("QSVSUNIT{i}"),
             place: l.pinned.then(|| u8::try_from(first + i).unwrap_or(0)),
         });
+    }
+    if l.nic.is_none() {
+        l.nic = Some(MANAGEMENT_MAC.into());
     }
     if l.monitor.is_none() {
         l.monitor = Some(run.socket("monitor.sock"));
@@ -172,13 +187,13 @@ pub fn boot<'a>(run: &Run<'a>, rig: &Rig) -> Result<Net<'a>, String> {
 
 /// The disk of guest `i` as the host has it.
 pub fn guest_disk(i: usize) -> String {
-    let letter = char::from(b'b' + u8::try_from(2 * i).unwrap_or(0));
+    let letter = char::from(b'c' + u8::try_from(2 * i).unwrap_or(0));
     format!("/dev/vd{letter}")
 }
 
 /// Its seed volume.
 pub fn guest_seed(i: usize) -> String {
-    let letter = char::from(b'b' + u8::try_from(2 * i + 1).unwrap_or(0));
+    let letter = char::from(b'c' + u8::try_from(2 * i + 1).unwrap_or(0));
     format!("/dev/vd{letter}")
 }
 
@@ -360,7 +375,7 @@ pub fn guest_address(
 
 /// Wait for partition `name`'s base to be ready.
 pub fn guest_ready(guest: &mut Session, name: &str, deadline: Instant) -> Result<(), String> {
-    guest.expect(&relayed(name, &posted(&refcode::BASE_READY, "")), deadline)
+    guest.seen(&relayed(name, &posted(&refcode::BASE_READY, "")), deadline)
 }
 
 /// The tap of slot `slot` of partition `id`.

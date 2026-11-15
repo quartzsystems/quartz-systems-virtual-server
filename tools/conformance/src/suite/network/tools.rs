@@ -26,8 +26,7 @@ use crate::suite::partition::{HOST_CPUS, HOST_MEMORY_MB, manager};
 
 const SWITCHES: &str = "Work with Virtual Switches";
 const NETWORK: &str = "Network";
-/// The management NIC's MAC address on QEMU's user network.
-const MANAGEMENT_MAC: &str = "52:54:00:12:34:56";
+use super::MANAGEMENT_MAC;
 
 /// An installed host for `rig`, signed on at the main menu.
 fn installed_host<'a>(

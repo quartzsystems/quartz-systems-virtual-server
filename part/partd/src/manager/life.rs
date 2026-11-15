@@ -241,7 +241,10 @@ impl<S: System> Manager<S> {
                     ports.push((a.slot, true));
                 }
                 Err(refused) => {
-                    let why = refused.first().map(|m| m.text.clone()).unwrap_or_default();
+                    let why = refused
+                        .first()
+                        .map(|m| m.text.trim_end_matches('.').to_string())
+                        .unwrap_or_default();
                     let slot = a.slot.to_string();
                     if a.required {
                         self.system.close_ports(id);

@@ -191,7 +191,9 @@ pub fn suite(run: &Run<'_>) -> Result<String, String> {
     };
     let Net { mut guest, .. } = boot(run, &rig)?;
     let g = &mut guest;
-    let names = disk_names(g, 2)?;
+    // The host's seed is QSVSUNIT0; the pool's disk and the ISO follow.
+    let names = disk_names(g, 3)?;
+    let names = &names[1..];
     said(poold(g)?.create_pool("POOL1".into(), "none".into(), vec![names[0].clone()], Vec::new(), Vec::new()))?;
     pool_until(g, "POOL1", run.deadline(), |p| !p.mount.is_empty())?;
     said(poold(g)?.designate("POOL1".into()))?;

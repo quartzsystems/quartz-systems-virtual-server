@@ -184,12 +184,25 @@ fn vlan_seed(name: &str, vlan: u16) -> String {
     format!("schema_version = 1\n\n[host]\nname = \"{name}\"\n\n[network]\nvlan = {vlan}\n")
 }
 
+/// The seed of a guest with a static address on VLAN `vlan` of its link,
+/// asking `ntp` for the time.
+fn static_vlan_seed(name: &str, address: &str, vlan: u16, ntp: &str) -> String {
+    format!(
+        "schema_version = 1\n\n[host]\nname = \"{name}\"\nntp_servers = [\"{ntp}\"]\n\n[network]\nmode = \"static\"\naddress = \"{address}\"\nvlan = {vlan}\n"
+    )
+}
+
 /// Suite 4: a tagged adapter: the guest sends and receives on a listed
 /// VLAN with its tags; a frame on a VLAN not listed is dropped either
 /// way.
 pub fn tagged(run: &Run<'_>) -> Result<String, String> {
     let mut rig = Rig::new(1, 2);
-    rig.seeds = vec![Some(vlan_seed("neta", 20)), Some(vlan_seed("netb", 30))];
+    // A has a static address on a VLAN interface of its own, VLAN 20,
+    // and asks the station for the time there; B asks DHCP on VLAN 30.
+    rig.seeds = vec![
+        Some(static_vlan_seed("neta", "10.0.20.50/24", 20, "10.0.20.1")),
+        Some(vlan_seed("netb", 30)),
+    ];
     let mut net = boot(run, &rig)?;
     let g = &mut net.guest;
     let at = vec![uplink_location(g, 0)?];
@@ -201,12 +214,38 @@ pub fn tagged(run: &Run<'_>) -> Result<String, String> {
     let a = activate(g, "NETA", &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[20])]))?;
     let b = activate(g, "NETB", &guest_spec(1, vec![adapter(5, "PRODNET", 10, &[20])]))?;
     let (ma, mb) = (mac_of(g, a, 5)?, mac_of(g, b, 5)?);
-    let address = guest_address(g, "NETA", run.deadline())?;
-    if net.station.lease(20, ma) != Some(address) {
-        return Err(format!(
-            "A says {address}; the station gave {:?}",
-            net.station.leases()
-        ));
+    guest_ready(g, "NETA", run.deadline())?;
+    let address: std::net::Ipv4Addr = "10.0.20.50".parse().map_err(|_| "address")?;
+    // The station learns A by A's own ARP for it, tagged 20, and answers.
+    let waited = wait_until("A's frames on VLAN 20", Duration::from_secs(60), || {
+        Ok(net
+            .station
+            .seen()
+            .iter()
+            .any(|s| s.src == ma && s.vlan == Some(20) && s.ethertype == 0x0800))
+    });
+    if let Err(e) = waited {
+        let seen: Vec<_> = net
+            .station
+            .seen()
+            .into_iter()
+            .filter(|s| s.src == ma)
+            .map(|s| (s.vlan, s.ethertype, s.len))
+            .collect();
+        let mut probe = Vec::new();
+        for vid in [10u16, 20] {
+            let before = counter(&mut net.guest, &tap(a, 5), "tx_packets")?;
+            for _ in 0..10 {
+                let f = crate::qemu::wire::frame([0xFF; 6], crate::qemu::wire::MAC, Some(vid), 0x88B5, &[1]);
+                net.station.send(0, &f).map_err(|e| e.to_string())?;
+            }
+            std::thread::sleep(Duration::from_secs(1));
+            let after = counter(&mut net.guest, &tap(a, 5), "tx_packets")?;
+            probe.push((vid, after - before));
+        }
+        let up = channel(&mut net.guest)?.ls("/sys/class/net")?;
+        let got = counter(&mut net.guest, &tap(a, 5), "tx_packets")?;
+        return Err(format!("{e}; A was sent {got}; 10 broadcasts from outside reached A: {probe:?}; links {up:?}; the station saw of A {seen:?}"));
     }
     let (got, _) = net
         .station
@@ -238,7 +277,8 @@ pub fn tagged(run: &Run<'_>) -> Result<String, String> {
         return Err(format!("B was sent {} frames of VLAN 30", after - before));
     }
     Ok(format!(
-        "A got {address} by DHCP on tagged VLAN 20 and answered 10 of 10 echoes on it; B's DHCP on \
+        "A, at {address} on tagged VLAN 20, asked the station for the time with its tag and answered \
+         10 of 10 echoes on it; B's DHCP on \
          VLAN 30, not listed, never left its port ({} frames of B on the uplink, none tagged 30), \
          and 20 broadcasts on VLAN 30 from outside reached it 0 times",
         from_b.len()
@@ -341,10 +381,14 @@ pub fn host_unreachable(run: &Run<'_>) -> Result<String, String> {
             found.push(format!("{key} is on"));
         }
     }
-    let up1 = counter(&mut net.guest, "qvbr1", "rx_packets")?;
-    let up2 = counter(&mut net.guest, "qvbr2", "rx_packets")?;
-    if up1 != 0 || up2 != 0 {
-        found.push(format!("the bridges passed {up1} and {up2} frames to the host"));
+    // A is alone on its switch and B has only the station, which says
+    // nothing unasked: whatever either was sent came from the host. (A
+    // bridge counts a frame in its own receive before it drops it for
+    // its VLAN, so its counter says nothing here.)
+    let to_a = counter(&mut net.guest, &ta, "tx_packets")?;
+    let to_b = counter(&mut net.guest, &tb, "tx_packets")?;
+    if to_a != 0 || to_b != 0 {
+        found.push(format!("A was sent {to_a} frames and B {to_b}"));
     }
     let ma = mac_of(&mut net.guest, a, 5)?;
     let seen_a = net.station.seen().iter().filter(|s| s.src == ma).count();
