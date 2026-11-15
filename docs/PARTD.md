@@ -19,24 +19,30 @@ image the test hooks carry the conformance harness's requests to it.
 | State | Means |
 |---|---|
 | Not activated | no VMM; the partition holds nothing |
-| Starting | its VMM runs and has not yet entered the guest's kernel |
-| Running | the guest runs |
-| Shutting down | the partition manager asked its VMM to end, and it has not yet |
-| Error | its VMM failed or was killed. The partition holds nothing, is not started again by itself, and can be activated again |
+| Starting | its VMM runs and its system has not reported its IPL complete |
+| Running | its system reported its IPL complete; or it has no service channel and its kernel was entered |
+| Shutting down | a shut down was asked for or the system is ending, and its VMM has not ended yet |
+| Error | held with its memory after a terminal code or a guest fault: its VMM is kept, its processors stopped, and it holds what it held. Or its VMM failed or was killed: it holds nothing, is not started again by itself, and can be activated again |
 
-These are the names QS/MC shows. **Starting** lasts until the IPL
-loader has entered the kernel, which is when `qsvmm` reports
-`C2005090`; Phase 7 refines it with the guest's own reference codes,
-which arrive on the service channel. **Open firmware is never
-reported**: a partition has no firmware. The VMM loads the kernel
-itself (`docs/ARCHITECTURE.md`, "Partition IPL"), so there is no
-moment at which a partition sits in firmware waiting.
+These are the names QS/MC shows. The states follow the system's own on
+its service channel (`docs/SERVICE.md`, "States"). A system that never
+opens the service port is Running once its kernel was entered (`qsvmm`
+reports `C2005090`) and the wait for a channel is over, and is marked
+as having none. **Open firmware is never reported**: a partition has
+no firmware. The VMM loads the kernel itself (`docs/ARCHITECTURE.md`,
+"Partition IPL"), so there is no moment at which a partition sits in
+firmware waiting.
 
-Each partition has a **current reference code**, the last it posted,
-and a **history** of the last 64, oldest first. The codes are the
-host's about the partition (`docs/REFCODES.md`): what its VMM reported
-(`C2005xxx`, `A2005xxx`), how the VMM ended, and the partition
-manager's own (`C2006010`, `A2006010`).
+Each partition has a **current reference code** and a **history** of
+the last 256, oldest first, kept on disk across activations, partition
+manager restarts and the host's IPLs. Each entry says whose it is: the
+system's, from its service channel, or the host's about the partition
+(`docs/REFCODES.md`): what its VMM reported (`C2005xxx`, `A2005xxx`),
+how the VMM ended, and the partition manager's own (`C2006xxx`,
+`C2009xxx` and `A2009xxx`). The current code is the system's while it
+posts them, the host's before it has and after the VMM ends, and the
+host's for a condition of its own (`docs/SERVICE.md`, "Reference
+codes").
 
 ### What ends a partition, and what follows
 
@@ -44,14 +50,20 @@ manager's own (`C2006010`, `A2006010`).
 |---|---|---|
 | the guest powered off | `C2005100` | Not activated |
 | the guest asked for a restart | `C2005110` | activated again at once, with the same resources, from the side it asked for (`recorded`) |
-| the partition manager shut it down | `A2005140` | Not activated; activated again with the profile it had when the request was a restart |
+| the partition manager shut it down | `A2005140` | Not activated; activated again with the profile it had, this activation's keylock and IPL type, when the request was a restart |
 | it could not IPL the partition | `A2005100`, after the code that says why | Not activated, with `QVS2108` naming that code |
-| the guest faulted, the VMM failed, or it was killed | `A2005120`, `A2005130`, `A2005150` | Error, with the code and how the VMM ended (`QVS2109`); not restarted |
+| the VMM failed, or it was killed | `A2005130`, `A2005150` | Error, with the code and how the VMM ended (`QVS2109`); not restarted |
 | the activation failed before any VMM ran | `A2006010` | Not activated, with the message |
 
 A VMM asked to end is given 10 seconds, then every process of its
 control group is killed. A VMM that something other than the partition
 manager ends with `SIGTERM` leaves its partition Not activated.
+
+A guest fault does not end the VMM: the partition is held in Error
+with `A2005170` (`docs/SERVICE.md`, "Held with its memory"). A
+system's own restart (`PWRDWNSYS RESTART(*YES)`, or a delayed or
+operating-system shut down with restart) is the guest's restart of the
+table.
 
 ## The socket
 
@@ -98,6 +110,14 @@ and `Settings` (`part/resource`, `docs/RESOURCES.md`), `Status`,
 | 23 | media | ID | each optical and tape device: slot, kind, the medium, whether the partition prevents its removal | not running |
 | 24 | named | pool, virtual disk | the profiles that name it, each `PROD profile NORMAL slot 2` | |
 | 25 | adapters | ID, or 0 for every partition | each virtual Ethernet adapter of the partition's profiles: the partition, its name, the profile, the slot, the switch, the port VLAN, the tagged VLANs, the MAC address, whether it is required | |
+| 26 | shut down as | ID, kind (delayed, operating system, immediate), delay, restart | | not activated (`QVS2003`); shutting down already (`QVS2009`); a delay over 99999 (`QVS2302`); delayed or operating system with no service channel (`QVS2301`); refused by the system (`QVS2303` with its message) or not answered in 15 s (`QVS2304`) |
+| 27 | panel | ID, function, its arguments (IPL source, IPL type, keylock, each optional) | the text it displays | `docs/PANEL.md`: `QVS2306` to `QVS2309`, the keylock, the system's refusal |
+| 28 | take dump | ID | the dump's name; it is written in the background | not activated; one is being taken (`QVS2313`); no media repository (`QVS2310`); it could not begin (`QVS2311`) |
+| 29 | dumps | ID | each dump, oldest first: name, time, size, the bytes it takes, the code, why it was taken | no such partition |
+| 30 | delete dump | ID, name | | no such dump (`QVS2312`) |
+| 31 | read dump | ID, name | its size; then its bytes on this connection, a frame of at most 128 KiB each, and an empty frame | no such dump |
+| 32 | console | ID, take over | whether it is the serial port's; then the console on this connection, both ways | another viewer has it and this one does not take over (`QVS2314`) |
+| 33 | screen | ID | the console's whole frame as it is, and its text | nothing shown yet (`QVS2315`) |
 
 **Activate** answers when the VMM has been started: the partition is
 then Starting, and a list or the events say how it goes on. The two
@@ -105,15 +125,33 @@ overrides are for that activation only: an IPL source in place of the
 profile's, and a keylock position in place of the definition's. The
 definition is not changed by them.
 
-**Shut down** and **restart** are immediate: the VMM is stopped.
-Delayed and operating-system shut down need the service channel of
-Phase 7. Both answer when the VMM has been asked.
+**Shut down** (10) and **restart** (11) are immediate: the VMM is
+stopped; they answer when the VMM has been asked. They work on a
+partition held in Error, and on one whose system is shutting it down.
+**Shut down as** (26) is all three kinds (`docs/SERVICE.md`, "Shut
+down"); a delayed or operating-system one answers when the system has
+accepted or refused it, or after 15 seconds. **Panel** (27) answers
+with the function's text, function 21 when the system has accepted it.
+These two are answered by the service when the system has, without
+holding the partition manager meanwhile.
+
+**Console** (32): after its answer the connection stays open. The
+service sends `ConsoleOut` frames, a whole frame first and then each
+update, or the serial port's bytes; the client sends `ConsoleIn`: a
+key, a refresh, or bytes for the serial port. `Ended` and the
+connection closed say it was taken over or the partition ended. The
+forms are QS/400's (`qsipart::console`); nothing of them is
+interpreted on the way. The client's `console` and `ConsoleSession`
+are the crate's.
 
 **End all** is PID 1's request before the host powers off or restarts:
 the partitions are ended one at a time, in the reverse of the order
-they were activated in, and nothing is activated afterwards. PID 1
-waits until a list shows none activated, posts `D2001010`, and only
-then stops the services.
+they were activated in, each through its own system when it has its
+IPL complete and its channel up (an operating-system shut down given
+`host_timeout_secs`, 300 s by default), immediately otherwise, and
+nothing is activated afterwards. PID 1 waits that time and the VMM's
+grace for each until a list shows none activated, posts `D2001010`, and
+only then stops the services.
 
 ## Events
 
@@ -126,6 +164,11 @@ the subscribers on the socket and written to the host's log.
 | code | the ID and name, and the code posted: time, code, text |
 | resources | the ID and name, what it holds now (nothing when it has ended), the time |
 | defined | the ID and name, and whether the definition still exists: a partition was created, changed or deleted, or a profile of it was |
+| channel | the ID and name, and the service channel as the list has it: up, none, responding, held, the system's name, release, fix level and addresses, the version and capabilities: when it comes up or goes, stops or starts answering, or the system reports a change |
+| dump | the ID and name, a dump's name, and why it was not written when it was not |
+
+The list (request 0) has the same of the channel in each partition's
+`service`.
 
 A subscriber that does not take an event within two seconds is
 dropped.
@@ -153,10 +196,15 @@ dropped.
    source, the keylock, IPL type and console mode, the units and the
    optical and tape devices, the Ethernet adapters, a held file named
    by its `/proc/self/fd/N` path.
-6. What the partition holds is recorded in `/run/partd/<ID>.record`.
+6. What the partition holds is recorded in `/run/partd/<ID>.record`,
+   with its state, which is written again at each change.
 7. The partition is Starting. Each line of the report that is a
-   reference code of the table becomes its current code, is published,
-   and is posted through PID 1; `C2005090` makes it Running.
+   reference code of the table goes into its history, is published,
+   and is posted through PID 1. The service channel's sockets
+   (`/run/partd/<ID>.service.sock`, `.console.sock`), made before the
+   VMM and handed to it as its descriptors after the taps, are
+   connected to; the system's codes and states drive the partition
+   from then on (`docs/SERVICE.md`).
 8. When the VMM ends, what it held is given back (the pool service
    releases its disks and media, the switch service closes its ports),
    its group is removed, the end's code
@@ -188,7 +236,9 @@ and the history is bounded.
 When the host's base is ready (every service has been ready), the
 partitions flagged to start with it are activated with their default
 profiles, in the order of their `auto_start.order` and then of their
-IDs, each after its delay. `C2006020` says how many there are and
+IDs, each after its delay. One whose `auto_start.wait` is set is waited
+for until its system reports its IPL complete, or its `wait_secs` have
+passed, before the next. `C2006020` says how many there are and
 `C2006030` how many were activated. One that fails posts `A2006020`
 with its message and does not stop the rest. It is done once an IPL:
 a partition manager started again does not do it over.
@@ -202,10 +252,12 @@ standard error.
 
 A partition manager that starts reads the records in `/run/partd`.
 For each, when the partition's control group still has a process, the
-partition is taken up: it holds what its record says, the lines of its
-report so far say where it is, `C2006010` is posted, and it is watched
-again, by its control group this time (the VMM is another process's
-child by now). When it ends, how is read from the report's last line,
+partition is taken up: it holds what its record says and is in the
+state recorded, its VMM is asked whether it is held, `C2006010` is
+posted, its service channel is connected to again (the system says
+hello and its current code again), and it is watched again, by its
+control group this time (the VMM is another process's child by now).
+Its history is the one kept on disk. When it ends, how is read from the report's last line,
 `END <exit code>`, which `qsvmm` writes for exactly this; with no such
 line it was killed. A record whose group is empty is a partition that
 ended while nobody watched: it is ended then and there, the same way.
@@ -233,9 +285,5 @@ the host.
 
 ## Not here yet
 
-- Delayed and operating-system shut down, console attach, panel
-  functions, the guest's own reference codes: the service channel,
-  Phase 7.
 - Any change to a running partition's resources.
-- `BLOCKED(phase6)`: a partition's history is in memory and in the host's log: a partition manager started again has the codes of the activations that still run, not the older ones.
-- `BLOCKED(phase6)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event.
+- `BLOCKED(phase7)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event.

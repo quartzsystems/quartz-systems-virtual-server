@@ -47,6 +47,8 @@ created = 1794000000
 enabled = true
 order = 10
 delay_secs = 0
+wait = true              # the next waits for this one's IPL to complete
+wait_secs = 600          # or this long
 ```
 
 | Key | Value | Changed |
@@ -60,6 +62,8 @@ delay_secs = 0
 | `auto_start.enabled` | whether the partition is activated when the host has started | while not activated |
 | `auto_start.order` | its place among the others: lower first; partitions with one place go by ID | while not activated |
 | `auto_start.delay_secs` | seconds to wait before it, after the one before: 0 to 3600 | while not activated |
+| `auto_start.wait` | whether the next partition is started only when this one's system has reported its IPL complete (`docs/SERVICE.md`), or `wait_secs` have passed; left out, `false` | while not activated |
+| `auto_start.wait_secs` | the longest that wait: 1 to 3600; left out, 600 | while not activated |
 | `created` | when it was created, in seconds since the epoch | never |
 
 ### The serial number
@@ -108,7 +112,7 @@ maximum_mib = 4096
 [boot]
 source = "recorded"
 type = "unattended"
-console = "serial"
+console = "partition"
 
 [[scsi]]
 slot = 2
@@ -163,15 +167,19 @@ The table may be left out; then it is as below.
 |---|---|---|
 | `source` | the IPL source. `a` or `b`: that side. `recorded`: the side the partition itself asked for, in its LIC record: the side it asked for one IPL, which is then cleared, else its default side, else side A. `d`: the installation media in the partition's first optical device (the lowest slot); a profile with `d` and no optical device is refused (`QVS1219`) | `recorded` |
 | `type` | `unattended`, or `attended`: the IPL stops at its menu. With the keylock in the manual position an IPL is attended whatever this says | `unattended` |
-| `console` | `serial` or `local`. A partition has no display, so `serial` is the one that gives it a console | `serial` |
+| `console` | `partition`: the console port of the service channel, the console as a full screen (`docs/SERVICE.md`); `serial`: the serial port, for a system older than QS/400's handoff 17; `local`: the display, which a partition does not have, so it is given the console port as `partition` is | `partition` |
 
 All three are written to the partition's LIC record before the IPL,
-with the definition's keylock.
+with the definition's keylock: the console mode as the console port
+(`licpart::ConsoleMode::Partition`) unless it is `serial`. A profile
+kept before Phase 7 says `serial`, as the default then was, and keeps
+it until it is changed.
 
 ### `[[scsi]]`: virtual SCSI adapters
 
-Each adapter has a virtual `slot`, 2 to 255 (slots 0 and 1 are the
-partition's console and its service channel), and its units,
+Each adapter has a virtual `slot`, 2 to 255 (slots 0 and 1 are kept
+for the partition's console and its service channel, which are a
+device of their own after every slot's), and its units,
 `[[scsi.lun]]`. Eight adapters at most, 64 units an adapter.
 
 | Key | Value | Left out |
@@ -249,6 +257,6 @@ its partition runs is the next activation's.
 
 ## Not here yet
 
-- `BLOCKED(phase6)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
-- The service channel and console attach: Phase 7. Physical I/O, a whole physical disk or tape drive
-  given to a partition: Phase 10.
+- `BLOCKED(phase7)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
+- Physical I/O, a whole physical disk or tape drive given to a
+  partition: Phase 10.

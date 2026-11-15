@@ -61,6 +61,14 @@ slot = 5
 mac = "02:5a:3c:00:03:05"
 tap = "/proc/self/fd/6"
 mtu = 1500
+
+[[port]]
+name = "systems.quartz.qsvs.service.0"
+socket = "/proc/self/fd/7"
+
+[[port]]
+name = "systems.quartz.qsvs.console.0"
+socket = "/proc/self/fd/8"
 ```
 
 | Key | Value |
@@ -76,6 +84,8 @@ mtu = 1500
 | `[[optical]]` | a virtual optical device: its `slot`, `serial`, and the image loaded at the start (`media`, with its library `name`) or none. Four at most |
 | `[[tape]]` | a virtual tape device: its `slot`, `serial`, and the volume mounted at the start (`volume`, `name`, `capacity_mib`, `protected`) or none. Four at most |
 | `[[net]]` | a virtual Ethernet adapter: its `slot`, its `mac`, its port's `tap` or none (no link), and the switch's `mtu`, 68 to 9000. Eight at most |
+| `[[port]]` | a port of the virtio-console: its `name`, 1 to 64 printable characters, as the guest finds it, and its `socket`, a listening Unix socket the partition manager made. Four at most; none, and the partition has no virtio-console. The partition manager gives the service channel's two, named as QS/400's protocol crate names them (`docs/SERVICE.md`): `qsvmm` spells no name of its own |
+| `console` | `serial`, `local` or `partition`, the console mode for the LIC record: `partition` is the console port |
 
 A backing store, an image or a volume the partition manager holds is
 given to `qsvmm` as one of its open descriptors and named by its
@@ -83,8 +93,9 @@ given to `qsvmm` as one of its open descriptors and named by its
 same file, so a rename or a removal of the name cannot put another
 under it. A tap is the exception: opened again by its path it would be
 a new, unattached tun, so `qsvmm` takes descriptor N itself, checked to
-be open and a character device. Every slot is a device's alone,
-whatever its kind.
+be open and a character device; so with a port's listening socket,
+checked to be a socket. Every slot is a device's alone, whatever its
+kind.
 
 A developer can name a file in place of standard input: `qsvmm
 --config <file>`.
@@ -139,9 +150,9 @@ is root's.
 |---|---|---|
 | 0 | the guest powered off | `C2005100` |
 | 10 | the guest asked for a restart. The process ends; it does not restart in place | `C2005110` |
-| 20 | the guest faulted: a triple fault, or KVM could not enter it | `A2005120` |
+| 20 | not used since Phase 7: a guest fault keeps the partition (below, "A partition kept for a dump") | `A2005120` |
 | 30 | the partition did not IPL: the profile, a disk unit, or what is on the load source. The `A2005` code before it says which | `A2005100` |
-| 40 | the VMM failed: a KVM error, an exit it does not handle | `A2005130` |
+| 40 | the VMM failed: a KVM error, a thread that could not be started | `A2005130` |
 | 50 | the VMM was sent `SIGTERM`, `SIGINT` or `SIGHUP` | `A2005140` |
 | a signal | the VMM was killed | `A2005150` |
 | 2 | the command line was not one | |
@@ -240,7 +251,8 @@ No firmware, no VGA, no keyboard, no floppy, no IDE.
 | PCI host bridge | ports `CF8` to `CFF`, and memory at `E8000000` | one bus. Device 0 is the bridge (`1b36:0008`); a virtio function follows at each device number |
 | virtio-scsi | PCI `00:01.0` and on, `1af4:1048` | one function a device, in slot order: a SCSI adapter's disks at its LUNs, an optical drive or a tape drive at LUN 0 of a function of its own |
 | virtio-net | among them by slot, `1af4:1041` | a virtual Ethernet adapter, its frames served by vhost-net from its port's tap |
-| virtio-rng | after them, `1af4:1044` | the host's `/dev/urandom`, a page at most a buffer |
+| virtio-console | after them, `1af4:1043` | the service channel's two named ports, each joined to a socket of the partition manager's (below) |
+| virtio-rng | last, `1af4:1044` | the host's `/dev/urandom`, a page at most a buffer |
 
 ### virtio over PCI
 
@@ -414,15 +426,70 @@ and its base read back) and the control queue's thread; the next
 driver's start sets them again. A guest's restart and the partition's
 end close the tap and vhost-net with the process.
 
+### virtio-console
+
+The service channel's device (`docs/SERVICE.md`): `VIRTIO_CONSOLE_F_MULTIPORT`
+and the control queue, the configuration saying the most ports, no
+size and no emergency write. Its ports have IDs from 1, in the order of
+the configuration's `[[port]]`s; port 0, which a guest takes for a
+console of its own, is never added. The queues are port 0's two, the
+control queue's two, then each port's two, to the guest and from it.
+
+On the guest's `DEVICE_READY` each port is announced (`DEVICE_ADD`);
+on its `PORT_READY` the port's name (`PORT_NAME`) and whether the
+host's side is open (`PORT_OPEN`). The guest's own `PORT_OPEN` is kept
+and counted; its size message, and any event the device does not take,
+are passed over. At most one message of each kind waits for a port,
+however often a guest asks: what waits is bounded.
+
+Each port is joined to the host by a link: 64 KiB each way. The device
+works its end on its worker's thread and never waits. Toward the host,
+it takes the guest's buffers only while the link has room, and reads a
+buffer only to 64 KiB, so a slow reader stalls the port and the guest's
+writes wait in its own queue; toward the guest, the host's writer waits
+while the link is full. The host's end is `qsvmm`'s threads: one a port
+takes one peer at a time on the listening socket it was given and
+carries bytes both ways, reading none of them. A peer that goes away
+(the partition manager restarting) is told to the guest as the port's
+host side closed, and opened again when the next connects. What the
+guest writes with no peer, and what comes for it with its port closed,
+is dropped.
+
+The device is there from the kernel's first instruction. A guest's
+restart ends the process, and the next VMM has the device again.
+
 ### The control socket
 
 `<run>/partitions/<ID>/control.sock`, made by `qsvmm` as root before
 it drops its privileges and root's alone (mode 600): the partition
-manager reaches it, no partition does. One request a connection: a
-line, `load <slot> <name> <capacity MiB> <protected>`, `unload <slot>
-<forced>` or `media`, after one byte that carries the medium's open file
-when there is one (`SCM_RIGHTS`). The answer is `ok <name>` or
-`refused <why>`; `media` answers a line a device and `end`.
+manager reaches it, no partition does. It is served whatever devices
+the partition has. One request a connection: a line, after one byte
+that carries an open file when there is one (`SCM_RIGHTS`):
+
+| Request | Answer |
+|---|---|
+| `load <slot> <name> <capacity MiB> <protected>`, the medium's file with it | `ok <name>` or `refused <why>` |
+| `unload <slot> <forced>` | the same |
+| `media` | a line a device, then `end` |
+| `hold` | `ok kept`: every processor stopped and the partition kept (below) |
+| `kept` | `ok true` or `ok false`: whether it is kept |
+| `dump <time> <code> <reason> <text>`, the dump's file with it | `ok <bytes> <bytes of memory written>` once the dump is whole, or `refused <why>` (`docs/DUMPS.md`) |
+
+## A partition kept for a dump
+
+A fault the VMM survives does not end the partition: a triple fault, a
+halt with nothing to wake it, an entry KVM refused, a crash the guest
+reported, an exit the VMM does not handle. The processor that met it
+reports `A2005170` with which, stops every other, and parks itself;
+the memory and every processor's state are kept. The partition
+manager's `hold` does the same for a system that posted a terminal
+code. A kept partition is not resumed: a dump, an immediate shut down
+or a restart is what follows (`docs/SERVICE.md`). Each processor leaves
+its registers when it parks, which a dump writes.
+
+A dump of a partition that runs stops its processors the same way for
+as long as it takes, and lets them go on. The stops are apart: a
+partition kept for a dump stays stopped when its pool has room again.
 
 ## A partition held for its pool's space
 
@@ -554,8 +621,17 @@ or reach a file descriptor or a byte of a disk that is not its own.
   code 30.
 - The process holds no privilege while the guest runs, and the only
   files it has open are its own units, its media, its log, its sockets,
-  the random source, its adapters' taps and `/dev/vhost-net`. It opens
-  no network device by name.
+  the random source, its adapters' taps and `/dev/vhost-net`, the
+  service channel's listening sockets. It opens no network device by
+  name, and reads none of the bytes its console ports carry.
+- The virtio-console's control queue is read a header at a time: a
+  message shorter than one, an event or a port the device does not
+  have, is passed over; what waits for the guest is one message of a
+  kind a port. A port's buffers are read to 64 KiB and taken only while
+  the host has room.
+- A dump is written to the file the partition manager hands over, from
+  the guest's memory through `vm-memory`'s bounds; nothing of the
+  guest's memory is interpreted.
 - A virtio-net adapter's frames are vhost-net's in the kernel, which
   checks the rings against the memory table it was given; the control
   queue's requests are the VMM's, bounded as above.
@@ -570,8 +646,10 @@ the FAT volume, the LIC record, a whole load source, the bzImage, a
 SCSI command with its data, guest memory holding the virtio-scsi and
 virtio-rng queues, and accesses to the ports, PCI configuration space
 and the virtio BARs; since Phase 5 the ISO 9660 volume and the optical
-and tape drives' commands, and since Phase 6 the virtio-net control
-queue (`netctrl`). The targets that sit behind a checksum are also
+and tape drives' commands, since Phase 6 the virtio-net control queue
+(`netctrl`), and since Phase 7 the virtio-console's control queue and a
+port's queues (`console`) and what a system sends on its service
+channel, as the partition manager takes it (`channel`). The targets that sit behind a checksum are also
 run on input whose checksum was made to hold.
 
 **What is not defended yet.** The system calls `qsvmm` can make are

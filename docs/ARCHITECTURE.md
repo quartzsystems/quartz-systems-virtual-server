@@ -20,6 +20,7 @@ a side effect of other work.
 | Whose disks | The host takes the disk it IPLed from and the members that disk's label names, and no other |
 | Storage | Storage pools are xfs file systems; virtual disks are raw files; software RAID as on QS/400, presented through a ublk block device |
 | Virtual Ethernet | VLAN-aware kernel bridges, tap devices with vhost-net |
+| Service channel | One virtio-console device per partition with two named ports, the service port and the console port, as QS/400's `docs/QSID.md` names them. The partition manager speaks the protocol (QS/400's crate `qsipart`); `qsvmm` carries bytes. The system's codes and states drive the partition's; shut down is delayed, operating system or immediate; a partition held with its memory after a terminal code or a fault is dumped from outside |
 | Management | QSI server on TCP 2300 with mutual TLS; Service Tools console locally; nothing else listens |
 | Disk layout | A load-source disk is GPT: ESP (slot A and B UKIs), a record partition, `QSVSDATA`. One disk, or two mirrored: each then has its own ESP and record, and `QSVSDATA` is one xfs on a protected set over the two. Two units that each ran without the other are not reconciled by the host: the operator chooses. Storage pools on other disks |
 | Local console | Service Tools on the display and the serial port, each its own session; the installer on both at once. QS/400's `console` and screen kit |
@@ -335,6 +336,32 @@ numbers and location codes), `lic/qsvsinstall` is the
 installer's disks, media and state under the base screens, and
 `svc/tools` is QS/VS's menu, system status and disk units over the
 base panels.
+
+**The service channel.** Each partition has a virtio-console device
+with two named ports: the service port (the system's reference codes,
+its state, a power down, control panel function 21, pings, the clock)
+and the console port (the console as a full screen, keys back). The
+emulated serial port stays for the kernel's messages. The protocol is
+QS/400's crate `qsipart`, pinned with the others; the partition manager
+alone speaks it, and `qsvmm` only carries bytes between each port and a
+listening socket the partition manager made and handed it
+(`docs/SERVICE.md`). Every activation writes the console port as the
+console mode to the LIC record, unless the profile asks for serial.
+The partition is Starting until its system reports its IPL complete,
+Running after, Shutting down from a shut down or its system's ending;
+a system that never opens the channel is Running once its kernel was
+entered and the wait is over, marked as having none. The current
+reference code is the system's while it posts them, the host's before
+and after and for conditions of the host's; the history is on disk.
+Shut down is delayed, operating system (each the system's, forced
+after its time) or immediate; with no channel only immediate. A
+terminal code or a fault the VMM survives holds the partition in Error
+with its processors stopped and its memory kept, until it is dumped,
+shut down or restarted. Dumps are taken by the host from outside, an
+ELF core in the media repository's pool (`docs/DUMPS.md`). The control
+panel functions are the host's but 21 (`docs/PANEL.md`). The host's
+own shut down ends each partition through its system, in reverse start
+order, with a timeout each. One viewer of a console at a time.
 
 **Identity.** The release is `V1R0M0`, from `VERSION` (`1.0.0`), through
 QS/400's `vrm`. Fixes are numbered `QVnnnnn`, messages are prefixed

@@ -439,6 +439,52 @@ and serves the `QDSIGNON` display on a `QPADEVnnnn` device made in
 NEEDS-CODY: whether any of 1 to 6 goes to QS/400 now, or waits for
 QS/MC; none of it blocks `net-qs400`.
 
+## The service channel (Phase 7, at `5ce33f1`)
+
+QS/400's handoff 17 is the system's side of the channel: `qsid` in a
+partition and the console as a display on the console port
+(`docs/QSID.md` there). What runs against `qsvmm`'s virtio-console and
+the partition manager showed, at the pin, with the guest image
+`qs400-V1R1M0-626e2753f892.img`:
+
+- `qsid` found both ports by their names in sysfs, said hello about
+  four seconds after the VMM started on the build host (the serial
+  number the host gave, slot A, keylock normal), then `C1001000` and
+  every code of the IPL in order to `C6001090` and the state
+  `complete`, at about twenty seconds. It answered every ping.
+- The console port carried a whole frame of 24 by 80 when the viewer
+  connected, the SRC display's codes during the IPL, then the sign-on
+  display, which matches QS/400's own golden screen.
+- An interface added and started on the serial service console
+  (`ADDTCPIFC ... LIND(*VIRTUALIP)`, `STRTCPIFC`) came as a new state
+  with its address, `10.9.9.9/32`, and a link-local address.
+- `dbgkill JOB(*STG)` on the serial service console posted `B1001060`
+  and then the state `down`, and `slic` halted without powering off:
+  the host held the partition and dumped its memory (4 GiB in 11 s,
+  568 MB written).
+- The fix level was empty: the image has no cumulative package.
+
+What QS/400 would have to change, found so far:
+
+1. **Say in the LIC record that the system has a service channel.**
+   The host cannot tell a system that has not opened the port yet from
+   one that never will, so it waits a minute for the second
+   (`docs/OPEN_QUESTIONS.md` item 38). A TLV the IPL loader reads would
+   end the wait.
+2. **The hello's `ipl_type`.** QS/400's `docs/QSID.md` gives it as `A`,
+   `B` or `D`, which are IPL sources, and the hello sent `A` beside
+   `slot = A` for an unattended IPL from side A. Whether the IPL was
+   attended is not in it. The host keeps the field and reads nothing
+   from it.
+3. **The words of a code.** Functions 12 to 19 show `00000000`:
+   QS/400's codes carry no words yet (`docs/QSID.md`, the `refcode`
+   message). Nothing on the host's side changes when they do.
+4. **A way to stop `qsid` alone.** The suite of a system that stops
+   answering stops the whole VMM, because nothing of QS/400 stops its
+   service daemon from outside (`dbgkill` takes the storage service's
+   jobs only). A `dbgkill JOB(*QSID)` would let the suite stop the
+   daemon alone.
+
 ## What QS/400 would have to change
 
 For a QS/400 handoff, in the order of how much a partition needs each.
@@ -494,5 +540,6 @@ the SMBIOS tables QS/VS writes since Phase 4), 6 (the entropy device
 has a type of its own, `QX01`: `lic/hwrsrc/src/scan/pci.rs` there). 7 needs nothing. 8 stays as it is: the seven
 bytes at the reset vector are kept (`docs/OPEN_QUESTIONS.md` item 29).
 
-Still QS/400's, and not needed before Phase 7: a guest agent for the
-service channel, and a partition's reference codes sent to the host.
+A guest agent for the service channel and a partition's reference
+codes sent to the host came with QS/400's handoff 17 (above, "The
+service channel"), which Phase 7 pinned.

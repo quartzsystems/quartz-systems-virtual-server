@@ -45,6 +45,14 @@ reserved_memory_mib = 2048
 name = "BATCH"
 cores = [6, 7]
 maximum_units = 1.5
+
+[service]                    # left out when every value is its default
+delayed_grace_secs = 120
+system_timeout_secs = 300
+host_timeout_secs = 300
+channel_wait_secs = 60
+max_dumps = 3
+max_dump_mib = 262144
 ```
 
 | Key | Value | Left out |
@@ -54,6 +62,12 @@ maximum_units = 1.5
 | `reserved_cores` | cores kept back for the host: the lowest-numbered ones. The host's services run on them and nowhere else | 1 |
 | `reserved_memory_mib` | memory kept back for the host: 512 or more (a file with less, which the partition manager would not have written, is read as 512) | the larger of 2048 and 5% of the installed memory |
 | `[[pool]]` | a shared processor pool: its `name`, its `cores`, and `maximum_units`, the most its partitions use together (its cores' worth when left out) | none: the default pool only |
+| `service.delayed_grace_secs` | seconds after a delayed shut down's delay before it is forced: 0 to 3600 (`docs/SERVICE.md`) | 120 |
+| `service.system_timeout_secs` | seconds an operating-system shut down is given before it is forced: 10 to 3600 | 300 |
+| `service.host_timeout_secs` | seconds each partition is given to shut down through its system at the host's shut down: 10 to 3600 | 300 |
+| `service.channel_wait_secs` | seconds after the kernel is entered for a system to open its service channel: 5 to 600 | 60 |
+| `service.max_dumps` | the most dumps kept of a partition: 1 to 32 (`docs/DUMPS.md`) | 3 |
+| `service.max_dump_mib` | the most MiB a partition's dumps take together: 64 or more | 262144 |
 
 The limit and the block size apply at once to what is checked from
 then on. The reserve applies at the host's next IPL: memory is set
@@ -222,6 +236,6 @@ there since Phase 0: `CPUSETS`, `CGROUP_SCHED`, `FAIR_GROUP_SCHED`,
 
 ## Not here yet
 
-- `BLOCKED(phase6)`: cores are given without regard to sockets or to memory's place: a partition's cores and its huge pages may be on different NUMA nodes.
-- `BLOCKED(phase6)`: only 2 MB pages; 1 GiB pages are not used.
+- `BLOCKED(phase7)`: cores are given without regard to sockets or to memory's place: a partition's cores and its huge pages may be on different NUMA nodes.
+- `BLOCKED(phase7)`: only 2 MB pages; 1 GiB pages are not used.
 - Any change to a running partition's resources: not in this phase.

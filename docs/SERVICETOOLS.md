@@ -146,10 +146,12 @@ each service of the table with its state and how often it has failed.
 
 **F11, Display Partitions.** Every partition of the host, a row each,
 as the partition manager says: its ID, its name, its state (Not
-activated, Starting, Running, Shutting down, Error), the reference
-code the host posted last about it, and what it holds now: its
-processors (`2 dedicated`, or its processing units and virtual
-processors, `0.50 on 1 shr`) and its memory. A partition that is not
+activated, Starting, Running, Shutting down, Error), its current
+reference code, live (the system's own while it posts them on its
+service channel, else the host's: `docs/SERVICE.md`), the system's
+release as its service channel said it (`-` with none), and what it
+holds now: its processors (`2 dedicated`, or its processing units and
+virtual processors, `0.50 on 1 shr`) and its memory. A partition that is not
 activated holds nothing and shows `-`. The display follows the
 partitions; F7 and F8 page a long list. **Nothing here acts on a
 partition**: there is no option to type, and a partition is created,

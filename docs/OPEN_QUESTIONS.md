@@ -19,7 +19,9 @@ had Claude's recommendation taken for every question still open: 17,
 22, 31 and 34 are closed below; 32, 35 and 36 are decided and wait on
 a change in QS/400; 6 waits on the first push. The Phase 6 handoff
 answered 35 and 36 (below, with what was decided before them) and
-left 34, 6, 17, 22, 31 and 32 as they were; Phase 6 raised 37.
+left 34, 6, 17, 22, 31 and 32 as they were; Phase 6 raised 37. The
+Phase 7 handoff answered 37 for V1 and left the rest of it, and 6, 32,
+35 and 36, as they were; Phase 7 raised 38 and 39.
 
 ## Open
 
@@ -37,7 +39,10 @@ should the hosted runners not nest that far, the `vmm`, `qs400`,
 the Dell machine and the rest stay hosted. Nothing more can be seen
 before the first push, which is Cody's.
 
-### 37. Management on a VLAN of a switch (NEEDS-CODY)
+### 37. Management on a VLAN of a switch (answered for V1; NEEDS-CODY after)
+
+Answered by the Phase 7 handoff: **not in V1**, as recommended below.
+Whether it is wanted after V1 stays open for Cody.
 
 The management interface is never a switch's uplink, and a switch's
 uplink is never taken for management (`docs/NETWORK.md`), so a host
@@ -50,6 +55,30 @@ in V1; a host that needs outside networks for partitions has a second
 port. If it is wanted later, as a VLAN sub-interface of the uplink's
 bond that the bridge never sees, with its own trial as `netd` has
 today, and never a VLAN a partition is on.
+
+### 38. How long a system is given to open its service channel
+
+Nothing in a partition says beforehand whether its system has a service
+channel (`docs/SERVICE.md`, "States"): the host waits after the kernel
+was entered, `channel_wait_secs`, 60 s by default, and a system that has
+not said hello by then is Running with none. A QS/400 of handoff 17
+says hello about three seconds after its kernel starts on the build
+host; three levels deep in the suites it is under thirty. The cost of
+the wait is that an older system, or QS/VS's own UKI as a guest, shows
+Starting for that minute. Recommended: keep 60 s, a setting; QS/400
+could say in its LIC record that it has a channel (a TLV the IPL
+loader reads), and the host would then not wait for one that has
+none. That is QS/400's to add, and the host's to read once it is.
+
+### 39. A held partition and the host's restart (NEEDS-CODY)
+
+A partition held with its memory after a terminal code stays held until
+an operator dumps it, shuts it down or restarts it, and the host's own
+shut down ends it immediately (it cannot be asked to power down); at
+the next IPL auto start activates it again when it is flagged, and its
+memory is gone. Recommended: keep it so for V1: a terminal code is for a person to see.
+QS/MC may later offer "dump and restart on a terminal code" as a
+partition's setting, which is function 22 asked by the host itself.
 
 ## Decided, waiting on QS/400
 
