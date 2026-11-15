@@ -362,6 +362,83 @@ than the media (the command line it cannot be given, a seed volume),
 so one ISO serves attended and unattended installs alike; and say in
 its tape code what it expects of a drive past the early warning.
 
+## An Ethernet adapter (Phase 6, at `0fc8afa`)
+
+What QS/400 does with a partition's virtio-net adapter, read from its
+source at the pin; what a run showed is `net-qs400` in
+`docs/PHASE6.md`.
+
+**The resource.** QS/400's hardware resource service walks sysfs
+(`lic/hwrsrc`). The adapter's PCI function, class `02`, is a `LINnn`
+resource, `Network Adapter`, described as `1af4:1041 virtio network`
+(`scan/pci.rs`). Its port is a `CMNnn` resource, `Ethernet Port`, of
+type `QN01` model `001` (`Virtio Ethernet port`) because its driver is
+`virtio_net` (`scan/nic.rs`); its description names the link, its MAC
+address, and `link up` (a speed is added only when sysfs has one, which
+`VIRTIO_NET_F_SPEED_DUPLEX` gives). Its serial is the MAC address
+without colons, and the name it keeps across IPLs is keyed by its
+permanent MAC address, so the profile's fixed address keeps it `CMN01`.
+
+**What `QSHWQUAL` says.** It is QS/400's hardware qualification report,
+not a system value (`lic/hwqual`). Its network check passes a port with
+carrier and warns of one without: an adapter whose switch was missing
+(not required, link down) warns. It knows QS/VS by the ACPI tables and
+passes the firmware check under it (items 3 and 4 below). Nothing in it
+is about virtio-net as such.
+
+**Before it has an address.** Nothing is made at IPL: a new system has
+the loopback only until an interface is configured (`lic/slic`). An
+interface is made either on a line description (`CRTLINETH
+RSRCNAME(CMN01)`, then `ADDTCPIFC ... LIND(...)`) or on the kernel link
+directly (`LIND(ETH0)`, which counts as always varied on). `QSTRUP`
+runs `STRTCP`, which starts every interface and route marked to start,
+and the telnet server, whose autostart is on in a new system: no
+`STRTCPSVR` is needed. DHCP is `INTNETADR(*IP4DHCP)`.
+
+**Unattended.** Yes. The install response file (`QS400/INSTALL.RSP` on
+the media) takes `ip` (`a.b.c.d/n` or `*IP4DHCP`) and `gateway`; the
+installation makes an interface marked to start on the first line
+description, or on `LIND(ETH0)` when there is none, and a default route.
+That is how `net-qs400` configures it: a copy of the ISO whose response
+file has both. A response file cannot make a line description, a VLAN
+interface, a second interface or another route, or set DNS.
+
+**Tagged VLANs.** Usable from QS/400 today, on the interface and not the
+line: `ADDTCPIFC LIND(<line> <vlan>)` names the VLAN, and at the
+interface's start QS/400 makes the `<link>.<vlan>` sub-interface through
+its `netlink`. `CRTLINETH` has no VLAN parameter. An adapter with that
+VLAN among its `tagged` ones carries it.
+
+**Telnet and 5250.** `QTVTELNET` listens on `0.0.0.0:23` (IPv4 only)
+and serves the `QDSIGNON` display on a `QPADEVnnnn` device made in
+`QAUTOVRT`. `net-qs400` reaches it from the harness's network.
+
+**What QS/400 would have to change**, as a list for a QS/400 handoff:
+
+1. A response file key, or a partition setting, that makes a line
+   description (with `RSRCNAME`) and, on it, an interface with a VLAN,
+   so that an installation can be configured on a tagged VLAN and on a
+   named port, not only on `ETH0`.
+2. An `*IP4DHCP` interface on the first Ethernet port made by itself at
+   the first IPL when the system knows it is a partition of QS/VS, so a
+   partition is reachable with nothing configured.
+3. An IPv6 listener for telnet beside the IPv4 one.
+4. With two adapters, `LIND(ETH0)` and the response file's interface
+   follow the kernel's probe order; naming the port by its resource
+   (`CMN01`) would not.
+5. Two documents of QS/400's that are out of date: `docs/TN5250.md`
+   says `QSTRUP` runs `STRTCPSVR` (it runs `STRTCP`), and
+   `docs/TCPIP.md` names `stgsvc::cmn::kernel::ensure_vlan`, which does
+   not exist (the code is `tcpcfg::apply`).
+6. `ADPTADR` and an aggregated line change the adapter's address: QS/VS
+   records such a change and does not pass it on (`docs/NETWORK.md`),
+   so a line with `ADPTADR` loses its traffic. QS/400 should be told,
+   in its documentation for partitions, that the profile's address is
+   the one a partition has.
+
+NEEDS-CODY: whether any of 1 to 6 goes to QS/400 now, or waits for
+QS/MC; none of it blocks `net-qs400`.
+
 ## What QS/400 would have to change
 
 For a QS/400 handoff, in the order of how much a partition needs each.
