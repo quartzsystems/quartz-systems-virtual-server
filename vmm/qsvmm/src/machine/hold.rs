@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use devices::virtio::scsi::lun::Hold;
 
-use super::pause::Pause;
+use super::pause::{Pause, Reason};
 
 /// How long a write that found no room waits before it is tried again.
 pub const RETRY: Duration = Duration::from_secs(1);
@@ -50,7 +50,7 @@ impl Hold for Held {
                     "a write found the storage pool full",
                 );
                 drop(waiting);
-                self.pause.hold();
+                self.pause.hold(Reason::Space);
             }
         }
         thread::sleep(self.retry);
@@ -61,7 +61,7 @@ impl Hold for Held {
         *waiting = waiting.saturating_sub(1);
         if *waiting == 0 {
             crate::post(&refcode::PARTITION_RESUMED, "the storage pool has room");
-            self.pause.release();
+            self.pause.release(Reason::Space);
         }
     }
 }

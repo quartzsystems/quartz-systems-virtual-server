@@ -49,6 +49,8 @@ members = [
     "part/model",
     "part/resource",
     "part/partd",
+    # The service channel, the console and dumps (Phase 7).
+    "part/dump",
     # Storage: pools, virtual disks, the media library, tape volumes.
     "stg/pool",
     "stg/vdisk",

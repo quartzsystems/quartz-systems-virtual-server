@@ -5,7 +5,10 @@
 //! A processor: its state before it first runs, and the loop that
 //! runs it. An exit for a port or a memory address goes to the device
 //! there; an exit that ends the partition is told to the main thread,
-//! which ends the process.
+//! which ends the process. A fault the VMM survives (a triple fault, a
+//! halt nothing wakes, an entry KVM refused, an exit it does not
+//! handle) keeps the partition instead: every processor stops, the
+//! memory is kept, and `A2005170` says why, so it can be dumped.
 //!
 //! Only processor 0 is given registers: the others wait, as KVM
 //! leaves them, for the kernel on processor 0 to start them.
@@ -29,6 +32,7 @@ use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
 use vm_memory::{Bytes, GuestAddress};
 
 use crate::end::End;
+use crate::machine::pause::Reason;
 
 fn kvm_error(what: &'static str) -> impl Fn(kvm_ioctls::Error) -> io::Error {
     move |e| {
@@ -254,6 +258,18 @@ fn state(vcpu: &VcpuFd, index: u32, memory: &Memory) -> String {
     parts.join(" ")
 }
 
+/// Keep the partition after a fault of processor `index`: said once,
+/// and every processor stops, this one when it next loops.
+fn keep(index: u32, wiring: &Wiring, why: &str) {
+    if !wiring.pause.kept() {
+        crate::post(
+            &refcode::PARTITION_FAULT_HELD,
+            &format!("processor {index}: {why}"),
+        );
+    }
+    wiring.pause.hold_from_processor(Reason::Kept);
+}
+
 fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
     let end = |end: End, why: String| {
         let _ = wiring.ends.send((end, format!("processor {index}: {why}")));
@@ -268,7 +284,7 @@ fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
     }
     loop {
         if wiring.pause.paused() {
-            wiring.pause.park(&vcpu);
+            wiring.pause.park(&vcpu, index);
         }
         match vcpu.run() {
             Ok(VcpuExit::IoIn(port, data)) => {
@@ -290,10 +306,8 @@ fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
             }
             // With the interrupt controller in the kernel a halt
             // stays there; one that comes out has nothing to wake it.
-            Ok(VcpuExit::Hlt) => {
-                return end(End::GuestFault, "halted with nothing to wake it".into());
-            }
-            Ok(VcpuExit::Shutdown) => return end(End::GuestFault, "triple fault".into()),
+            Ok(VcpuExit::Hlt) => keep(index, wiring, "halted with nothing to wake it"),
+            Ok(VcpuExit::Shutdown) => keep(index, wiring, "triple fault"),
             Ok(VcpuExit::SystemEvent(KVM_SYSTEM_EVENT_SHUTDOWN, _)) => {
                 return end(End::PoweredOff, "system event".into());
             }
@@ -301,13 +315,13 @@ fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
                 return end(End::Restart, "system event".into());
             }
             Ok(VcpuExit::SystemEvent(KVM_SYSTEM_EVENT_CRASH, _)) => {
-                return end(End::GuestFault, "the guest reported a crash".into());
+                keep(index, wiring, "the guest reported a crash");
             }
             Ok(VcpuExit::FailEntry(reason, _)) => {
-                return end(End::GuestFault, format!("entry failed, reason {reason:#x}"));
+                keep(index, wiring, &format!("entry failed, reason {reason:#x}"));
             }
             Ok(VcpuExit::InternalError) => return end(End::VmmError, "KVM internal error".into()),
-            Ok(other) => return end(End::VmmError, format!("unexpected exit {other:?}")),
+            Ok(other) => keep(index, wiring, &format!("unexpected exit {other:?}")),
             Err(e) if matches!(e.errno(), libc::EINTR | libc::EAGAIN) => {
                 if wiring.report.swap(false, Ordering::Relaxed) {
                     eprintln!("{}", state(&vcpu, index, &wiring.memory));

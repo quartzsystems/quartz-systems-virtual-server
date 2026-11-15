@@ -48,6 +48,10 @@
 //! mac = "02:5a:3c:00:03:05"
 //! tap = "/proc/self/fd/6"  # its port's tap; left out, it has no link
 //! mtu = 1500
+//!
+//! [[port]]                 # a port of the virtio-console, by its name
+//! name = "systems.quartz.qsvs.service.0"
+//! socket = "/proc/self/fd/7"   # a listening Unix socket
 //! ```
 //!
 //! A backing store, a medium or a volume the partition manager has
@@ -188,6 +192,21 @@ impl Net {
     }
 }
 
+/// A named port of the partition's virtio-console, as written.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ConsolePort {
+    /// The name the guest finds it by.
+    pub name: String,
+    /// The listening Unix socket the partition manager made for it.
+    pub socket: PathBuf,
+}
+
+/// The most ports of the virtio-console.
+pub const MAX_PORTS: usize = 4;
+/// A port name's most bytes.
+pub const PORT_NAME_MAX: usize = 64;
+
 /// The configuration, as written.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -234,6 +253,9 @@ pub struct Config {
     /// The virtual Ethernet adapters.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub net: Vec<Net>,
+    /// The virtio-console's ports; none, and it has no virtio-console.
+    #[serde(default, rename = "port", skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<ConsolePort>,
 }
 
 /// A partition, as it is to be activated: a [`Config`] that was checked.
@@ -472,6 +494,37 @@ fn media_devices(
 
 /// The Ethernet adapters in slot order, checked against the other
 /// devices' slots and each other.
+/// The virtio-console's ports: named, each its own descriptor.
+fn console_ports(config: &Config, paths: &[&PathBuf], net: &[Net]) -> Result<(), ConfigError> {
+    if config.ports.len() > MAX_PORTS {
+        return refuse(format!("port: {MAX_PORTS} at most"));
+    }
+    let mut taken: Vec<&PathBuf> = paths.to_vec();
+    taken.extend(net.iter().filter_map(|n| n.tap.as_ref()));
+    let mut names: Vec<&str> = Vec::new();
+    for p in &config.ports {
+        let fine = !p.name.is_empty()
+            && p.name.len() <= PORT_NAME_MAX
+            && p.name.bytes().all(|b| b.is_ascii_graphic())
+            && !names.contains(&p.name.as_str());
+        if !fine {
+            return refuse(format!(
+                "port {}: a name is 1 to {PORT_NAME_MAX} printable characters, no other port's",
+                p.name
+            ));
+        }
+        names.push(&p.name);
+        if crate::net::descriptor(&p.socket).is_none() || taken.contains(&&p.socket) {
+            return refuse(format!(
+                "port {}: socket is a /proc/self/fd path, and no other device's",
+                p.name
+            ));
+        }
+        taken.push(&p.socket);
+    }
+    Ok(())
+}
+
 fn nets(
     config: &Config,
     partition_slots: &[u32],
@@ -630,6 +683,7 @@ pub fn check(config: Config) -> Result<Partition, ConfigError> {
         .chain(tape.iter().filter_map(|t| t.volume.as_ref()))
         .collect();
     let net = nets(&config, &used, &paths)?;
+    console_ports(&config, &paths, &net)?;
     if side == Side::Media && optical.is_empty() {
         return refuse("side: d needs an optical device");
     }
@@ -683,6 +737,7 @@ pub fn sample(backing: &str) -> Config {
         optical: Vec::new(),
         tape: Vec::new(),
         net: Vec::new(),
+        ports: Vec::new(),
     }
 }
 

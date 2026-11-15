@@ -5,11 +5,7 @@
 //! The partition's optical and tape drives as the host works with them
 //! while the partition runs.
 //!
-//! The control socket, `<run>/partitions/<ID>/control.sock`, is made
-//! as root before the privilege drop and is root's: the partition
-//! manager connects to it, no partition can. One request a connection,
-//! a line of text, after a byte that carries the medium's open file
-//! when there is one (`base/fdpass`):
+//! Their requests come on the control socket (`crate::control`):
 //!
 //! ```text
 //! load <slot> <name> <capacity MiB> <protected>   the file comes with it
@@ -27,9 +23,9 @@
 
 use std::fmt::Write as _;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
@@ -44,8 +40,6 @@ use crate::config::Partition;
 
 /// The control socket's file in the partition's socket directory.
 pub const CONTROL_SOCKET: &str = "control.sock";
-/// A request's most bytes.
-const MAX_LINE: u64 = 512;
 /// How often the drives are asked what the guest did.
 const LOOK: Duration = Duration::from_millis(250);
 
@@ -122,7 +116,8 @@ pub fn bind(dir: &Path) -> io::Result<UnixListener> {
 }
 
 impl Drives {
-    fn carry_out(&self, line: &str, file: Option<File>) -> String {
+    /// Carry out one of the drives' requests.
+    pub fn carry_out(&self, line: &str, file: Option<File>) -> String {
         let words: Vec<&str> = line.split_whitespace().collect();
         let slot = |w: Option<&&str>| w.and_then(|s| s.parse::<u32>().ok());
         let refused = |why: &str| format!("refused {why}");
@@ -193,18 +188,8 @@ impl Drives {
                 out.push_str("end");
                 out
             }
-            _ => refused("load, unload or media"),
+            _ => refused("load, unload, media, hold, kept or dump"),
         }
-    }
-
-    fn answer(&self, stream: &UnixStream) -> io::Result<()> {
-        stream.set_read_timeout(Some(Duration::from_secs(5)))?;
-        let file = fdpass::recv(stream, 1)?.into_iter().next().map(File::from);
-        let mut line = String::new();
-        BufReader::new(Read::take(stream, MAX_LINE)).read_line(&mut line)?;
-        let answer = self.carry_out(line.trim(), file);
-        let mut out = stream;
-        out.write_all(format!("{answer}\n").as_bytes())
     }
 
     /// Make every tape volume's writes durable: at the partition's end.
@@ -231,21 +216,11 @@ impl Drives {
     }
 }
 
-/// Serve the control socket and watch the drives, each on a thread.
-pub fn spawn(listener: UnixListener, drives: Drives) -> io::Result<()> {
+/// Watch the drives for what the guest does, on a thread.
+pub fn spawn(drives: Drives) -> io::Result<()> {
     if drives.optical.is_empty() && drives.tape.is_empty() {
         return Ok(());
     }
-    let served = drives.clone();
-    thread::Builder::new()
-        .name("control".into())
-        .spawn(move || {
-            for stream in listener.incoming().flatten() {
-                if let Err(e) = served.answer(&stream) {
-                    eprintln!("qsvmm: control: {e}");
-                }
-            }
-        })?;
     thread::Builder::new()
         .name("drives".into())
         .spawn(move || {
@@ -260,6 +235,7 @@ pub fn spawn(listener: UnixListener, drives: Drives) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     fn iso(blocks: usize) -> File {
         let path =

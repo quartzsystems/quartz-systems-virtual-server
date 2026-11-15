@@ -19,6 +19,8 @@ toml.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# The form of a dump the VMM writes.
+dump = { path = "../../part/dump", version = "0.1.0" }
 kvm-bindings.workspace = true
 kvm-ioctls.workspace = true
 vm-memory.workspace = true

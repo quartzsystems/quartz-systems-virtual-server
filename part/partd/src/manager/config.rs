@@ -25,6 +25,9 @@ pub struct Stores {
     pub files: usize,
     /// The Ethernet adapters, each with its tap or none.
     pub net: Vec<Net>,
+    /// The virtio-console's ports, each its listening socket: the VMM's
+    /// descriptors after the taps.
+    pub ports: Vec<qsvmm::config::ConsolePort>,
 }
 
 /// The serial number of a unit whose profile gives none: the
@@ -125,6 +128,7 @@ pub fn build(
             })
             .collect(),
         net: stores.net.clone(),
+        ports: stores.ports.clone(),
     }
 }
 

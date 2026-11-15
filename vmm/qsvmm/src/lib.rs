@@ -30,6 +30,13 @@ pub mod media;
 pub mod net;
 
 #[cfg(target_os = "linux")]
+pub mod channel;
+#[cfg(target_os = "linux")]
+pub mod control;
+#[cfg(target_os = "linux")]
+pub mod dump;
+
+#[cfg(target_os = "linux")]
 pub mod machine;
 #[cfg(target_os = "linux")]
 pub mod run;

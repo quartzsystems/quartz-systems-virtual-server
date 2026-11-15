@@ -203,6 +203,33 @@ pub fn inherited(fd: i32) -> io::Result<File> {
     Ok(file)
 }
 
+/// The listening Unix socket the partition manager gave as descriptor
+/// `fd`, taken as it is: a socket cannot be opened again by its path.
+pub fn inherited_listener(fd: i32) -> io::Result<std::os::unix::net::UnixListener> {
+    if fd < 3 {
+        return Err(io::Error::other(format!(
+            "descriptor {fd} is not one given"
+        )));
+    }
+    // SAFETY: F_GETFD reads nothing of memory; it says whether `fd` is
+    // open.
+    if unsafe { libc::fcntl(fd, libc::F_GETFD) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `fd` is open, as just seen, and is only borrowed for the
+    // length of the duplication; nothing closes it meanwhile, the
+    // process having no other thread yet.
+    let borrowed = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) };
+    let owned = borrowed.try_clone_to_owned()?;
+    let kind = File::from(owned.try_clone()?).metadata()?.file_type();
+    if !std::os::unix::fs::FileTypeExt::is_socket(&kind) {
+        return Err(io::Error::other(format!("descriptor {fd} is not a socket")));
+    }
+    let listener = std::os::unix::net::UnixListener::from(owned);
+    listener.set_nonblocking(false)?;
+    Ok(listener)
+}
+
 /// Whether the process is root.
 pub fn is_root() -> bool {
     // SAFETY: `geteuid` takes nothing and cannot fail.

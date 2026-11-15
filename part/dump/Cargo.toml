@@ -1,0 +1,12 @@
+[package]
+name = "dump"
+description = "A partition's dump: guest memory and the processors' state as an ELF core, written sparsely, with a header record that names the partition; and the limits of the dumps kept"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

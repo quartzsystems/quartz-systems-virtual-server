@@ -5,7 +5,8 @@
 //! The partition's machine on KVM (`docs/VMM.md`): memory with the
 //! 32-bit hole left open, the in-kernel interrupt controller and PIT,
 //! the four legacy devices on the I/O ports, the PCI bus with
-//! virtio-scsi and virtio-rng, and a thread for each processor.
+//! virtio-scsi, virtio-net, virtio-console and virtio-rng, and a thread for
+//! each processor.
 //!
 //! - [`platform`]: KVM's interrupt routing and eventfds for the devices.
 //! - [`vcpu`]: a processor's boot state and its run loop.
@@ -197,14 +198,15 @@ pub enum Function {
 /// Build the devices: the serial port writing to `output`, the clock,
 /// the reset line and the power-off register telling `requests`, and
 /// on the PCI bus a function for each of `adapters`, a virtio-scsi one
-/// with its units or a virtio-net one, and after them virtio-rng
-/// reading `entropy`.
+/// with its units or a virtio-net one, then the virtio-console when
+/// there is one, and last virtio-rng reading `entropy`.
 pub fn devices(
     vm: &Arc<VmFd>,
     memory: &Arc<Memory>,
     output: Output,
     requests: Requests,
     adapters: Vec<Function>,
+    console: Option<devices::virtio::console::Console>,
     entropy: File,
 ) -> io::Result<Devices> {
     let platform: Arc<dyn Platform> = Arc::new(KvmPlatform::new(vm.clone()));
@@ -241,6 +243,9 @@ pub fn devices(
             }
             Function::Net(net) => functions.push(net),
         }
+    }
+    if let Some(console) = console {
+        functions.push(Box::new(console));
     }
     functions.push(Box::new(Rng::new(entropy)));
     let mut pci = PciBus::new();

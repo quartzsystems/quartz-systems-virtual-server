@@ -352,6 +352,18 @@ fn machine_built(partition: &Partition) -> Result<(), Stop> {
     Ok(())
 }
 
+/// What the guest asks of the platform ends the partition: a power off
+/// or a restart.
+fn guest_requests(ends: Sender<(End, String)>) -> Requests {
+    Box::new(move |request| {
+        let end = match request {
+            Request::PowerOff => End::PoweredOff,
+            Request::Restart => End::Restart,
+        };
+        let _ = ends.send((end, "the guest asked".into()));
+    })
+}
+
 /// The steps as root, the drop, and the start.
 fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     let root = sys::is_root();
@@ -372,6 +384,7 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     let listener = open_console(options, partition, root)?;
     let control =
         media::bind(&options.socket_dir(config.id)).map_err(not_built("the control socket"))?;
+    let ports = crate::channel::open(partition).map_err(not_built("the service channel"))?;
 
     let pause = Arc::new(machine::pause::Pause::default());
     let hold = Arc::new(machine::hold::Held::new(pause.clone()));
@@ -395,22 +408,17 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     let (memory, loaded) = load_memory(partition, &hypervisor, &ram)?;
     let (ends, ended) = mpsc::channel::<(End, String)>();
     let (tap, queue) = serial::queue();
-    let requests: Requests = {
-        let ends = ends.clone();
-        Box::new(move |request| {
-            let end = match request {
-                Request::PowerOff => End::PoweredOff,
-                Request::Restart => End::Restart,
-            };
-            let _ = ends.send((end, "the guest asked".into()));
-        })
-    };
+    let requests = guest_requests(ends.clone());
+    let console = ports
+        .as_ref()
+        .map(|p| devices::virtio::console::Console::new(p.ports.clone()));
     let built = machine::devices(
         &hypervisor.vm,
         &memory,
         Box::new(tap.clone()),
         requests,
         functions,
+        console,
         entropy,
     )
     .map_err(not_built("devices"))?;
@@ -440,7 +448,14 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     let clients = Clients::default();
     serial::spawn(queue, log, clients.clone()).map_err(not_built("threads"))?;
     console::spawn(listener, built.serial.clone(), clients).map_err(not_built("threads"))?;
-    media::spawn(control, drives.clone()).map_err(not_built("threads"))?;
+    let dumper = crate::dump::Dumper {
+        memory: memory.clone(),
+        pause: pause.clone(),
+        name: config.name.clone(),
+        id: config.id,
+        serial: config.serial.clone(),
+    };
+    serve_host(control, &drives, dumper, ports).map_err(not_built("threads"))?;
     vcpu::install_kick().map_err(not_built("signals"))?;
     let processors = start_processors(vcpus, &built, &ends, &memory, &config.pin, &pause)
         .map_err(not_built("threads"))?;
@@ -456,6 +471,28 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         drives,
         managed: built.managed,
     })
+}
+
+/// The threads that serve the host: the drives' watch, the control
+/// socket, the service channel's ports.
+fn serve_host(
+    control: std::os::unix::net::UnixListener,
+    drives: &media::Drives,
+    dumper: crate::dump::Dumper,
+    ports: Option<crate::channel::Ports>,
+) -> io::Result<()> {
+    media::spawn(drives.clone())?;
+    crate::control::spawn(
+        control,
+        crate::control::Control {
+            drives: drives.clone(),
+            dumper,
+        },
+    )?;
+    if let Some(ports) = ports {
+        crate::channel::spawn(ports)?;
+    }
+    Ok(())
 }
 
 /// A processor's thread and the flag that has it report its state.
