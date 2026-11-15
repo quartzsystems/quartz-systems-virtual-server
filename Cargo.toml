@@ -71,23 +71,23 @@ publish = false
 [workspace.dependencies]
 # QS/400's crates: git dependencies, every one at the same commit
 # (docs/PHASE0.md records it). Never path dependencies, never copies.
-buildkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-vrm = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-diskimg = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-abrec = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-ipc = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-netlink = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-dhcp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-ntp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-blockdev = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-protect = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-ublk = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-console = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc", default-features = false }
-scrkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
-svcusers = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
+buildkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+vrm = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+diskimg = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+abrec = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+ipc = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+netlink = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+dhcp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+ntp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+blockdev = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+protect = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+ublk = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+console = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52", default-features = false }
+scrkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
+svcusers = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
 # The guest's LIC record. The one QS/400-specific crate QS/VS depends on,
 # and only the IPL loader (vmm/ipl) uses it.
-licpart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "a9d5c8a4f139352bcdd255341053814e8cab58fc" }
+licpart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "5ce33f14bd141c460fb5703ad62f70721547cd52" }
 
 # The rust-vmm crates the VMM is built on (docs/PHASE3.md says why each
 # passes deny).

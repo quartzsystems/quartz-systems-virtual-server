@@ -69,6 +69,7 @@ pub fn console_name(mode: ConsoleMode) -> &'static str {
     match mode {
         ConsoleMode::Local => "local",
         ConsoleMode::Serial => "serial",
+        ConsoleMode::Partition => "partition",
     }
 }
 

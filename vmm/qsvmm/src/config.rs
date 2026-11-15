@@ -559,6 +559,7 @@ fn settings(config: &Config) -> Result<Settings, ConfigError> {
                 &[
                     ("serial", ConsoleMode::Serial),
                     ("local", ConsoleMode::Local),
+                    ("partition", ConsoleMode::Partition),
                 ],
             )
         })
