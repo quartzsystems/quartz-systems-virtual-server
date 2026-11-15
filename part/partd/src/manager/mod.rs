@@ -348,6 +348,15 @@ impl Partition {
     }
 }
 
+impl Posted {
+    /// A note of the history, never where the partition is: the
+    /// channel's progress, and a partition found running.
+    pub(crate) fn is_note(&self) -> bool {
+        self.source == Source::Host
+            && (self.code.starts_with("C2009") || self.code == refcode::PARTITION_ADOPTED.code)
+    }
+}
+
 /// The partition manager.
 pub struct Manager<S: System> {
     pub(crate) system: S,
@@ -389,7 +398,7 @@ impl<S: System> Manager<S> {
                 while history.len() > HISTORY {
                     history.pop_front();
                 }
-                p.current = history.back().cloned();
+                p.current = history.iter().rev().find(|c| !c.is_note()).cloned();
                 p.history = history;
                 (id, p)
             })
@@ -531,7 +540,7 @@ impl<S: System> Manager<S> {
         let condition = posted.code.starts_with('A') || posted.code.starts_with('B');
         // A note of the channel's progress is the history's, not where
         // the partition is.
-        let note = posted.source == Source::Host && posted.code.starts_with("C2009");
+        let note = posted.is_note();
         let current = match posted.source {
             // A note leaves the current code as it is, but for a
             // condition of the host's it ends: the system's again.

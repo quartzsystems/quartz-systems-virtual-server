@@ -75,7 +75,8 @@ The **current reference code** is:
 | the host's attention code | for a condition of the host's: held for its pool's space (`A2005160`), its adapter's uplink lost (`A2009080`), not responding (`A2009020`), channel closed (`A2009010`), held after a guest fault (`A2005170`); the next host code of progress gives the current code back to the system's |
 
 The `C2009` codes of progress (the channel connected, no channel, a
-shut down accepted, a dump removed, a panel function) are notes of the
+shut down accepted, a dump removed, a panel function) and `C2006010`
+(found running by a partition manager started again) are notes of the
 history and never the current code. A code the system says is current
 when the channel comes up again, and the history has already, is not
 entered a second time.
