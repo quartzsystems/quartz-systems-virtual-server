@@ -123,25 +123,39 @@ pub fn install(run: &Run<'_>) -> Result<String, String> {
         Some(Keylock::Manual),
     ))?;
     let deadline = ipl_patience(run);
+    // An ISO with a response file installs unattended: its status
+    // screen; without one, the attended installer's first screen.
     let wanted = [
+        "Install Licensed Internal Code - Status",
         "Install Licensed Internal Code",
         "IPL or Install the System",
         "Select a Language",
     ];
     let (i, first) = wait_screen(&mut guest, id, &wanted, deadline)?;
-    let golden = match i {
-        0 => "lic-menu",
-        1 => "no-os",
-        _ => "language",
-    };
-    qs400_golden("install", golden, &first, &[], 0).map_err(|e| format!("{e}\n{first}"))?;
+    let golden = ["lic-status", "lic-menu", "no-os", "language"][i];
+    if i == 0 {
+        // The marks move as it goes: the title, then every step.
+        qs400_golden("install", golden, &first, &[], 1).map_err(|e| format!("{e}\n{first}"))?;
+        for step in [
+            "Partition the load source device",
+            "Initialize the LIC partition",
+            "Copy the Licensed Internal Code to slot A",
+            "Write the LIC record",
+        ] {
+            if !first.contains(step) {
+                return Err(format!("the status screen has no `{step}`:\n{first}"));
+            }
+        }
+    } else {
+        qs400_golden("install", golden, &first, &[], 0).map_err(|e| format!("{e}\n{first}"))?;
+    }
     let s = manager::status(&mut guest, id)?;
     said(partd(&mut guest)?.shut_down(id))?;
     manager::ended(&mut guest, id, run.deadline())?;
     Ok(format!(
-        "an attended IPL from source D with QS/400's ISO in the optical device: the installer's \
-         first screen, `{}`, on the console port as QS/400's golden install/{golden}; the \
-         partition {} with code {}",
+        "an IPL from source D with QS/400's ISO in the optical device: the installer's screen \
+         `{}` on the console port as QS/400's golden install/{golden}; the partition {} with \
+         code {}",
         wanted[i],
         s.state.word(),
         s.code
