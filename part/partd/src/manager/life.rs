@@ -462,6 +462,18 @@ impl<S: System> Manager<S> {
             self.media_unloaded(id, rest);
             return;
         }
+        if let Some(rest) = line
+            .strip_prefix(qsvmm::CHANNEL_WORD)
+            .and_then(|r| r.strip_prefix(' '))
+        {
+            if let (Some(said), Some(p)) = (
+                super::service::Recorded::parse(rest),
+                self.partitions.get_mut(&id),
+            ) {
+                p.service.recorded = said;
+            }
+            return;
+        }
         let Some((code, text)) = code_of(&line) else {
             if !quiet {
                 let name = self

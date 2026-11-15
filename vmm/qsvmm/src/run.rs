@@ -89,17 +89,21 @@ fn not_built(what: &str) -> impl Fn(io::Error) -> Stop + '_ {
 fn post_step(step: Step) {
     match step {
         Step::TableRead => post(&refcode::PARTITION_TABLE_READ, ""),
-        Step::RecordRead(recorded) => post(
-            &refcode::PARTITION_RECORD_READ,
-            &format!(
-                "side {}{} keylock {} console {} sequence {}",
-                ipl::side_letter(recorded.side),
-                if recorded.once { " once" } else { "" },
-                recorded.keylock.attribute(),
-                ipl::lic::console_name(recorded.console),
-                recorded.sequence
-            ),
-        ),
+        Step::RecordRead(recorded) => {
+            post(
+                &refcode::PARTITION_RECORD_READ,
+                &format!(
+                    "side {}{} keylock {} console {} sequence {} channel {}",
+                    ipl::side_letter(recorded.side),
+                    if recorded.once { " once" } else { "" },
+                    recorded.keylock.attribute(),
+                    ipl::lic::console_name(recorded.console),
+                    recorded.sequence,
+                    recorded.channel.word()
+                ),
+            );
+            eprintln!("{} {}", crate::CHANNEL_WORD, recorded.channel.word());
+        }
         Step::RecordWritten => post(&refcode::PARTITION_RECORD_WRITTEN, ""),
         Step::NoRecord => post(&refcode::PARTITION_NO_RECORD, ""),
         Step::ImageRead { side, bytes } => post(

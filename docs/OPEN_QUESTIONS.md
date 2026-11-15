@@ -21,7 +21,9 @@ a change in QS/400; 6 waits on the first push. The Phase 6 handoff
 answered 35 and 36 (below, with what was decided before them) and
 left 34, 6, 17, 22, 31 and 32 as they were; Phase 6 raised 37. The
 Phase 7 handoff answered 37 for V1 and left the rest of it, and 6, 32,
-35 and 36, as they were; Phase 7 raised 38 and 39.
+35 and 36, as they were; Phase 7 raised 38 and 39. Step 0 of Phase 8
+closed 38 with QS/400's handoff 18, and the Phase 8 handoff closed 39
+as recommended.
 
 ## Open
 
@@ -55,31 +57,6 @@ in V1; a host that needs outside networks for partitions has a second
 port. If it is wanted later, as a VLAN sub-interface of the uplink's
 bond that the bridge never sees, with its own trial as `netd` has
 today, and never a VLAN a partition is on.
-
-### 38. How long a system is given to open its service channel
-
-Nothing in a partition says beforehand whether its system has a service
-channel (`docs/SERVICE.md`, "States"): the host waits after the kernel
-was entered, `channel_wait_secs`, 30 s by default, and a system that has
-not said hello by then is Running with none. A QS/400 of handoff 17
-says hello about three seconds after its kernel starts on the build
-host, and three levels deep in the suites its whole IPL took under
-twenty. The cost of the wait is that an older system, or QS/VS's own
-UKI as a guest, shows Starting for those seconds. Recommended: keep
-30 s, a setting; QS/400
-could say in its LIC record that it has a channel (a TLV the IPL
-loader reads), and the host would then not wait for one that has
-none. That is QS/400's to add, and the host's to read once it is.
-
-### 39. A held partition and the host's restart (NEEDS-CODY)
-
-A partition held with its memory after a terminal code stays held until
-an operator dumps it, shuts it down or restarts it, and the host's own
-shut down ends it immediately (it cannot be asked to power down); at
-the next IPL auto start activates it again when it is flagged, and its
-memory is gone. Recommended: keep it so for V1: a terminal code is for a person to see.
-QS/MC may later offer "dump and restart on a terminal code" as a
-partition's setting, which is function 22 asked by the host itself.
 
 ## Decided, waiting on QS/400
 
@@ -308,3 +285,21 @@ handoff took it as recommended.
     copy itself, by `FICLONE`, is a request of the pool service's when
     QS/MC needs template partitions; a pool made before copies by
     bytes (`docs/STORAGE.md`).
+38. **How long a system is given to open its service channel.** Closed
+    in Step 0 of Phase 8 with QS/400's handoff 18, which has a system
+    say in its LIC record whether it has a channel (TLV `0x010C`,
+    `licpart::ServiceChannel`). The IPL loader reads it and `qsvmm`
+    reports it (`CHANNEL`, `docs/VMM.md`): a system that says it has one
+    is Starting until it reports its IPL complete, with no guess; one
+    that says it has none is Running once its kernel is entered. A
+    record without the TLV (a system older than handoff 18, a blank
+    disk, an IPL from media) is waited for `channel_wait_secs` as
+    before, though QS/400's `docs/QSID.md` reads a missing TLV as no
+    channel: a handoff 17 system has one and does not say so.
+39. **A held partition and the host's restart.** Closed by the Phase 8
+    handoff, as recommended: kept so for V1. A partition held with its
+    memory stays held until an operator dumps it, shuts it down or
+    restarts it; the host's own shut down ends it immediately, and its
+    memory is gone at the next IPL. QS/MC may later offer "dump and
+    restart on a terminal code" as a partition's setting, which is
+    function 22 asked by the host itself.

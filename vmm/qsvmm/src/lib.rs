@@ -69,6 +69,11 @@ pub const CONSOLE_SOCKET: &str = "console.sock";
 /// from this.
 pub const END_WORD: &str = "END";
 
+/// The word of the line that says what the LIC record says of the
+/// system's service channel: `CHANNEL unsaid`, `CHANNEL none` or
+/// `CHANNEL has <version>`.
+pub const CHANNEL_WORD: &str = "CHANNEL";
+
 /// The partition's name, once its configuration is read: every code
 /// reported after that names it.
 static PARTITION: std::sync::OnceLock<String> = std::sync::OnceLock::new();

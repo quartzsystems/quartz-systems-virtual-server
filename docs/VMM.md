@@ -139,7 +139,11 @@ it as a file. A reference code is a line `REF <code> <text>`, the text
 naming the partition; the partition manager posts it
 (`docs/REFCODES.md`, the `C2005` and `A2005` blocks). `C2005090`,
 "Partition started", is the report that the IPL loader has entered the
-kernel: the partition is Running from then. The report's last line is
+kernel. After the LIC record is read, a line `CHANNEL unsaid`,
+`CHANNEL none` or `CHANNEL has <version>` says what the record says of
+the system's service channel (TLV `0x010C`, QS/400's `docs/QSID.md`
+section 11), which decides how long the partition manager waits for it
+(`docs/SERVICE.md`, "States"). The report's last line is
 `END <exit code>`, for a partition manager that was not there to wait
 for the process. `qsvmm` cannot post by itself: PID 1's control socket
 is root's.

@@ -44,15 +44,23 @@ and so is what the host sends while the guest has the port closed.
 | The partition is | When |
 |---|---|
 | Starting | from its activation until its system reports its IPL `complete`; again when the system reports `ipl` |
-| Running | its system reported `complete`; or its kernel was entered and its system did not open the service port in the time set (`channel_wait_secs`, 30 s by default): it is marked as having **no service channel** and `C2009005` is in its history |
+| Running | its system reported `complete`; or its kernel was entered and its system has no service channel: its LIC record says so, or says nothing and the system did not open the service port in the time set (`channel_wait_secs`, 30 s by default). It is marked as having **no service channel** and `C2009005` is in its history |
 | Shutting down | a shut down asked of the system was accepted, or the system reported `ending`, or `down` without a terminal code, or the host asked its VMM to end, until the VMM ends |
 | Error | held with its memory after a terminal code or a guest fault (below); or its VMM failed or was killed, holding nothing |
 | Not activated | its VMM ended and nothing follows |
 
-The wait for a channel is the host's only way to tell a system that
-has none from one that has not opened it yet: nothing in a partition
-says beforehand which it is. A system that opens it after the wait
-after all clears the mark, and its state is its system's from then on.
+The LIC record says beforehand whether the system has a channel (TLV
+`0x010C`, QS/400's `docs/QSID.md` section 11; the VMM reports it as
+`CHANNEL`, `docs/VMM.md`):
+
+| The record says | The partition manager |
+|---|---|
+| it has one | waits for it with no limit: Starting until the system reports its IPL complete |
+| it has none | does not wait: Running once the kernel is entered, marked as having none |
+| nothing (a system older than QS/400's handoff 18, a blank disk, an IPL from media) | waits `channel_wait_secs` |
+
+A system that opens the channel after all clears the mark, and its
+state is its system's from then on.
 
 A partition manager started again takes each partition's state from
 its run record, which it rewrites at every change, so a partition is

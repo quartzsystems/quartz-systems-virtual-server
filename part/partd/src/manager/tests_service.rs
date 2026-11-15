@@ -567,6 +567,49 @@ fn a_silent_system_is_not_responding_and_nonsense_closes_its_channel() {
 }
 
 #[test]
+fn the_lic_record_says_whether_to_wait_for_a_channel() {
+    let scratch = Scratch::new("recorded");
+    let mut m = scratch.manager();
+    let wait = u64::from(m.host.settings.service.channel_wait_secs);
+    // It says none: Running once the kernel is entered, no wait.
+    let none = partition(&mut m, "NONE", Keylock::Normal);
+    m.activate(none, String::new(), None, None).unwrap();
+    m.report(none, "CHANNEL none", false);
+    m.report(none, "REF C2005090 Partition started: NONE, side A", false);
+    m.tick();
+    let s = status(&mut m, none);
+    assert_eq!(s.state, State::Running);
+    assert!(s.service.none);
+    // It says it has one: Starting however long it takes.
+    let has = partition(&mut m, "HAS", Keylock::Normal);
+    m.activate(has, String::new(), None, None).unwrap();
+    m.report(has, "CHANNEL has 1", false);
+    m.report(has, "REF C2005090 Partition started: HAS, side A", false);
+    m.system.now += 10 * wait;
+    m.tick();
+    let s = status(&mut m, has);
+    assert_eq!(s.state, State::Starting);
+    assert!(!s.service.none);
+    // Nonsense on the line is passed over: the wait is today's.
+    let old = partition(&mut m, "OLD", Keylock::Normal);
+    m.activate(old, String::new(), None, None).unwrap();
+    m.report(old, "CHANNEL has 0", false);
+    m.report(old, "REF C2005090 Partition started: OLD, side A", false);
+    m.tick();
+    assert_eq!(status(&mut m, old).state, State::Starting);
+    m.system.now += wait;
+    m.tick();
+    assert_eq!(status(&mut m, old).state, State::Running);
+    // The line is not a code of the history.
+    assert!(
+        !m.history(none)
+            .unwrap()
+            .iter()
+            .any(|p| p.code.contains("CHANNEL"))
+    );
+}
+
+#[test]
 fn the_history_is_kept_across_managers_and_the_host_s_end_goes_through_the_system() {
     let scratch = Scratch::new("history");
     let mut m = scratch.manager();

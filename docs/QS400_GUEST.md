@@ -470,7 +470,8 @@ What QS/400 would have to change, found so far:
    The host cannot tell a system that has not opened the port yet from
    one that never will, so it waits 30 seconds for the second
    (`docs/OPEN_QUESTIONS.md` item 38). A TLV the IPL loader reads would
-   end the wait.
+   end the wait. Done in QS/400's handoff 18 (TLV `0x010C`), read since
+   Phase 8.
 2. **The hello's `ipl_type`.** QS/400's `docs/QSID.md` gives it as `A`,
    `B` or `D`, which are IPL sources, and the hello sent `A` beside
    `slot = A` for an unattended IPL from side A. Whether the IPL was

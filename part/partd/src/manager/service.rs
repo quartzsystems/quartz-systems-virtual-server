@@ -71,6 +71,8 @@ pub(crate) type Waiter = SyncSender<Result<String, Refused>>;
 #[derive(Default)]
 pub(crate) struct Service {
     pub(crate) channel: Option<Channel>,
+    /// What the LIC record said of the system's channel.
+    pub(crate) recorded: Recorded,
     /// What is shown of it.
     pub(crate) facts: Facts,
     /// When the kernel was entered.
@@ -88,6 +90,33 @@ pub(crate) struct Service {
     pub(crate) said: Vec<&'static str>,
     /// Requests that wait for the system, by tag.
     pub(crate) asks: Vec<(u64, Asked, Option<Waiter>)>,
+}
+
+/// What a partition's LIC record says of its system's service channel,
+/// as its VMM reported it (`CHANNEL` lines).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Recorded {
+    /// Nothing: a system older than the record's word, waited for
+    /// `channel_wait_secs`; also a blank disk, an IPL from media.
+    #[default]
+    Unsaid,
+    /// It has none: Running once its kernel is entered.
+    None,
+    /// It has one: Starting until it says its IPL is complete.
+    Has,
+}
+
+impl Recorded {
+    /// From the line's words after `CHANNEL`; `None` for nonsense.
+    pub(crate) fn parse(words: &str) -> Option<Self> {
+        let mut w = words.split_whitespace();
+        match (w.next(), w.next()) {
+            (Some("unsaid"), None) => Some(Self::Unsaid),
+            (Some("none"), None) => Some(Self::None),
+            (Some("has"), Some(v)) if v.parse::<u16>().is_ok_and(|v| v > 0) => Some(Self::Has),
+            _ => None,
+        }
+    }
 }
 
 impl Service {
@@ -766,11 +795,20 @@ impl<S: System> Manager<S> {
             let Some(run) = &p.run else {
                 continue;
             };
+            // The record says how long a system is given to open its
+            // channel: none at all, for ever, or the setting's guess.
+            let given = match p.service.recorded {
+                Recorded::None => Some(0),
+                Recorded::Has => None,
+                Recorded::Unsaid => Some(wait),
+            };
             let none_yet = !p.service.greeted
                 && !p.service.facts.none
-                && p.service
-                    .kernel_at
-                    .is_some_and(|at| now.saturating_sub(at) >= wait);
+                && given.is_some_and(|given| {
+                    p.service
+                        .kernel_at
+                        .is_some_and(|at| now.saturating_sub(at) >= given)
+                });
             let terminal = !run.kept
                 && p.service
                     .terminal

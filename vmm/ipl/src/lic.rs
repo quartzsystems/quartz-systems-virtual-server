@@ -12,7 +12,10 @@
 //! and cleared here once an activation, and the slot of every other.
 
 use licpart::ipla::IplAttrs;
-use licpart::{Device, IplMode, IplSource, LicError, LicPart, Record, Slot};
+use licpart::{
+    Device, IplMode, IplSource, LicError, LicPart, Record, ServiceChannel, Slot,
+    TAG_SERVICE_CHANNEL,
+};
 
 /// Where the guest's console is: the display, which a partition does
 /// not have, or the serial port.
@@ -91,6 +94,42 @@ impl Settings {
     }
 }
 
+/// What the record says of the system's service channel
+/// (`licpart::channel`, QS/400's `docs/QSID.md` section 11).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Channel {
+    /// Nothing: a system older than the TLV, which may have one.
+    Unsaid,
+    /// The TLV is there and says no channel.
+    None,
+    /// The system has one, of this version.
+    Has(ServiceChannel),
+}
+
+impl Channel {
+    /// What the record says.
+    #[must_use]
+    pub fn of(record: &Record) -> Self {
+        match record.tlv(TAG_SERVICE_CHANNEL) {
+            None => Self::Unsaid,
+            Some(data) => match ServiceChannel::decode(data) {
+                Some(c) if c.version > 0 => Self::Has(c),
+                _ => Self::None,
+            },
+        }
+    }
+
+    /// As the VMM reports it: `unsaid`, `none`, or `has <version>`.
+    #[must_use]
+    pub fn word(&self) -> String {
+        match self {
+            Self::Unsaid => "unsaid".into(),
+            Self::None => "none".into(),
+            Self::Has(c) => format!("has {}", c.version),
+        }
+    }
+}
+
 /// What the record says of the IPL to come.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Recorded {
@@ -107,6 +146,8 @@ pub struct Recorded {
     pub console: ConsoleMode,
     /// The record's sequence.
     pub sequence: u64,
+    /// The system's service channel.
+    pub channel: Channel,
 }
 
 /// Why the record cannot be used.
@@ -145,6 +186,7 @@ fn recorded(record: &Record) -> Recorded {
         keylock,
         console: ConsoleMode::of(record).unwrap_or_default(),
         sequence: record.sequence,
+        channel: Channel::of(record),
     }
 }
 
@@ -262,8 +304,30 @@ mod tests {
         assert_eq!(got.keylock, Keylock::Normal);
         assert_eq!(got.console, ConsoleMode::Local);
         assert_eq!(got.sequence, 1);
+        assert_eq!(got.channel, Channel::Unsaid);
         // Nothing was written.
         assert_eq!(LicPart::open(dev).read().unwrap().sequence, 1);
+    }
+
+    #[test]
+    fn the_record_says_whether_the_system_has_a_channel() {
+        let mut record = Record::new(1);
+        assert_eq!(Channel::of(&record), Channel::Unsaid);
+        let has = ServiceChannel {
+            version: 1,
+            service: 0x1f,
+            console: 0x60,
+        };
+        has.store(&mut record).unwrap();
+        assert_eq!(Channel::of(&record), Channel::Has(has));
+        assert_eq!(Channel::of(&record).word(), "has 1");
+        // Version 0 and a layout of 0 say no channel.
+        ServiceChannel { version: 0, ..has }
+            .store(&mut record)
+            .unwrap();
+        assert_eq!(Channel::of(&record), Channel::None);
+        record.set_tlv(TAG_SERVICE_CHANNEL, vec![0; 19]).unwrap();
+        assert_eq!(Channel::of(&record).word(), "none");
     }
 
     #[test]
