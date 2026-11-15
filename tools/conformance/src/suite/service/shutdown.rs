@@ -14,7 +14,7 @@ use qsvshook::proto::command;
 
 use super::{history, ipl_patience, qs400_spec, set_service, system_codes, up};
 use crate::qemu::image::sparse_copy;
-use crate::suite::base::{Run, base_ready, channel, posted};
+use crate::suite::base::{Run, channel, posted};
 use crate::suite::partition::manager::{self, Spec, partd, said};
 use crate::suite::partition::{
     QS400_MEMORY_MIB, QSVS_MEMORY_MIB, fresh_host, host, launch, qs400_image, signal_to, unit,
@@ -229,7 +229,8 @@ pub fn auto_wait(run: &Run<'_>) -> Result<String, String> {
     let b = run.file("cheap.img");
     sparse_copy(release, &b)?;
     let units = [a, b];
-    let mut guest = host(run, &launch(run, &units)?)?;
+    let l = launch(run, &units)?;
+    let mut guest = host(run, &l)?;
     let first = manager::partition(&mut guest, "FIRST")?;
     let second = manager::partition(&mut guest, "SECOND")?;
     manager::put(&mut guest, first, &qs400_on("/dev/vdb", "NORMAL"))?;
@@ -249,7 +250,10 @@ pub fn auto_wait(run: &Run<'_>) -> Result<String, String> {
         said(partd(&mut guest)?.change(d))?;
     }
     channel(&mut guest)?.tell(command::RESTART)?;
-    base_ready(&mut guest, Instant::now() + 3 * run.timeout)?;
+    // QEMU does not restart the machine: started again on the same disks.
+    guest.wait_exit(Instant::now() + 3 * run.timeout)?;
+    drop(guest);
+    let mut guest = host(run, &l)?;
     let deadline = ipl_patience(run);
     manager::until(&mut guest, first, State::Running, deadline)?;
     manager::until(

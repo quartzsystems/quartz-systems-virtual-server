@@ -398,9 +398,12 @@ pub fn dumps(run: &Run<'_>) -> Result<String, String> {
         return Err("no C2009060".into());
     }
     // Read through the socket, as the file is.
-    let read = super::ask(&mut guest, &format!("dumpread {id} {}", names[2]))?;
-    let (bytes, sum) = channel(&mut guest)?.sum(&format!("{dir}/{}", names[2]))?;
-    let want = format!("ok {bytes} {sum}");
+    // Two gigabytes each way inside the host: minutes three levels deep.
+    let long = Duration::from_mins(10);
+    let read = channel(&mut guest)?.ask_within(&format!("dumpread {id} {}", names[2]), long)?;
+    let summed = channel(&mut guest)?.ask_within(&format!("sum {dir}/{}", names[2]), long)?;
+    let want = summed.first().cloned().unwrap_or_default();
+    let bytes = want.split_whitespace().nth(1).unwrap_or("0").to_string();
     if read.first() != Some(&want) {
         return Err(format!("the read: {read:?}, the file: {want}"));
     }

@@ -17,7 +17,7 @@ use super::{
     up, view,
 };
 use crate::qemu::image::blank;
-use crate::suite::base::{Run, base_ready, channel, posted};
+use crate::suite::base::{Run, channel, posted};
 use crate::suite::partition::manager::{self, Spec, partd, said};
 use crate::suite::partition::{
     QSVS_MEMORY_MIB, fresh_host, host, host_unaffected, launch, pid_of, signal_to, unit,
@@ -44,7 +44,10 @@ fn manager_back(
 /// on disk holds them after the partition manager and then the host are
 /// started again.
 pub fn codes(run: &Run<'_>) -> Result<String, String> {
-    let mut guest = qs400_host(run, &[])?;
+    let image = crate::suite::partition::qs400_image()?;
+    fresh_host(run)?;
+    let l = launch(run, &[unit(run, &image)?])?;
+    let mut guest = host(run, &l)?;
     let id = manager::partition(&mut guest, "PROD")?;
     let took = up(&mut guest, id, &qs400_spec(None), ipl_patience(run))?;
     let first = system_codes(&history(&mut guest, id)?);
@@ -62,7 +65,11 @@ pub fn codes(run: &Run<'_>) -> Result<String, String> {
     said(partd(&mut guest)?.shut_down(id))?;
     manager::ended(&mut guest, id, run.deadline())?;
     channel(&mut guest)?.tell(command::RESTART)?;
-    base_ready(&mut guest, Instant::now() + 3 * run.timeout)?;
+    // QEMU does not restart the machine: the reset ends it, and it is
+    // started again on the same disks.
+    guest.wait_exit(Instant::now() + 3 * run.timeout)?;
+    drop(guest);
+    let mut guest = host(run, &l)?;
     manager_back(&mut guest, run.deadline())?;
     let kept = history(&mut guest, id)?;
     let codes = system_codes(&kept);

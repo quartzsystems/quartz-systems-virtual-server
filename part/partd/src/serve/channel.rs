@@ -121,7 +121,8 @@ fn connection(
     });
     // Only while the activation it was made for is the partition's: a
     // connection of an earlier VMM says nothing of this one.
-    let ours = |m: &crate::manager::Manager<super::machine::Machine>| m.channel_wanted(id, sequence);
+    let ours =
+        |m: &crate::manager::Manager<super::machine::Machine>| m.channel_wanted(id, sequence);
     {
         let mut m = manager(shared);
         if ours(&m) {

@@ -526,6 +526,11 @@ fn a_silent_system_is_not_responding_and_nonsense_closes_its_channel() {
         &FromSystem::Pong(qs::Pong { id: 1, time_ms: 0 }),
     );
     assert!(status(&mut m, id).service.responding);
+    assert_eq!(
+        status(&mut m, id).code,
+        "C6001090",
+        "the system's code again"
+    );
     assert!(m.history(id).unwrap().iter().any(|p| p.code == "C2009020"));
     // Nothing is done to the partition for either.
     assert_eq!(status(&mut m, id).state, State::Running);
