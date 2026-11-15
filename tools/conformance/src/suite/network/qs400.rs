@@ -27,7 +27,7 @@ use crate::suite::base::{Run, channel, posted};
 use crate::suite::partition::manager::{self, Spec};
 use crate::suite::partition::qs400::ipl_complete;
 use crate::suite::partition::{NAME, QS400_MEMORY_MIB};
-use crate::suite::storage::{POOL_DISK_BYTES, disk_names, poold, pool_until, qs400_iso, said};
+use crate::suite::storage::{POOL_DISK_BYTES, disk_names, pool_until, poold, qs400_iso, said};
 
 /// QS/400's address on QEMU's user network.
 const ADDRESS: &str = "10.0.2.50";
@@ -110,9 +110,21 @@ pub fn tn5250(port: u16, within: Duration) -> Result<Vec<u8>, String> {
     let mut buf = [0u8; 8192];
     while Instant::now() < deadline {
         let n = match stream.read(&mut buf) {
-            Ok(0) => return Err(format!("the telnet server closed after {} bytes", data.len())),
+            Ok(0) => {
+                return Err(format!(
+                    "the telnet server closed after {} bytes",
+                    data.len()
+                ));
+            }
             Ok(n) => n,
-            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => continue,
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                continue;
+            }
             Err(e) => return Err(format!("telnet: {e}")),
         };
         pending.extend_from_slice(&buf[..n]);
@@ -124,10 +136,14 @@ pub fn tn5250(port: u16, within: Duration) -> Result<Vec<u8>, String> {
                 i += 1;
                 continue;
             }
-            let Some(&cmd) = pending.get(i + 1) else { break };
+            let Some(&cmd) = pending.get(i + 1) else {
+                break;
+            };
             match cmd {
                 DO | DONT | WILL | WONT => {
-                    let Some(&opt) = pending.get(i + 2) else { break };
+                    let Some(&opt) = pending.get(i + 2) else {
+                        break;
+                    };
                     let ours = [TTYPE, EOR, BINARY, ENVIRON].contains(&opt);
                     match cmd {
                         DO => out.extend_from_slice(&[IAC, if ours { WILL } else { WONT }, opt]),
@@ -194,10 +210,19 @@ pub fn suite(run: &Run<'_>) -> Result<String, String> {
     // The host's seed is QSVSUNIT0; the pool's disk and the ISO follow.
     let names = disk_names(g, 3)?;
     let names = &names[1..];
-    said(poold(g)?.create_pool("POOL1".into(), "none".into(), vec![names[0].clone()], Vec::new(), Vec::new()))?;
+    said(poold(g)?.create_pool(
+        "POOL1".into(),
+        "none".into(),
+        vec![names[0].clone()],
+        Vec::new(),
+        Vec::new(),
+    ))?;
     pool_until(g, "POOL1", run.deadline(), |p| !p.mount.is_empty())?;
     said(poold(g)?.designate("POOL1".into()))?;
-    channel(g)?.ask_within(&format!("upload QS400 {}", names[1]), Duration::from_mins(15))?;
+    channel(g)?.ask_within(
+        &format!("upload QS400 {}", names[1]),
+        Duration::from_mins(15),
+    )?;
     said(poold(g)?.create_vdisk("POOL1".into(), "PRODLS".into(), 8192, false))?;
     let at = uplink_location(g, 0)?;
     set_switches(

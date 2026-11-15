@@ -1,0 +1,24 @@
+                            Display Network Hardware
+                                                               System:  vs-test
+
+ Location             MAC address       Driver      Speed Link What
+ P0000-B00-D02-F0-E0  52:54:00:12:34:56 virtio_net        Up   Management
+ P0000-B00-D18-F0-E0  52:54:00:aa:00:10 virtio_net        Up   Not used
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F3=Exit   F5=Refresh   F12=Cancel
+

@@ -1,0 +1,24 @@
+                                   Set Uplink
+                                                               System:  vs-test
+
+ Bond mode . . . . . :
+ Native VLAN . . . . :
+
+ Switch PRODNET, uplink:
+     P0000-B00-D1A-F0-E0
+
+ Bond mode: active-backup or 802.3ad; none for one interface.
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel
+QVS4105 Interface P0000-B00-D1A-F0-E0 cannot carry switch PRODNET's MTU of 9000:

@@ -162,7 +162,9 @@ fn a_switchs_ports_pass_what_a_partition_may_send_and_nothing_else() {
     a.file.write_all(&frame(b.mac, a.mac, None, 9)).unwrap();
     assert_eq!(received(&mut b), [(None, 9)]);
     // Unicast on a tagged VLAN: C to B on VLAN 30, tagged both ways.
-    c.file.write_all(&frame(b.mac, c.mac, Some(30), 10)).unwrap();
+    c.file
+        .write_all(&frame(b.mac, c.mac, Some(30), 10))
+        .unwrap();
     assert_eq!(received(&mut b), [(Some(30), 10)]);
 
     let table = nl.fdb(br.index).unwrap();

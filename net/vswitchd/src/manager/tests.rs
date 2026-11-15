@@ -403,5 +403,9 @@ fn a_state_file_that_names_the_management_interface_does_not_take_it() {
     c.start(&[], true);
     assert_eq!(c.kernel.master_of("eth0"), None);
     assert!(!c.kernel.ipv6_off.contains("eth0"));
-    assert!(c.env.posted[0].1.contains("management"), "{:?}", c.env.posted);
+    assert!(
+        c.env.posted[0].1.contains("management"),
+        "{:?}",
+        c.env.posted
+    );
 }

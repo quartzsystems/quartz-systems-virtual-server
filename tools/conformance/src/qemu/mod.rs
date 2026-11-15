@@ -192,6 +192,7 @@ fn drive(
 
 /// The QEMU argument list: `q35`, OVMF by pflash, the serial port on
 /// standard output.
+#[allow(clippy::too_many_lines)] // one switch after another
 pub fn args(l: &Launch) -> Vec<OsString> {
     let mut a: Vec<OsString> = ["-machine", "q35"].map(OsString::from).to_vec();
     if l.kvm {
@@ -301,8 +302,16 @@ pub fn args(l: &Launch) -> Vec<OsString> {
         };
         a.extend(["-netdev".into(), backend.into(), "-device".into()]);
         let place = u32::from(FIRST_UPLINK_PLACE) + u32::try_from(i).unwrap_or(0);
-        let mtu = up.mtu.map_or_else(String::new, |m| format!(",host_mtu={m}"));
-        a.push(format!("virtio-net-pci,netdev=up{i},mac={},addr={place:#x}{mtu}", up.mac).into());
+        let mtu = up
+            .mtu
+            .map_or_else(String::new, |m| format!(",host_mtu={m}"));
+        a.push(
+            format!(
+                "virtio-net-pci,netdev=up{i},mac={},addr={place:#x}{mtu}",
+                up.mac
+            )
+            .into(),
+        );
     }
     if !l.oem.is_empty() {
         let values: Vec<String> = l.oem.iter().map(|v| format!("value={v}")).collect();

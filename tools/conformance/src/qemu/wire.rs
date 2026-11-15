@@ -463,6 +463,7 @@ fn respond(
 }
 
 /// A DHCP server's answer to `msg` from `client` on `vlan`.
+#[allow(clippy::many_single_char_names)] // the protocol's own fields
 fn dhcp(s: &mut State, vlan: Option<u16>, client: [u8; 6], msg: &[u8]) -> Vec<Vec<u8>> {
     if msg.len() < 240 || msg[0] != 1 || msg[236..240] != [99, 130, 83, 99] {
         return Vec::new();

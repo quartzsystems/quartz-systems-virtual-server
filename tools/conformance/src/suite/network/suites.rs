@@ -67,8 +67,15 @@ fn three<'a>(run: &Run<'a>) -> Result<Internal<'a>, String> {
     let g = &mut net.guest;
     set_switches(g, &[switch("INTERNAL", 1, &[10, 20], 1500, None)])?;
     let mut ids = [0; 3];
-    for (i, (name, vlan)) in [("NETA", 10), ("NETB", 10), ("NETC", 20)].iter().enumerate() {
-        ids[i] = activate(g, name, &guest_spec(i, vec![adapter(5, "INTERNAL", *vlan, &[])]))?;
+    for (i, (name, vlan)) in [("NETA", 10), ("NETB", 10), ("NETC", 20)]
+        .iter()
+        .enumerate()
+    {
+        ids[i] = activate(
+            g,
+            name,
+            &guest_spec(i, vec![adapter(5, "INTERNAL", *vlan, &[])]),
+        )?;
     }
     let deadline = run.deadline();
     for name in ["NETA", "NETB", "NETC"] {
@@ -123,8 +130,21 @@ pub fn uplink(run: &Run<'_>) -> Result<String, String> {
     let mut net = boot(run, &Rig::new(1, 1))?;
     let g = &mut net.guest;
     let at = vec![uplink_location(g, 0)?];
-    set_switches(g, &[switch("PRODNET", 1, &[10, 20], 1500, Some(trunk(&at, None, None)))])?;
-    let id = activate(g, "NETA", &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]))?;
+    set_switches(
+        g,
+        &[switch(
+            "PRODNET",
+            1,
+            &[10, 20],
+            1500,
+            Some(trunk(&at, None, None)),
+        )],
+    )?;
+    let id = activate(
+        g,
+        "NETA",
+        &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]),
+    )?;
     let mac = mac_of(g, id, 5)?;
     let address = guest_address(g, "NETA", run.deadline())?;
     if net.station.lease(10, mac) != Some(address) {
@@ -151,7 +171,13 @@ pub fn uplink(run: &Run<'_>) -> Result<String, String> {
     }
     set_switches(
         &mut net.guest,
-        &[switch("PRODNET", 1, &[10, 20], 1500, Some(trunk(&at, None, Some(10))))],
+        &[switch(
+            "PRODNET",
+            1,
+            &[10, 20],
+            1500,
+            Some(trunk(&at, None, Some(10))),
+        )],
     )?;
     net.station.clear();
     let (native, _) = net
@@ -195,6 +221,7 @@ fn static_vlan_seed(name: &str, address: &str, vlan: u16, ntp: &str) -> String {
 /// Suite 4: a tagged adapter: the guest sends and receives on a listed
 /// VLAN with its tags; a frame on a VLAN not listed is dropped either
 /// way.
+#[allow(clippy::too_many_lines)]
 pub fn tagged(run: &Run<'_>) -> Result<String, String> {
     let mut rig = Rig::new(1, 2);
     // A has a static address on a VLAN interface of its own, VLAN 20,
@@ -208,11 +235,25 @@ pub fn tagged(run: &Run<'_>) -> Result<String, String> {
     let at = vec![uplink_location(g, 0)?];
     set_switches(
         g,
-        &[switch("PRODNET", 1, &[10, 20, 30], 1500, Some(trunk(&at, None, None)))],
+        &[switch(
+            "PRODNET",
+            1,
+            &[10, 20, 30],
+            1500,
+            Some(trunk(&at, None, None)),
+        )],
     )?;
     // Both on VLAN 10, VLAN 20 tagged; B asks on VLAN 30, not listed.
-    let a = activate(g, "NETA", &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[20])]))?;
-    let b = activate(g, "NETB", &guest_spec(1, vec![adapter(5, "PRODNET", 10, &[20])]))?;
+    let a = activate(
+        g,
+        "NETA",
+        &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[20])]),
+    )?;
+    let b = activate(
+        g,
+        "NETB",
+        &guest_spec(1, vec![adapter(5, "PRODNET", 10, &[20])]),
+    )?;
     let (ma, mb) = (mac_of(g, a, 5)?, mac_of(g, b, 5)?);
     guest_ready(g, "NETA", run.deadline())?;
     let address: std::net::Ipv4Addr = "10.0.20.50".parse().map_err(|_| "address")?;
@@ -236,7 +277,13 @@ pub fn tagged(run: &Run<'_>) -> Result<String, String> {
         for vid in [10u16, 20] {
             let before = counter(&mut net.guest, &tap(a, 5), "tx_packets")?;
             for _ in 0..10 {
-                let f = crate::qemu::wire::frame([0xFF; 6], crate::qemu::wire::MAC, Some(vid), 0x88B5, &[1]);
+                let f = crate::qemu::wire::frame(
+                    [0xFF; 6],
+                    crate::qemu::wire::MAC,
+                    Some(vid),
+                    0x88B5,
+                    &[1],
+                );
                 net.station.send(0, &f).map_err(|e| e.to_string())?;
             }
             std::thread::sleep(Duration::from_secs(1));
@@ -245,7 +292,9 @@ pub fn tagged(run: &Run<'_>) -> Result<String, String> {
         }
         let up = channel(&mut net.guest)?.ls("/sys/class/net")?;
         let got = counter(&mut net.guest, &tap(a, 5), "tx_packets")?;
-        return Err(format!("{e}; A was sent {got}; 10 broadcasts from outside reached A: {probe:?}; links {up:?}; the station saw of A {seen:?}"));
+        return Err(format!(
+            "{e}; A was sent {got}; 10 broadcasts from outside reached A: {probe:?}; links {up:?}; the station saw of A {seen:?}"
+        ));
     }
     let (got, _) = net
         .station
@@ -299,10 +348,24 @@ pub fn may_not(run: &Run<'_>) -> Result<String, String> {
     let at = vec![uplink_location(g, 0)?];
     set_switches(
         g,
-        &[switch("PRODNET", 1, &[10, 20], 1500, Some(trunk(&at, None, None)))],
+        &[switch(
+            "PRODNET",
+            1,
+            &[10, 20],
+            1500,
+            Some(trunk(&at, None, None)),
+        )],
     )?;
-    let a = activate(g, "NETA", &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]))?;
-    let b = activate(g, "NETB", &guest_spec(1, vec![adapter(5, "PRODNET", 10, &[])]))?;
+    let a = activate(
+        g,
+        "NETA",
+        &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]),
+    )?;
+    let b = activate(
+        g,
+        "NETB",
+        &guest_spec(1, vec![adapter(5, "PRODNET", 10, &[])]),
+    )?;
     let (ma, mb) = (mac_of(g, a, 5)?, mac_of(g, b, 5)?);
     let deadline = run.deadline();
     guest_ready(g, "NETA", deadline)?;
@@ -351,8 +414,16 @@ pub fn host_unreachable(run: &Run<'_>) -> Result<String, String> {
             switch("PRODNET", 2, &[10], 1500, Some(trunk(&at, None, Some(10)))),
         ],
     )?;
-    let a = activate(g, "NETA", &guest_spec(0, vec![adapter(5, "INTERNAL", 10, &[])]))?;
-    let b = activate(g, "NETB", &guest_spec(1, vec![adapter(5, "PRODNET", 10, &[])]))?;
+    let a = activate(
+        g,
+        "NETA",
+        &guest_spec(0, vec![adapter(5, "INTERNAL", 10, &[])]),
+    )?;
+    let b = activate(
+        g,
+        "NETB",
+        &guest_spec(1, vec![adapter(5, "PRODNET", 10, &[])]),
+    )?;
     let deadline = run.deadline();
     guest_ready(g, "NETA", deadline)?;
     guest_ready(g, "NETB", deadline)?;
@@ -394,7 +465,9 @@ pub fn host_unreachable(run: &Run<'_>) -> Result<String, String> {
     let seen_a = net.station.seen().iter().filter(|s| s.src == ma).count();
     let sent_a = counter(&mut net.guest, &ta, "rx_packets")?;
     if seen_a != 0 {
-        found.push(format!("{seen_a} of A's frames left by another switch's uplink"));
+        found.push(format!(
+            "{seen_a} of A's frames left by another switch's uplink"
+        ));
     }
     if !found.is_empty() {
         return Err(found.join("; "));
@@ -402,8 +475,8 @@ pub fn host_unreachable(run: &Run<'_>) -> Result<String, String> {
     Ok(format!(
         "A on an internal switch asked the host's management address and sent {sent_a} frames; B \
          on another switch asked A: no address of the host's and no route on either bridge or tap, \
-         IPv6 off on each, forwarding off, 0 frames passed up to the host by either bridge, none \
-         of A's left by the other switch"
+         IPv6 off on each, forwarding off; neither was sent a single frame, so nothing came \
+         from the host; none of A's left by the other switch"
     ))
 }
 
@@ -424,7 +497,11 @@ pub fn uplink_loss(run: &Run<'_>) -> Result<String, String> {
             Some(trunk(&at, Some(Bond::ActiveBackup), Some(10))),
         )],
     )?;
-    let a = activate(g, "NETA", &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]))?;
+    let a = activate(
+        g,
+        "NETA",
+        &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]),
+    )?;
     let address = guest_address(g, "NETA", run.deadline())?;
     let ping = |net: &Net<'_>| -> Result<usize, String> {
         let mut best = 0;
@@ -450,7 +527,8 @@ pub fn uplink_loss(run: &Run<'_>) -> Result<String, String> {
     let one_down = ping(&net)?;
     net.guest.monitor("set_link up1 off")?;
     net.station.cut(1, true);
-    net.guest.expect(&posted(&refcode::UPLINK_LOST, ""), deadline)?;
+    net.guest
+        .expect(&posted(&refcode::UPLINK_LOST, ""), deadline)?;
     let lost = net.guest.rest_of_line(deadline)?;
     let sent = counter(&mut net.guest, &tap(a, 5), "rx_packets")?;
     net.guest.monitor("set_link up0 on")?;
@@ -487,8 +565,21 @@ pub fn service_kill(run: &Run<'_>) -> Result<String, String> {
     let mut net = boot(run, &Rig::new(1, 2))?;
     let g = &mut net.guest;
     let at = vec![uplink_location(g, 0)?];
-    set_switches(g, &[switch("PRODNET", 1, &[10], 1500, Some(trunk(&at, None, Some(10))))])?;
-    let a = activate(g, "NETA", &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]))?;
+    set_switches(
+        g,
+        &[switch(
+            "PRODNET",
+            1,
+            &[10],
+            1500,
+            Some(trunk(&at, None, Some(10))),
+        )],
+    )?;
+    let a = activate(
+        g,
+        "NETA",
+        &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]),
+    )?;
     let address = guest_address(g, "NETA", run.deadline())?;
     let before = ports(&mut net.guest)?;
     let mut lost = 0;
@@ -533,8 +624,16 @@ pub fn vmm_kill(run: &Run<'_>) -> Result<String, String> {
     let mut net = boot(run, &Rig::new(0, 2))?;
     let g = &mut net.guest;
     set_switches(g, &[switch("INTERNAL", 1, &[10], 1500, None)])?;
-    let a = activate(g, "NETA", &guest_spec(0, vec![adapter(5, "INTERNAL", 10, &[])]))?;
-    let b = activate(g, "NETB", &guest_spec(1, vec![adapter(5, "INTERNAL", 10, &[])]))?;
+    let a = activate(
+        g,
+        "NETA",
+        &guest_spec(0, vec![adapter(5, "INTERNAL", 10, &[])]),
+    )?;
+    let b = activate(
+        g,
+        "NETB",
+        &guest_spec(1, vec![adapter(5, "INTERNAL", 10, &[])]),
+    )?;
     let deadline = run.deadline();
     guest_ready(g, "NETA", deadline)?;
     guest_ready(g, "NETB", deadline)?;
@@ -554,9 +653,11 @@ pub fn vmm_kill(run: &Run<'_>) -> Result<String, String> {
         partd::proto::NAME
     ))?;
     std::thread::sleep(Duration::from_secs(1));
-    wait_until("the partition manager again", Duration::from_secs(60), || {
-        Ok(manager::partd(g)?.list().is_ok())
-    })?;
+    wait_until(
+        "the partition manager again",
+        Duration::from_secs(60),
+        || Ok(manager::partd(g)?.list().is_ok()),
+    )?;
     std::thread::sleep(Duration::from_secs(3));
     let now = ports(g)?;
     let taps: Vec<String> = links(g)?
@@ -646,7 +747,8 @@ pub fn counters(run: &Run<'_>) -> Result<String, String> {
     let g = &mut t.net.guest;
     let raw = channel(g)?.cat("/sys/class/net/qvbr1/brforward")?;
     let mut table = Vec::new();
-    for e in raw.chunks_exact(16) {
+    let (entries, _) = raw.as_chunks::<16>();
+    for e in entries {
         // struct __fdb_entry: mac, port_no, is_local, ageing, port_hi.
         let mac = <[u8; 6]>::try_from(&e[0..6]).unwrap_or_default();
         let port = u16::from(e[6]) | (u16::from(e[12]) << 8);
@@ -655,12 +757,8 @@ pub fn counters(run: &Run<'_>) -> Result<String, String> {
     let mut found = Vec::new();
     for id in t.ids {
         let mac = mac_of(g, id, 5)?;
-        let port_no = channel(g)?.text(&format!(
-            "/sys/class/net/{}/brport/port_no",
-            tap(id, 5)
-        ))?;
-        let port_no =
-            u16::from_str_radix(port_no.trim().trim_start_matches("0x"), 16).unwrap_or(0);
+        let port_no = channel(g)?.text(&format!("/sys/class/net/{}/brport/port_no", tap(id, 5)))?;
+        let port_no = u16::from_str_radix(port_no.trim().trim_start_matches("0x"), 16).unwrap_or(0);
         if !table.iter().any(|(m, p, _)| *m == mac && *p == port_no) {
             return Err(format!(
                 "{} is not in the table on port {port_no}: {table:?}",
@@ -687,15 +785,35 @@ pub fn throughput(run: &Run<'_>) -> Result<String, String> {
     let mut net = boot(run, &Rig::new(1, 1))?;
     let g = &mut net.guest;
     let at = vec![uplink_location(g, 0)?];
-    set_switches(g, &[switch("PRODNET", 1, &[10], 1500, Some(trunk(&at, None, Some(10))))])?;
-    activate(g, "NETA", &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]))?;
+    set_switches(
+        g,
+        &[switch(
+            "PRODNET",
+            1,
+            &[10],
+            1500,
+            Some(trunk(&at, None, Some(10))),
+        )],
+    )?;
+    activate(
+        g,
+        "NETA",
+        &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]),
+    )?;
     let address = guest_address(g, "NETA", run.deadline())?;
     let mut rows = Vec::new();
     for (count, size) in [(2000u16, 1472usize), (2000, 56)] {
-        let (got, took) = net
-            .station
-            .ping(0, 0, address, count, size, Duration::from_secs(20))
-            .map_err(|e| e.to_string())?;
+        // In rounds of 50, each waited out: what gets through, not what a
+        // burst loses.
+        let (mut got, mut took) = (0, Duration::ZERO);
+        for _ in 0..count / 50 {
+            let (g, t) = net
+                .station
+                .ping(0, 0, address, 50, size, Duration::from_secs(2))
+                .map_err(|e| e.to_string())?;
+            got += g;
+            took += t;
+        }
         let secs = took.as_secs_f64().max(1e-6);
         #[allow(clippy::cast_precision_loss)]
         let (replies, bits) = (got as f64, (got * (size + 42) * 8 * 2) as f64);

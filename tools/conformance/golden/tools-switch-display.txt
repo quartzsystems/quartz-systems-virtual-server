@@ -1,0 +1,24 @@
+                             Display Virtual Switch
+                                                               System:  vs-test
+
+ Switch . . . . : PRODNET
+ VLANs  . . . . : 10 20
+ MTU  . . . . . : 1500
+ Uplink . . . . : None: internal
+ Ports  . . . . : 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F3=Exit   F5=Refresh   F12=Cancel
+

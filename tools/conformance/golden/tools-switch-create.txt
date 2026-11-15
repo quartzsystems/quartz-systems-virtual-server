@@ -1,0 +1,24 @@
+                             Create Virtual Switch
+                                                               System:  vs-test
+
+ Switch name . . . . :
+ VLANs . . . . . . . :
+ MTU . . . . . . . . : 1500
+
+ VLANs: 1 to 4094, apart by spaces. MTU: 1280 to 9000.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel
+

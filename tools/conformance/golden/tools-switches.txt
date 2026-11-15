@@ -1,0 +1,24 @@
+                           Work with Virtual Switches
+                                                               System:  vs-test
+
+ 2=Change  4=Delete  5=Display  7=Set uplink  8=Clear uplink  9=Table
+
+ Opt Name       VLANs                          MTU Uplink    Ports
+     PRODNET    10 20                         1500 None          0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help  F3=Exit  F5=Refresh  F6=Create  F12=Cancel
+Switch PRODNET is as given.

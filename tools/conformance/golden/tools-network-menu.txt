@@ -1,0 +1,24 @@
+                                    Network
+                                                               System:  vs-test
+
+ Select one of the following:
+
+      1. Configure management network
+      2. Display network hardware
+      3. Work with virtual switches
+      4. Display partition adapters
+
+
+
+
+
+
+
+
+
+
+ Selection
+
+
+ F1=Help   F3=Exit   F12=Cancel
+

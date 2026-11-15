@@ -61,7 +61,13 @@ fn to_switches(g: &mut Guest<'_>, deadline: Instant) -> Result<String, String> {
 }
 
 /// Make switch `name` from the list: F6, the form, Enter.
-fn make(g: &mut Guest<'_>, name: &str, vlans: &str, mtu: &str, deadline: Instant) -> Result<String, String> {
+fn make(
+    g: &mut Guest<'_>,
+    name: &str,
+    vlans: &str,
+    mtu: &str,
+    deadline: Instant,
+) -> Result<String, String> {
     g.type_keys(key::F6)?;
     let form = titled(g, "Create Virtual Switch", deadline)?;
     g.type_keys(&format!(
@@ -109,8 +115,14 @@ fn set_uplink(
     titled(g, "Set Uplink", deadline)?;
     let (row, rows) = row_of(g, mac)?;
     by_row(g, row, rows, "1")?;
-    g.screen("the uplink's form", deadline, |grid| grid.contains("Bond mode"))?;
-    g.type_keys(&format!("{}{}", fill(&[Some(""), Some(native)], &[13, 4]), key::ENTER))?;
+    g.screen("the uplink's form", deadline, |grid| {
+        grid.contains("Bond mode")
+    })?;
+    g.type_keys(&format!(
+        "{}{}",
+        fill(&[Some(""), Some(native)], &[13, 4]),
+        key::ENTER
+    ))?;
     std::thread::sleep(Duration::from_secs(2));
     g.drain();
     let shown = g.screen("the uplink's answer", deadline, |grid| {
@@ -159,11 +171,13 @@ pub fn create(run: &Run<'_>) -> Result<String, String> {
     let mut after = boot(run, &l)?;
     kept(&mut after)?;
     power_off(&mut after)?;
-    Ok("Service Tools option 3, 3, F6 made PRODNET with VLANs 10 and 20; there after a host \
+    Ok(
+        "Service Tools option 3, 3, F6 made PRODNET with VLANs 10 and 20; there after a host \
         restart and after a power pull; golden files tools-network-menu, \
         tools-network-hardware, tools-switches-empty, tools-switch-create, tools-switches, \
         tools-switch-display"
-        .into())
+            .into(),
+    )
 }
 
 /// Suite 7: the management interface is refused as an uplink, and the
@@ -181,7 +195,9 @@ pub fn management(run: &Run<'_>) -> Result<String, String> {
     make(g, "PRODNET", "10", "1500", deadline)?;
     let refused = set_uplink(g, 0, 1, MANAGEMENT_MAC, "", deadline)?;
     if !refused.contains("QVS4102") {
-        return Err(format!("the management interface was not refused:\n{refused}"));
+        return Err(format!(
+            "the management interface was not refused:\n{refused}"
+        ));
     }
     golden("tools-switch-uplink-refused", &refused)?;
     g.type_keys(key::F12)?;
@@ -198,7 +214,9 @@ pub fn management(run: &Run<'_>) -> Result<String, String> {
         .to_string();
     let enslaved = channel(g)?.text("/proc/net/route")?;
     if before.is_empty() || after != before || !enslaved.lines().any(|l| l.starts_with("eth")) {
-        return Err(format!("the management network: `{before}`, then `{after}`"));
+        return Err(format!(
+            "the management network: `{before}`, then `{after}`"
+        ));
     }
     power_off(g)?;
     Ok(format!(
@@ -216,17 +234,33 @@ pub fn live(run: &Run<'_>) -> Result<String, String> {
     rig.nics[2] = Some(1500);
     let (mut net, _) = installed_host(run, &rig, false)?;
     let deadline = Instant::now() + 3 * run.timeout;
+    // What is read off the screen is done before a partition runs: its
+    // serial output, relayed to the host's serial port by the test hooks,
+    // draws over the screen.
     {
         let g = &mut net.guest;
         to_switches(g, deadline)?;
         make(g, "PRODNET", "10", "9000", deadline)?;
+        // The third carries 1500: refused for a switch of 9000.
+        let refused = set_uplink(g, 0, 1, &uplink_mac(2), "10", deadline)?;
+        if !refused.contains("QVS4105") {
+            return Err(format!("an uplink of 1500 for MTU 9000:\n{refused}"));
+        }
+        golden("tools-switch-mtu-refused", &refused)?;
+        g.type_keys(key::F12)?;
+        g.type_keys(key::F12)?;
+        titled(g, SWITCHES, deadline)?;
         let set = set_uplink(g, 0, 1, &uplink_mac(0), "10", deadline)?;
         if !set.contains("has its uplink") {
             return Err(format!("the uplink was not set:\n{set}"));
         }
     }
     let g = &mut net.guest;
-    activate(g, "NETA", &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]))?;
+    activate(
+        g,
+        "NETA",
+        &guest_spec(0, vec![adapter(5, "PRODNET", 10, &[])]),
+    )?;
     let address = guest_address(g, "NETA", run.deadline())?;
     let echo = |net: &Net<'_>, nic, size| {
         net.station
@@ -234,34 +268,60 @@ pub fn live(run: &Run<'_>) -> Result<String, String> {
             .map(|(got, _)| got)
             .map_err(|e| e.to_string())
     };
-    // A full frame of 9000 bytes, end to end.
-    let jumbo = echo(&net, 0, 8972)?;
-    // A VLAN added: nothing stops.
+    // A full frame of 9000 bytes, end to end, once the guest answers.
+    echo(&net, 0, 56)?;
+    // One at a time: a burst of full frames is a queue's room, not the
+    // MTU.
+    let mut jumbo = 0;
+    for _ in 0..10 {
+        jumbo += net
+            .station
+            .ping(0, 0, address, 1, 8972, Duration::from_secs(3))
+            .map(|(got, _)| got)
+            .map_err(|e| e.to_string())?;
+    }
+    // A VLAN added, typed at the list while the partition runs: the state
+    // says it is done, and nothing stops.
+    let step = Duration::from_millis(1500);
     let g = &mut net.guest;
     by_row(g, 0, 1, "2")?;
-    titled(g, "Change Virtual Switch", deadline)?;
-    g.type_keys(&format!("{}{}", fill(&[Some("10 30"), None], &[40, 4]), key::ENTER))?;
-    g.screen("the switch changed", deadline, |grid| grid.contains("is as given"))?;
+    std::thread::sleep(step);
+    g.type_keys(&format!(
+        "{}{}",
+        fill(&[Some("10 30"), None], &[40, 4]),
+        key::ENTER
+    ))?;
+    wait_until("VLAN 30 kept", Duration::from_secs(20), || {
+        Ok(channel(g)?.text("/data/state/vswitch.toml")?.contains("30"))
+    })?;
     let during = echo(&net, 0, 56)?;
     // Moved to the second interface: outside traffic there.
     let g = &mut net.guest;
-    let moved = set_uplink(g, 0, 1, &uplink_mac(1), "10", deadline)?;
+    let (row, rows) = row_of(g, &uplink_mac(1))?;
+    by_row(g, 0, 1, "7")?;
+    std::thread::sleep(step);
+    by_row(g, row, rows, "1")?;
+    std::thread::sleep(step);
+    g.type_keys(&format!(
+        "{}{}",
+        fill(&[Some(""), Some("10")], &[13, 4]),
+        key::ENTER
+    ))?;
+    let second = super::location_of(g, &uplink_mac(1))?;
+    wait_until("the uplink moved", Duration::from_secs(20), || {
+        Ok(channel(g)?
+            .text("/data/state/vswitch.toml")?
+            .contains(&second))
+    })?;
     std::thread::sleep(Duration::from_secs(2));
     let after_move = echo(&net, 1, 56)?;
     let old_side = echo(&net, 0, 56)?;
-    // The third carries 1500: refused for a switch of 9000.
-    let g = &mut net.guest;
-    let refused = set_uplink(g, 0, 1, &uplink_mac(2), "10", deadline)?;
     if jumbo != 10 || during != 10 || after_move != 10 || old_side != 0 {
         return Err(format!(
             "echoes: 9000-byte {jumbo}, after the VLAN {during}, after the move {after_move} \
-             (and {old_side} on the old side); {moved}"
+             (and {old_side} on the old side)"
         ));
     }
-    if !refused.contains("QVS4105") {
-        return Err(format!("an uplink of 1500 for MTU 9000:\n{refused}"));
-    }
-    golden("tools-switch-mtu-refused", &refused)?;
     Ok(format!(
         "MTU 9000: 10 of 10 echoes of 8972 bytes end to end to {address}; VLAN 30 added: 10 of 10 \
          echoes; the uplink moved to the second interface: 10 of 10 there, 0 on the first; an \
