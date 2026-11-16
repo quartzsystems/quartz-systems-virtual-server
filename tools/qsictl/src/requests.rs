@@ -13,7 +13,7 @@ use qsi::host::model::IplSource;
 use qsi::host::{dumps, host, panel, partition, partitions, profiles, refcodes, vres};
 use qsisess::Reply;
 
-use crate::link::Link;
+use qsictl::link::Link;
 
 /// A shut down's kind.
 #[derive(Clone, Copy, Debug, ValueEnum)]

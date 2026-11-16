@@ -8,8 +8,6 @@
 //! attaches to a partition's console in a terminal. It is in no image.
 
 mod console;
-mod home;
-mod link;
 mod requests;
 
 use std::path::PathBuf;
@@ -17,8 +15,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use home::Home;
-use link::Link;
+use qsictl::home::{self, Home};
+use qsictl::link::Link;
 
 /// A developer's QSI console.
 #[derive(Parser, Debug)]

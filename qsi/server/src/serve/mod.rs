@@ -54,6 +54,8 @@ pub struct Settings {
     pub build: String,
     /// The sessions' limits.
     pub limits: Limits,
+    /// How long a pairing password lasts, in seconds.
+    pub pairing_secs: u64,
 }
 
 /// The sessions now, for the local socket.
@@ -135,7 +137,7 @@ impl Server {
     /// The consoles' file is refused, or TLS refuses the identity.
     pub fn new(settings: Settings, identity: qsitrust::Identity) -> Result<Arc<Self>, String> {
         let now = Arc::new(|| u64::try_from(appliance::time::now_secs()).unwrap_or(0));
-        let trust = Trust::open(settings.own.clone(), now)?;
+        let trust = Trust::open(settings.own.clone(), now)?.lasting(settings.pairing_secs);
         let tls = qsitrust::tls::server_config(&identity, Arc::new(trust.clone()))
             .map_err(|e| e.to_string())?;
         let (store, restored) = Store::open(&settings.own, &settings.limits);

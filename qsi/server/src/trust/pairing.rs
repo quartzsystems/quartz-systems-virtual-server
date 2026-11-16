@@ -84,6 +84,9 @@ pub struct Trust {
     /// Where `qsi-consoles.toml` is; none keeps nothing (tests).
     state_dir: Option<PathBuf>,
     now: Arc<dyn Fn() -> u64 + Send + Sync>,
+    /// How long a password lasts: [`LIFETIME_SECS`], or less in a test
+    /// image.
+    lifetime: u64,
 }
 
 impl fmt::Debug for Trust {
@@ -124,7 +127,16 @@ impl Trust {
             })),
             state_dir,
             now,
+            lifetime: LIFETIME_SECS,
         }
+    }
+
+    /// Passwords made from now last `secs` (a test image's, to see one
+    /// expire).
+    #[must_use]
+    pub fn lasting(mut self, secs: u64) -> Self {
+        self.lifetime = secs.clamp(1, LIFETIME_SECS);
+        self
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -169,7 +181,7 @@ impl Trust {
         }
         let p = Password {
             text,
-            until: now + LIFETIME_SECS,
+            until: now + self.lifetime,
             attempts: ATTEMPTS,
         };
         inner.password = Some(p.clone());

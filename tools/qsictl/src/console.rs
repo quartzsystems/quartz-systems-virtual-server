@@ -18,8 +18,8 @@ use qsi::host::{console, dumps, vres};
 use qsipart::console::{FromSystem, Grid, Key};
 use qsisess::Incoming;
 
-use crate::link::Link;
 use crate::requests::refused;
+use qsictl::link::Link;
 
 /// Print every event from after `since`, until interrupted.
 ///

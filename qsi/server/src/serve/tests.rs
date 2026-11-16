@@ -44,6 +44,7 @@ fn settings(d: &std::path::Path) -> Settings {
         release: "V1R0M0".into(),
         build: "test".into(),
         limits: Limits::default(),
+        pairing_secs: crate::trust::LIFETIME_SECS,
     }
 }
 

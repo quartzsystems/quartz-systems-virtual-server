@@ -172,8 +172,16 @@ pub fn sockets(run: &Run<'_>) -> Result<String, String> {
     let wanted = line(DHCP_ADDRESS, "eth0", DHCP_GATEWAY);
     guest.seen(&posted(&refcode::ADDRESS_ACQUIRED, &wanted), deadline)?;
     let channel = channel(&mut guest)?;
-    // The DHCP client holds its socket while it has a lease.
-    let give_up = Instant::now() + Duration::from_secs(5);
+    // The DHCP client holds its socket while it has a lease; the QSI
+    // host server listens on the address within its look.
+    let give_up = Instant::now() + Duration::from_secs(20);
+    let qsi: std::net::SocketAddr = format!(
+        "{}:{}",
+        DHCP_ADDRESS.split('/').next().unwrap_or_default(),
+        release::QSI_PORT
+    )
+    .parse()
+    .map_err(|e| format!("the management address: {e}"))?;
     loop {
         let mut all = Vec::new();
         for (file, v6) in [
@@ -186,16 +194,25 @@ pub fn sockets(run: &Run<'_>) -> Result<String, String> {
             let tcp = file.starts_with("tcp");
             all.extend(procnet::parse(&text, v6).into_iter().map(|s| (tcp, s)));
         }
-        if let Some((_, s)) = all.iter().find(|(tcp, s)| *tcp && s.state == LISTEN) {
+        // One listener: the QSI host server's, on the management
+        // address and its port, and nothing else.
+        if let Some((_, s)) = all
+            .iter()
+            .find(|(tcp, s)| *tcp && s.state == LISTEN && s.local != qsi)
+        {
             return Err(format!("a TCP socket listens on {}", s.local));
         }
+        let listening = all
+            .iter()
+            .any(|(tcp, s)| *tcp && s.state == LISTEN && s.local == qsi);
         let strangers: Vec<String> = all
             .iter()
             .filter(|(_, s)| off_loopback(s))
             .filter(|(tcp, s)| {
                 let dhcp = !tcp && s.local.port() == DHCP_CLIENT;
                 let client = !tcp && s.remote.port() != 0;
-                !(dhcp || client)
+                let server = *tcp && s.local == qsi;
+                !(dhcp || client || server)
             })
             .map(|(tcp, s)| format!("{} {}", if *tcp { "TCP" } else { "UDP" }, s.local))
             .collect();
@@ -205,17 +222,21 @@ pub fn sockets(run: &Run<'_>) -> Result<String, String> {
         let dhcp = all
             .iter()
             .any(|(tcp, s)| !tcp && s.local.port() == DHCP_CLIENT);
-        if dhcp {
+        if dhcp && listening {
             let (tcp, udp) = (
                 all.iter().filter(|(tcp, _)| *tcp).count(),
                 all.iter().filter(|(tcp, _)| !tcp).count(),
             );
             return Ok(format!(
-                "{tcp} TCP sockets, none listening; {udp} UDP socket(s): the DHCP client's on port {DHCP_CLIENT}"
+                "{tcp} TCP socket(s), one listening: the QSI host server's on {qsi}; {udp} UDP                  socket(s): the DHCP client's on port {DHCP_CLIENT}"
             ));
         }
         if Instant::now() >= give_up {
-            return Err("the DHCP client's socket is not there, though it has a lease".into());
+            return Err(if dhcp {
+                format!("the QSI host server does not listen on {qsi}")
+            } else {
+                "the DHCP client's socket is not there, though it has a lease".into()
+            });
         }
         std::thread::sleep(Duration::from_millis(200));
     }

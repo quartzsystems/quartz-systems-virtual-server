@@ -69,6 +69,7 @@ fn main() {
         release: release::RELEASE.to_string(),
         build: release::BUILD_ID.to_string(),
         limits: qsisess::Limits::default(),
+        pairing_secs: pairing_secs(),
     };
     let server = match qsiserver::serve::Server::new(settings, identity) {
         Ok(s) => s,
@@ -78,6 +79,20 @@ fn main() {
         }
     };
     qsiserver::serve::run(&server, listener)
+}
+
+/// How long a pairing password lasts: QSI's 15 minutes; in a test
+/// image, what `/run/qsvshook.pairing-secs` says when it is there.
+#[cfg(target_os = "linux")]
+fn pairing_secs() -> u64 {
+    #[cfg(test_hooks)]
+    if let Some(secs) = std::fs::read_to_string("/run/qsvshook.pairing-secs")
+        .ok()
+        .and_then(|t| t.trim().parse().ok())
+    {
+        return secs;
+    }
+    qsiserver::trust::LIFETIME_SECS
 }
 
 #[cfg(not(target_os = "linux"))]
