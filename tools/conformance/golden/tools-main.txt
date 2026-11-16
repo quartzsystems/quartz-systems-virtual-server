@@ -6,7 +6,7 @@
       1. Work with system status
       2. Work with disk units
       3. Work with network
-      4. Management console pairing  (not yet available: comes with Phase 8)
+      4. Management console pairing
       5. Work with service tools user IDs
       6. Date and time
       7. Display logs

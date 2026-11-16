@@ -5,15 +5,15 @@
 
  1 shows the host's state. 2 shows the load-source disks and
  their protection, and adds or replaces one. 3 changes the
- management network. 5 works with the users of this console.
- 6 sets the display zone, the time servers and the clock.
- 7 shows the logs. 9 powers the host off or restarts it.
+ management network. 4 pairs a management console. 5 works
+ with the users of this console. 6 sets the display zone, the
+ time servers and the clock. 7 shows the logs. 9 powers the
+ host off or restarts it.
 
- Options 4 and 8 are not available in this release. Partitions
- are made and run from the management console, QS/MC.
+ Option 8 is not available in this release. Partitions are
+ made and run from the management console, QS/MC.
 
  F3 or F12 signs you off. So does ten minutes without a key.
-
 
 
 
