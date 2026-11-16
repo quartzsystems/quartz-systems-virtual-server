@@ -100,6 +100,8 @@ pub(crate) fn install(core: &Shared) -> Result<String, Vec<Issued>> {
                     time: now(),
                 };
                 c.keep(&kept);
+                // The slot has it now: nothing is staged.
+                c.forget_staged();
                 c.post(
                     &refcode::UPDATE_INSTALLED,
                     &format!("{} build {} in slot {slot}", image.release, image.build),
