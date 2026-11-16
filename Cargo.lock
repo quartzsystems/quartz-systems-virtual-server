@@ -1526,6 +1526,7 @@ dependencies = [
  "ipc",
  "model",
  "partd",
+ "poold",
  "qsi",
  "qsisess",
  "qsitrust",
@@ -1533,6 +1534,8 @@ dependencies = [
  "resource",
  "serde",
  "state",
+ "vswitch",
+ "vswitchd",
 ]
 
 [[package]]

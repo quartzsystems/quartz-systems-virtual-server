@@ -18,6 +18,9 @@ state = { path = "../../base/state", version = "0.1.0" }
 partd = { path = "../../part/partd", version = "0.1.0" }
 model = { path = "../../part/model", version = "0.1.0" }
 resource = { path = "../../part/resource", version = "0.1.0" }
+poold = { path = "../../stg/poold", version = "0.1.0" }
+vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
+vswitch = { path = "../../net/vswitch", version = "0.1.0" }
 qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
 ipc.workspace = true
 serde.workspace = true

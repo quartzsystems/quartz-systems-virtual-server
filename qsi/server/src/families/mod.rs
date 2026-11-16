@@ -8,7 +8,9 @@
 //! service gave; a service that does not answer is `QSI0301`.
 
 pub mod convert;
+pub mod host;
 mod partitions;
+pub mod vres;
 
 use qsi::any::{AnyReply, AnyRequest};
 use qsi::host::host::msgid::SERVICE_DOWN;
@@ -19,6 +21,22 @@ use qsisess::Note;
 pub struct Services {
     /// The partition manager.
     pub partd: Box<dyn partd::Calls + Send>,
+    /// The pool service.
+    pub poold: Box<dyn poold::Calls + Send>,
+    /// The switch service.
+    pub vswitchd: Box<dyn vswitchd::Calls + Send>,
+    /// What the host's state files say.
+    pub facts: Box<dyn Facts>,
+}
+
+/// What the server reads of the host's own state files: read, never
+/// written.
+pub trait Facts: Send {
+    /// The host inventory PID 1 wrote at this IPL.
+    ///
+    /// # Errors
+    /// It cannot be read, as a refusal.
+    fn inventory(&mut self) -> Result<state::Inventory, Vec<Note>>;
 }
 
 impl std::fmt::Debug for Services {
@@ -43,6 +61,13 @@ pub enum Open {
         id: u32,
         /// The dump.
         name: String,
+    },
+    /// An optical image's bytes, console to host.
+    Upload {
+        /// The image's name.
+        name: String,
+        /// Its size, exactly.
+        bytes: u64,
     },
 }
 
@@ -101,6 +126,12 @@ pub fn answer(s: &mut Services, request: AnyRequest) -> Answer {
         AnyRequest::Panel(r) => partitions::panel(s, &r).into(),
         AnyRequest::Dumps(r) => partitions::dumps(s, r),
         AnyRequest::Console(r) => partitions::console(s, &r),
+        AnyRequest::Host(r) => host::answer(s, &r).into(),
+        AnyRequest::Vres(qsi::host::vres::Request::ImageUpload(u)) => Answer::Open(Open::Upload {
+            name: u.name,
+            bytes: u.bytes,
+        }),
+        AnyRequest::Vres(r) => vres::answer(s, r).into(),
         // Base and pairing are the connection's; the rest are not yet.
         _ => Answer::Refused(vec![Note {
             msgid: qsi::msgid::UNKNOWN.into(),

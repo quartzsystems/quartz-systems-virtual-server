@@ -56,9 +56,38 @@ impl partd::Calls for Fake {
     }
 }
 
+/// A service with no socket.
+#[derive(Clone, Copy, Default)]
+struct Gone;
+
+fn gone() -> ipc::WireError {
+    ipc::WireError::Io(std::io::Error::other("no socket"))
+}
+
+impl poold::Calls for Gone {
+    fn call(&mut self, _: &poold::Request) -> Result<Vec<u8>, ipc::WireError> {
+        Err(gone())
+    }
+}
+
+impl vswitchd::Calls for Gone {
+    fn call(&mut self, _: &vswitchd::Request) -> Result<Vec<u8>, ipc::WireError> {
+        Err(gone())
+    }
+}
+
+impl Facts for Gone {
+    fn inventory(&mut self) -> Result<state::Inventory, Vec<Note>> {
+        Err(down("inventory", &gone()))
+    }
+}
+
 fn services(fake: &Fake) -> Services {
     Services {
         partd: Box::new(fake.clone()),
+        poold: Box::new(Gone),
+        vswitchd: Box::new(Gone),
+        facts: Box::new(Gone),
     }
 }
 
@@ -178,4 +207,116 @@ fn streams_are_left_to_the_connection() {
         })
     );
     assert!(fake.asked.lock().unwrap().is_empty());
+}
+
+#[test]
+fn each_item_of_the_hardware_has_its_owner() {
+    use qsi::host::host::Owner;
+    use state::doc::inventory as inv;
+    let disk = |name: &str| inv::Disk {
+        name: name.into(),
+        location: format!("U-{name}"),
+        ..inv::Disk::default()
+    };
+    let nic = |name: &str| inv::Interface {
+        name: name.into(),
+        location: format!("U-{name}"),
+        ..inv::Interface::default()
+    };
+    let inventory = state::Inventory {
+        disks: vec![disk("sda"), disk("sdb"), disk("sdc"), disk("sdd")],
+        interfaces: vec![nic("eth0"), nic("eth1"), nic("eth2")],
+        ..state::Inventory::default()
+    };
+    let seen = |name: &str| poold::Disk {
+        name: name.into(),
+        ..poold::Disk::default()
+    };
+    let disks = vec![
+        seen("sda"),
+        poold::Disk {
+            pool: "POOL1".into(),
+            ..seen("sdb")
+        },
+        poold::Disk {
+            foreign: true,
+            ..seen("sdc")
+        },
+        poold::Disk {
+            free: true,
+            ..seen("sdd")
+        },
+    ];
+    let iface = |name: &str| vswitchd::Interface {
+        name: name.into(),
+        ..vswitchd::Interface::default()
+    };
+    let interfaces = vec![
+        vswitchd::Interface {
+            management: true,
+            ..iface("eth0")
+        },
+        vswitchd::Interface {
+            switch: "LAN".into(),
+            ..iface("eth1")
+        },
+        iface("eth2"),
+    ];
+    let h = host::hardware(&inventory, &disks, &interfaces);
+    let owners: Vec<(Owner, &str)> = h
+        .items
+        .iter()
+        .map(|i| (i.owner, i.owner_name.as_str()))
+        .collect();
+    assert_eq!(
+        owners,
+        vec![
+            (Owner::Host, ""),
+            (Owner::Pool, "POOL1"),
+            (Owner::Foreign, ""),
+            (Owner::None, ""),
+            (Owner::Host, ""),
+            (Owner::Switch, "LAN"),
+            (Owner::None, ""),
+        ]
+    );
+}
+
+#[test]
+fn what_is_the_hosts_alone_is_left_out() {
+    let p = poold::PoolStatus {
+        name: "POOL1".into(),
+        mount: "/pools/POOL1".into(),
+        ..poold::PoolStatus::default()
+    };
+    let q = vres::pool(&p);
+    assert_eq!(q.name, "POOL1");
+    assert!(!format!("{q:?}").contains("/pools"));
+    let s = vswitchd::SwitchStatus {
+        bridge: "qsvsbr1".into(),
+        ..vswitchd::SwitchStatus::default()
+    };
+    assert_eq!(vres::switch(&s), None, "no switch kept, nothing to say");
+}
+
+#[test]
+fn an_upload_is_left_to_the_connection() {
+    let fake = Fake::default();
+    let mut s = services(&fake);
+    let a = answer(
+        &mut s,
+        AnyRequest::Vres(qsi::host::vres::Request::ImageUpload(
+            qsi::host::vres::ImageUpload {
+                name: "CD1".into(),
+                bytes: 2048,
+            },
+        )),
+    );
+    assert_eq!(
+        a,
+        Answer::Open(Open::Upload {
+            name: "CD1".into(),
+            bytes: 2048
+        })
+    );
 }
