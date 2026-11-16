@@ -217,7 +217,8 @@ impl Server {
         listen::management_address(status.fact(appliance::NOTE_MANAGEMENT)?)
     }
 
-    /// The listener listens on `addresses` now.
+    /// The listener listens on `addresses` now; `first` when it has
+    /// listened nowhere before.
     fn listening(&self, addresses: &[Ipv4Addr], first: bool) {
         *self
             .addresses

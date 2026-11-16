@@ -271,7 +271,8 @@ fn accept(server: &Arc<Server>, listener: &TcpListener, stop: &AtomicBool) {
 /// returns.
 pub fn listen(server: &Arc<Server>) -> ! {
     let mut on: BTreeMap<Ipv4Addr, Arc<AtomicBool>> = BTreeMap::new();
-    let mut first = true;
+    // The first look, and whether it has listened anywhere yet.
+    let (mut first, mut started) = (true, false);
     loop {
         let wanted: Vec<Ipv4Addr> = server.management().into_iter().collect();
         let before: Vec<Ipv4Addr> = on.keys().copied().collect();
@@ -302,7 +303,8 @@ pub fn listen(server: &Arc<Server>) -> ! {
         }
         let now: Vec<Ipv4Addr> = on.keys().copied().collect();
         if now != before || first {
-            server.listening(&now, first);
+            server.listening(&now, !started);
+            started |= !now.is_empty();
             first = false;
         }
         thread::sleep(LOOK);
