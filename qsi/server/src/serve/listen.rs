@@ -216,6 +216,9 @@ fn serve(
             Err(_) => break,
         }
         conn.step(now_ms(t0));
+        if super::STOPPING.load(Ordering::Relaxed) && !conn.is_closed() {
+            conn.close("the host is shutting down");
+        }
         // A pin removed at the host ends its session.
         if peer.pinned && checked.elapsed() >= Duration::from_secs(1) {
             checked = Instant::now();

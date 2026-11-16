@@ -71,6 +71,15 @@ fn main() {
         limits: qsisess::Limits::default(),
         pairing_secs: pairing_secs(),
     };
+    // At the host's shutdown each session says goodbye before the end.
+    let term = sys::on_term(|| {
+        qsiserver::serve::STOPPING.store(true, std::sync::atomic::Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(500));
+        std::process::exit(0);
+    });
+    if let Err(e) = term {
+        eprintln!("SIGTERM is not taken: {e}");
+    }
     let server = match qsiserver::serve::Server::new(settings, identity) {
         Ok(s) => s,
         Err(e) => {

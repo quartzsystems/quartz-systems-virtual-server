@@ -55,6 +55,8 @@ pub struct Qsi<'a> {
     pub guest: Guest<'a>,
     /// Where the harness reaches its server: `127.0.0.1:port`.
     pub address: String,
+    /// How it was started, to start it again on the same disks.
+    pub launch: crate::qemu::Launch,
 }
 
 /// A port nothing on the harness's side listens on.
@@ -112,6 +114,7 @@ pub fn host_disks<'a>(run: &Run<'a>, partition: bool, more: &[PathBuf]) -> Resul
     Ok(Qsi {
         guest,
         address: format!("127.0.0.1:{port}"),
+        launch,
     })
 }
 

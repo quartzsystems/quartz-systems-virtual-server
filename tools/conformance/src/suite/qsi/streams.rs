@@ -92,9 +92,18 @@ pub fn streams(run: &Run<'_>) -> Result<String, String> {
     // An image of 8 MiB, cut where the clock says.
     let file = run.file("cut.iso");
     let size: usize = 8 << 20;
-    let data: Vec<u8> = (0..size)
+    let mut data: Vec<u8> = (0..size)
         .map(|i| u8::try_from(i % 251).unwrap_or(0))
         .collect();
+    // An ISO 9660 image: its primary volume descriptor at sector 16.
+    let pvd = &mut data[16 * 2048..17 * 2048];
+    pvd.fill(0);
+    pvd[0] = 1;
+    pvd[1..6].copy_from_slice(b"CD001");
+    pvd[6] = 1;
+    pvd[40..72].fill(b' ');
+    pvd[40..47].copy_from_slice(b"QSITEST");
+    pvd[128..130].copy_from_slice(&2048u16.to_le_bytes());
     std::fs::write(&file, &data).map_err(|e| e.to_string())?;
     let cut = 1 + (Instant::now().elapsed().as_nanos() as usize ^ 0x9e37_79b9) % (size - 2);
     let reply = l.ask(&AnyRequest::Vres(vres::Request::ImageUpload(

@@ -68,3 +68,31 @@ pub fn drop_privileges(id: u32) -> io::Result<()> {
     }
     Ok(())
 }
+
+/// Block SIGTERM in this thread and every thread started after it, and
+/// take it on a thread of its own: `then` is called once it comes.
+pub fn on_term(then: impl FnOnce() + Send + 'static) -> io::Result<()> {
+    // SAFETY: the set is a zeroed local, filled by `sigemptyset` and
+    // `sigaddset`, and no old set is asked for.
+    let set = unsafe {
+        let mut set = std::mem::zeroed::<libc::sigset_t>();
+        last_error(libc::sigemptyset(&raw mut set))?;
+        last_error(libc::sigaddset(&raw mut set, libc::SIGTERM))?;
+        let r = libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut());
+        if r != 0 {
+            return Err(io::Error::from_raw_os_error(r));
+        }
+        set
+    };
+    std::thread::Builder::new()
+        .name("term".into())
+        .spawn(move || {
+            let mut signal: libc::c_int = 0;
+            // SAFETY: both pointers are to initialized values of the types
+            // `sigwait` reads and writes.
+            if unsafe { libc::sigwait(&raw const set, &raw mut signal) } == 0 {
+                then();
+            }
+        })?;
+    Ok(())
+}

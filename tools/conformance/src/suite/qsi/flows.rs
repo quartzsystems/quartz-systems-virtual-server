@@ -298,13 +298,15 @@ pub fn events(run: &Run<'_>) -> Result<String, String> {
     // The server killed and started again: it numbers on.
     let before = l.session.last_event().unwrap_or(0);
     l.close();
-    let started = q.guest.log.matches(&refcode::QSI_STARTED.tag()).count();
+    let started = super::posted(&mut q, &refcode::QSI_STARTED);
     channel(&mut q.guest)?.ask(&format!("{} qsid", qsvshook::proto::command::KILL))?;
-    eventually(Duration::from_mins(1), || {
-        q.guest.drain();
-        (q.guest.log.matches(&refcode::QSI_STARTED.tag()).count() > started).then_some(())
-    })
-    .ok_or("the server was not started again")?;
+    super::posted_after(
+        &mut q,
+        &refcode::QSI_STARTED,
+        started,
+        Duration::from_mins(1),
+    )
+    .map_err(|_| "the server was not started again".to_string())?;
     let mut l = eventually(Duration::from_secs(30), || link(&q, &id_a, host_print).ok())
         .ok_or("no session after the server's restart")?;
     let after = subscribe(&mut l, Some(before))?;
@@ -461,7 +463,16 @@ pub fn power(run: &Run<'_>) -> Result<String, String> {
         .ok_or("the session did not end with the host")?;
     q.guest.seen(&refcode::PARTITIONS_ENDED.tag(), deadline)?;
     q.guest.seen(&refcode::RESTART.tag(), deadline)?;
-    // The host comes back: the console connects, the partition is there.
+    // QEMU does not restart the machine: it is started again on the
+    // same disks. The console connects, the partition is there.
+    q.guest.wait_exit(Instant::now() + Duration::from_mins(5))?;
+    let launch = q.launch.clone();
+    drop(q);
+    let mut q = super::Qsi {
+        guest: crate::suite::install::boot(run, &launch)?,
+        address: format!("127.0.0.1:{}", launch.qsi.unwrap_or_default()),
+        launch,
+    };
     q.guest.seen(
         &refcode::QSI_STARTED.tag(),
         Instant::now() + Duration::from_mins(10),

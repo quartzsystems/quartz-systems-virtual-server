@@ -264,6 +264,9 @@ impl Server {
     }
 }
 
+/// Set when the host shuts down: each session says goodbye and ends.
+pub static STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// A line for the system log: the supervisor takes standard error.
 pub fn say(line: &str) {
     eprintln!("{line}");
