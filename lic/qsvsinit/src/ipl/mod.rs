@@ -83,9 +83,22 @@ mod on_host {
         let slots = slot::at_ipl(booted, sources, |code, detail| {
             posted.push((code.code, detail.to_string()));
         });
+        // The slot that did not confirm is what its problem is about.
+        let fell_back = match slots.ipl {
+            loadsource::record::Ipl::FellBack { pending } => {
+                Some(loadsource::record::letter(pending).to_string())
+            }
+            _ => None,
+        };
         for (code, detail) in posted {
-            if let Some(code) = refcode::find(code) {
-                host.post(code, &detail);
+            let Some(code) = refcode::find(code) else {
+                continue;
+            };
+            match &fell_back {
+                Some(slot) if code.code == refcode::SLOT_FELL_BACK.code => {
+                    host.post_about(code, &detail, &[refcode::about::slot(slot)]);
+                }
+                _ => host.post(code, &detail),
             }
         }
         host.slots = Some(slots);

@@ -340,6 +340,13 @@ pub fn rollback(run: &Run<'_>) -> Result<String, String> {
         1,
         Duration::from_secs(30),
     )?;
+    // It names the slot that did not confirm.
+    if !open[0]
+        .description
+        .contains(&format!("slot {} did not confirm", rolled.slot))
+    {
+        return Err(format!("the problem: {}", open[0].description));
+    }
     let dumps = match c.ask(AnyRequest::Base(qsi::base::Request::Dumps(
         qsi::base::ListDumps {},
     )))? {
