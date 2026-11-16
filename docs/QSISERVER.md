@@ -31,8 +31,11 @@ has one.
 
 TCP 2300 on each IPv4 management address, and nowhere else. The
 addresses are PID 1's `management` fact when the server starts, and
-then what the network service tells the server's local socket each time
-its line changes: the listener follows a DHCP renewal or a change made
+then, each time the network service tells the server's local socket its
+line changed, PID 1's fact read again (the network service notes it
+there first, and two words close together may come in either order;
+the line told is taken only when PID 1 does not answer): the listener
+follows a DHCP renewal or a change made
 at Service Tools at once (`C2010005`). An address it could not bind,
 or PID 1 not answering at the start, is tried again every 2 seconds. No address, nothing listens (`A2010000`). Nothing listens
 on a switch, a bridge, a tap or a partition's network, and nothing at

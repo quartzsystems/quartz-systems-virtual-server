@@ -379,7 +379,10 @@ pub fn listen(server: &Arc<Server>) -> ! {
         // at the network service's word, whichever is first.
         let short = line.is_none() || now.len() < wanted.len();
         match server.word.wait(short.then_some(AGAIN)) {
-            Some(told) => line = Some(told),
+            // The word is a cue: two told close together may come in
+            // either order, and PID 1's fact, noted before each, is the
+            // latest. The line told when PID 1 does not answer.
+            Some(told) => line = server.management_said().unwrap_or(Some(told)),
             None if line.is_none() => line = server.management(),
             None => {}
         }

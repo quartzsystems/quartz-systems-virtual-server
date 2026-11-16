@@ -223,9 +223,15 @@ impl Server {
 
     /// The management interface's line now: PID 1's fact.
     fn management(&self) -> Option<String> {
+        self.management_said().ok().flatten()
+    }
+
+    /// PID 1's `management` fact, none for a host with no address; an
+    /// error when PID 1 did not answer.
+    fn management_said(&self) -> Result<Option<String>, String> {
         let mut c = supervise::control::Client::new(&self.settings.paths.control);
-        let status = c.status().ok()?;
-        status.fact(appliance::NOTE_MANAGEMENT).map(str::to_string)
+        let status = c.status().map_err(|e| e.to_string())?;
+        Ok(status.fact(appliance::NOTE_MANAGEMENT).map(str::to_string))
     }
 
     /// The listener listens on `addresses` now; `first` when it has
