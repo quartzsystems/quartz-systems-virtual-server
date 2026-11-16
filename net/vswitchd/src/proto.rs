@@ -423,11 +423,23 @@ impl Client {
 
     /// Subscribe: every event, as it comes, until `f` returns false or
     /// the connection ends.
-    pub fn events(&self, mut f: impl FnMut(Event) -> bool) -> Result<(), ipc::WireError> {
+    pub fn events(&self, f: impl FnMut(Event) -> bool) -> Result<(), ipc::WireError> {
+        self.subscribed(|| {}, f)
+    }
+
+    /// Subscribe as [`Self::events`], with `ready` called once the
+    /// subscription is answered and before the first event: what is
+    /// read then is not missed by the events.
+    pub fn subscribed(
+        &self,
+        ready: impl FnOnce(),
+        mut f: impl FnMut(Event) -> bool,
+    ) -> Result<(), ipc::WireError> {
         let mut stream = self.connect()?;
         stream.set_read_timeout(None)?;
         ipc::frame::write_frame(&mut stream, &ipc::encode(&Request::Subscribe {}))?;
         let _ = ipc::frame::read_frame_max(&mut stream, MAX_FRAME)?;
+        ready();
         loop {
             let frame = ipc::frame::read_frame_max(&mut stream, MAX_FRAME)?;
             if !f(ipc::decode(&frame)?) {

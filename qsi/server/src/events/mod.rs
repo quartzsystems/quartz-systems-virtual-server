@@ -6,8 +6,10 @@
 //! all, kept on disk.
 
 pub mod hub;
+pub mod said;
 pub mod store;
 pub mod translate;
 
 pub use hub::Hub;
+pub use said::Said;
 pub use store::Store;

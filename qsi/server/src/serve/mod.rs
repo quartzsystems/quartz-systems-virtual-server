@@ -24,8 +24,8 @@ use qsisess::Limits;
 use rustls::ServerConfig;
 use supervise::control::Calls as _;
 
-use crate::events::Store;
 use crate::events::hub::{Hub, Shared};
+use crate::events::{Said, Store};
 use crate::families::Services;
 use crate::trust::Trust;
 use facts::{HostFacts, Paths};
@@ -141,7 +141,8 @@ impl Server {
         let tls = qsitrust::tls::server_config(&identity, Arc::new(trust.clone()))
             .map_err(|e| e.to_string())?;
         let (store, log) = Store::open(&settings.own, &settings.limits);
-        let hub = Arc::new(Mutex::new(Hub::kept(store, log)));
+        let said = Said::open(&settings.own);
+        let hub = Arc::new(Mutex::new(Hub::kept(store, log, said)));
         Ok(Arc::new(Self {
             port: settings.port,
             limits: settings.limits,

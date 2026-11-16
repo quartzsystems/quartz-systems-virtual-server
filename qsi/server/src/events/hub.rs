@@ -10,13 +10,14 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use qsi::any::AnyEvent;
 use qsisess::{EventLog, Limits};
 
-use super::Store;
+use super::{Said, Store};
 
 /// The log and its file.
 #[derive(Debug)]
 pub struct Hub {
     log: EventLog,
     store: Option<Store>,
+    said: Said,
 }
 
 /// The hub, shared by the pumps and the connections.
@@ -28,12 +29,13 @@ pub fn lock(hub: &Shared) -> MutexGuard<'_, Hub> {
 }
 
 impl Hub {
-    /// The log taken up from `store`.
+    /// The log taken up from `store`, with what it last said.
     #[must_use]
-    pub fn kept(store: Store, log: EventLog) -> Self {
+    pub fn kept(store: Store, log: EventLog, said: Said) -> Self {
         Self {
             log,
             store: Some(store),
+            said,
         }
     }
 
@@ -43,23 +45,49 @@ impl Hub {
         Self {
             log: EventLog::new(limits),
             store: None,
+            said: Said::default(),
         }
     }
 
     /// Push an event: numbered, kept, and published by each
-    /// connection at its next turn. One too long for a message is
-    /// dropped, said by the caller.
+    /// connection at its next turn. One that says only what the log
+    /// said already is not pushed (`None`). One too long for a message
+    /// is dropped, said by the caller.
     ///
     /// # Errors
     /// The event is longer than a message may be.
-    pub fn push(&mut self, e: &AnyEvent) -> Result<u64, qsisess::Error> {
+    pub fn push(&mut self, e: &AnyEvent) -> Result<Option<u64>, qsisess::Error> {
+        if !self.said.note(e) {
+            return Ok(None);
+        }
         let seq = self.log.push_any(e)?;
         if let Some(store) = &mut self.store
             && let Some(event) = self.log.from(seq).next()
         {
             store.append(event);
         }
-        Ok(seq)
+        Ok(Some(seq))
+    }
+
+    /// What the log last said.
+    #[must_use]
+    pub fn said(&self) -> &Said {
+        &self.said
+    }
+
+    /// Take up a source: its first look after a start is compared with
+    /// what the log said, and what differs pushed. A source never
+    /// compared before has its look taken as said, with nothing pushed.
+    pub fn take_up(&mut self, source: &str, events: &[AnyEvent]) {
+        let known = self.said.knows(source);
+        for e in events {
+            if known {
+                let _ = self.push(e);
+            } else {
+                self.said.note(e);
+            }
+        }
+        self.said.known(source);
     }
 
     /// The log.
@@ -73,5 +101,6 @@ impl Hub {
         if let Some(store) = &mut self.store {
             store.sync();
         }
+        self.said.sync();
     }
 }

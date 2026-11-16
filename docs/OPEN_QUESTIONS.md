@@ -69,20 +69,6 @@ that gate is open until then. Recommended: QS/MC's first phase that
 talks to a host runs Phase 8's suite 4 (`qsi-end-to-end`) with QS/MC in
 the harness's place, against this phase's image.
 
-### 41. What the services say while the server is down
-
-The event log is the server's, kept on disk and numbered on across its
-restarts (`docs/QSISERVER.md`). The partition manager and the switch
-service send their events to whoever is subscribed and keep none, so
-what they say while the server is down (a few seconds while PID 1
-starts it again) is not in the log. The handoff wants a restarted
-server to lose none. Recommended: on taking up its subscriptions the
-server compares each partition's state and the length of its history
-with what its log last said, and pushes what changed (a state, the
-codes it missed, from the history); the switch service's switches the
-same way. Not done in Phase 8: a console that resumes after a restart
-of the server reads the partitions as they are.
-
 ### 43. The Dell's processor and graviola (NEEDS-CODY)
 
 QSI's TLS is graviola's cryptography, which needs AVX2, ADX, AES and
@@ -343,3 +329,9 @@ handoff took it as recommended.
     gone; a console resumes as before the restart, or reads everything
     again when the log no longer reaches back to its number
     (`docs/QSISERVER.md`).
+41. **What the services say while the server is down.** Closed in Step
+    0 of Phase 9, as recommended: the server keeps what its log last
+    said of each partition, pool and switch and of the host's history,
+    and on taking up a source pushes what changed while it was away
+    (`docs/QSISERVER.md`). A console that resumes after a restart of
+    the server misses nothing.

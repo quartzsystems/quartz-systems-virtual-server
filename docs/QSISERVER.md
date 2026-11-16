@@ -154,11 +154,26 @@ or newer than any, is told to read everything again. A line that does
 not read is passed over, and a gap starts the run again: a damaged file
 loses events, never the numbers.
 
-What the services said while the server was down is not in the log: the
-partition manager and the switch service send events to whoever is
-subscribed, and keep none. A console that reconnects after a restart of
-the server resumes from what the server had and reads the partitions'
-states and codes as they are.
+What the services said while the server was down is in the log too.
+Beside it the server keeps what the log last said of each thing
+(`qsi-said.txt`): each partition's name, state and last code, each pool,
+virtual disk, optical image, tape volume and switch, and the host's
+place in its history. When it takes up a source, at its start or when
+the source comes back, it compares the source with that and pushes what
+differs before the source's own events:
+
+| Source | Compared |
+|---|---|
+| the partition manager | after its subscription is answered: each partition made or deleted, each state, each code of a partition's history after the last the log said |
+| the switch service | after its subscription is answered: each switch made, changed (its VLANs, MTU, uplink) or deleted |
+| the pool service | its first look: each pool, virtual disk, image and volume |
+| the host | its history from the place the log last said |
+
+An event that says only what the log said already (a state again, a code
+the comparison pushed and the subscription then brings) is not pushed.
+A source the server never compared before, as on its first start, has
+its first look taken as said, with nothing pushed. Ports and uplink
+carrier are the switch's status at the comparison, not each change.
 
 ## Logging
 

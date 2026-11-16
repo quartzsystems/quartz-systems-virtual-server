@@ -5,7 +5,9 @@
 //! What feeds the event log, each a thread: the partition manager's and
 //! the switch service's subscriptions, a look at the pool service every
 //! two seconds, the host's history and PID 1's state, and what the
-//! trust says happened. A source that goes is subscribed to again.
+//! trust says happened. A source that goes is subscribed to again, and
+//! each source taken up is compared with what the log last said, so
+//! nothing it said while the server was away is missed.
 
 use std::path::PathBuf;
 use std::thread;
@@ -17,6 +19,7 @@ use qsi::any::AnyEvent;
 use qsi::base;
 
 use crate::events::hub::{self, Shared};
+use crate::events::said;
 use crate::events::translate::{self, Look};
 use crate::families::Facts;
 use crate::families::base::state as base_state;
@@ -50,6 +53,20 @@ pub fn partd(socket: PathBuf, hub: Shared) {
         loop {
             let client = partd::Client::new(&socket);
             if let Ok(mut events) = client.events() {
+                let mut c = client.clone();
+                if let Ok(list) = c.list() {
+                    let missed = {
+                        let h = hub::lock(&hub);
+                        let mut c = client.clone();
+                        said::partitions(
+                            h.said(),
+                            &list,
+                            |id| c.history(id).ok().and_then(Result::ok).unwrap_or_default(),
+                            now_secs(),
+                        )
+                    };
+                    hub::lock(&hub).take_up("partd", &missed);
+                }
                 while let Ok(e) = events.next(None) {
                     push(&hub, &translate::partd(&e));
                     if translate::moves_resources(&e) {
@@ -74,7 +91,15 @@ pub fn vswitchd(socket: PathBuf, hub: Shared) {
     spawn("vswitchd-events", move || {
         loop {
             let client = vswitchd::Client::new(&socket);
-            let _ = client.events(|e| {
+            let ready = || {
+                let mut c = client.clone();
+                if let Ok(list) = vswitchd::Calls::switches(&mut c) {
+                    let mut h = hub::lock(&hub);
+                    let missed = said::switches(h.said(), &list, now_secs());
+                    h.take_up("vswitchd", &missed);
+                }
+            };
+            let _ = client.subscribed(ready, |e| {
                 push(&hub, &translate::vswitchd(&e));
                 true
             });
@@ -88,6 +113,7 @@ pub fn vswitchd(socket: PathBuf, hub: Shared) {
 pub fn poold(socket: PathBuf, hub: Shared) {
     spawn("pool-looks", move || {
         let mut client = poold::Client::new(&socket);
+        // The first look is compared with what the log last said.
         let mut before: Option<Look> = None;
         loop {
             let look = (|| {
@@ -103,6 +129,10 @@ pub fn poold(socket: PathBuf, hub: Shared) {
                     for e in translate::pools(b, &look, now_secs()) {
                         push(&hub, &e);
                     }
+                } else {
+                    let mut h = hub::lock(&hub);
+                    let missed = translate::pools(&h.said().look(), &look, now_secs());
+                    h.take_up("poold", &missed);
                 }
                 before = Some(look);
             }
@@ -115,7 +145,13 @@ pub fn poold(socket: PathBuf, hub: Shared) {
 /// state.
 pub fn host(mut facts: HostFacts, hub: Shared) {
     spawn("host-looks", move || {
-        let mut seen = facts.history().map_or(0, |h| h.len());
+        // From the last code the log said; the whole history is the
+        // first look's when it never said one.
+        let said = hub::lock(&hub).said().host_seen();
+        let mut seen = said.map_or_else(
+            || facts.history().map_or(0, |h| h.len()),
+            |s| usize::try_from(s).unwrap_or(usize::MAX),
+        );
         let mut state = None;
         loop {
             if let Ok(all) = facts.history() {

@@ -19,7 +19,7 @@ use qsisess::{Event, EventLog, Limits};
 /// The file, under the server's state directory.
 pub const FILE: &str = "qsi-events.log";
 
-fn hex(bytes: &[u8]) -> String {
+pub(super) fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -28,7 +28,7 @@ fn hex(bytes: &[u8]) -> String {
     s
 }
 
-fn unhex(text: &str) -> Option<Vec<u8>> {
+pub(super) fn unhex(text: &str) -> Option<Vec<u8>> {
     if !text.len().is_multiple_of(2) {
         return None;
     }
