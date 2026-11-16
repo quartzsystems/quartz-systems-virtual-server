@@ -5,7 +5,9 @@
 //! Events: the services' translated to QSI's, and the one log of them
 //! all, kept on disk.
 
+pub mod hub;
 pub mod store;
 pub mod translate;
 
+pub use hub::Hub;
 pub use store::{Restored, Store};

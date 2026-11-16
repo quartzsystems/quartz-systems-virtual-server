@@ -98,10 +98,17 @@ impl Restored {
     /// again (a `since` newer than any event is that).
     #[must_use]
     pub fn since(&self, since: Option<u64>) -> Option<u64> {
-        match since {
-            Some(s) if s.saturating_add(1) < self.first => Some(u64::MAX),
-            other => other,
-        }
+        place(self.first, since)
+    }
+}
+
+/// A console's `since` in a log whose first real event is `first`: one
+/// older is given as newer than any, which reads everything again.
+#[must_use]
+pub fn place(first: u64, since: Option<u64>) -> Option<u64> {
+    match since {
+        Some(s) if s.saturating_add(1) < first => Some(u64::MAX),
+        other => other,
     }
 }
 
