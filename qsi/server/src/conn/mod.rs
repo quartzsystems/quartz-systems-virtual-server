@@ -68,6 +68,8 @@ pub struct Conn {
     said: Vec<String>,
     /// Pairing attempts that failed since the last look.
     failed: u32,
+    /// How the request being answered went, for its log line.
+    outcome: String,
 }
 
 impl std::fmt::Debug for Conn {
@@ -117,6 +119,7 @@ impl Conn {
             streams: BTreeMap::new(),
             said: Vec::new(),
             failed: 0,
+            outcome: String::new(),
         })
     }
 
@@ -234,25 +237,35 @@ impl Conn {
         }
     }
 
+    /// A request: answered, then logged with how it went. The user a
+    /// console names is for the log; it grants nothing.
     fn request(&mut self, r: &qsisess::Request) {
-        // The user a console names is for the log; it grants nothing.
+        self.outcome = "answered".into();
+        self.handle(r);
+        let outcome = std::mem::take(&mut self.outcome);
         self.say(format!(
-            "request {:04x}/{:04x} from {} by {:?}",
+            "request {:04x}/{:04x} from {} by {:?}: {outcome}",
             r.family, r.op, self.config.address, r.user
         ));
+    }
+
+    fn handle(&mut self, r: &qsisess::Request) {
         let id = r.id;
         let decoded = match r.decode() {
             Ok(Some(d)) => d,
             Ok(None) => {
+                self.outcome = format!("refused {}", qsi::msgid::UNKNOWN);
                 let _ = self.session.refuse_unknown(id);
                 return;
             }
             Err(e) => {
+                self.outcome = format!("refused {}", qsi::msgid::BAD);
                 let _ = self.session.refuse_bad(id, &e);
                 return;
             }
         };
         if let Err(why) = decoded.check() {
+            self.outcome = format!("refused {}: {why}", qsi::msgid::BAD);
             let _ = self.session.refuse(id, qsi::msgid::BAD, why);
             return;
         }
@@ -279,6 +292,10 @@ impl Conn {
             .cloned()
             .unwrap_or_else(|| note(qsi::msgid::UNKNOWN, "The request was refused."));
         let also: Vec<Note> = notes.iter().skip(1).take(MAX_ALSO).cloned().collect();
+        let ids: Vec<&str> = std::iter::once(main.msgid.as_str())
+            .chain(also.iter().map(|n| n.msgid.as_str()))
+            .collect();
+        self.outcome = format!("refused {}", ids.join(" "));
         let _ = self.session.refuse_with(id, &main, &also);
     }
 
@@ -315,6 +332,7 @@ impl Conn {
         match opened {
             Ok((reply, mut pipe)) => match self.session.reply_stream(id, reply.encode()) {
                 Ok(stream) => {
+                    self.outcome = format!("stream {stream} opened");
                     self.streams.insert(
                         stream,
                         Flowing {
