@@ -88,7 +88,7 @@ impl Link {
         }
         let hello = Hello {
             version: qsi::VERSION,
-            caps: caps::HOST_V1,
+            caps: caps::HOST_V1 | caps::SERVICING,
             kind: PeerKind::Console,
             name: "qsictl".into(),
             release: env!("CARGO_PKG_VERSION").into(),

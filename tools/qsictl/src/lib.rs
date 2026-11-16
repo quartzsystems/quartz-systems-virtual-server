@@ -8,3 +8,4 @@
 pub mod home;
 pub mod link;
 pub mod pair;
+pub mod service;

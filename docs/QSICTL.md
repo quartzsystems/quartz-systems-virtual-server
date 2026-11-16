@@ -56,3 +56,29 @@ qsictl upload NAME FILE              # waits for the upload's end
 At a console, a line typed is its characters and Enter; `:F3`, `:enter`,
 `:up`, `:pageup`, `:tab`, `:exit`, `:attn`, `:sysreq` and the like are
 one key alone. A serial console's lines are sent as its bytes.
+
+## Servicing
+
+Its hello says `caps::SERVICING`, so a host serves it the `service`
+and `update` families and its own dumps (`docs/PROBLEMS.md`,
+`docs/UPDATE.md`, `docs/DUMPS.md`).
+
+```
+qsictl problems list [--open] [--limit N]   # newest first: number, status, code, count, description
+qsictl problems show N                      # one whole: resources, analysis log
+qsictl problems close N [--anyway]          # closed as this console's user
+qsictl update status                        # both slots, what is staged, an install's progress
+qsictl update stage FILE [--allow-older]    # the upload, then waits for the verification
+qsictl update install                       # waits for the slot to be written and pending
+qsictl update activate [--shut-down] [--timeout N]
+qsictl update cancel
+qsictl update discard
+qsictl hostdump take                        # waits for it to be written
+qsictl hostdump list
+qsictl hostdump fetch NAME FILE
+qsictl hostdump delete NAME
+```
+
+A command that waits subscribes to the host's events first, and ends
+with the event that says how the step ended: a refusal prints its
+message, `QSI` identifier first.

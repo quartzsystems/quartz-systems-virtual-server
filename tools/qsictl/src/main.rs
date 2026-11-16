@@ -89,6 +89,24 @@ enum Command {
         /// The file.
         file: PathBuf,
     },
+    /// The host's problems.
+    Problems {
+        /// What to do.
+        #[command(subcommand)]
+        what: qsictl::service::Problems,
+    },
+    /// The host's code update.
+    Update {
+        /// What to do.
+        #[command(subcommand)]
+        what: qsictl::service::Update,
+    },
+    /// The host's own dumps.
+    Hostdump {
+        /// What to do.
+        #[command(subcommand)]
+        what: qsictl::service::HostDump,
+    },
     /// Any other request: `qsictl request --help` lists them.
     #[command(flatten)]
     Request(requests::Ask),
@@ -133,6 +151,9 @@ fn run(cli: Cli) -> Result<(), String> {
                     console::download(&mut link, id, &name, &file)
                 }
                 Command::Upload { name, file } => console::upload(&mut link, &name, &file),
+                Command::Problems { what } => qsictl::service::problems(&mut link, &what),
+                Command::Update { what } => qsictl::service::update(&mut link, what),
+                Command::Hostdump { what } => qsictl::service::host_dump(&mut link, what),
                 Command::Request(ask) => requests::run(&mut link, ask),
                 _ => Ok(()),
             };
