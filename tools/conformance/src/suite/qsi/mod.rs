@@ -144,16 +144,22 @@ pub fn host_with_pool<'a>(run: &Run<'a>) -> Result<Qsi<'a>, String> {
     Ok(q)
 }
 
-/// The password on the `Start Pairing` screen: its four groups of four.
+/// Whether `word` is a password as QS/400's crate makes one: groups of
+/// four letters and digits joined by dashes.
+fn is_password(word: &str) -> bool {
+    let groups: Vec<&str> = word.split('-').collect();
+    groups.len() >= 2
+        && groups
+            .iter()
+            .all(|g| g.len() == 4 && g.chars().all(|c| c.is_ascii_alphanumeric()))
+}
+
+/// The password on the `Start Pairing` screen.
 pub fn password_of(screen: &str) -> Option<String> {
-    screen.lines().find_map(|l| {
-        let words: Vec<&str> = l.split_whitespace().collect();
-        (words.len() == 4
-            && words
-                .iter()
-                .all(|w| w.len() == 4 && w.chars().all(|c| c.is_ascii_alphanumeric())))
-        .then(|| words.concat())
-    })
+    screen
+        .split_whitespace()
+        .find(|w| is_password(w))
+        .map(ToString::to_string)
 }
 
 /// The screen with the password, the fingerprint and the times masked,
@@ -163,11 +169,12 @@ pub fn masked(screen: &str) -> String {
         .lines()
         .map(|l| {
             let words: Vec<&str> = l.split_whitespace().collect();
-            let hexish = !words.is_empty()
+            let print = !words.is_empty()
                 && words
                     .iter()
-                    .all(|w| w.len() == 4 && w.chars().all(|c| c.is_ascii_alphanumeric()));
-            if hexish {
+                    .all(|w| w.len() == 4 && w.chars().all(|c| c.is_ascii_hexdigit()));
+            let secret = words.len() == 1 && is_password(words[0]);
+            if print || secret {
                 l.chars()
                     .map(|c| if c.is_ascii_alphanumeric() { 'X' } else { c })
                     .collect()
@@ -253,10 +260,10 @@ mod tests {
 
     #[test]
     fn the_password_is_read_and_masked_off_its_screen() {
-        let screen = " Type this password at the management console to pair it:\n\n      ABCD EFGH JKMN PQRS\n\n Expires . . . . . .  2026-11-15 21:40 UTC\n      0a1b 2c3d 4e5f 6a7b 8c9d 0e1f 2a3b 4c5d\n";
-        assert_eq!(password_of(screen).as_deref(), Some("ABCDEFGHJKMNPQRS"));
+        let screen = " Type this password at the management console to pair it:\n\n      ABCD-EFGH-JKMN-PQRS\n\n Expires . . . . . .  2026-11-15 21:40 UTC\n      0a1b 2c3d 4e5f 6a7b 8c9d 0e1f 2a3b 4c5d\n";
+        assert_eq!(password_of(screen).as_deref(), Some("ABCD-EFGH-JKMN-PQRS"));
         let m = masked(screen);
         assert!(!m.contains("ABCD") && !m.contains("0a1b") && !m.contains("21:40"));
-        assert!(m.contains("XXXX XXXX XXXX XXXX") && m.contains("9999-99-99 99:99"));
+        assert!(m.contains("XXXX-XXXX-XXXX-XXXX") && m.contains("9999-99-99 99:99"));
     }
 }

@@ -340,7 +340,8 @@ impl Panel<Env, Outcome> for StartPairing {
             String::new(),
         ];
         if let Some(p) = out {
-            lines.push(format!("      {}", grouped(&self.password.text, 4)));
+            // Already in groups, as QS/400's crate makes it.
+            lines.push(format!("      {}", self.password.text));
             lines.push(String::new());
             lines.push(line(
                 "Expires",

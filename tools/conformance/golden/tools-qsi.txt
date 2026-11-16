@@ -1,0 +1,24 @@
+                           Management Console Pairing
+                                                               System:  vs-test
+
+ Select one of the following:
+
+      1. Work with paired consoles
+      2. Start pairing
+      3. Display management interface
+
+
+
+
+
+
+
+
+
+
+
+ Selection
+
+
+ F1=Help   F3=Exit   F12=Cancel
+
