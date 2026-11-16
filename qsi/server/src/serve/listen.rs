@@ -87,6 +87,12 @@ impl Gate {
         entry.0 += 1;
     }
 
+    /// A pairing attempt from `ip` failed.
+    pub fn failed_pairing(&mut self, ip: IpAddr, now: Instant) {
+        let entry = self.failures.entry(ip).or_insert((0, now));
+        entry.0 += 1;
+    }
+
     /// The handshake is done: a session.
     pub fn opened(&mut self) {
         self.handshakes = self.handshakes.saturating_sub(1);
@@ -183,7 +189,7 @@ pub(super) fn connection(server: &Arc<Server>, stream: TcpStream, from: SocketAd
         0,
     );
     if let Ok(mut conn) = conn {
-        serve(server, &mut conn, &mut tls, t0, &peer);
+        serve(server, &mut conn, &mut tls, t0, &peer, ip);
     }
     server.sessions.close(registered);
     lock(&server.gate).closed();
@@ -197,6 +203,11 @@ fn serve(
     t0: Instant,
     peer: &qsitrust::Peer,
 ) {
+    let ip = tls
+        .sock
+        .peer_addr()
+        .map(|a| a.ip())
+        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     let mut buf = vec![0u8; 64 * 1024];
     let mut checked = Instant::now();
     loop {
@@ -216,6 +227,9 @@ fn serve(
         }
         for line in conn.said() {
             server.say(&line);
+        }
+        for _ in 0..conn.failed_pairings() {
+            lock(&server.gate).failed_pairing(ip, Instant::now());
         }
         let out = conn.take_output();
         if !out.is_empty() && (tls.write_all(&out).is_err() || tls.flush().is_err()) {

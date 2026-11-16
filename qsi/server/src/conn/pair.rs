@@ -64,6 +64,7 @@ impl Conn {
                     let _ = self.session.reply_msg(id, &pair::Reply::Done(Empty));
                 } else {
                     self.say(format!("a pairing from {} failed", self.config.address));
+                    self.failed += 1;
                     let n = note(msgid::PAIRING_FAILED, "The pairing did not confirm.");
                     self.refuse(id, &[n]);
                 }

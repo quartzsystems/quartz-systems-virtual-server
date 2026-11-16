@@ -66,6 +66,8 @@ pub struct Conn {
     pairing: Option<qsitrust::pair::Managed>,
     streams: BTreeMap<StreamId, Flowing>,
     said: Vec<String>,
+    /// Pairing attempts that failed since the last look.
+    failed: u32,
 }
 
 impl std::fmt::Debug for Conn {
@@ -114,6 +116,7 @@ impl Conn {
             pairing: None,
             streams: BTreeMap::new(),
             said: Vec::new(),
+            failed: 0,
         })
     }
 
@@ -151,6 +154,12 @@ impl Conn {
     pub fn close(&mut self, why: &str) {
         self.session.close(why);
         self.end_streams();
+    }
+
+    /// How many pairing attempts failed since the last call: each
+    /// counts against the address as a failed handshake does.
+    pub fn failed_pairings(&mut self) -> u32 {
+        std::mem::take(&mut self.failed)
     }
 
     /// The lines for the system log since the last call.
