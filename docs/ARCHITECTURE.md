@@ -22,6 +22,9 @@ a side effect of other work.
 | Virtual Ethernet | VLAN-aware kernel bridges, tap devices with vhost-net |
 | Service channel | One virtio-console device per partition with two named ports, the service port and the console port, as QS/400's `docs/QSID.md` names them. The partition manager speaks the protocol (QS/400's crate `qsipart`); `qsvmm` carries bytes. The system's codes and states drive the partition's; shut down is delayed, operating system or immediate; a partition held with its memory after a terminal code or a fault is dumped from outside |
 | Management | One listener: the QSI host server, TCP 2300 on the management addresses, TLS 1.3 both ways, pinned consoles (two at most) paired at Service Tools. It is a service of its own, as a user of its own, and translates to the services that own the state. Service Tools locally; nothing else listens |
+| Problems | One record per condition a person should look at, opened from a posted reference code by the catalogue's table, counted while open, marked cleared, closed by a person. Kept by a small service of its own, fed by the history, so a problem is recorded whether or not a console is up |
+| Host dump | Service data, not memory: the logs, histories, inventory, state without its secrets, the services' status, in one ZIP archive with its manifest, taken by PID 1, kept on `/data` and bounded |
+| Code update | One image: both slots' UKIs and a manifest signed by the build's key, verified against the running image's trusted keys (nothing turns that off), installed into the slot that does not run on every load-source disk, activated by a restart into it. The pending slot's first IPL keeps a copy of state; a slot that does not confirm (within 15 minutes) is followed by the old slot, which puts the copy back |
 | Disk layout | A load-source disk is GPT: ESP (slot A and B UKIs), a record partition, `QSVSDATA`. One disk, or two mirrored: each then has its own ESP and record, and `QSVSDATA` is one xfs on a protected set over the two. Two units that each ran without the other are not reconciled by the host: the operator chooses. Storage pools on other disks |
 | Local console | Service Tools on the display and the serial port, each its own session; the installer on both at once. QS/400's `console` and screen kit |
 | Identity | Release `V1R0M0` from `VERSION` (`1.0.0`). Fixes `QVnnnnn`. Message prefix `QVS`. Environment prefix `QSVS_`. Kernel command-line keys `qsvs.` |
@@ -283,8 +286,40 @@ the record's default becomes that slot and `BootOrder` is rewritten
 through efivarfs to match. A pending slot that does not confirm was only
 ever `BootNext`, so the next IPL comes up on the old default; that IPL
 clears the pending field and posts an attention code. A pending slot
-gets that one trial: the attempts left are 1 when it is set and 0 after. Writing the other
-slot is the update phase's.
+gets that one trial: the attempts left are 1 when it is installed and
+0 once it is activated, so a power loss between the two is no
+rollback. A trial that is not confirmed within 15 minutes of its IPL is
+restarted by PID 1 into the other slot. Writing the other slot is the
+update service's (`docs/UPDATE.md`).
+
+**Problems.** A problem is one record for each condition a person should
+look at (`docs/PROBLEMS.md`). Every posting may say what it is about;
+the problem service reads the history from where it got to and opens,
+counts or clears problems by the catalogue's table, which holds every
+attention and fatal code. It is its own supervised service so problems
+are kept whatever else runs, and it keeps its log and its place in the
+history in one write, so it loses nothing and doubles nothing.
+
+**The host's dump.** A host dump is the service data the release's
+supplier needs, not memory: logs, the reference code and problem
+histories, the inventory, every state file but those that keep a secret,
+the services' status, the partitions, pools and switches, the control
+groups and the kernel's log, in one ZIP archive a workstation opens
+without anything added (`docs/DUMPS.md`). PID 1 takes it on a thread,
+asked by a console, by Service Tools, or by itself when a service stops
+after its retries or a pending slot does not confirm.
+
+**Code update.** An update image is both slots' UKIs (each carries its
+slot in its command line) and a manifest of them, the release, its
+fixes and the state it reads, signed by the build's key
+(`docs/UPDATE.md`). The update service verifies it against the running
+image's trusted keys, writes the other slot's UKI to every load-source
+disk beside the old file and renames it over, reads it back, and only
+then asks PID 1, which owns the A/B record and the firmware's variables,
+to mark the slot pending. An activation shuts partitions down through
+their systems first when asked to and restarts into the slot. State is
+copied before the pending slot's first IPL reads it and put back by the
+old slot if the new one does not confirm.
 
 **The A/B record, version 2.** The payload is sixteen bytes
 (`base/loadsource/src/record.rs`): the default slot; the pending slot, 0

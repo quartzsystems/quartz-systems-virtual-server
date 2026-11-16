@@ -33,13 +33,13 @@ partition manager alone speaks.
 | 5 | Virtual storage, optical and tape: storage pools, virtual disks, the media library, optical and tape devices, IPL source D | `docs/PHASE5.md` |
 | 6 | Virtual Ethernet: virtual switches and their uplinks, the switch service, partitions' adapters and ports, virtio-net over vhost-net | `docs/PHASE6.md` |
 | 7 | Partition service interface: virtio-console with the service and console ports, the service channel in `partd`, the system's codes and states, the shut down kinds, the panel functions, holding and dumps, the console as a full screen | `docs/PHASE7.md` |
-| **8 (current)** | QSI host server: the one listener, pairing at Service Tools option 4, the host's families translated to the services, events on disk, `qsictl` | `docs/PHASE8.md` |
-| 9 | Service, dumps and code update | |
+| 8 | QSI host server: the one listener, pairing at Service Tools option 4, the host's families translated to the services, events on disk, `qsictl` | `docs/PHASE8.md` |
+| **9 (current)** | Service, dumps and code update: problems from posted codes, the host's dump, the update image installed into the other slot with its rollback, Service Tools option 8 | `docs/PHASE9.md` |
 | 10 | Physical I/O and tape pass-through | |
 | 11 | Release engineering and hardening | |
 
 Work that is not done is listed in the current phase's record,
-`docs/PHASE8.md`. Code and documents mark it `BLOCKED(phase8): reason`
+`docs/PHASE9.md`. Code and documents mark it `BLOCKED(phase9): reason`
 (one line) or `NEEDS-CODY` (Cody's hardware or sign-off). No other
 marker form. The records of earlier phases keep the markers they were
 written with.
@@ -152,7 +152,22 @@ written with.
   release artifact; the userland and manifest steps check.
 - No IBM text, product names or marks anywhere. The names in use are
   QS/VS, QS/MC and QS/400.
-- Anything not done is listed in `docs/PHASE8.md`.
+- The problem service (`svc/problem`, `lic/qsvsprobd`) is a service of
+  its own: it reads the reference code history and opens, counts and
+  clears problems by the catalogue's table (`lic/qvsmsg`), which holds
+  every attention and fatal code; a unit test holds it to
+  `docs/PROBLEMS.md`. A posting says what it is about (`supervise::About`).
+- A host dump (`svc/hostdump`) is service data in a standard ZIP with
+  its manifest, taken by PID 1; it never holds the host's key, the users'
+  hashes or the consoles' pins (`hostdump::take::LEFT_OUT`), and a test
+  fails the build if a secret file is not left out.
+- A code update (`svc/update`, `lic/qsvsupdd`) is verified against the
+  running image's trusted keys before a byte is written, and nothing
+  turns that off. It writes only the slot that does not run; PID 1 alone
+  writes the A/B record and the firmware's variables. A pending slot's
+  first IPL keeps a copy of state; a slot that does not confirm is
+  followed by the old one, which puts it back.
+- Anything not done is listed in `docs/PHASE9.md`.
 
 ## Locked decisions
 
@@ -240,6 +255,15 @@ See `docs/ARCHITECTURE.md`. Short form:
   copy with the highest sequence is the record and a write goes to
   both. A pending slot confirms when the base services are all ready:
   the record's default and the firmware's `BootOrder` become it.
+- **Problems.** One record a condition, opened from a posted reference
+  code by the catalogue's table, kept by the problem service, closed by
+  a person (`docs/PROBLEMS.md`).
+- **Host dump.** Service data, not memory, in one ZIP with its
+  manifest, on `/data`, bounded (`docs/DUMPS.md`).
+- **Code update.** One signed image of both slots' UKIs, installed into
+  the slot that does not run on every load-source disk, activated by a
+  restart; a trial unconfirmed in 15 minutes rolls back
+  (`docs/UPDATE.md`).
 - **Installation.** The media UKI runs the installer in place of the
   service table. The ISO carries the slot UKIs and a manifest of them
   signed by the build's key; the installer verifies it before writing.
@@ -248,7 +272,9 @@ See `docs/ARCHITECTURE.md`. Short form:
 - **Local console.** Service Tools: sign-on with a service tools user
   ID, a session each for the display and the serial port. The serial
   port is PID 1's, in lines, while nobody is signed on there. Option 4
-  pairs management consoles; option 8 of its menu comes with Phase 9.
+  pairs management consoles; option 8 is the service functions
+  (problems, host dumps, update, code levels, shutting down every
+  partition) and option 7 shows the problem log.
 - **Time zones.** Fixed UTC offsets only, in V1.
 - **Base crates.** `base/` is product-neutral and shared with QS/MC,
   the load source and its storage service included.
@@ -272,11 +298,11 @@ tools/          host tools
   qsictl/         the developer's QSI console, Linux and Windows, in no image (docs/QSICTL.md)
   build/          the orchestrator, a thin binary over buildkit: cargo run -p build -- <cmd>
     src/product/    QS/VS as buildkit's Product: names, kernel symbols, initramfs, media; the two image kinds
-    src/image/      the userland step and the hooks check, the A/B record on the disk image, the manifest's kind
+    src/image/      the userland step and the hooks check, the A/B record on the disk image, the manifest's kind, the update image
     src/host/       doctor rows, the license header check, the neutrality check of base/, `test`, `fuzz`
   conformance/    the QEMU harness
     src/qemu/       launch, OVMF, serial capture, the serial port as a 24x80 grid, typed keys, golden files, firmware variables, image copies, the test hooks' channel
-    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3 and the sixteen of Phase 4, with the partition manager's client over the hooks' channel; storage/ Phase 5's, with the pool service's client; network/ Phase 6's; service/ Phase 7's; qsi/ Phase 8's, a console over the management network
+    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3 and the sixteen of Phase 4, with the partition manager's client over the hooks' channel; storage/ Phase 5's, with the pool service's client; network/ Phase 6's; service/ Phase 7's; qsi/ Phase 8's, a console over the management network; servicing/ Phase 9's
     golden/         every installer and Service Tools screen, as text
   fuzz/           qsvsfuzz, the Rust fuzzer: LLVM's coverage counters, the mutator, the loop, a target for every reader of guest bytes
 base/           what every Quartz appliance needs; product-neutral
@@ -309,7 +335,9 @@ lic/            PID 1, release, installer, base services
   qsvspoold/      stg/poold run as QS/VS, with QS/VS's pool disk names, inventory and identity
   qsvsvswitchd/   net/vswitchd run as QS/VS, with the inventory's interfaces, netd's management device and partd's adapters
   qsvsqsid/       qsi/server run as QS/VS: its identity read as root, its directory and local socket, then user 22990
-  qvsmsg/         the message catalogue: QVS messages, first-level and second-level text
+  qsvsprobd/      svc/problem run as QS/VS
+  qsvsupdd/       svc/update run as QS/VS, over PID 1's slots
+  qvsmsg/         the message catalogue: QVS messages, first-level and second-level text, the problem table
   qsvsinstall/    the installer: base/install over QS/VS's media, disks and state
   qsvshook/       the test hooks' binary: the harness's channel, a failing service, the state churn
     src/partition/  what the partitions say, relayed to the serial port; the probe of requests no guest sends; a console viewer and a dump's read; a hostile system
@@ -347,8 +375,11 @@ qsi/            the QSI host server
   server/         qsiserver: the pins and pairing, each family translated to the services, the events and their log on disk, a console's connection; on Linux the listener, the streams' far ends, the pumps, the local socket; the fuzz target of what a console sends
   local/          qsilocal: the server's local socket, for Service Tools option 4
 svc/            Service Tools
-  tools/          qsvstools: QS/VS's menu, system status, the partition list, disk units, disk configuration, storage pools, the network's switches and management console pairing over base/panels; the two sessions; the one panel PID 1 runs it for
-docs/           ARCHITECTURE, PHASE0 to PHASE8, QS400_GUEST, VMM, PARTD, SERVICE, PANEL, DUMPS, POOLD, VSWITCHD, NETWORK, STORAGE, RESOURCES, PROFILE, QSISERVER, QSICTL, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
+  tools/          qsvstools: QS/VS's menu, system status, the partition list, disk units, disk configuration, storage pools, the network's switches and management console pairing over base/panels; option 8's service functions and the problem log; the two sessions; the one panel PID 1 runs it for
+  problem/        the problem service: problems, their log, the history read from where it got to; its socket
+  hostdump/       the host's dump: the ZIP writer, what is taken and left out, the dumps kept
+  update/         code update: the update image and its manifest, verification, installing into the other slot; its socket
+docs/           ARCHITECTURE, PHASE0 to PHASE9, PROBLEMS, UPDATE, QS400_GUEST, VMM, PARTD, SERVICE, PANEL, DUMPS, POOLD, VSWITCHD, NETWORK, STORAGE, RESOURCES, PROFILE, QSISERVER, QSICTL, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
 ```
 
 Category folders are created as phases need them. The full set: `tools/`
@@ -357,7 +388,7 @@ installer, base services), `vmm/`, `stg/`, `net/`, `qsi/`, `svc/`
 (Service Tools). Phase 2 has `tools/`, `base/`, `lic/` and `svc/`;
 Phase 3 adds `vmm/`, Phase 4 `part/` (the partition manager), Phase 5
 `stg/` (storage), Phase 6 `net/` (virtual Ethernet); Phase 7's crates
-are in `part/`; Phase 8 adds `qsi/`.
+are in `part/`; Phase 8 adds `qsi/`; Phase 9's are in `svc/`.
 
 ## Commands
 
@@ -368,19 +399,21 @@ with `QSVS_TARGET_DIR`.
 cargo run -p build -- doctor          host prerequisites, the license headers, base/ neutral
 cargo run -p build -- all             fetch, kernel, userland, initramfs, uki, disk, iso, manifest
 cargo run -p build -- all --test-image   the same with the test hooks, under <target>/test-image/
-cargo run -p build -- test            Phase 0's suite on the release image; the ten base suites, the fifteen of Phase 2, the ten of Phase 3, the sixteen of Phase 4, Phase 5's, Phase 6's, Phase 7's and Phase 8's on the test image; then the fuzz targets, 60 s each
+cargo run -p build -- test            Phase 0's suite on the release image; the ten base suites, the fifteen of Phase 2, the ten of Phase 3, the sixteen of Phase 4, Phase 5's, Phase 6's, Phase 7's, Phase 8's and Phase 9's on the test image; then the fuzz targets, 60 s each
 cargo run -p build -- test --suite dhcp  one suite alone (--suite list names them)
 cargo run -p build -- test --media iso   boot the installation ISO to the installer's first screen
 QSVS_GOLDEN=update cargo run -p build -- test --suite install-serial   write the golden screens instead of comparing
 cargo run -p build -- fuzz            build the fuzzer with coverage counters and run every target (--target NAME, --secs N, --jobs N)
+cargo run -p build -- update          the update image of the release just built (--test-image)
 cargo run -p build -- deny            cargo-deny and the C-linkage check
 cargo run -p build -- notices         rewrite lic/release/NOTICES.txt (--check in CI)
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvspoold -p qsvsvswitchd -p qsvspartd -p qsvstools -p qsvsqsid -p qsvsinstall -p qsvshook -p qsvmm --all-targets --target x86_64-unknown-linux-musl -- -D warnings
+cargo clippy -p qsvsinit -p qsvslogd -p qsvsnetd -p qsvsstgd -p qsvspoold -p qsvsvswitchd -p qsvspartd -p qsvstools -p qsvsqsid -p qsvsprobd -p qsvsupdd -p qsvsinstall -p qsvshook -p qsvmm --all-targets --target x86_64-unknown-linux-musl -- -D warnings
 cargo build -p qsictl                 the developer's console (on Windows too)
 cargo test --workspace
 QVS_MESSAGES=update cargo test -p qvsmsg   write the table of docs/MESSAGES.md from the catalogue
+QVS_PROBLEMS=update cargo test -p qvsmsg   write the table of docs/PROBLEMS.md from the catalogue
 ```
 
 Single steps: `fetch`, `kernel`, `userland`, `initramfs`, `uki`, `disk`,
@@ -394,7 +427,10 @@ Environment: `QSVS_TARGET_DIR`, `QSVS_JOBS`, `QSVS_SIGNING_KEY`,
 `QSVS_QS400_IMAGE`, the QS/400 disk image the partition suites IPL
 (`docs/PHASE4.md` says how to make it), and `QSVS_QS400_ISO`, QS/400's
 installation ISO with a response file, which `pool-install` uploads and
-installs from (`docs/PHASE5.md`).
+installs from (`docs/PHASE5.md`), and `QSVS_FIXES`, the fixes an
+update image names, and `QSVS_UPDATE_IMAGE`, the update image of
+another release signed by the same key, which the update suites install
+(`docs/PHASE9.md`).
 `QSVS_TEST_HOOKS` is the build's own: the userland step sets it, on for
 a test image and off for a release image, whatever the caller has.
 
@@ -429,6 +465,13 @@ a test image and off for a release image, whatever the caller has.
 - `docs/PHASE8.md`: the QSI host server, and before it the new pin and
   the channel TLV: what exists, how to run it, hashes, the acceptance
   table, the joint gate with QS/MC, what remains for a real machine.
+- `docs/PHASE9.md`: service, dumps and code update: what exists, how
+  to run it, the pin, hashes, the acceptance table, what remains for a
+  real machine.
+- `docs/PROBLEMS.md`: problems: what opens, counts, clears and closes
+  one, the table of codes.
+- `docs/UPDATE.md`: code update: the image, verification, install,
+  activation, rollback, the state copy, `build update`.
 - `docs/QSISERVER.md`: the QSI host server: the listener, its limits,
   who may connect, pairing, sessions and the mapping, streams, the event
   log, logging, what each failure does.
@@ -437,7 +480,7 @@ a test image and off for a release image, whatever the caller has.
   codes, shut down, holding, the console, what happens when either
   side restarts.
 - `docs/PANEL.md`: a partition's control panel functions.
-- `docs/DUMPS.md`: a partition's dumps: how they are taken, where they
+- `docs/DUMPS.md`: a partition's dumps and the host's: how they are taken, where they
   are kept, the format and how to read one.
 - `docs/NETWORK.md`: switches, uplinks, VLANs, adapters, MAC addresses,
   what a partition may send, what the host exposes, limits, failures.
