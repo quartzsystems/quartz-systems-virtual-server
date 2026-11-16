@@ -80,6 +80,25 @@ impl Facts for Gone {
     fn inventory(&mut self) -> Result<state::Inventory, Vec<Note>> {
         Err(down("inventory", &gone()))
     }
+    fn identity(&mut self) -> Result<qsi::base::Identity, Vec<Note>> {
+        Err(down("PID 1", &gone()))
+    }
+    fn state(&mut self) -> Result<supervise::control::HostState, Vec<Note>> {
+        Err(down("PID 1", &gone()))
+    }
+    fn power(&mut self, _: bool, _: bool, _: u32, _: &str) -> Result<(), Vec<Note>> {
+        Err(down("PID 1", &gone()))
+    }
+    fn history(&mut self) -> Result<Vec<base::Posted>, Vec<Note>> {
+        Err(down("log", &gone()))
+    }
+    fn time(&mut self) -> qsi::base::Time {
+        qsi::base::Time {
+            unix_ns: 0,
+            offset_s: 0,
+            zone: "UTC".into(),
+        }
+    }
 }
 
 fn services(fake: &Fake) -> Services {
@@ -89,6 +108,10 @@ fn services(fake: &Fake) -> Services {
         vswitchd: Box::new(Gone),
         facts: Box::new(Gone),
     }
+}
+
+fn answer_as(s: &mut Services, r: AnyRequest) -> Answer {
+    answer(s, r, "QSECOFR")
 }
 
 fn refused(a: Answer) -> Vec<String> {
@@ -102,7 +125,7 @@ fn refused(a: Answer) -> Vec<String> {
 fn a_refusal_carries_every_message_and_a_service_down_is_said() {
     let fake = Fake::default();
     let mut s = services(&fake);
-    let a = answer(
+    let a = answer_as(
         &mut s,
         AnyRequest::Partitions(partitions::Request::Get(partitions::Get { id: 7 })),
     );
@@ -111,7 +134,7 @@ fn a_refusal_carries_every_message_and_a_service_down_is_said() {
         down: true,
         ..Fake::default()
     });
-    let a = answer(
+    let a = answer_as(
         &mut s,
         AnyRequest::Partition(partition::Request::Restart(partition::Restart { id: 1 })),
     );
@@ -131,11 +154,11 @@ fn a_stale_put_is_led_by_qsis_conflict_and_a_good_one_says_its_revision() {
         }))
     };
     assert_eq!(
-        refused(answer(&mut s, put(Some(2)))),
+        refused(answer_as(&mut s, put(Some(2)))),
         vec![profiles::msgid::CHANGED, qvsmsg::PROFILE_CHANGED.id]
     );
     assert_eq!(
-        answer(&mut s, put(Some(3))),
+        answer_as(&mut s, put(Some(3))),
         Answer::Reply(AnyReply::Profiles(profiles::Reply::Put(profiles::Saved {
             revision: 4
         })))
@@ -147,7 +170,7 @@ fn set_default_is_a_change_of_the_definition() {
     let fake = Fake::default();
     let mut s = services(&fake);
     let id = model::sample::definition().id;
-    let a = answer(
+    let a = answer_as(
         &mut s,
         AnyRequest::Profiles(profiles::Request::SetDefault(profiles::SetDefault {
             id,
@@ -172,7 +195,7 @@ fn a_history_is_paged_newest_first_by_place() {
 
     let fake = Fake::default();
     let mut s = services(&fake);
-    let a = answer(
+    let a = answer_as(
         &mut s,
         AnyRequest::Refcodes(refcodes::Request::History(refcodes::History {
             id: 1,
@@ -190,7 +213,7 @@ fn a_history_is_paged_newest_first_by_place() {
 fn streams_are_left_to_the_connection() {
     let fake = Fake::default();
     let mut s = services(&fake);
-    let a = answer(
+    let a = answer_as(
         &mut s,
         AnyRequest::Dumps(qsi::host::dumps::Request::Download(
             qsi::host::dumps::Download {
@@ -303,7 +326,7 @@ fn what_is_the_hosts_alone_is_left_out() {
 fn an_upload_is_left_to_the_connection() {
     let fake = Fake::default();
     let mut s = services(&fake);
-    let a = answer(
+    let a = answer_as(
         &mut s,
         AnyRequest::Vres(qsi::host::vres::Request::ImageUpload(
             qsi::host::vres::ImageUpload {

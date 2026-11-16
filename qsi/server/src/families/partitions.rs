@@ -17,9 +17,6 @@ const PARTD: &str = "partition manager";
 
 type Answered = Result<AnyReply, Vec<Note>>;
 
-/// The most codes on one page of a history.
-const MAX_PAGE: u32 = 256;
-
 fn definition(s: &mut Services, id: u32) -> Result<model::Definition, Vec<Note>> {
     local(PARTD, s.partd.definition(id))
 }
@@ -189,23 +186,17 @@ pub(super) fn profiles(s: &mut Services, r: profiles::Request) -> Answered {
     }))
 }
 
-/// A page of a history kept oldest first: places count from 1, the
-/// newest first, before `before`.
+/// A page of a partition's history, the newest first.
 pub(super) fn page(
     all: &[partd::Posted],
     before: Option<u64>,
     limit: u32,
 ) -> (Vec<refcodes::Posted>, Option<u64>) {
-    let limit = usize::try_from(limit.clamp(1, MAX_PAGE)).unwrap_or(1);
-    let end = before
-        .and_then(|b| usize::try_from(b.saturating_sub(1)).ok())
-        .map_or(all.len(), |b| b.min(all.len()));
-    let start = end.saturating_sub(limit);
-    let codes = (start..end)
+    let (range, more) = super::base::places(all.len(), before, limit);
+    let codes = range
         .rev()
         .map(|i| convert::posted(&all[i], (i + 1) as u64))
         .collect();
-    let more = (start > 0).then_some((start + 1) as u64);
     (codes, more)
 }
 

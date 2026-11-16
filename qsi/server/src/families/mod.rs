@@ -7,6 +7,7 @@
 //! (`docs/QSI.md` section 8). A refusal carries every message the
 //! service gave; a service that does not answer is `QSI0301`.
 
+pub mod base;
 pub mod convert;
 pub mod host;
 mod partitions;
@@ -31,12 +32,27 @@ pub struct Services {
 
 /// What the server reads of the host's own state files: read, never
 /// written.
+///
+/// Each fails as a refusal: the file not there, PID 1 not answering.
 pub trait Facts: Send {
     /// The host inventory PID 1 wrote at this IPL.
-    ///
-    /// # Errors
-    /// It cannot be read, as a refusal.
     fn inventory(&mut self) -> Result<state::Inventory, Vec<Note>>;
+    /// Who the host is.
+    fn identity(&mut self) -> Result<qsi::base::Identity, Vec<Note>>;
+    /// The host's state, PID 1's.
+    fn state(&mut self) -> Result<supervise::control::HostState, Vec<Note>>;
+    /// Ask PID 1 to power off or restart; `by` is who asked.
+    fn power(
+        &mut self,
+        restart: bool,
+        immediate: bool,
+        delay: u32,
+        by: &str,
+    ) -> Result<(), Vec<Note>>;
+    /// The host's reference code history, oldest first.
+    fn history(&mut self) -> Result<Vec<base::Posted>, Vec<Note>>;
+    /// The host's clock and its display zone.
+    fn time(&mut self) -> qsi::base::Time;
 }
 
 impl std::fmt::Debug for Services {
@@ -116,9 +132,11 @@ pub(crate) fn reached<T>(name: &str, r: Result<T, ipc::WireError>) -> Result<T, 
     r.map_err(|e| down(name, &e))
 }
 
-/// Answer a request of the host's families.
-pub fn answer(s: &mut Services, request: AnyRequest) -> Answer {
+/// Answer a request of the host's families; `user` is who the console
+/// says asked, which grants nothing.
+pub fn answer(s: &mut Services, request: AnyRequest, user: &str) -> Answer {
     match request {
+        AnyRequest::Base(r) => base::answer(s, &r, user).into(),
         AnyRequest::Partitions(r) => partitions::partitions(s, &r).into(),
         AnyRequest::Partition(r) => partitions::partition(s, r).into(),
         AnyRequest::Profiles(r) => partitions::profiles(s, r).into(),
@@ -132,8 +150,8 @@ pub fn answer(s: &mut Services, request: AnyRequest) -> Answer {
             bytes: u.bytes,
         }),
         AnyRequest::Vres(r) => vres::answer(s, r).into(),
-        // Base and pairing are the connection's; the rest are not yet.
-        _ => Answer::Refused(vec![Note {
+        // Pairing is the connection's.
+        AnyRequest::Pair(_) => Answer::Refused(vec![Note {
             msgid: qsi::msgid::UNKNOWN.into(),
             text: "This host does not answer that request.".into(),
             help: String::new(),

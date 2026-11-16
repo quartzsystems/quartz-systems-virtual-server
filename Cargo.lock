@@ -1534,6 +1534,7 @@ dependencies = [
  "resource",
  "serde",
  "state",
+ "supervise",
  "vswitch",
  "vswitchd",
 ]
