@@ -682,6 +682,10 @@ pub fn run(host: Host) -> String {
         Ok(listener) => listener,
         Err(e) => return format!("{}: {e}", socket.display()),
     };
+    // The QSI host server asks too.
+    if let Err(e) = release::share_with_server(&socket) {
+        return format!("{}: {e}", socket.display());
+    }
     let mut core = Core {
         host,
         owner,

@@ -476,7 +476,9 @@ pub fn run(service: &Service) -> io::Error {
         Ok(listener) => listener,
         Err(e) => return e,
     };
-    if let Err(e) = fs::set_permissions(&socket, fs::Permissions::from_mode(0o600)) {
+    if let Err(e) = fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))
+        .and_then(|()| release::share_with_server(&socket))
+    {
         return e;
     }
     workers(&shared, service, watches);

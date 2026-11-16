@@ -1463,6 +1463,7 @@ dependencies = [
  "protect",
  "qvsmsg",
  "refcode",
+ "release",
  "rustix",
  "state",
  "supervise",
@@ -1826,6 +1827,7 @@ version = "0.1.0"
 dependencies = [
  "appliance",
  "pool",
+ "rustix",
  "supervise",
  "vrm",
 ]
@@ -2718,6 +2720,7 @@ dependencies = [
  "nl",
  "qvsmsg",
  "refcode",
+ "release",
  "rustix",
  "state",
  "supervise",

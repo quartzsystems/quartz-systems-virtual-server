@@ -101,6 +101,8 @@ mod on_host {
         let _ = std::fs::remove_file(&control);
         let listener = UnixListener::bind(&control)
             .and_then(|l| l.set_nonblocking(true).map(|()| l))
+            // The QSI host server asks for the host's state and power.
+            .and_then(|l| release::share_with_server(&control).map(|()| l))
             .map_err(|e| host.line(&format!("{}: {e}", control.display())))
             .ok();
         // A table that is not one is a failure of PID 1 itself.

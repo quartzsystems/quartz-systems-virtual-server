@@ -49,6 +49,29 @@ pub const RUN_DIR: &str = "/run";
 /// PID 1's control socket.
 pub const CONTROL_SOCKET: &str = "/run/qsvsinit.sock";
 
+/// The QSI host server's user and group (`docs/QSISERVER.md`): no
+/// partition's (those are from 23001), and no other service's.
+pub const QSI_USER: u32 = 22_990;
+
+/// The QSI host server's port.
+pub const QSI_PORT: u16 = 2300;
+
+/// Let the QSI host server reach a service's socket: it is root's and
+/// the server's group's, read and write, and nobody else's. Not being
+/// root (a unit test) leaves it as it is.
+///
+/// # Errors
+/// The socket cannot be given to the group.
+#[cfg(unix)]
+pub fn share_with_server(socket: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    if !rustix::process::geteuid().is_root() {
+        return Ok(());
+    }
+    std::os::unix::fs::chown(socket, Some(0), Some(QSI_USER))?;
+    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o660))
+}
+
 /// Where the service binaries are in the initramfs.
 pub const BIN_DIR: &str = "/qsvs/bin";
 /// Where storage pools are mounted, each under its name.
