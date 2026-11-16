@@ -34,6 +34,7 @@ fn settings(d: &std::path::Path) -> Settings {
             state: d.join("state"),
             log: d.join("log"),
             control: d.join("control.sock"),
+            dumps: d.join("dumps"),
         },
         own: d.to_path_buf(),
         local: d.join("local.sock"),

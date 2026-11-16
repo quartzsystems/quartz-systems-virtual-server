@@ -1,0 +1,23 @@
+[package]
+name = "hostdump"
+description = "The host's own dump: service data (logs, histories, state without its secrets, the services' status) in one ZIP archive with its manifest, kept on /data and bounded"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+appliance = { path = "../../base/appliance", version = "0.1.0" }
+ipc.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+partd = { path = "../../part/partd", version = "0.1.0" }
+poold = { path = "../../stg/poold", version = "0.1.0" }
+vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
+
+[dev-dependencies]
+identity = { path = "../../base/identity", version = "0.1.0" }
+users = { path = "../../base/users", version = "0.1.0" }
+
+[lints]
+workspace = true

@@ -26,6 +26,8 @@ pub struct Paths {
     pub log: PathBuf,
     /// PID 1's control socket.
     pub control: PathBuf,
+    /// The host's own dumps.
+    pub dumps: PathBuf,
 }
 
 /// The facts, from the files and PID 1.
@@ -132,6 +134,31 @@ impl Facts for HostFacts {
         Ok(history_of(
             BufReader::new(file).lines().map_while(Result::ok),
         ))
+    }
+
+    fn host_dumps(&mut self) -> Vec<hostdump::Info> {
+        hostdump::Store::at(&self.paths.dumps).list()
+    }
+
+    fn take_host_dump(&mut self, by: &str) -> Result<String, Vec<Note>> {
+        Client::new(&self.paths.control)
+            .take_dump(by.to_string())
+            .map_err(|e| down("PID 1", &e))?
+            .map_err(|why| vec![crate::families::base::taking(&why)])
+    }
+
+    fn delete_host_dump(&mut self, name: &str) -> Result<(), Vec<Note>> {
+        let store = hostdump::Store::at(&self.paths.dumps);
+        if store.path(name).is_none_or(|p| !p.is_file()) {
+            return Err(vec![crate::families::base::no_dump(name)]);
+        }
+        store.delete(name).map_err(|why| {
+            vec![Note {
+                msgid: qsi::base::msgid::NO_DUMP.into(),
+                text: why,
+                help: String::new(),
+            }]
+        })
     }
 
     fn time(&mut self) -> Time {

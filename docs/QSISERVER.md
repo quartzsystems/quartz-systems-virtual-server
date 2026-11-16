@@ -91,13 +91,13 @@ Each code goes through PID 1 into the host's history, so each is a base
 
 The host's hello names it a host, with its name, release and serial
 number and `caps::HOST_V1` (base, pair, and the nine host families) with
-`caps::SERVICE`, its problems. A request is checked by QSI's own bounds
+`caps::SERVICE`, its problems, and `caps::SYSTEM_DUMPS`, its own dumps. A request is checked by QSI's own bounds
 (`QSI0002`), then translated (`qsi/server/src/families`, following
 `docs/QSI.md` section 8):
 
 | Family | To |
 |---|---|
-| base | PID 1 (state, power), the log service's history file (`/data/log/refcodes.ndjson`, read only), the state files (host name, zone, inventory, read only) |
+| base | PID 1 (state, power, a host dump taken), the log service's history file (`/data/log/refcodes.ndjson`, read only), the state files (host name, zone, inventory, read only), the host's dumps' directory (listed, read, deleted; `docs/DUMPS.md`) |
 | host | the partition manager (resources, settings), the inventory with the pool service's disks and the switch service's interfaces for each item's owner |
 | partitions, partition, profiles, refcodes, panel, dumps, console | the partition manager |
 | vres | the pool service (pools, virtual disks, images, volumes), the partition manager (drives, processor pools, where a disk is named, read from its profiles), the switch service (switches, ports, forwarding, VLANs, limits) |
@@ -129,6 +129,7 @@ revision; a console makes the partition, then puts its profile.
 |---|---|---|
 | console `Attach` | the partition manager's console connection: its frames, updates and serial bytes out as `console::Out` pieces, the console's `In` pieces as keys, a refresh or serial bytes | a piece is sent when the console has credit for it; the manager's connection is read by a thread into a queue of eight pieces |
 | dumps `Download` | the partition manager's dump read, its pieces as they come | as the console grants |
+| base `DownloadDump` | the host dump's file, read by a thread in 16 KiB pieces | as the console grants |
 | vres `ImageUpload` | the pool service's upload: the bytes written to its connection as they come, exactly the size named | each piece is granted back once the pool service took it: its socket is the back-pressure |
 
 The upload's end is an event (vres `UploadEnded`): the image, or why
@@ -148,7 +149,7 @@ One log for every session (`qsisess::EventLog`), fed by:
 | the switch service | its subscription |
 | the pool service | it has none: the server looks every 2 seconds and says what changed (pools, virtual disks, images, volumes) |
 | the problem service | its subscription: each problem opened, seen again, cleared or closed |
-| the host | its history file looked at every 2 seconds (base `Refcode`), PID 1's state (base `State`) |
+| the host | its history file looked at every 2 seconds (base `Refcode`; an `A2011010` also as base `DumpTaken` with its error), PID 1's state (base `State`), its dumps' directory (base `DumpTaken`, `DumpRemoved`) |
 | uploads | their ends |
 
 A source that goes away is subscribed to again every 2 seconds.

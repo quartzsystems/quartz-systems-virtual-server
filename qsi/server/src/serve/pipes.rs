@@ -63,6 +63,32 @@ fn note(msgid: &str, text: impl Into<String>) -> Note {
     }
 }
 
+/// A file's bytes, read by a thread: a host dump.
+struct FilePipe {
+    rx: Receiver<Piece>,
+    ended: bool,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Pipe for FilePipe {
+    fn poll(&mut self) -> Flow {
+        flow(&self.rx, &mut self.ended)
+    }
+
+    fn put(&mut self, _: &[u8]) -> Result<(), Note> {
+        Err(note(
+            qsi::msgid::BAD,
+            "A dump's stream carries nothing to the host.",
+        ))
+    }
+
+    fn closed(&mut self) {}
+
+    fn reset(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// A partition's console: the manager's frames as QSI's pieces, the
 /// console's pieces as its keys.
 struct ConsolePipe {
@@ -211,6 +237,8 @@ impl Pipe for UploadPipe {
 /// The far ends, on the services' sockets.
 #[derive(Clone, Debug)]
 pub struct Sockets {
+    /// The host's dumps' directory.
+    pub dumps: PathBuf,
     /// The partition manager's.
     pub partd: PathBuf,
     /// The pool service's.
@@ -275,6 +303,50 @@ impl Opener for Sockets {
             let _ = tx.send(Piece::End(end));
         });
         Ok((bytes, Box::new(DumpPipe { rx, ended: false })))
+    }
+
+    fn host_dump(&mut self, name: &str) -> Result<(u64, Box<dyn Pipe>), Vec<Note>> {
+        use std::io::Read;
+        let store = hostdump::Store::at(&self.dumps);
+        let missing = || vec![crate::families::base::no_dump(name)];
+        let path = store.path(name).ok_or_else(missing)?;
+        let mut file = std::fs::File::open(&path).map_err(|_| missing())?;
+        let bytes = file.metadata().map_err(|_| missing())?.len();
+        let (tx, rx) = mpsc::sync_channel(QUEUE);
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stopped = stop.clone();
+        spawn("host-dump", move || {
+            let mut buf = vec![0u8; 16 * 1024];
+            loop {
+                if stopped.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                match file.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if tx.send(Piece::Bytes(buf[..n].to_vec())).is_err() {
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Piece::End(Some(note(
+                            qsi::base::msgid::NO_DUMP,
+                            format!("The dump could not be read: {e}"),
+                        ))));
+                        return;
+                    }
+                }
+            }
+            let _ = tx.send(Piece::End(None));
+        });
+        Ok((
+            bytes,
+            Box::new(FilePipe {
+                rx,
+                ended: false,
+                stop,
+            }),
+        ))
     }
 
     fn upload(&mut self, name: &str, bytes: u64) -> Result<Box<dyn Pipe>, Vec<Note>> {

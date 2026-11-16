@@ -1,3 +1,10 @@
+# Dumps
+
+Two kinds of dump are kept on a host: a partition's, its memory and
+processor state for the system's supplier; and the host's own, its
+service data for the release's supplier. Service Tools option 8, 3
+lists both, copies them to a removable volume and deletes them.
+
 # A partition's dumps
 
 The host takes a partition's dump from outside: its processors
@@ -86,3 +93,66 @@ header record to list dumps by partition and code.
 
 The memory of a QS/400 partition of 4 GiB that had IPLed dumped in
 11 s on the build host and took 568 MB: the rest was zero.
+
+# The host's dump
+
+The host's own dump is service data, not memory: what the release's
+supplier needs to see why the host did what it did. It is taken by PID
+1 (`svc/hostdump`), asked for:
+
+| By | How |
+|---|---|
+| a management console | QSI base `TakeDump` of kind `ServiceData` (`docs/QSISERVER.md`) |
+| Service Tools | option 8, 2 |
+| PID 1 itself | when a supervised service is stopped after its retries (`A2001080`), and when a pending slot did not confirm and the host came back on the other (`A2001035`), once the services are ready |
+
+One is taken at a time (`QSI1202` to a second ask), on a thread of PID
+1's own, so its loop never waits on `/data`: `C2011000` when it begins,
+`C2011010` with its name and size when it is written, `A2011010` with
+why when it could not be (nothing of it is kept, and a problem opens).
+
+## What it holds
+
+One ZIP archive, `HOSTDUMP-YYYYMMDD-HHMMSS.zip` (UTC), every entry
+stored with its CRC-32: Windows, macOS and Linux open it as it is. The
+archive's comment names what asked for it.
+
+| Entry | What |
+|---|---|
+| `log/` | the log service's directory: the system log and its rotations, the reference code history, each boot's kernel log |
+| `problems/problems.json` | the problem log (`docs/PROBLEMS.md`) |
+| `state/` | every state file under `/data/state`, the inventory and the partitions' definitions and profiles among them, but those left out below |
+| `services/status.txt` | PID 1's facts and each service's state, process and failures |
+| `services/partitions.txt` | each partition's status, definition, profiles and history; the host's resources and settings |
+| `services/pools.txt` | the pools, disks, virtual disks, optical images and tape volumes |
+| `services/switches.txt` | the switches, their ports and the host's interfaces |
+| `host/cgroups.txt` | the control group tree: each group's processes, CPU, cpuset, memory and huge page controls |
+| `host/` | `/proc`'s cpuinfo, meminfo, mounts, cmdline, uptime and version |
+| `MANIFEST.txt` | when, by whom, the release and the host; each entry with its size; what was left out and why |
+
+A service that does not answer is said so in its file. A file is taken
+to its newest 64 MiB, and a dump to 512 MiB.
+
+## No secret
+
+These are left out by name, wherever they are, and the manifest says
+so: `identity.key` (the host's private key), `users.db` (the service
+tools users and their password hashes), `qsi-consoles.toml` (the
+management consoles' pins). Any `.key` file, and any file that holds a
+private key or a password hash whatever its name, is left out too. A
+unit test (`hostdump::tests`) takes a dump of a host with each of them
+and fails if one is in it, or if a crate's secret file is not on the
+list by name.
+
+## Where they are
+
+`/data/dumps/host/`, root's and the QSI server's group's (the server
+lists, reads and deletes them); nobody else's. At most 8 and 1 GiB
+together: the oldest is put out first to make room (`C2011020`), and
+deleting one is `C2011020` too.
+
+Over QSI: base `Dumps` lists them oldest first (kind `ServiceData`,
+`service data`), `DeleteDump` deletes one (`QSI1201` when there is no
+such dump), `DownloadDump` opens a stream of its bytes, and the events
+`DumpTaken` (written, or why not) and `DumpRemoved`. Base's capability
+bit 4 (`caps::SYSTEM_DUMPS`) is in the host's hello.

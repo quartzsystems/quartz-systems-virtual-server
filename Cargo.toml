@@ -29,6 +29,7 @@ members = [
     "svc/tools",
     # Service: the problem log.
     "svc/problem",
+    "svc/hostdump",
     "qsi/local",
     "qsi/server",
     # Base: what every Quartz appliance needs, product-neutral. QS/MC pins

@@ -46,6 +46,15 @@ impl vswitchd::Calls for Nothing {
     }
 }
 impl Facts for Nothing {
+    fn host_dumps(&mut self) -> Vec<hostdump::Info> {
+        Vec::new()
+    }
+    fn take_host_dump(&mut self, _: &str) -> Result<String, Vec<Note>> {
+        Err(Vec::new())
+    }
+    fn delete_host_dump(&mut self, _: &str) -> Result<(), Vec<Note>> {
+        Err(Vec::new())
+    }
     fn inventory(&mut self) -> Result<state::Inventory, Vec<Note>> {
         Err(down("inventory", &gone()))
     }
@@ -70,6 +79,9 @@ impl Facts for Nothing {
     }
 }
 impl Opener for Nothing {
+    fn host_dump(&mut self, _: &str) -> Result<(u64, Box<dyn Pipe>), Vec<Note>> {
+        Err(Vec::new())
+    }
     fn console(&mut self, _: u32, _: bool) -> Result<(bool, Box<dyn Pipe>), Vec<Note>> {
         Err(down("partition manager", &gone()))
     }

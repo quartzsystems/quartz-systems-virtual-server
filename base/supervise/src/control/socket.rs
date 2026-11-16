@@ -100,6 +100,9 @@ mod tests {
         fn post_about(&mut self, code: String, text: String, _about: Vec<super::super::About>) {
             self.posted.push((code, text));
         }
+        fn take_dump(&mut self, _by: String) -> Result<String, String> {
+            Err("none here".into())
+        }
         fn note(&mut self, _key: String, _value: String) {}
         fn set_host(
             &mut self,

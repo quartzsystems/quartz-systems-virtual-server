@@ -78,6 +78,7 @@ fn main() {
             state,
             log: appliance.log_dir(),
             control: appliance.control_socket(),
+            dumps: std::path::Path::new(release::DATA_DIR).join(hostdump::store::DIR),
         },
         own,
         local,

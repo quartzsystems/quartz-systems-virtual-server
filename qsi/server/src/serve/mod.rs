@@ -189,7 +189,7 @@ impl Server {
         let me = crate::families::Facts::identity(&mut facts).ok();
         Hello {
             version: qsi::VERSION,
-            caps: caps::HOST_V1 | caps::SERVICE,
+            caps: caps::HOST_V1 | caps::SERVICE | caps::SYSTEM_DUMPS,
             kind: PeerKind::Host,
             name: me.as_ref().map_or_else(String::new, |m| m.name.clone()),
             release: self.settings.release.clone(),
@@ -210,6 +210,7 @@ impl Server {
 
     fn opener(&self) -> pipes::Sockets {
         pipes::Sockets {
+            dumps: self.settings.paths.dumps.clone(),
             partd: self.settings.partd.clone(),
             poold: self.settings.poold.clone(),
             hub: self.hub.clone(),

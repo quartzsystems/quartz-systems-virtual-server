@@ -815,6 +815,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hostdump"
+version = "0.1.0"
+dependencies = [
+ "appliance",
+ "identity",
+ "ipc",
+ "partd",
+ "poold",
+ "users",
+ "vswitchd",
+]
+
+[[package]]
 name = "hostinv"
 version = "0.1.0"
 dependencies = [
@@ -1566,6 +1579,7 @@ name = "qsiserver"
 version = "0.1.0"
 dependencies = [
  "appliance",
+ "hostdump",
  "ipc",
  "logd",
  "model",
@@ -1667,6 +1681,7 @@ dependencies = [
  "abrec",
  "appliance",
  "diskimg",
+ "hostdump",
  "hostinv",
  "identity",
  "kvm-bindings",
@@ -1674,6 +1689,7 @@ dependencies = [
  "loadsource",
  "logd",
  "partd",
+ "poold",
  "problem",
  "qsilocal",
  "refcode",
@@ -1775,6 +1791,7 @@ dependencies = [
 name = "qsvsqsid"
 version = "0.1.0"
 dependencies = [
+ "hostdump",
  "identity",
  "libc",
  "partd",

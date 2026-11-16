@@ -174,10 +174,36 @@ pub fn poold(socket: PathBuf, hub: Shared) {
     });
 }
 
+/// A host dump that could not be written, from its code's text
+/// (`Host dump not written: HOSTDUMP-...zip: why`).
+fn dump_failed(p: &crate::families::base::Posted) -> Option<AnyEvent> {
+    if p.code != refcode::HOST_DUMP_FAILED.code {
+        return None;
+    }
+    let detail = p.text.split_once(": ").map_or("", |(_, d)| d);
+    let name = detail
+        .split(':')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    Some(AnyEvent::Base(base::Event::DumpTaken(base::DumpTaken {
+        name,
+        dump: None,
+        error: Some(qsi::host::model::Note {
+            msgid: refcode::HOST_DUMP_FAILED.code.into(),
+            text: p.text.clone(),
+            help: String::new(),
+        }),
+        time: p.time_ms / 1000,
+    })))
+}
+
 /// The host: each code its history gains, each change of PID 1's
-/// state.
+/// state, each host dump written or removed.
 pub fn host(mut facts: HostFacts, hub: Shared) {
     spawn("host-looks", move || {
+        let mut dumps_taken_up = false;
         // From the last code the log said; the whole history is the
         // first look's when it never said one.
         let said = hub::lock(&hub).said().host_seen();
@@ -199,8 +225,25 @@ pub fn host(mut facts: HostFacts, hub: Shared) {
                             time_ms: p.time_ms,
                         })),
                     );
+                    if let Some(e) = dump_failed(p) {
+                        push(&hub, &e);
+                    }
                 }
                 seen = all.len();
+            }
+            {
+                let list = facts.host_dumps();
+                let mut h = hub::lock(&hub);
+                let changed = said::host_dumps(h.said(), &list, now_secs());
+                if dumps_taken_up {
+                    drop(h);
+                    for e in &changed {
+                        push(&hub, e);
+                    }
+                } else {
+                    h.take_up("hostdumps", &changed);
+                    dumps_taken_up = true;
+                }
             }
             if let Ok(now) = facts.state() {
                 let now = base_state(&now);

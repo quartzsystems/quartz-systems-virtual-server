@@ -82,6 +82,15 @@ impl vswitchd::Calls for Gone {
 }
 
 impl Facts for Gone {
+    fn host_dumps(&mut self) -> Vec<hostdump::Info> {
+        Vec::new()
+    }
+    fn take_host_dump(&mut self, _: &str) -> Result<String, Vec<Note>> {
+        Err(Vec::new())
+    }
+    fn delete_host_dump(&mut self, _: &str) -> Result<(), Vec<Note>> {
+        Err(Vec::new())
+    }
     fn inventory(&mut self) -> Result<state::Inventory, Vec<Note>> {
         Err(down("inventory", &gone()))
     }
@@ -499,4 +508,72 @@ fn problems_changed_while_the_server_was_away_are_said() {
         e[..],
         [qsi::any::AnyEvent::Service(qsi::service::Event::Closed(_))]
     ));
+}
+
+#[test]
+fn the_hosts_dumps_are_listed_taken_and_deleted() {
+    use qsi::base::{DeleteDump, DumpKind, ListDumps, Reply, Request, TakeDump};
+    let dir = std::env::temp_dir().join(format!("qsi-hostdumps-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut zip = hostdump::zip::Writer::new(Vec::new(), 0);
+    zip.add("MANIFEST.txt", b"x").unwrap();
+    let name = hostdump::store::name_at(1_794_834_942);
+    std::fs::write(dir.join(&name), zip.finish("by: Service Tools\n").unwrap()).unwrap();
+    let fake = Fake::default();
+    let mut s = services(&fake);
+    s.facts = Box::new(crate::serve::facts::HostFacts {
+        paths: crate::serve::facts::Paths {
+            state: dir.join("state"),
+            log: dir.join("log"),
+            control: dir.join("no.sock"),
+            dumps: dir.clone(),
+        },
+        release: "V1R0M0".into(),
+        build: "test".into(),
+    });
+    let a = answer_as(&mut s, AnyRequest::Base(Request::Dumps(ListDumps {})));
+    let Answer::Reply(AnyReply::Base(Reply::Dumps(all))) = a else {
+        panic!("{a:?}")
+    };
+    assert_eq!(
+        (all.len(), all[0].kind, all[0].by.as_str()),
+        (1, DumpKind::ServiceData, "Service Tools")
+    );
+    // Only service data is taken; PID 1 not answering is QSI0301.
+    let take = |kind| {
+        AnyRequest::Base(Request::TakeDump(TakeDump {
+            kind,
+            kind_name: String::new(),
+        }))
+    };
+    let Answer::Refused(notes) = answer_as(&mut s, take(DumpKind::System)) else {
+        panic!()
+    };
+    assert_eq!(notes[0].msgid, "QSI1203");
+    let Answer::Refused(notes) = answer_as(&mut s, take(DumpKind::ServiceData)) else {
+        panic!()
+    };
+    assert_eq!(notes[0].msgid, "QSI0301");
+    let delete =
+        |name: &str| AnyRequest::Base(Request::DeleteDump(DeleteDump { name: name.into() }));
+    let Answer::Refused(notes) = answer_as(&mut s, delete("HOSTDUMP-20260101-000000.zip")) else {
+        panic!()
+    };
+    assert_eq!(notes[0].msgid, "QSI1201");
+    let Answer::Refused(notes) = answer_as(&mut s, delete("../state/identity.key")) else {
+        panic!()
+    };
+    assert_eq!(notes[0].msgid, "QSI1201");
+    assert!(matches!(answer_as(&mut s, delete(&name)), Answer::Reply(_)));
+    assert!(!dir.join(&name).exists());
+    // The download is the connection's stream.
+    let a = answer_as(
+        &mut s,
+        AnyRequest::Base(Request::DownloadDump(qsi::base::DownloadDump {
+            name: name.clone(),
+        })),
+    );
+    assert_eq!(a, Answer::Open(Open::HostDump { name }));
+    std::fs::remove_dir_all(&dir).unwrap();
 }

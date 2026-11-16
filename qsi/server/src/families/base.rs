@@ -8,7 +8,10 @@
 
 use qsi::Empty;
 use qsi::any::AnyReply;
-use qsi::base::{PowerAction, PowerState, Refcode, RefcodeList, Reply, Request, State};
+use qsi::base::{
+    DumpBegun, DumpKind, PowerAction, PowerState, Refcode, RefcodeList, Reply, Request, State,
+    SystemDump,
+};
 use qsisess::Note;
 
 use super::Services;
@@ -83,6 +86,47 @@ pub fn state(s: &supervise::control::HostState) -> State {
     }
 }
 
+/// A host dump as QSI's.
+#[must_use]
+pub fn system_dump(i: &hostdump::Info) -> SystemDump {
+    SystemDump {
+        name: i.name.clone(),
+        kind: DumpKind::ServiceData,
+        kind_name: hostdump::KIND_NAME.into(),
+        bytes: i.bytes,
+        time: i.time,
+        by: i.by.clone(),
+    }
+}
+
+fn no_kind() -> Note {
+    Note {
+        msgid: qsi::base::msgid::NO_KIND.into(),
+        text: "This host takes dumps of its service data only.".into(),
+        help: "A host dump holds the logs, the histories, the state without its secrets and the services' status (docs/DUMPS.md).".into(),
+    }
+}
+
+/// No host dump of that name.
+#[must_use]
+pub fn no_dump(name: &str) -> Note {
+    Note {
+        msgid: qsi::base::msgid::NO_DUMP.into(),
+        text: format!("There is no host dump {name}."),
+        help: String::new(),
+    }
+}
+
+/// A host dump being taken already.
+#[must_use]
+pub fn taking(why: &str) -> Note {
+    Note {
+        msgid: qsi::base::msgid::TAKING.into(),
+        text: why.into(),
+        help: String::new(),
+    }
+}
+
 /// A request of a group this server's hello did not say.
 pub(super) fn not_agreed() -> Note {
     Note {
@@ -109,11 +153,22 @@ pub(super) fn answer(s: &mut Services, r: &Request, user: &str) -> Result<AnyRep
         }
         Request::Refcodes(h) => Reply::Refcodes(page(&s.facts.history()?, h.before, h.limit)),
         Request::Time(_) => Reply::Time(s.facts.time()),
-        // Not agreed in this server's hello.
-        Request::Dumps(_)
-        | Request::TakeDump(_)
-        | Request::DeleteDump(_)
-        | Request::DownloadDump(_) => return Err(vec![not_agreed()]),
+        Request::Dumps(_) => Reply::Dumps(s.facts.host_dumps().iter().map(system_dump).collect()),
+        Request::TakeDump(t) => match t.kind {
+            DumpKind::ServiceData => {
+                let by = format!("a management console, user {user:?}");
+                Reply::TakeDump(DumpBegun {
+                    name: s.facts.take_host_dump(&by)?,
+                })
+            }
+            _ => return Err(vec![no_kind()]),
+        },
+        Request::DeleteDump(d) => {
+            s.facts.delete_host_dump(&d.name)?;
+            Reply::DeleteDump(Empty)
+        }
+        // The connection's: it opens a stream.
+        Request::DownloadDump(_) => return Err(vec![not_agreed()]),
         // The connection's: they need the event log.
         Request::Subscribe(_) | Request::Unsubscribe(_) => {
             return Err(vec![Note {

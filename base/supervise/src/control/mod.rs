@@ -178,6 +178,9 @@ ipc::rpc! {
     7 => fn power_down / PowerDown (restart: bool, immediate: bool, delay: u32, by: String) -> Result<(), String>;
     /// Post a reference code with what it is about.
     8 => fn post_about / PostAbout (code: String, text: String, about: Vec<About>) -> ();
+    /// Take the appliance's own service dump, for `by`: its name, or
+    /// why not. It is written in the background.
+    9 => fn take_dump / TakeDump (by: String) -> Result<String, String>;
 }
 
 #[cfg(test)]

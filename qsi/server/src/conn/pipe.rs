@@ -48,6 +48,11 @@ pub trait Opener: Send {
     /// # Errors
     /// The partition manager's refusal.
     fn dump(&mut self, id: u32, name: &str) -> Result<(u64, Box<dyn Pipe>), Vec<Note>>;
+    /// Read the host dump `name`: its size and its pipe.
+    ///
+    /// # Errors
+    /// No such dump.
+    fn host_dump(&mut self, name: &str) -> Result<(u64, Box<dyn Pipe>), Vec<Note>>;
     /// Upload image `name` of exactly `bytes` bytes: its pipe, which
     /// says how it ended as an event.
     ///

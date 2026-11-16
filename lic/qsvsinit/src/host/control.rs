@@ -29,6 +29,10 @@ impl Control for Host {
         self.begin_shutdown(Kind::Restart, "the control socket");
     }
 
+    fn take_dump(&mut self, by: String) -> Result<String, String> {
+        Host::take_dump(self, &by)
+    }
+
     fn post(&mut self, code: String, text: String) {
         Control::post_about(self, code, text, Vec::new());
     }

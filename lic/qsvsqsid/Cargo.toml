@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 problem = { path = "../../svc/problem", version = "0.1.0" }
+hostdump = { path = "../../svc/hostdump", version = "0.1.0" }
 release = { path = "../release", version = "0.1.0" }
 refcode = { path = "../refcode", version = "0.1.0" }
 qsiserver = { path = "../../qsi/server", version = "0.1.0" }

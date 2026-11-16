@@ -56,6 +56,12 @@ pub trait Facts: Send {
     fn history(&mut self) -> Result<Vec<base::Posted>, Vec<Note>>;
     /// The host's clock and its display zone.
     fn time(&mut self) -> qsi::base::Time;
+    /// The host's own dumps, oldest first.
+    fn host_dumps(&mut self) -> Vec<hostdump::Info>;
+    /// Ask PID 1 for a host dump, for `by`: its name.
+    fn take_host_dump(&mut self, by: &str) -> Result<String, Vec<Note>>;
+    /// Delete the host dump `name`.
+    fn delete_host_dump(&mut self, name: &str) -> Result<(), Vec<Note>>;
 }
 
 impl std::fmt::Debug for Services {
@@ -78,6 +84,11 @@ pub enum Open {
     Dump {
         /// The partition.
         id: u32,
+        /// The dump.
+        name: String,
+    },
+    /// A host dump's bytes, host to console.
+    HostDump {
         /// The dump.
         name: String,
     },
@@ -139,6 +150,9 @@ pub(crate) fn reached<T>(name: &str, r: Result<T, ipc::WireError>) -> Result<T, 
 /// says asked, which grants nothing.
 pub fn answer(s: &mut Services, request: AnyRequest, user: &str) -> Answer {
     match request {
+        AnyRequest::Base(qsi::base::Request::DownloadDump(d)) => {
+            Answer::Open(Open::HostDump { name: d.name })
+        }
         AnyRequest::Base(r) => base::answer(s, &r, user).into(),
         AnyRequest::Partitions(r) => partitions::partitions(s, &r).into(),
         AnyRequest::Partition(r) => partitions::partition(s, r).into(),

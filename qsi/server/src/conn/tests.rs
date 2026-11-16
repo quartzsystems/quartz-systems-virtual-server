@@ -57,6 +57,15 @@ impl vswitchd::Calls for Gone {
     }
 }
 impl Facts for Gone {
+    fn host_dumps(&mut self) -> Vec<hostdump::Info> {
+        Vec::new()
+    }
+    fn take_host_dump(&mut self, _: &str) -> Result<String, Vec<qsisess::Note>> {
+        Err(Vec::new())
+    }
+    fn delete_host_dump(&mut self, _: &str) -> Result<(), Vec<qsisess::Note>> {
+        Err(Vec::new())
+    }
     fn inventory(&mut self) -> Result<state::Inventory, Vec<qsisess::Note>> {
         Err(Vec::new())
     }
@@ -117,6 +126,9 @@ struct Opens {
 }
 
 impl Opener for Opens {
+    fn host_dump(&mut self, _: &str) -> Result<(u64, Box<dyn Pipe>), Vec<qsisess::Note>> {
+        Err(Vec::new())
+    }
     fn console(&mut self, _: u32, _: bool) -> Result<(bool, Box<dyn Pipe>), Vec<qsisess::Note>> {
         Err(Vec::new())
     }

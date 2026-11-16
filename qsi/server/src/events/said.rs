@@ -148,6 +148,13 @@ impl Said {
                 self.set(key, value);
                 true
             }
+            AnyEvent::Base(qsi::base::Event::DumpTaken(d)) => match &d.dump {
+                Some(dump) => self.set(format!("hostdump.{}", d.name), dump.bytes.to_string()),
+                None => true,
+            },
+            AnyEvent::Base(qsi::base::Event::DumpRemoved(d)) => {
+                self.remove(&format!("hostdump.{}", d.name))
+            }
             AnyEvent::Base(qsi::base::Event::Refcode(r)) => {
                 let seen = self.host_seen().unwrap_or(0);
                 if r.seq != 0 && r.seq <= seen {
@@ -316,6 +323,38 @@ pub fn partitions(
                     time: now,
                 },
             )));
+        }
+    }
+    out
+}
+
+/// What the host's dumps are that the log did not say: each written
+/// or removed.
+#[must_use]
+pub fn host_dumps(said: &Said, list: &[hostdump::Info], now: u64) -> Vec<AnyEvent> {
+    use qsi::base::{DumpRemoved, DumpTaken, Event};
+    let before: BTreeSet<String> = said
+        .map
+        .keys()
+        .filter_map(|k| k.strip_prefix("hostdump.").map(str::to_string))
+        .collect();
+    let mut out = Vec::new();
+    for i in list {
+        if !before.contains(&i.name) {
+            out.push(AnyEvent::Base(Event::DumpTaken(DumpTaken {
+                name: i.name.clone(),
+                dump: Some(crate::families::base::system_dump(i)),
+                error: None,
+                time: now,
+            })));
+        }
+    }
+    for name in before {
+        if !list.iter().any(|i| i.name == name) {
+            out.push(AnyEvent::Base(Event::DumpRemoved(DumpRemoved {
+                name,
+                time: now,
+            })));
         }
     }
     out

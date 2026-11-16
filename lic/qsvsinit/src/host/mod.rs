@@ -7,6 +7,7 @@
 //! longer than a client of the control socket is given.
 
 mod control;
+pub mod dump;
 mod partitions;
 mod shutdown;
 pub mod table;
@@ -242,11 +243,14 @@ impl Host {
                     self.storage_lost = true;
                     self.post(&refcode::STORAGE_LOST, "the data file system has no server");
                 }
-                Occurrence::GaveUp { service } => self.post_about(
-                    &refcode::SERVICE_STOPPED,
-                    service,
-                    &[refcode::about::service(service)],
-                ),
+                Occurrence::GaveUp { service } => {
+                    self.post_about(
+                        &refcode::SERVICE_STOPPED,
+                        service,
+                        &[refcode::about::service(service)],
+                    );
+                    self.dump_for(&format!("service {service} stopped after its retries"));
+                }
                 Occurrence::Output {
                     service,
                     error,
@@ -287,6 +291,11 @@ impl Host {
             return;
         }
         if let Some(mut slots) = self.slots.take() {
+            // The slot that came back after a pending one did not
+            // confirm: its dump, now the services can be asked.
+            if matches!(slots.ipl, loadsource::record::Ipl::FellBack { .. }) {
+                self.dump_for("the pending slot did not confirm");
+            }
             let mut posted = Vec::new();
             slots.base_ready(|code, detail| posted.push(posting(code, detail)));
             self.slots = Some(slots);

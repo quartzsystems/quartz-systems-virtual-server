@@ -309,25 +309,32 @@ impl Conn {
     }
 
     fn open(&mut self, id: u32, open: Open) {
-        let opened = match open {
-            Open::Console { id: p, take_over } => {
-                self.opener.console(p, take_over).map(|(serial, pipe)| {
+        let opened =
+            match open {
+                Open::Console { id: p, take_over } => {
+                    self.opener.console(p, take_over).map(|(serial, pipe)| {
+                        let reply =
+                            AnyReply::Console(console::Reply::Attach(console::Attached { serial }));
+                        (reply, pipe)
+                    })
+                }
+                Open::Dump { id: p, name } => self.opener.dump(p, &name).map(|(bytes, pipe)| {
                     let reply =
-                        AnyReply::Console(console::Reply::Attach(console::Attached { serial }));
+                        AnyReply::Dumps(dumps::Reply::Download(dumps::Downloading { name, bytes }));
                     (reply, pipe)
-                })
-            }
-            Open::Dump { id: p, name } => self.opener.dump(p, &name).map(|(bytes, pipe)| {
-                let reply =
-                    AnyReply::Dumps(dumps::Reply::Download(dumps::Downloading { name, bytes }));
-                (reply, pipe)
-            }),
-            Open::Upload { name, bytes } => self.opener.upload(&name, bytes).map(|pipe| {
-                let reply =
-                    AnyReply::Vres(vres::Reply::ImageUpload(vres::Uploading { name, bytes }));
-                (reply, pipe)
-            }),
-        };
+                }),
+                Open::HostDump { name } => self.opener.host_dump(&name).map(|(bytes, pipe)| {
+                    let reply = AnyReply::Base(qsi::base::Reply::DownloadDump(
+                        qsi::base::DumpDownloading { name, bytes },
+                    ));
+                    (reply, pipe)
+                }),
+                Open::Upload { name, bytes } => self.opener.upload(&name, bytes).map(|pipe| {
+                    let reply =
+                        AnyReply::Vres(vres::Reply::ImageUpload(vres::Uploading { name, bytes }));
+                    (reply, pipe)
+                }),
+            };
         match opened {
             Ok((reply, mut pipe)) => match self.session.reply_stream(id, reply.encode()) {
                 Ok(stream) => {
