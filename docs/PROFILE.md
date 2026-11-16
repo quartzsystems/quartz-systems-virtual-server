@@ -262,6 +262,6 @@ its partition runs is the next activation's.
 
 ## Not here yet
 
-- `BLOCKED(phase8)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
+- `BLOCKED(phase9)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
 - Physical I/O, a whole physical disk or tape drive given to a
   partition: Phase 10.
