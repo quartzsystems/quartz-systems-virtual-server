@@ -459,8 +459,22 @@ pub fn power(run: &Run<'_>) -> Result<String, String> {
             delay: 0,
         })),
     )?;
-    let ended = eventually(Duration::from_mins(5), || l.step().err())
-        .ok_or("the session did not end with the host")?;
+    // Ended cleanly: the host's goodbye, no message of a fault.
+    let ended = eventually(Duration::from_mins(5), || match l.step() {
+        Err(e) => Some(Err(format!("the connection ended with no goodbye: {e}"))),
+        Ok(got) => got.into_iter().find_map(|i| match i {
+            Incoming::Closed {
+                msgid: None, text, ..
+            } => Some(Ok(text)),
+            Incoming::Closed {
+                msgid: Some(m),
+                text,
+                ..
+            } => Some(Err(format!("closed {m} {text}"))),
+            _ => None,
+        }),
+    })
+    .ok_or("the session did not end with the host")??;
     q.guest.seen(&refcode::PARTITIONS_ENDED.tag(), deadline)?;
     q.guest.seen(&refcode::RESTART.tag(), deadline)?;
     // QEMU does not restart the machine: it is started again on the
