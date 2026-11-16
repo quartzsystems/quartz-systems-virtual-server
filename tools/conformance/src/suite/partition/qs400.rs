@@ -75,7 +75,9 @@ pub fn console_ready(guest: &mut Session, deadline: Instant) -> Result<(), Strin
 
 /// Have the guest power down and wait for `qsvmm` to end.
 fn power_down(guest: &mut Session, deadline: Instant) -> Result<String, String> {
-    send(guest, "pwrdwn")?;
+    // The CL command: a line sent while a command still ends is taken
+    // as CL, where the service console's `pwrdwn` is not found.
+    send(guest, "PWRDWNSYS OPTION(*IMMED)")?;
     expect_guest(guest, POWER_DOWN_COMPLETE, deadline)?;
     ended(guest, deadline)
 }
@@ -275,13 +277,12 @@ pub fn attributes(run: &Run<'_>) -> Result<String, String> {
     )?;
     let deadline = patience(run);
     let read = expect_code(&mut guest, &refcode::PARTITION_RECORD_READ, deadline)?;
-    if !read.contains("keylock *NORMAL console local") {
+    // A partition has no display: `local` is given as its console port.
+    if !read.contains("keylock *NORMAL console partition") {
         return Err(format!("the record after the second write: `{read}`"));
     }
     expect_code(&mut guest, &refcode::PARTITION_STARTED, deadline)?;
-    guest.expect("(Local console (display and keyboard))", deadline)?;
-    // A partition has no display: the guest goes on on its serial port.
-    expect_guest(&mut guest, "SRC A6005008", deadline)?;
+    guest.expect("(Partition console port)", deadline)?;
     expect_guest(&mut guest, IPL_COMPLETE, deadline)?;
     console_ready(&mut guest, deadline)?;
     send(&mut guest, "lic")?;
@@ -308,8 +309,8 @@ pub fn attributes(run: &Run<'_>) -> Result<String, String> {
     Ok(format!(
         "keylock manual and console serial, written by the host: {NAME} says `mode Manual from \
          LIC override` and `Serial console (ttyS0)`, stops at its IPL menu on the serial port \
-         and completes when answered; then normal and local: an unattended IPL, `Local console`, \
-         A6005008 for the display a partition has not; then `mode manual` in the guest, and the \
+         and completes when answered; then normal and local: an unattended IPL, the record's console \
+         `partition`, the guest on its `Partition console port`; then `mode manual` in the guest, and the \
          next activation is unattended: the keylock is the host's"
     ))
 }

@@ -257,7 +257,9 @@ pub fn detail_of(rest: &str) -> &str {
 
 /// Wait for a line of the partition's serial output that has `text`.
 pub fn expect_guest(guest: &mut Session, text: &str, deadline: Instant) -> Result<(), String> {
-    guest.expect(&guest_line(text), deadline)
+    // The guest's daemons and its kernel share its serial port: a line
+    // may begin with another's text.
+    guest.expect_on_line(&guest_line(""), text, deadline)
 }
 
 /// The codes of an activation, in order, to "Partition started".

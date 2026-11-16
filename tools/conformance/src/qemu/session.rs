@@ -165,6 +165,49 @@ impl Session {
         self.expect_any(&[needle], deadline).map(|_| ())
     }
 
+    /// Wait until `needle` appears on a line that starts with `prefix`,
+    /// also after another writer's text in the middle of that line, by
+    /// `deadline`. Everything up to and including it is consumed.
+    pub fn expect_on_line(
+        &mut self,
+        prefix: &str,
+        needle: &str,
+        deadline: Instant,
+    ) -> Result<(), String> {
+        let mut from = 0;
+        loop {
+            while let Some(found) = self.buf.get(from..).and_then(|b| b.find(needle)) {
+                let at = from + found;
+                let abs = self.log.len() - self.buf.len() + at;
+                let start = self.log[..abs].rfind('\n').map_or(0, |i| i + 1);
+                if self.log[start..].starts_with(prefix) {
+                    self.buf.drain(..at + needle.len());
+                    return Ok(());
+                }
+                from = at + needle.len();
+            }
+            // A match may straddle what arrives next.
+            from = from.max(self.buf.len().saturating_sub(needle.len()));
+            while !self.buf.is_char_boundary(from) {
+                from -= 1;
+            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            let gone = || format!("`{prefix}{needle}`");
+            if left.is_zero() {
+                return Err(format!("{} did not appear in time", gone()));
+            }
+            match self.rx.recv_timeout(left) {
+                Ok(chunk) => self.take(&chunk),
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(format!("{} did not appear in time", gone()));
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(format!("QEMU ended before {} appeared", gone()));
+                }
+            }
+        }
+    }
+
     /// The rest of the line the last match was on.
     pub fn rest_of_line(&mut self, deadline: Instant) -> Result<String, String> {
         let before = self.log.len() - self.buf.len();
