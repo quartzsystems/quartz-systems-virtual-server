@@ -246,3 +246,17 @@ pub fn eventually<T>(within: Duration, mut f: impl FnMut() -> Option<T>) -> Opti
 pub fn scratch(run: &Run<'_>, name: &str) -> PathBuf {
     run.file(name)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_password_is_read_and_masked_off_its_screen() {
+        let screen = " Type this password at the management console to pair it:\n\n      ABCD EFGH JKMN PQRS\n\n Expires . . . . . .  2026-11-15 21:40 UTC\n      0a1b 2c3d 4e5f 6a7b 8c9d 0e1f 2a3b 4c5d\n";
+        assert_eq!(password_of(screen).as_deref(), Some("ABCDEFGHJKMNPQRS"));
+        let m = masked(screen);
+        assert!(!m.contains("ABCD") && !m.contains("0a1b") && !m.contains("21:40"));
+        assert!(m.contains("XXXX XXXX XXXX XXXX") && m.contains("9999-99-99 99:99"));
+    }
+}
