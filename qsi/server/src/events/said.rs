@@ -23,11 +23,14 @@ use crate::families::{convert, vres as v};
 /// The file, under the server's state directory.
 pub const FILE: &str = "qsi-said.txt";
 
-/// What the log last said.
+/// What the log last said. Each change is appended to its file as it
+/// is noted, as the log's events are, so a server killed between two
+/// syncs has both or neither; a sync writes it whole again.
 #[derive(Debug, Default)]
 pub struct Said {
     map: BTreeMap<String, String>,
     path: Option<PathBuf>,
+    file: Option<File>,
     dirty: bool,
 }
 
@@ -51,22 +54,40 @@ fn code_of(text: &str) -> (u64, BTreeSet<String>) {
 }
 
 impl Said {
-    /// What the file in `dir` holds; nothing when it is not there.
+    /// What the file in `dir` holds, its lines in order: `key<tab>value`
+    /// sets a key, `key` alone removes it. Nothing when it is not there.
     #[must_use]
     pub fn open(dir: &Path) -> Self {
         let path = dir.join(FILE);
         let mut map = BTreeMap::new();
         if let Ok(f) = File::open(&path) {
             for l in BufReader::new(f).lines().map_while(Result::ok) {
-                if let Some((k, v)) = l.split_once('\t') {
-                    map.insert(k.to_string(), v.to_string());
+                match l.split_once('\t') {
+                    Some((k, v)) => {
+                        map.insert(k.to_string(), v.to_string());
+                    }
+                    None => {
+                        map.remove(&l);
+                    }
                 }
             }
         }
-        Self {
+        let mut said = Self {
             map,
             path: Some(path),
-            dirty: false,
+            file: None,
+            dirty: true,
+        };
+        said.sync();
+        said
+    }
+
+    /// Append a line to the file, as the change is made.
+    fn append(&mut self, line: &str) {
+        if let Some(f) = &mut self.file
+            && writeln!(f, "{line}").is_err()
+        {
+            self.file = None;
         }
     }
 
@@ -77,6 +98,7 @@ impl Said {
         if self.map.get(&key) == Some(&value) {
             return false;
         }
+        self.append(&format!("{key}\t{value}"));
         self.map.insert(key, value);
         self.dirty = true;
         true
@@ -84,6 +106,9 @@ impl Said {
 
     fn remove(&mut self, key: &str) -> bool {
         let gone = self.map.remove(key).is_some();
+        if gone {
+            self.append(key);
+        }
         self.dirty |= gone;
         gone
     }
@@ -262,6 +287,7 @@ impl Said {
         if written.is_ok() && std::fs::rename(&tmp, path).is_ok() {
             self.dirty = false;
         }
+        self.file = std::fs::OpenOptions::new().append(true).open(path).ok();
     }
 }
 

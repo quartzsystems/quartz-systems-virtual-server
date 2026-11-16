@@ -184,6 +184,19 @@ fn what_was_said_is_kept_on_disk() {
         },
     )));
     said.sync();
+    // A change after the sync is in the file at once, a removal too.
+    said.known("vswitchd");
+    let gone = translate::pools(&look, &Look::default(), 2);
+    for e in &gone {
+        said.note(e);
+    }
+    // One record a directory: the one opened again goes on.
+    let mut back = Said::open(&d);
+    assert!(back.knows("vswitchd"));
+    assert_eq!(back.look(), Look::default());
+    for e in translate::pools(&Look::default(), &look, 3) {
+        back.note(&e);
+    }
     let back = Said::open(&d);
     assert!(back.knows("partd"));
     assert_eq!(back.look(), look);
