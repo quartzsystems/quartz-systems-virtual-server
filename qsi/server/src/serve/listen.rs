@@ -202,12 +202,8 @@ fn serve(
     tls: &mut StreamOwned<ServerConnection, TcpStream>,
     t0: Instant,
     peer: &qsitrust::Peer,
+    ip: IpAddr,
 ) {
-    let ip = tls
-        .sock
-        .peer_addr()
-        .map(|a| a.ip())
-        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     let mut buf = vec![0u8; 64 * 1024];
     let mut checked = Instant::now();
     loop {
