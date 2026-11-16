@@ -13,7 +13,7 @@ a side effect of other work.
 | Partition IPL | No guest firmware: the VMM loads the side's UKI from the partition's load-source disk and starts it through the 64-bit Linux boot protocol, with ACPI tables of its own. The keylock position and the console mode are written to the guest's LIC record before the IPL. Seven bytes at the reset vector end the partition when its guest restarts by a jump there |
 | Virtual devices | virtio over PCI for everything a partition does I/O with: scsi, net (vhost-net), console, rng. Four devices beside them for what virtio has no place for: a 16550, a CMOS clock, the reset line, the ACPI power-off register |
 | Partition process | `qsvmm` is given its whole configuration by the partition manager, opens what it needs as root, then runs as its partition's own unprivileged user (23000 plus the partition's ID) with no capability. It exits with a code that says why the partition ended; a guest restart ends it |
-| Partition manager | `partd` keeps definitions and profiles, gives out processors and memory at activation, owns every `qsvmm` and says what state each partition is in. Driven over a local socket, which the QSI host server will sit on. Its partitions go on when it is started again |
+| Partition manager | `partd` keeps definitions and profiles, gives out processors and memory at activation, owns every `qsvmm` and says what state each partition is in. Driven over a local socket, which the QSI host server sits on. Its partitions go on when it is started again |
 | Processors | A partition's processor is one host core: both threads with SMT, kept to one partition at a time by core scheduling. Dedicated: whole cores, pinned. Shared: virtual processors over a pool's cores, with processing units (1.00 a core), capped or uncapped by weight. The host keeps cores of its own |
 | Memory | Partition memory is 2 MB huge pages, reserved by the host at its IPL: no overcommit, no ballooning. The host keeps memory of its own |
 | Partition identity | Each partition has a system serial number, made once from the host's and the partition's ID, and SMBIOS tables that carry it and name the machine a QS/VS partition |
@@ -21,7 +21,7 @@ a side effect of other work.
 | Storage | Storage pools are xfs file systems; virtual disks are raw files; software RAID as on QS/400, presented through a ublk block device |
 | Virtual Ethernet | VLAN-aware kernel bridges, tap devices with vhost-net |
 | Service channel | One virtio-console device per partition with two named ports, the service port and the console port, as QS/400's `docs/QSID.md` names them. The partition manager speaks the protocol (QS/400's crate `qsipart`); `qsvmm` carries bytes. The system's codes and states drive the partition's; shut down is delayed, operating system or immediate; a partition held with its memory after a terminal code or a fault is dumped from outside |
-| Management | QSI server on TCP 2300 with mutual TLS; Service Tools console locally; nothing else listens |
+| Management | One listener: the QSI host server, TCP 2300 on the management addresses, TLS 1.3 both ways, pinned consoles (two at most) paired at Service Tools. It is a service of its own, as a user of its own, and translates to the services that own the state. Service Tools locally; nothing else listens |
 | Disk layout | A load-source disk is GPT: ESP (slot A and B UKIs), a record partition, `QSVSDATA`. One disk, or two mirrored: each then has its own ESP and record, and `QSVSDATA` is one xfs on a protected set over the two. Two units that each ran without the other are not reconciled by the host: the operator chooses. Storage pools on other disks |
 | Local console | Service Tools on the display and the serial port, each its own session; the installer on both at once. QS/400's `console` and screen kit |
 | Identity | Release `V1R0M0` from `VERSION` (`1.0.0`). Fixes `QVnnnnn`. Message prefix `QVS`. Environment prefix `QSVS_`. Kernel command-line keys `qsvs.` |
@@ -111,9 +111,9 @@ restart is activated again at once; a VMM that fails or is killed
 leaves it in Error and is not started again. It is driven over a local
 socket (`docs/PARTD.md`), framed as PID 1's control socket is, and
 answers a request that fails with `QVS` messages
-(`docs/MESSAGES.md`). The QSI host server of Phase 8 sits on that
-socket. In a release image nothing acts on a partition through it:
-Service Tools lists, and PID 1 has every partition ended before it
+(`docs/MESSAGES.md`). The QSI host server sits on that socket: what a
+management console asks of a partition comes to it through the server.
+Service Tools only lists, and PID 1 has every partition ended before it
 stops the services. A partition does not end because the partition
 manager did: each VMM is in a session and a control group of its own,
 and a partition manager that starts finds them again.
@@ -172,10 +172,19 @@ joins a switch as its uplink, a trunk of its VLANs. The host has no
 address on any of it and forwards nothing (`docs/NETWORK.md`).
 
 **Management.** The host is managed by QS/MC over QSI, a Quartz
-protocol, served on TCP 2300 with mutual TLS. The Service Tools console
-on the local display and the serial port covers what must work before
-the network does: host basics, networking and disks. Nothing else
-listens on the network.
+protocol (QS/400's crates `qsi`, `qsisess`, `qsitrust`), served by the
+QSI host server on TCP 2300 of the management addresses, TLS 1.3 with
+both ends' certificates pinned. A console pairs once, at the host's
+Service Tools, with a one-time password; two may be paired. The server
+is its own service, as an unprivileged user of its own, and owns no
+state but its pins and its event log: each request is the local request
+of the service that owns what it asks (`docs/QSISERVER.md`). It is the
+one listener, and it is the only one because each further one is
+another way in to guard: the console's every need goes through one
+authenticated, logged session, and the host has no web interface, no
+shell and no remote access beside it. The Service Tools console on the
+local display and the serial port covers what must work before the
+network does: host basics, networking, disks and pairing.
 
 **Disk layout.** The disk a host starts from is its load source. It is
 GPT: the ESP with both slots' UKIs; a small partition holding the A/B

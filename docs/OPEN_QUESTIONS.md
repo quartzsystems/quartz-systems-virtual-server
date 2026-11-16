@@ -23,7 +23,8 @@ left 34, 6, 17, 22, 31 and 32 as they were; Phase 6 raised 37. The
 Phase 7 handoff answered 37 for V1 and left the rest of it, and 6, 32,
 35 and 36, as they were; Phase 7 raised 38 and 39. Step 0 of Phase 8
 closed 38 with QS/400's handoff 18, and the Phase 8 handoff closed 39
-as recommended.
+as recommended and left 6, 36 and 37 as they were. Phase 8 raised 40
+to 43.
 
 ## Open
 
@@ -57,6 +58,46 @@ in V1; a host that needs outside networks for partitions has a second
 port. If it is wanted later, as a VLAN sub-interface of the uplink's
 bond that the bridge never sees, with its own trial as `netd` has
 today, and never a VLAN a partition is on.
+
+### 40. The joint gate with QS/MC (open)
+
+Phase 8's server is proven from the harness, a console made of QS/400's
+own crates (`qsictl`'s link), and from `qsictl`. QS/MC does not exist
+yet. Whether the host does what QS/MC needs is proven only when QS/MC
+pairs with a host and runs a partition's whole life through it, and
+that gate is open until then. Recommended: QS/MC's first phase that
+talks to a host runs Phase 8's suite 4 (`qsi-end-to-end`) with QS/MC in
+the harness's place, against this phase's image.
+
+### 41. What the services say while the server is down
+
+The event log is the server's, kept on disk and numbered on across its
+restarts (`docs/QSISERVER.md`). The partition manager and the switch
+service send their events to whoever is subscribed and keep none, so
+what they say while the server is down (a few seconds while PID 1
+starts it again) is not in the log. The handoff wants a restarted
+server to lose none. Recommended: on taking up its subscriptions the
+server compares each partition's state and the length of its history
+with what its log last said, and pushes what changed (a state, the
+codes it missed, from the history); the switch service's switches the
+same way. Not done in Phase 8: a console that resumes after a restart
+of the server reads the partitions as they are.
+
+### 42. An event log that begins at a number (decided, waiting on QS/400)
+
+`qsisess::EventLog` numbers from 1 and cannot be made to begin later,
+so a server started again pushes empty placeholders up to its first kept
+event (never sent to a console). Decided: QS/400's session crate gains
+`EventLog::resume(limits, next, events)`, and the placeholders go with
+the pin that brings it.
+
+### 43. The Dell's processor and graviola (NEEDS-CODY)
+
+QSI's TLS is graviola's cryptography, which needs AVX2, ADX, AES and
+PCLMULQDQ (QS/400's `docs/QSI.md` section 12). The harness runs QEMU
+with the host's processor and has them. The Dell's processor must have
+them too, or the server cannot make a handshake: Cody to read its
+`/proc/cpuinfo` flags (`avx2 adx aes pclmulqdq`) at its next IPL.
 
 ## Decided, waiting on QS/400
 

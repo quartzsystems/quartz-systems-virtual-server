@@ -305,4 +305,4 @@ the host.
 ## Not here yet
 
 - Any change to a running partition's resources.
-- `BLOCKED(phase7)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event.
+- `BLOCKED(phase8)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event.

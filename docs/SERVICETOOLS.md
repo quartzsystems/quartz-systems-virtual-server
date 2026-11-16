@@ -3,13 +3,13 @@
 The console of a QS/VS host, on its display and on its first serial
 port: what must work before the network does. It is the only way to
 configure a host by hand; partitions are made and run from the
-management console, QS/MC, in a later phase.
+management console, QS/MC, over QSI (`docs/QSISERVER.md`), which
+option 4 pairs.
 
 The panels every Quartz appliance has are `base/panels` (shared with
 QS/MC); QS/VS's menu, its system status and its disk units are
-`svc/tools`, the service `tools` of PID 1's table. Options 4 and 8 of
-the menu come with later phases: 4 with Phase 8, the QSI host server,
-and 8 with Phase 9, service and code update. Every panel's screen
+`svc/tools`, the service `tools` of PID 1's table. Option 8 of the
+menu comes with Phase 9, service and code update. Every panel's screen
 is a golden file under `tools/conformance/golden/`.
 
 ## The two sessions
@@ -121,7 +121,7 @@ everything in Service Tools; there is one kind of user in this release.
       1. Work with system status
       2. Work with disk units
       3. Work with network
-      4. Management console pairing  (not yet available: comes with Phase 8)
+      4. Management console pairing
       5. Work with service tools user IDs
       6. Date and time
       7. Display logs
@@ -129,9 +129,9 @@ everything in Service Tools; there is one kind of user in this release.
       9. Power off or restart
 ```
 
-Options 4 and 8 are on the menu and cannot be selected: the message
-line says which phase brings each (`It comes with Phase 8, the QSI
-host server.`, `It comes with Phase 9, service and code update.`).
+Option 8 is on the menu and cannot be selected: the message line says
+which phase brings it (`It comes with Phase 9, service and code
+update.`).
 
 ### 1. Work with system status
 
@@ -291,6 +291,45 @@ MTU. By a switch:
 partition, slot, switch, port VLAN, MAC address, link, and the frames
 each sent and was sent; with the line that adapters are managed from
 QS/MC. Nothing of them is changed here.
+
+### 4. Management console pairing
+
+The QSI host server's consoles, over its local socket
+(`docs/QSISERVER.md`). Nothing here keeps a pin or a password: the
+server does.
+
+```
+                          Management Console Pairing
+ Select one of the following:
+
+      1. Work with paired consoles
+      2. Start pairing
+      3. Display management interface
+```
+
+**1. Work with paired consoles** lists the consoles paired, at most two:
+the name each gave when it paired, the start of its certificate's
+fingerprint, when it last had a session, and `connected` while it has
+one. 5 by a console shows it whole: its name, its whole fingerprint in
+groups of four, when it paired, its last contact and the address it
+came from, and whether it has a session now. 4 removes it after its name
+is typed in full (`Confirm Remove of Console`): it can connect no more,
+and a session it has ends at once (`C2010050`).
+
+**2. Start pairing** makes a password and shows it in groups of four,
+with when it expires and the attempts it has left, and the host's
+certificate fingerprint for the operator to compare with what the
+console shows. The password is shown on this panel only: leaving it,
+or F12, ends pairing and the password is gone (`C2010040`). F5 shows the
+attempts left, or that the password is gone because a console paired
+with it, it expired, or its attempts ran out. With two consoles paired
+no password is made: `Two consoles are paired with this host: remove
+one first.`
+
+**3. Display management interface** shows where the server listens
+(TCP 2300 on each management address, or why it listens on nothing),
+QSI's version and TLS 1.3, the host's certificate fingerprint, and the
+sessions now: each one's address and its console's name, or `pairing`.
 
 ### 5. Work with service tools user IDs
 
