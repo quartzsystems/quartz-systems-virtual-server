@@ -23,6 +23,7 @@ poold = { path = "../../stg/poold", version = "0.1.0" }
 pool = { path = "../../stg/pool", version = "0.1.0" }
 vswitch = { path = "../../net/vswitch", version = "0.1.0" }
 vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
+qsilocal = { path = "../../qsi/local", version = "0.1.0" }
 ipc.workspace = true
 resource = { path = "../../part/resource", version = "0.1.0" }
 console.workspace = true

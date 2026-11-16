@@ -13,6 +13,7 @@
 // The parts that need no kernel are built and tested on any host.
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
+mod consoles;
 mod disks;
 mod env;
 mod keep;

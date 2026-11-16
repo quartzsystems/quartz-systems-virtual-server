@@ -55,6 +55,7 @@ pub struct Env {
     storage: StorageClient,
     pools: poold::proto::Client,
     switches: vswitchd::Client,
+    qsi: qsilocal::Client,
     store: Store,
     /// The host name, as last seen in PID 1's status.
     name: String,
@@ -73,6 +74,9 @@ impl Env {
             storage: StorageClient::of(&appliance),
             pools: poold::proto::Client::new(poold::proto::socket(release::RUN_DIR)),
             switches: vswitchd::Client::new(vswitchd::socket(release::RUN_DIR)),
+            qsi: qsilocal::Client::new(
+                std::path::Path::new(release::RUN_DIR).join(qsilocal::SOCKET_FILE),
+            ),
             store: Store::at(appliance.state_dir()),
             name: release::NAME.into(),
         }
@@ -106,6 +110,11 @@ impl Env {
     /// the partitions' ports.
     pub fn switches(&mut self) -> &mut vswitchd::Client {
         &mut self.switches
+    }
+
+    /// The QSI host server's local socket: the consoles and pairing.
+    pub fn qsi(&mut self) -> &mut qsilocal::Client {
+        &mut self.qsi
     }
 
     /// Start mirrored protection with `disk`.

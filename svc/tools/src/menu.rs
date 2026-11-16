@@ -29,10 +29,7 @@ pub enum Outcome {
 type Step = PanelFlow<Env, Outcome>;
 
 /// The options that are not there yet, and what brings them.
-const LATER: [(u8, &str); 2] = [
-    (4, "It comes with Phase 8, the QSI host server."),
-    (8, "It comes with Phase 9, service and code update."),
-];
+const LATER: [(u8, &str); 1] = [(8, "It comes with Phase 9, service and code update.")];
 
 /// The main menu.
 pub struct MainMenu;
@@ -50,10 +47,7 @@ impl Panel<Env, Outcome> for MainMenu {
                 (1, "Work with system status"),
                 (2, "Work with disk units"),
                 (3, "Work with network"),
-                (
-                    4,
-                    "Management console pairing  (not yet available: comes with Phase 8)",
-                ),
+                (4, "Management console pairing"),
                 (5, "Work with service tools user IDs"),
                 (6, "Date and time"),
                 (7, "Display logs"),
@@ -72,6 +66,7 @@ impl Panel<Env, Outcome> for MainMenu {
             Some(1) => Flow::Push(Box::new(SystemStatus)),
             Some(2) => Flow::Push(Box::new(DiskUnits)),
             Some(3) => Flow::Push(Box::new(crate::network::Network)),
+            Some(4) => Flow::Push(Box::new(crate::consoles::Pairing)),
             Some(5) => Flow::Push(Box::new(UsersPanel)),
             Some(6) => Flow::Push(Box::new(TimePanel::new(env))),
             Some(7) => Flow::Push(Box::new(Choice {
@@ -126,12 +121,13 @@ impl Panel<Env, Outcome> for MainMenu {
                 "",
                 "1 shows the host's state. 2 shows the load-source disks and",
                 "their protection, and adds or replaces one. 3 changes the",
-                "management network. 5 works with the users of this console.",
-                "6 sets the display zone, the time servers and the clock.",
-                "7 shows the logs. 9 powers the host off or restarts it.",
+                "management network. 4 pairs a management console. 5 works",
+                "with the users of this console. 6 sets the display zone, the",
+                "time servers and the clock. 7 shows the logs. 9 powers the",
+                "host off or restarts it.",
                 "",
-                "Options 4 and 8 are not available in this release. Partitions",
-                "are made and run from the management console, QS/MC.",
+                "Option 8 is not available in this release. Partitions are",
+                "made and run from the management console, QS/MC.",
                 "",
                 "F3 or F12 signs you off. So does ten minutes without a key.",
             ],
@@ -411,7 +407,7 @@ mod tests {
 
     #[test]
     fn options_that_are_not_there_yet_say_what_brings_them() {
-        assert!(LATER.iter().any(|(n, why)| *n == 4 && why.contains("QSI")));
+        assert!(LATER.iter().all(|(n, _)| *n != 4), "option 4 is here");
         assert!(LATER.iter().any(|(n, _)| *n == 8));
     }
 }
