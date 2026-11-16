@@ -1,0 +1,23 @@
+                               Installing Update
+                                                               System:  vs-test
+
+ Selection . . . . . :
+
+ Slot B is written on every load-source disk and pending.
+
+ Select one of the following:
+
+     1. Restart now into the update
+     2. Restart later
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F5=Refresh   F12=Exit

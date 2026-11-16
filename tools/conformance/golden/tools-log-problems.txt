@@ -1,0 +1,23 @@
+                              Display Problem Log
+                                                               System:  vs-test
+
+ Number  Opened            Last seen         Count  Status   Code
+      9  yyyy-mm-dd hh:mm  yyyy-mm-dd hh:mm      9  Closed   A9999999
+         Service flaky failed five times in ten minutes and is not started agai
+ Bottom
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help  F3=Exit  F7=Back  F8=Forward  F12=Cancel

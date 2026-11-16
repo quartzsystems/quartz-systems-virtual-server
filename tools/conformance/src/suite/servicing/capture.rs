@@ -168,8 +168,7 @@ fn base(rig: &mut super::Rig<'_>, run: &Run<'_>) -> Result<(), String> {
     sign_on(&mut rig.q.guest, USER, PASSWORD, deadline)?;
     crate::suite::network::tools::to_switches(&mut rig.q.guest, deadline)?;
     crate::suite::network::tools::make(&mut rig.q.guest, SWITCH, "1 10", "1500", deadline)?;
-    let _ = rig.q.guest.type_keys(crate::qemu::term::key::F3);
-    Ok(())
+    super::sign_off(&mut rig.q.guest)
 }
 
 /// A profile of `name` on `disk` and the switch: the image's QS/400
@@ -207,8 +206,34 @@ fn of(name: &str, disk: &str, shared: bool) -> Profile {
 /// Put the document back over QSI on a host that has its pool and
 /// switch: the processor pools, the disks and volumes, then each
 /// partition made, its definition changed and its profiles put.
+/// Put `profile`, over the one of its name with that one's revision.
+fn put(c: &mut Console, id: u32, profile: Profile) -> Result<(), String> {
+    let revision = match c.ask(AnyRequest::Profiles(profiles::Request::Get(
+        profiles::Get {
+            id,
+            name: profile.name.clone(),
+        },
+    ))) {
+        Ok(AnyReply::Profiles(profiles::Reply::Get(r))) => Some(r.revision),
+        _ => None,
+    };
+    c.ask(AnyRequest::Profiles(profiles::Request::Put(
+        profiles::Put {
+            id,
+            profile,
+            revision,
+        },
+    )))?;
+    Ok(())
+}
+
 fn put_back(c: &mut Console, doc: &Captured) -> Result<(), String> {
-    for p in &doc.proc_pools {
+    // The default pool is every host's already.
+    for p in doc
+        .proc_pools
+        .iter()
+        .filter(|p| p.name != model::profile::DEFAULT_POOL)
+    {
         c.ask(AnyRequest::Vres(vres::Request::ProcPoolCreate(
             vres::ProcPoolSpec {
                 name: p.name.clone(),
@@ -252,13 +277,7 @@ fn put_back(c: &mut Console, doc: &Captured) -> Result<(), String> {
             ));
         }
         for p in ps {
-            c.ask(AnyRequest::Profiles(profiles::Request::Put(
-                profiles::Put {
-                    id: made.id,
-                    profile: p.clone(),
-                    revision: None,
-                },
-            )))?;
+            put(c, made.id, p.clone())?;
         }
         let mut back = d.clone();
         back.created = made.created;
@@ -307,13 +326,7 @@ pub fn capture(run: &Run<'_>) -> Result<String, String> {
     for (i, name) in ["PROD", "TEST", "DEV"].iter().enumerate() {
         let id = crate::suite::qsi::flows::make_partition(&mut c.link, name)?;
         let disk = format!("VD{}", i + 1);
-        c.ask(AnyRequest::Profiles(profiles::Request::Put(
-            profiles::Put {
-                id,
-                profile: of("NORMAL", &disk, i == 1),
-                revision: None,
-            },
-        )))?;
+        put(&mut c, id, of("NORMAL", &disk, i == 1))?;
     }
     let captured = read(&mut c)?;
     let document = captured.document();

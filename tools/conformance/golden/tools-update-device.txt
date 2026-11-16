@@ -1,0 +1,23 @@
+                      Install Update from Removable Volume
+                                                               System:  vs-test
+
+ Device  . . . . . . : sdb9
+
+ The update images (.upd files) on the volume are listed next.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel

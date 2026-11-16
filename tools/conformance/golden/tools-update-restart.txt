@@ -1,0 +1,23 @@
+                          Confirm Restart into Update
+                                                               System:  vs-test
+
+ Seconds each partition has . : 999
+ Type RESTART to confirm  . . :
+
+ The host restarts into slot B. First these partitions are
+ shut down through their operating systems:
+   (No partition is running.)
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel

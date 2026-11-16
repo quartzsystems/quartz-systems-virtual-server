@@ -1,0 +1,23 @@
+                               Work with Problems
+                                                               System:  vs-test
+
+ 4=Close  5=Display
+
+ Opt Number  Status   Last seen         Code      Description
+          9  Open     yyyy-mm-dd hh:mm  A9999999  Service flaky failed five time
+
+
+
+
+
+
+
+
+
+
+
+ Bottom
+
+
+
+ F1=Help  F3=Exit  F5=Refresh  F11=Show all  F12=Cancel

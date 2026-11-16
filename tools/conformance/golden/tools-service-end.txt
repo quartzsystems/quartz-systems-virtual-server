@@ -1,0 +1,23 @@
+                            Shut Down All Partitions
+                                                               System:  vs-test
+
+ Type SHUTDOWN to confirm . :
+
+ Each partition is shut down through its operating system:
+   (No partition is running.)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel

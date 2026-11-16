@@ -1,0 +1,23 @@
+                                 Close Problem
+                                                               System:  vs-test
+
+ Close it anyway (Y=Yes) . :
+
+ The condition of problem 1 still holds.
+ Close it anyway only when it is understood and will be dealt with.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel

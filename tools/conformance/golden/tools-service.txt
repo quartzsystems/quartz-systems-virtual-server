@@ -1,0 +1,23 @@
+                               Service Functions
+                                                               System:  vs-test
+
+ Select one of the following:
+
+      1. Work with problems
+      2. Take a host dump
+      3. Work with dumps
+      4. Install an update from a removable volume
+      5. Display code levels
+      6. Shut down all partitions
+
+
+
+
+
+
+
+
+ Selection
+
+
+ F1=Help   F3=Exit   F12=Cancel

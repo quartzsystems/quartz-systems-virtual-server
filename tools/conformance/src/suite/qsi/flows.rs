@@ -174,10 +174,23 @@ pub(crate) fn gather(l: &mut Link, within: Duration) -> Result<Vec<(u64, AnyEven
         let mut got = std::mem::take(&mut l.besides);
         got.extend(l.step()?);
         for i in got {
-            if let Incoming::Event(e) = i
-                && let Ok(Some(event)) = e.decode()
-            {
-                out.push((e.seq, event));
+            match i {
+                Incoming::Event(e) => {
+                    if let Ok(Some(event)) = e.decode() {
+                        out.push((e.seq, event));
+                    }
+                }
+                Incoming::Closed {
+                    msgid,
+                    text,
+                    by_peer,
+                } => {
+                    return Err(format!(
+                        "the session closed after {} events (by the host: {by_peer}, {msgid:?}): {text}",
+                        out.len()
+                    ));
+                }
+                _ => {}
             }
         }
     }
@@ -324,11 +337,12 @@ pub fn events(run: &Run<'_>) -> Result<String, String> {
             "after the server's restart: {after:?}, last seen {before}"
         ));
     }
-    // Past the log's reach: more events than it keeps, then a console
-    // that saw only the first.
+    // Past the log's reach: more events than it keeps (it is kept
+    // across the server's restart, so every one counts), then a console
+    // that saw only the first, on a connection of its own.
     let keep = qsisess::Limits::default().log_events;
     let mut revision = None;
-    for _ in 0..=keep / 2 {
+    for _ in 0..=keep {
         let AnyReply::Profiles(profiles::Reply::Put(saved)) = ask(
             &mut l,
             AnyRequest::Profiles(profiles::Request::Put(profiles::Put {
@@ -341,14 +355,15 @@ pub fn events(run: &Run<'_>) -> Result<String, String> {
             return Err("put".into());
         };
         revision = Some(saved.revision);
-        // Each put is an event; a delete and a put again, two more.
+        // Each put is at least one event.
     }
+    l.close();
+    let mut l = link(&q, &id_a, host_print)?;
     let far = subscribe(&mut l, Some(1))?;
-    let reach = if far.replay == base::Replay::ReadAgain {
-        "read again"
-    } else {
-        "resumed: the log still reaches its first event"
-    };
+    if far.replay != base::Replay::ReadAgain {
+        return Err(format!("past the log's reach, from event 1: {far:?}"));
+    }
+    let reach = "read again";
     shut_down(&mut l, id, partition::ShutdownKind::Immediate)?;
     l.close();
     Ok(format!(

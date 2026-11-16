@@ -1,0 +1,23 @@
+                                  Update Image
+                                                               System:  vs-test
+
+ Image . . . . . . . : QSVS-NEXT.UPD
+ Product . . . . . . : QS/VS (test image)
+ Release . . . . . . : V9R9M9 build <build>
+ Fixes . . . . . . . : QV99999
+ Size  . . . . . . . : 99.9 MB
+ Verified  . . . . . : signature, hashes, product, release, state
+
+ Running . . . . . . : V9R9M9 build <build> in slot A
+ Written to  . . . . : slot B on every load-source disk
+
+ Press F10 to install it, or F12 to discard it.
+
+
+
+
+
+
+
+
+ F1=Help   F10=Install   F12=Discard

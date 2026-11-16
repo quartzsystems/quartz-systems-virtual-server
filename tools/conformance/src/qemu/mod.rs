@@ -254,9 +254,18 @@ pub fn args(l: &Launch) -> Vec<OsString> {
         a.push(format!("ide-cd,drive=cd,bus=ide.0{first}").into());
     }
     if let Some(usb) = &l.usb {
+        // The installation ISO is media; any other image a stick to
+        // write to.
+        let iso = usb
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("iso"));
         a.push("-drive".into());
         a.push(join(
-            "if=none,id=stick,format=raw,readonly=on,file=",
+            if iso {
+                "if=none,id=stick,format=raw,readonly=on,file="
+            } else {
+                "if=none,id=stick,format=raw,file="
+            },
             usb,
             "",
         ));

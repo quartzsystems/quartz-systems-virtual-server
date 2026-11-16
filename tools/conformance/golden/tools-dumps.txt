@@ -1,0 +1,23 @@
+                                Work with Dumps
+                                                               System:  vs-test
+
+ 4=Delete  6=Copy to removable volume
+
+ Opt Whose       Name                                 Size  Taken
+     host        HOSTDUMP-99999999-999999.zip     999.9 kB  yyyy-mm-dd hh:mm UTC
+     host        HOSTDUMP-99999999-999999.zip     999.9 kB  yyyy-mm-dd hh:mm UTC
+
+
+
+
+
+
+
+
+
+
+ Bottom
+
+
+
+ F1=Help  F3=Exit  F5=Refresh  F12=Cancel

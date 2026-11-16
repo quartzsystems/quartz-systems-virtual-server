@@ -1,0 +1,23 @@
+                                 Take Host Dump
+                                                               System:  vs-test
+
+ A host dump holds the host's service data: its logs, the
+ reference code and problem histories, the inventory, the
+ state files, each service's status, the partitions, pools
+ and switches, the control groups and the kernel's log.
+
+ No secret goes in: not the host's key, not a password hash,
+ not a console's pin.
+
+ Press Enter to take one, or F12 to go back.
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel

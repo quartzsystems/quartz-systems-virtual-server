@@ -50,7 +50,7 @@ pub fn away(run: &Run<'_>) -> Result<String, String> {
     // while it is: a virtual disk made and a partition made.
     let started = super::super::qsi::posted(&mut rig.q, &refcode::QSI_STARTED);
     for _ in 0..2 {
-        channel(&mut rig.q.guest)?.ask(&format!("{} qsid", command::KILL))?;
+        super::kill(&mut rig.q.guest, "qsid")?;
     }
     said(poold(&mut rig.q.guest)?.create_vdisk("POOL1".into(), "AWAY".into(), 64, false))?;
     let made = crate::suite::partition::manager::partd(&mut rig.q.guest)?;
@@ -220,7 +220,8 @@ pub fn conditions(run: &Run<'_>) -> Result<String, String> {
     let mut rig = host(
         run,
         &Opts {
-            hooks: vec!["hold-memory"],
+            hooks: vec!["hold-memory", qsvshook::FLAKY_FAILS],
+            memory: true,
             ..Opts::default()
         },
     )?;
@@ -269,12 +270,13 @@ pub fn conditions(run: &Run<'_>) -> Result<String, String> {
         let _ = crate::suite::qsi::pair(&rig.q, &id, &wrong, "BAD");
     }
     check(&mut c, &refcode::QSI_PAIRING_FAILING, None)?;
-    let _ = rig.q.guest.type_keys(crate::qemu::term::key::F3);
+    super::sign_off(&mut rig.q.guest)?;
     // /data nearly full, then room again: cleared.
     let room = data_free(&mut rig)?;
     let filled = room.saturating_sub(room / 20 + (8 << 20));
     channel(&mut rig.q.guest)?.ask_within(
-        &format!("copy /dev/zero 0 /data/fill 0 {filled}"),
+        // Not zeros: the hook leaves a page of them a hole.
+        &format!("copy /dev/urandom 0 /data/fill 0 {filled}"),
         Duration::from_mins(5),
     )?;
     check(&mut c, &refcode::DATA_NEARLY_FULL, None)?;
@@ -320,7 +322,7 @@ pub fn kill(run: &Run<'_>) -> Result<String, String> {
     for n in 0..POSTS {
         channel(&mut rig.q.guest)?.ask(&format!("{} {} burst {n}", command::POST, code.code))?;
         if n % 15 == 7 {
-            channel(&mut rig.q.guest)?.ask(&format!("{} probd", command::KILL))?;
+            super::kill(&mut rig.q.guest, "probd")?;
             kills += 1;
         }
     }

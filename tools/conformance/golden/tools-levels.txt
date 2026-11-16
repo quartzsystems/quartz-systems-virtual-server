@@ -1,0 +1,23 @@
+                              Display Code Levels
+                                                               System:  vs-test
+
+ Slot A  . . . . . . : V9R9M9 build <build>
+   Role  . . . . . . : running, default
+   Fixes . . . . . . : none
+   Last activation . : never activated
+ Slot B  . . . . . . : V9R9M9 build <build>
+   Role  . . . . . . : -
+   Fixes . . . . . . : QV99999
+   Last activation . : pending, yyyy-mm-dd hh:mm UTC
+ Pending . . . . . . : slot B
+ Staged  . . . . . . : nothing
+
+
+
+
+
+
+
+
+
+ F1=Help   F3=Exit   F5=Refresh   F12=Cancel

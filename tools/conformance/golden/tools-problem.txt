@@ -1,0 +1,23 @@
+                                Display Problem
+                                                               System:  vs-test
+
+ Problem . . . . . . : 9
+ Status  . . . . . . : Open; its condition holds
+ Reference code  . . : <not compared>
+ Source  . . . . . . : host
+ First seen  . . . . : yyyy-mm-dd hh:mm UTC
+ Last seen . . . . . : yyyy-mm-dd hh:mm UTC, 9 time(s)
+ Message . . . . . . : QVS9999
+
+ Service flaky failed five times in ten minutes and is not started again.
+
+ What the service does is not done until the host is restarted. A host dump was
+ taken when it stopped: take it to the release's supplier, and restart the host
+ when you can.
+
+ More...
+
+
+
+
+ F1=Help  F3=Exit  F7=Back  F8=Forward  F10=Close problem  F12=Cancel

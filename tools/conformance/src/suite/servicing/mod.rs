@@ -75,6 +75,9 @@ pub struct Opts {
     pub cpu: Option<String>,
     /// A removable volume.
     pub usb: Option<PathBuf>,
+    /// A partition's memory, so the host reserves huge pages, as with
+    /// `partition`, without the image.
+    pub memory: bool,
 }
 
 /// A suite's host: on its management network, with its own firmware
@@ -110,6 +113,9 @@ pub fn host<'a>(run: &Run<'a>, opts: &Opts) -> Result<Rig<'a>, String> {
     launch.oem = opts.hooks.iter().map(|h| qsvshook::oem_string(h)).collect();
     launch.cpu.clone_from(&opts.cpu);
     launch.usb.clone_from(&opts.usb);
+    if opts.memory {
+        launch.memory_mb = super::partition::HOST_MEMORY_MB;
+    }
     if opts.partition {
         let image = super::partition::qs400_image()?;
         let copy = run.file("unit.img");
@@ -144,8 +150,21 @@ pub fn host<'a>(run: &Run<'a>, opts: &Opts) -> Result<Rig<'a>, String> {
 
 /// Start the host of `launch` and wait for its server.
 pub fn start<'a>(run: &Run<'a>, launch: Launch) -> Result<Qsi<'a>, String> {
-    let mut guest = boot(run, &launch)?;
-    guest.seen(&refcode::QSI_STARTED.tag(), run.deadline())?;
+    // A host whose flaky service fails is never all ready: its server
+    // is what is waited for.
+    let flaky = launch
+        .oem
+        .contains(&qsvshook::oem_string(qsvshook::FLAKY_FAILS));
+    let mut guest = if flaky {
+        let mut g = run.boot(&launch)?;
+        g.seen(&refcode::QSI_STARTED.tag(), run.deadline())?;
+        g.channel(run.deadline())?;
+        g
+    } else {
+        let mut g = boot(run, &launch)?;
+        g.seen(&refcode::QSI_STARTED.tag(), run.deadline())?;
+        g
+    };
     channel(&mut guest)?.ask(&format!(
         "{} {} {}",
         qsvshook::proto::command::PUT,
@@ -197,9 +216,25 @@ pub struct Console {
 /// Pair a console named `name`.
 pub fn console(q: &mut Qsi<'_>, name: &str, deadline: Instant) -> Result<Console, String> {
     let (id, host, link) = super::qsi::paired(q, name, deadline)?;
-    // Back to the main menu, so the serial port is free.
-    let _ = q.guest.type_keys(crate::qemu::term::key::F3);
+    // Signed off, so the serial port is free and the next sign-on finds
+    // its prompt.
+    sign_off(&mut q.guest)?;
     Ok(Console { id, host, link })
+}
+
+/// F3 from wherever Service Tools is at the serial port until it is
+/// signed off and PID 1 asks for Enter again.
+pub fn sign_off(g: &mut crate::suite::base::Guest<'_>) -> Result<(), String> {
+    for _ in 0..6 {
+        g.type_keys(crate::qemu::term::key::F3)?;
+        let soon = Instant::now() + Duration::from_secs(3);
+        if g.screen("signed off", soon, |s| s.contains("Press Enter to sign on"))
+            .is_ok()
+        {
+            return Ok(());
+        }
+    }
+    Err("Service Tools did not sign off at the serial port".into())
 }
 
 impl Console {
@@ -279,6 +314,21 @@ pub fn other_release() -> Result<PathBuf, String> {
         .ok_or_else(|| {
             format!("{UPDATE_ENV} names no update image of another release (docs/PHASE9.md)")
         })
+}
+
+/// Kill the service `name`, waiting for it to be started again first
+/// when a kill just before left it with no process.
+pub fn kill(g: &mut crate::suite::base::Guest<'_>, name: &str) -> Result<(), String> {
+    let until = Instant::now() + Duration::from_secs(30);
+    loop {
+        match channel(g)?.ask(&format!("{} {name}", qsvshook::proto::command::KILL)) {
+            Ok(_) => return Ok(()),
+            Err(e) if e.contains("no process") && Instant::now() < until => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// The test image's own update image.

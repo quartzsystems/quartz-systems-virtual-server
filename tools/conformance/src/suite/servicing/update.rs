@@ -138,10 +138,14 @@ fn partitions_whole(c: &mut Console) -> Result<String, String> {
     };
     let mut out = String::new();
     for p in all {
-        let d = c.ask(AnyRequest::Partitions(partitions::Request::Get(
-            partitions::Get { id: p.id },
-        )))?;
-        let _ = writeln!(out, "{d:?}");
+        // Its definition: its state is the activation's to change.
+        let AnyReply::Partitions(partitions::Reply::Get(d)) = c.ask(AnyRequest::Partitions(
+            partitions::Request::Get(partitions::Get { id: p.id }),
+        ))?
+        else {
+            return Err("get".into());
+        };
+        let _ = writeln!(out, "{:?}", d.definition);
         let AnyReply::Profiles(profiles::Reply::List(names)) = c.ask(AnyRequest::Profiles(
             profiles::Request::List(profiles::List { id: p.id }),
         ))?
@@ -239,8 +243,11 @@ pub fn good(run: &Run<'_>) -> Result<String, String> {
             me.release
         ));
     }
-    if partitions_whole(&mut c)? != whole {
-        return Err("a partition's definition or profile changed across the update".into());
+    let now = partitions_whole(&mut c)?;
+    if now != whole {
+        return Err(format!(
+            "a partition's definition or profile changed across the update:\n{whole}\nnow\n{now}"
+        ));
     }
     c.link.close();
     Ok(format!(
@@ -639,7 +646,7 @@ pub fn mirror(run: &Run<'_>) -> Result<String, String> {
         let mut launch = rig.q.launch.clone();
         let gone = rig.disks[1 - keep].clone();
         launch.extra.retain(|d| d.path != gone);
-        let mut guest = run.boot(&launch)?;
+        let mut guest = crate::suite::base::booted(run, &launch)?;
         let status = channel(&mut guest)?.status()?;
         let rel = status
             .fact(release::fact::RELEASE)
@@ -693,7 +700,6 @@ pub fn qsictl(run: &Run<'_>) -> Result<String, String> {
     let deadline = run.deadline();
     crate::suite::qsi::to_pairing(&mut rig.q, deadline)?;
     let (password, _) = crate::suite::qsi::start_pairing(&mut rig.q, deadline)?;
-    let _ = rig.q.guest.type_keys(crate::qemu::term::key::F3);
     let dir: PathBuf = run.file("qsictl");
     let bin = crate::suite::qsi::flows::qsictl_binary()?;
     let run_it = |args: &[&str]| -> Result<String, String> {
@@ -715,6 +721,8 @@ pub fn qsictl(run: &Run<'_>) -> Result<String, String> {
     };
     run_it(&["init"])?;
     run_it(&["pair", &rig.q.address, &password, "--as", "vs"])?;
+    // Leave the pairing panel only once it is used: leaving ends it.
+    super::sign_off(&mut rig.q.guest)?;
     let staged = run_it(&["update", "stage", &image.display().to_string()])?;
     let installed = run_it(&["update", "install"])?;
     run_it(&["update", "activate"])?;
@@ -731,17 +739,23 @@ pub fn qsictl(run: &Run<'_>) -> Result<String, String> {
     if !now.contains(&want) {
         return Err(format!("after the restart:\n{now}"));
     }
-    // A test image's flaky service is stopped after its retries: its
-    // problem is there to be listed and closed.
+    // A code that opens a problem, posted through the hook (a failing
+    // service would keep the trial from confirming).
+    let code = &refcode::CLOCK_NOT_SET;
+    crate::suite::base::channel(&mut rig.q.guest)?.ask(&format!(
+        "{} {} by the harness",
+        qsvshook::proto::command::POST,
+        code.code
+    ))?;
     let listed = eventually(Duration::from_mins(2), || {
         run_it(&["problems", "list", "--open"])
             .ok()
-            .filter(|t| t.contains(refcode::SERVICE_STOPPED.code))
+            .filter(|t| t.contains(code.code))
     })
-    .ok_or("qsictl lists no open problem of the stopped service")?;
+    .ok_or_else(|| format!("qsictl lists no open problem of {}", code.code))?;
     let number = listed
         .lines()
-        .find(|l| l.contains(refcode::SERVICE_STOPPED.code))
+        .find(|l| l.contains(code.code))
         .and_then(|l| l.split_whitespace().next())
         .ok_or("no number")?
         .to_string();

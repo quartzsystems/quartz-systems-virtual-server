@@ -22,6 +22,16 @@ fn masked(screen: &str) -> String {
     screen
         .lines()
         .map(|l| {
+            // A build ID is the commit's: `<build>`, as the status
+            // screen's golden has it.
+            let l = &match l.split_once("build ") {
+                Some((before, after)) => {
+                    let rest = after.split_once(' ').map_or("", |(_, r)| r);
+                    let gap = if rest.is_empty() { "" } else { " " };
+                    format!("{before}build <build>{gap}{rest}")
+                }
+                None => l.to_string(),
+            };
             let varies = [
                 ":", "bytes", "MiB", "KiB", "GiB", " B ", "build", "HOSTDUMP", "%", "update-",
             ]
@@ -32,7 +42,7 @@ fn masked(screen: &str) -> String {
                     .map(|c| if c.is_ascii_digit() { '9' } else { c })
                     .collect()
             } else {
-                l.to_string()
+                l.clone()
             }
         })
         .collect::<Vec<_>>()
@@ -42,6 +52,18 @@ fn masked(screen: &str) -> String {
 /// Hold a screen, masked, against its golden file.
 fn held(name: &str, screen: &str) -> Result<(), String> {
     golden(name, &masked(screen))
+}
+
+/// F12 until the screen titled `title`: a panel may have shown
+/// another over itself first.
+fn back(g: &mut crate::suite::base::Guest<'_>, title: &str) -> Result<String, String> {
+    for _ in 0..4 {
+        g.type_keys(key::F12)?;
+        if let Ok(s) = titled(g, title, Instant::now() + Duration::from_secs(3)) {
+            return Ok(s);
+        }
+    }
+    Err(format!("F12 did not come back to {title}"))
 }
 
 /// Keys, then the screen titled `title`.
@@ -57,18 +79,25 @@ fn keys(
 
 /// The kernel's name of the removable volume: the disk whose
 /// `removable` is 1.
+/// USB storage comes some seconds after the base is ready.
 fn stick(g: &mut crate::suite::base::Guest<'_>) -> Result<String, String> {
-    let c = channel(g)?;
-    for name in c.ls("/sys/block")? {
-        let name = name.trim_end_matches('/').to_string();
-        if name.starts_with("sd")
-            && c.text(&format!("/sys/block/{name}/removable"))
-                .is_ok_and(|t| t.trim() == "1")
-        {
-            return Ok(name);
+    let until = Instant::now() + Duration::from_secs(30);
+    loop {
+        let c = channel(g)?;
+        for name in c.ls("/sys/block")? {
+            let name = name.trim_end_matches('/').to_string();
+            if name.starts_with("sd")
+                && c.text(&format!("/sys/block/{name}/removable"))
+                    .is_ok_and(|t| t.trim() == "1")
+            {
+                return Ok(name);
+            }
         }
+        if Instant::now() >= until {
+            return Err("no removable volume".into());
+        }
+        std::thread::sleep(Duration::from_secs(1));
     }
-    Err("no removable volume".into())
 }
 
 /// Suite 12.
@@ -88,6 +117,7 @@ pub fn tools(run: &Run<'_>) -> Result<String, String> {
         run,
         &Opts {
             usb: Some(usb.clone()),
+            hooks: vec![qsvshook::FLAKY_FAILS],
             ..Opts::default()
         },
     )?;
@@ -113,8 +143,7 @@ pub fn tools(run: &Run<'_>) -> Result<String, String> {
     g.type_keys(&format!("Y{}", key::ENTER))?;
     g.screen("the problem closed", wait(), |s| s.contains("is closed."))?;
     // Back to option 8.
-    g.type_keys(key::F12)?;
-    titled(g, "Service Functions", deadline)?;
+    back(g, "Service Functions")?;
     // 2: a host dump.
     let take = option(g, 2, "Take Host Dump", deadline)?;
     held("tools-service-dump", &take)?;
@@ -136,7 +165,8 @@ pub fn tools(run: &Run<'_>) -> Result<String, String> {
     )?;
     held("tools-dump-copy", &copy)?;
     g.type_keys(&format!("{device}{}{}", key::FIELD_EXIT, key::ENTER))?;
-    g.screen("the dump copied", wait(), |s| s.contains("is copied to"))?;
+    let copied_to = format!("is copied to {device}.");
+    g.screen("the dump copied", wait(), |s| s.contains(&copied_to))?;
     let delete = keys(
         g,
         &format!("4{}", key::ENTER),
@@ -144,10 +174,8 @@ pub fn tools(run: &Run<'_>) -> Result<String, String> {
         deadline,
     )?;
     held("tools-dump-delete", &delete)?;
-    g.type_keys(key::F12)?;
-    titled(g, "Work with Dumps", deadline)?;
-    g.type_keys(key::F12)?;
-    titled(g, "Service Functions", deadline)?;
+    back(g, "Work with Dumps")?;
+    back(g, "Service Functions")?;
     // 4: the update from the stick.
     let from = option(g, 4, "Install Update from Removable Volume", deadline)?;
     held("tools-update-device", &from)?;
@@ -174,8 +202,7 @@ pub fn tools(run: &Run<'_>) -> Result<String, String> {
         deadline,
     )?;
     held("tools-update-restart", &restart)?;
-    g.type_keys(key::F12)?;
-    titled(g, "Installing Update", deadline)?;
+    back(g, "Installing Update")?;
     g.type_keys(&format!("2{}", key::ENTER))?;
     titled(g, "Service Functions", deadline)?;
     // 5: the code levels, with the slot pending.
@@ -184,13 +211,11 @@ pub fn tools(run: &Run<'_>) -> Result<String, String> {
         return Err(format!("the code levels show nothing pending:\n{levels}"));
     }
     held("tools-levels", &levels)?;
-    g.type_keys(key::F12)?;
-    titled(g, "Service Functions", deadline)?;
+    back(g, "Service Functions")?;
     // 6: shut down all partitions, not done.
     let end = option(g, 6, "Shut Down All Partitions", deadline)?;
     held("tools-service-end", &end)?;
-    g.type_keys(key::F12)?;
-    titled(g, "Service Functions", deadline)?;
+    back(g, "Service Functions")?;
     g.type_keys(key::F3)?;
     // Option 7's problem log.
     option(g, 7, "Display Logs", deadline)?;

@@ -1,0 +1,23 @@
+                             Confirm Delete of Dump
+                                                               System:  vs-test
+
+ host dump HOSTDUMP-99999999-999999.zip is deleted.
+
+ Press Enter to delete it, or F12 to go back.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel

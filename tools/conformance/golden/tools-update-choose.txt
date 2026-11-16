@@ -1,0 +1,23 @@
+                              Select Update Image
+                                                               System:  vs-test
+
+ 1=Select  2=Select, allowing an older release
+
+ Opt File
+     QSVS-NEXT.UPD
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help  F12=Cancel

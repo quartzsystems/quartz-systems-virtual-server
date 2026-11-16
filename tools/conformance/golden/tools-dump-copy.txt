@@ -1,0 +1,23 @@
+                         Copy Dump to Removable Volume
+                                                               System:  vs-test
+
+ Device  . . . . . . : sdb9
+
+ host dump HOSTDUMP-99999999-999999.zip, 999.9 kB
+ is copied to the top of the volume on that device.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel
