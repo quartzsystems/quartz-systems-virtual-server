@@ -92,9 +92,20 @@ pub const TOOLS: Service = Service {
     ready_within: READY_WITHIN,
 };
 
+/// The QSI host server: the one listener, last, so every service it
+/// translates to is there; the first stopped.
+pub const QSID: Service = Service {
+    name: "qsid",
+    binary: "/qsvs/bin/qsvsqsid",
+    args: &[],
+    order: 35,
+    needs: &[],
+    ready_within: READY_WITHIN,
+};
+
 /// The base services.
 #[cfg(not(test_hooks))]
-pub static TABLE: &[Service] = &[STGD, LOGD, NETD, POOLD, VSWITCHD, PARTD, TOOLS];
+pub static TABLE: &[Service] = &[STGD, LOGD, NETD, POOLD, VSWITCHD, PARTD, TOOLS, QSID];
 
 /// The base services and, in a test image, the test hooks' two.
 #[cfg(test_hooks)]
@@ -106,6 +117,7 @@ pub static TABLE: &[Service] = &[
     VSWITCHD,
     PARTD,
     TOOLS,
+    QSID,
     crate::hooks::FLAKY,
     crate::hooks::CHANNEL,
     crate::hooks::PARTITION,

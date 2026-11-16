@@ -1723,6 +1723,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "qsvsqsid"
+version = "0.1.0"
+dependencies = [
+ "identity",
+ "libc",
+ "partd",
+ "poold",
+ "qsilocal",
+ "qsiserver",
+ "qsisess",
+ "qsitrust",
+ "refcode",
+ "release",
+ "supervise",
+ "vswitchd",
+]
+
+[[package]]
 name = "qsvsstgd"
 version = "0.1.0"
 dependencies = [
