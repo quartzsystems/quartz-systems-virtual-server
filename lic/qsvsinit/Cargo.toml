@@ -26,6 +26,7 @@ partd = { path = "../../part/partd", version = "0.1.0" }
 vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
 poold = { path = "../../stg/poold", version = "0.1.0" }
 hostdump = { path = "../../svc/hostdump", version = "0.1.0" }
+update = { path = "../../svc/update", version = "0.1.0" }
 abrec.workspace = true
 diskimg.workspace = true
 

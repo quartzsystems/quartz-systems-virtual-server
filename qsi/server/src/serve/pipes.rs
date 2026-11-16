@@ -239,6 +239,8 @@ impl Pipe for UploadPipe {
 pub struct Sockets {
     /// The host's dumps' directory.
     pub dumps: PathBuf,
+    /// The update service's socket.
+    pub updd: PathBuf,
     /// The partition manager's.
     pub partd: PathBuf,
     /// The pool service's.
@@ -347,6 +349,41 @@ impl Opener for Sockets {
                 stop,
             }),
         ))
+    }
+
+    fn stage(
+        &mut self,
+        name: &str,
+        bytes: u64,
+        allow_older: bool,
+    ) -> Result<Box<dyn Pipe>, Vec<Note>> {
+        const UPDD: &str = "update service";
+        let client = update::proto::Client::new(&self.updd);
+        let stream = client
+            .begin_stage(name, bytes, allow_older)
+            .map_err(|e| down(UPDD, &e))?
+            .map_err(|issued| crate::families::update::led(convert::notes(&issued)))?;
+        let mut reader = stream.try_clone().map_err(|e| down(UPDD, &e.into()))?;
+        let (tx, rx) = mpsc::sync_channel(QUEUE);
+        spawn("stage", move || {
+            // The service's second answer, once every byte is in or
+            // the connection ends; its events say the rest.
+            let _ = reader.set_read_timeout(None);
+            let end = match update::proto::staged(&mut reader) {
+                Ok(Ok(_)) => None,
+                Ok(Err(issued)) => crate::families::update::led(convert::notes(&issued))
+                    .into_iter()
+                    .next(),
+                Err(e) => Some(note(qsi::update::msgid::UPLOAD_CUT, e.to_string())),
+            };
+            let _ = tx.send(Piece::End(end));
+        });
+        Ok(Box::new(UploadPipe {
+            to: Some(stream),
+            left: bytes,
+            rx,
+            ended: false,
+        }))
     }
 
     fn upload(&mut self, name: &str, bytes: u64) -> Result<Box<dyn Pipe>, Vec<Note>> {

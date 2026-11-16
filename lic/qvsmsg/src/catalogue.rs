@@ -911,4 +911,84 @@ catalogue! {
     PRB_STORAGE_LOST = "QVS5149",
         "The storage service of the mirrored load source stopped: &1.",
         "The host stopped, its data file system without a server. Restart the host.";
+    /// No host dump of that name.
+    HOST_DUMP_MISSING = "QVS5201",
+        "There is no host dump &1.",
+        "A host dump's name is HOSTDUMP- and the time it was taken. The list shows the dumps kept: at most 8, the oldest put out first.";
+    /// One is being taken.
+    HOST_DUMP_TAKING = "QVS5202",
+        "A host dump is being taken: &1.",
+        "One host dump is taken at a time. Wait for it to be written, then ask again.";
+    /// QSI1101.
+    UPDATE_SIGNATURE = "QVS5301",
+        "Update image &1 is not signed by a key this host trusts.",
+        "An image is installed only if its manifest is signed by a key the running release trusts, and nothing turns that off. Get the image from the release's supplier again.";
+    /// QSI1102.
+    UPDATE_DAMAGED = "QVS5302",
+        "Update image &1 is damaged: &2.",
+        "The image does not read, or a size or a hash in it is not its manifest's. Copy or upload it again; if it is refused again, get it from the release's supplier again.";
+    /// QSI1103.
+    UPDATE_PRODUCT = "QVS5303",
+        "Update image &1 is for &2, and this host is &3.",
+        "An update image updates the product it was built for. Use an image of this host's product.";
+    /// QSI1104.
+    UPDATE_OLDER = "QVS5304",
+        "Update image &1 holds &2, which is older than &3, which runs.",
+        "An older release is installed only when the stage allows it. Stage the image again, allowing an older release, if that is what is wanted.";
+    /// QSI1105.
+    UPDATE_STATE = "QVS5305",
+        "Update image &1 holds &2, which cannot read the host's state: &3.",
+        "The release in the image reads an older form of that file than the host has. It is never installed, whatever the stage allowed: the host would not start with its state.";
+    /// QSI1106.
+    UPDATE_NOTHING_STAGED = "QVS5306",
+        "No update image is staged.",
+        "Stage an image first: upload it from a management console, or install it from a removable volume at Service Tools option 8, 4.";
+    /// QSI1107.
+    UPDATE_STAGED_ALREADY = "QVS5307",
+        "Update image &1 is staged already.",
+        "One image is staged at a time. Install it, or discard it first.";
+    /// QSI1108.
+    UPDATE_NOT_VERIFIED = "QVS5308",
+        "Update image &1 has not verified: &2.",
+        "Only an image that passed every check is installed. Discard it and stage another.";
+    /// QSI1109.
+    UPDATE_TOO_LONG = "QVS5309",
+        "Update image &1 sent more than the &2 bytes it named.",
+        "Nothing of it was kept. Stage it again with its size.";
+    /// QSI1110.
+    UPDATE_CUT = "QVS5310",
+        "Update image &1 ended after &2 of its &3 bytes.",
+        "Nothing of it was kept. Stage it again.";
+    /// QSI1111.
+    UPDATE_BUSY = "QVS5311",
+        "An update is &1.",
+        "One install or activation at a time. Wait for it to end.";
+    /// QSI1112.
+    UPDATE_NOTHING_PENDING = "QVS5312",
+        "No code slot is pending.",
+        "Install a verified image first: the slot it is written to is then pending.";
+    /// QSI1113.
+    UPDATE_PARTITIONS_RUN = "QVS5313",
+        "Partitions are running: &1.",
+        "An activation restarts the host. Shut the partitions down first, or activate saying that they are to be shut down through their operating systems.";
+    /// QSI1114.
+    UPDATE_PENDING = "QVS5314",
+        "Code slot &1 is pending already.",
+        "Activate the pending slot, or cancel it, before another image is installed.";
+    /// An install failed.
+    UPDATE_NOT_WRITTEN = "QVS5315",
+        "Code slot &1 could not be written: &2.",
+        "The slot is not pending, and the slot that runs is as it was. Install the image again; if it fails again the load-source disk named may be failing.";
+    /// PID 1 refused.
+    UPDATE_RECORD = "QVS5316",
+        "The A/B record could not be changed: &1.",
+        "The slots are as they were. Display the code levels (Service Tools option 8, 5) and try again.";
+    /// Staging failed.
+    UPDATE_NOT_KEPT = "QVS5317",
+        "Update image &1 could not be kept on the data file system: &2.",
+        "Nothing of it was kept. Make room on the data file system, then stage it again.";
+    /// A stage's name or size.
+    UPDATE_NAME = "QVS5318",
+        "&1 is not a name and size an update image is staged by.",
+        "A stage names the image in 1 to 64 printable characters and gives its size, more than 0 and at most 300 MiB.";
 }

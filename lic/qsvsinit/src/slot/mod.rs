@@ -160,6 +160,78 @@ mod on_host {
             }
         }
 
+        /// The record as the update service asks for it.
+        pub fn state(&self) -> supervise::control::SlotState {
+            let slot = |s: Slot| letter(s).to_string();
+            let record = self.record.unwrap_or(HostRecord::new(self.booted));
+            supervise::control::SlotState {
+                booted: slot(self.booted),
+                default: slot(record.default_slot),
+                pending: record.pending.map(slot).unwrap_or_default(),
+                activated: record.pending.is_some() && record.attempts == 0,
+                confirmed: record
+                    .confirmed
+                    .iter()
+                    .map(|r| r.map(|r| r.to_string()).unwrap_or_default())
+                    .collect(),
+                fell_back: match self.ipl {
+                    Ipl::FellBack { pending } => slot(pending),
+                    _ => String::new(),
+                },
+            }
+        }
+
+        /// Write `next` as the record, on every disk.
+        fn write(&mut self, next: HostRecord) -> Result<(), String> {
+            let part = self.part.as_mut().ok_or("there is no A/B record")?;
+            record::write_all(part, next).map_err(|e| e.to_string())?;
+            self.record = Some(next);
+            Ok(())
+        }
+
+        /// `slot` is installed: pending, not activated. Not the slot
+        /// that runs, and not while a trial is under way.
+        pub fn install(&mut self, slot: Slot) -> Result<(), String> {
+            if slot == self.booted {
+                return Err(format!("slot {} is the one that runs", letter(slot)));
+            }
+            if self.ipl == Ipl::Trial {
+                return Err("the slot that runs has not confirmed yet".into());
+            }
+            let record = self.record.ok_or("there is no A/B record")?;
+            self.write(record.install(slot))
+        }
+
+        /// Nothing is pending, and the firmware boots by its order.
+        pub fn cancel(&mut self) -> Result<(), String> {
+            let record = self.record.ok_or("there is no A/B record")?;
+            if record.pending.is_none() {
+                return Err("no slot is pending".into());
+            }
+            self.write(record.cancel())?;
+            boot::clear_next(Path::new(EFIVARS))
+        }
+
+        /// The pending slot activated: its attempt spent, `BootNext` it.
+        /// The slot.
+        pub fn activate(&mut self) -> Result<Slot, String> {
+            let record = self.record.ok_or("there is no A/B record")?;
+            let slot = record.pending.ok_or("no slot is pending")?;
+            self.write(record.activate())?;
+            if let Err(e) = boot::boot_next(
+                Path::new(EFIVARS),
+                &release::LOAD_SOURCE,
+                release::NAME,
+                &self.esps,
+                slot,
+            ) {
+                // Not activated after all: the record says so again.
+                let _ = self.write(record);
+                return Err(format!("the firmware's next boot: {e}"));
+            }
+            Ok(slot)
+        }
+
         /// The record in words, or that there is none.
         pub fn summary(&self) -> String {
             self.record

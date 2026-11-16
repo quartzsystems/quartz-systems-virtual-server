@@ -37,6 +37,7 @@ fn kind_of(manifest: &str) -> Result<(String, bool)> {
 pub fn manifest(ctx: &Ctx, image: Image) -> Result<PathBuf> {
     check_hooks(ctx, image)?;
     let path = buildkit::image::manifest::manifest(ctx)?;
+    super::update::list(ctx, &path)?;
     let (product, hooks) = kind_of(&fs::read_to_string(&path)?)?;
     let expected = match image {
         Image::Release => (release::NAME, false),

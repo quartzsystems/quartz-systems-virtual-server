@@ -296,11 +296,35 @@ impl Host {
             if matches!(slots.ipl, loadsource::record::Ipl::FellBack { .. }) {
                 self.dump_for("the pending slot did not confirm");
             }
+            let trial = slots.ipl == loadsource::record::Ipl::Trial;
             let mut posted = Vec::new();
             slots.base_ready(|code, detail| posted.push(posting(code, detail)));
+            let confirmed = trial
+                && slots.ipl == loadsource::record::Ipl::Normal
+                && slots.record.is_some_and(|r| r.default_slot == slots.booted);
+            let booted = loadsource::record::letter(slots.booted);
             self.slots = Some(slots);
             for p in posted {
                 self.take(p);
+            }
+            if confirmed {
+                self.post_about(
+                    &refcode::UPDATE_CONFIRMED,
+                    &format!(
+                        "{} build {} in slot {booted}",
+                        release::RELEASE,
+                        release::BUILD_ID
+                    ),
+                    &[refcode::about::slot(&booted.to_string())],
+                );
+                // The copy of state is dropped by a thread: /data.
+                std::thread::spawn(|| {
+                    if let Err(e) =
+                        crate::ipl::update::confirmed(std::path::Path::new(release::DATA_DIR))
+                    {
+                        eprintln!("the copy of state was not dropped: {e}");
+                    }
+                });
             }
         }
         // A button that appeared after the IPL looked.

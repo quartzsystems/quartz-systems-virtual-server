@@ -91,7 +91,8 @@ Each code goes through PID 1 into the host's history, so each is a base
 
 The host's hello names it a host, with its name, release and serial
 number and `caps::HOST_V1` (base, pair, and the nine host families) with
-`caps::SERVICE`, its problems, and `caps::SYSTEM_DUMPS`, its own dumps. A request is checked by QSI's own bounds
+`caps::SERVICING`: `service`, its problems; `update`, its code update;
+and base's system dumps, its own dumps. A request is checked by QSI's own bounds
 (`QSI0002`), then translated (`qsi/server/src/families`, following
 `docs/QSI.md` section 8):
 
@@ -102,6 +103,7 @@ number and `caps::HOST_V1` (base, pair, and the nine host families) with
 | partitions, partition, profiles, refcodes, panel, dumps, console | the partition manager |
 | vres | the pool service (pools, virtual disks, images, volumes), the partition manager (drives, processor pools, where a disk is named, read from its profiles), the switch service (switches, ports, forwarding, VLANs, limits) |
 | service | the problem service (`docs/PROBLEMS.md`): `List`, `Get`, and `Close` as the request's user; a service resource is QSI's `System` named `service <name>` |
+| update | the update service (`docs/UPDATE.md`): `Status`, `Stage` as a stream, `Discard`, `Install`, `Activate` as the request's user, `Cancel` |
 
 A refusal carries every message the service gave, the first first, with
 its help (`refuse_with`). Where QSI names a conflict, its identifier
@@ -110,7 +112,8 @@ leads and QS/VS's follow: a stale profile put is `QSI0401` then
 save of a partition not activated `QSI0403` then `QVS2015`; a problem
 not there `QSI1002` then `QVS5001`, closed already `QSI1003` then
 `QVS5002`, a close while its condition holds `QSI1001` then
-`QVS5003`. A value of
+`QVS5003`; an update service's refusal QSI names, `QSI11nn` then
+`QVS53nn` (01 to 14). A value of
 an open enumeration the host does not have is `QSI0361`. A service that
 does not answer (its socket missing, no answer in time) is `QSI0301`,
 naming it; the session goes on and the other families answer.
@@ -130,6 +133,7 @@ revision; a console makes the partition, then puts its profile.
 | console `Attach` | the partition manager's console connection: its frames, updates and serial bytes out as `console::Out` pieces, the console's `In` pieces as keys, a refresh or serial bytes | a piece is sent when the console has credit for it; the manager's connection is read by a thread into a queue of eight pieces |
 | dumps `Download` | the partition manager's dump read, its pieces as they come | as the console grants |
 | base `DownloadDump` | the host dump's file, read by a thread in 16 KiB pieces | as the console grants |
+| update `Stage` | the update service's stage: the bytes written to its connection as they come, exactly the size named | as the image upload's: the service's socket is the back-pressure |
 | vres `ImageUpload` | the pool service's upload: the bytes written to its connection as they come, exactly the size named | each piece is granted back once the pool service took it: its socket is the back-pressure |
 
 The upload's end is an event (vres `UploadEnded`): the image, or why
@@ -149,6 +153,7 @@ One log for every session (`qsisess::EventLog`), fed by:
 | the switch service | its subscription |
 | the pool service | it has none: the server looks every 2 seconds and says what changed (pools, virtual disks, images, volumes) |
 | the problem service | its subscription: each problem opened, seen again, cleared or closed |
+| the update service | its subscription: staged, verified, installing, installed, activating; `Confirmed` and `RolledBack` from PID 1's `C2012060` and `A2012070` in the history |
 | the host | its history file looked at every 2 seconds (base `Refcode`; an `A2011010` also as base `DumpTaken` with its error), PID 1's state (base `State`), its dumps' directory (base `DumpTaken`, `DumpRemoved`) |
 | uploads | their ends |
 

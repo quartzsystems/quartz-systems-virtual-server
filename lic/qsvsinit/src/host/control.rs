@@ -33,6 +33,44 @@ impl Control for Host {
         Host::take_dump(self, &by)
     }
 
+    fn slots(&mut self) -> supervise::control::SlotState {
+        self.slots
+            .as_ref()
+            .map(crate::slot::Slots::state)
+            .unwrap_or_default()
+    }
+
+    fn install_slot(&mut self, slot: String) -> Result<(), String> {
+        let slot = match slot.as_str() {
+            "A" => abrec::Slot::A,
+            "B" => abrec::Slot::B,
+            _ => return Err(format!("{slot} is no slot")),
+        };
+        let slots = self.slots.as_mut().ok_or("this IPL has no A/B record")?;
+        slots.install(slot)
+    }
+
+    fn cancel_slot(&mut self) -> Result<(), String> {
+        let slots = self.slots.as_mut().ok_or("this IPL has no A/B record")?;
+        slots.cancel()
+    }
+
+    fn activate_slot(&mut self, by: String) -> Result<(), String> {
+        if self.shutdown.is_some() {
+            return Err("the host is shutting down".into());
+        }
+        let slots = self.slots.as_mut().ok_or("this IPL has no A/B record")?;
+        let slot = slots.activate()?;
+        let letter = loadsource::record::letter(slot).to_string();
+        self.post_about(
+            &refcode::UPDATE_ACTIVATING,
+            &format!("slot {letter}, by {by}"),
+            &[refcode::about::slot(&letter)],
+        );
+        self.begin_shutdown(Kind::Restart, &format!("an update's activation, by {by}"));
+        Ok(())
+    }
+
     fn post(&mut self, code: String, text: String) {
         Control::post_about(self, code, text, Vec::new());
     }

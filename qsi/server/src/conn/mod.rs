@@ -329,6 +329,17 @@ impl Conn {
                     ));
                     (reply, pipe)
                 }),
+                Open::Stage {
+                    name,
+                    bytes,
+                    allow_older,
+                } => self.opener.stage(&name, bytes, allow_older).map(|pipe| {
+                    let reply = AnyReply::Update(qsi::update::Reply::Stage(qsi::update::Staging {
+                        name,
+                        bytes,
+                    }));
+                    (reply, pipe)
+                }),
                 Open::Upload { name, bytes } => self.opener.upload(&name, bytes).map(|pipe| {
                     let reply =
                         AnyReply::Vres(vres::Reply::ImageUpload(vres::Uploading { name, bytes }));

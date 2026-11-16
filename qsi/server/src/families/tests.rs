@@ -75,6 +75,11 @@ impl problem::proto::Calls for Gone {
         Err(gone())
     }
 }
+impl ::update::proto::Calls for Gone {
+    fn call(&mut self, _: &::update::proto::Request) -> Result<Vec<u8>, ipc::WireError> {
+        Err(gone())
+    }
+}
 impl vswitchd::Calls for Gone {
     fn call(&mut self, _: &vswitchd::Request) -> Result<Vec<u8>, ipc::WireError> {
         Err(gone())
@@ -121,6 +126,7 @@ fn services(fake: &Fake) -> Services {
         poold: Box::new(Gone),
         vswitchd: Box::new(Gone),
         probd: Box::new(Gone),
+        updd: Box::new(Gone),
         facts: Box::new(Gone),
     }
 }

@@ -54,7 +54,9 @@ pub struct HostRecord {
     /// The slot on trial: booted once through `BootNext`, the default
     /// only once it confirms.
     pub pending: Option<Slot>,
-    /// IPL attempts left for the pending slot.
+    /// IPL attempts left for the pending slot: 1 once it is installed,
+    /// 0 once it is activated (the restart into it is under way, or
+    /// its trial began).
     pub attempts: u8,
     /// The release last confirmed in slot A and in slot B.
     pub confirmed: [Option<Release>; 2],
@@ -171,10 +173,14 @@ impl HostRecord {
 
     /// What an IPL from `booted` is, and the record as it stands once
     /// the IPL has begun: a trial has used one attempt; a slot that
-    /// did not confirm is no longer pending.
+    /// was activated and did not confirm is no longer pending. A slot
+    /// installed and not yet activated (its attempt not spent) stays
+    /// pending through any IPL of the other: a power loss before the
+    /// activation is no rollback.
     pub fn at_ipl(self, booted: Slot) -> (Ipl, HostRecord) {
         match self.pending {
             None => (Ipl::Normal, self),
+            Some(pending) if pending != booted && self.attempts > 0 => (Ipl::Normal, self),
             Some(pending) if pending == booted => (
                 Ipl::Trial,
                 HostRecord {
@@ -204,6 +210,36 @@ impl HostRecord {
             pending: None,
             attempts: 0,
             confirmed,
+        }
+    }
+
+    /// The record with `slot` installed and pending, not yet activated.
+    #[must_use]
+    pub fn install(self, slot: Slot) -> HostRecord {
+        HostRecord {
+            pending: Some(slot),
+            attempts: 1,
+            ..self
+        }
+    }
+
+    /// The record with its pending slot activated: its attempt spent,
+    /// so an IPL of the other slot is its rollback.
+    #[must_use]
+    pub fn activate(self) -> HostRecord {
+        HostRecord {
+            attempts: 0,
+            ..self
+        }
+    }
+
+    /// The record with nothing pending.
+    #[must_use]
+    pub fn cancel(self) -> HostRecord {
+        HostRecord {
+            pending: None,
+            attempts: 0,
+            ..self
         }
     }
 
@@ -353,6 +389,23 @@ mod tests {
             }
         );
         assert_eq!(confirmed.at_ipl(Slot::B), (Ipl::Normal, confirmed));
+    }
+
+    #[test]
+    fn a_slot_installed_and_not_activated_stays_pending() {
+        let installed = HostRecord::INITIAL.install(Slot::B);
+        assert_eq!((installed.pending, installed.attempts), (Some(Slot::B), 1));
+        // A power loss, and the default comes back: still pending.
+        assert_eq!(installed.at_ipl(Slot::A), (Ipl::Normal, installed));
+        // Activated: the attempt is spent before the restart.
+        let activated = installed.activate();
+        assert_eq!(activated.attempts, 0);
+        assert_eq!(activated.at_ipl(Slot::B).0, Ipl::Trial);
+        assert_eq!(
+            activated.at_ipl(Slot::A).0,
+            Ipl::FellBack { pending: Slot::B }
+        );
+        assert_eq!(installed.cancel(), HostRecord::INITIAL);
     }
 
     #[test]

@@ -58,6 +58,9 @@ enum Command {
     },
     /// Write the UEFI-bootable installation ISO.
     Iso,
+    /// Make the update image of the built slots: their UKIs and a
+    /// signed manifest (`docs/UPDATE.md`).
+    Update,
     /// Write and sign the artifact manifest.
     Manifest,
     /// Run the whole pipeline.
@@ -132,6 +135,7 @@ fn all(ctx: &Ctx, image: Image) -> Result<()> {
     kernel::uki(ctx, true)?;
     image::disk::disk(ctx, None)?;
     buildkit::image::iso::iso(ctx)?;
+    image::update::update(ctx)?;
     image::manifest::manifest(ctx, image)?;
     Ok(())
 }
@@ -177,6 +181,9 @@ fn main() -> Result<()> {
         }
         Command::Iso => {
             buildkit::image::iso::iso(&ctx)?;
+        }
+        Command::Update => {
+            image::update::update(&ctx)?;
         }
         Command::Manifest => {
             image::manifest::manifest(&ctx, image)?;

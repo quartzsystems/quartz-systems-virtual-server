@@ -22,6 +22,10 @@ pub const BUILD_ID: &str = env!("QSVS_BUILD_ID");
 /// The product's short name.
 pub const NAME: &str = "QS/VS";
 
+/// The product's name in a test image's manifests: it says it is one,
+/// so a release image never takes it, nor it a release image's.
+pub const TEST_NAME: &str = "QS/VS (test image)";
+
 /// The product text.
 pub const PRODUCT: &str = "Quartz Systems/Virtual Server";
 

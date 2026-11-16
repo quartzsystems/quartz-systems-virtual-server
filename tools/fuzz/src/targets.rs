@@ -960,7 +960,51 @@ pub const TARGETS: &[Target] = &[
         seeds: qsiserver::fuzzing::seeds,
         run: qsiserver::fuzzing::session,
     },
+    Target {
+        name: "update-image",
+        about: "an update image a console uploads: its container, its manifest and its verification",
+        seeds: update_image_seeds,
+        run: update::fuzz_image,
+    },
+    Target {
+        name: "update-manifest",
+        about: "an update image's manifest, read and rendered again",
+        seeds: update_manifest_seeds,
+        run: update::fuzz_manifest,
+    },
 ];
+
+/// A manifest as the build writes one.
+fn update_manifest() -> update::Manifest {
+    update::Manifest {
+        product: "QS/VS".into(),
+        release: "V1R0M1".into(),
+        build: "seed".into(),
+        fixes: vec!["QV00001".into()],
+        schemas: vec![("host.toml".into(), 1), ("definition.toml".into(), 3)],
+        files: vec![
+            update::manifest::File {
+                name: update::verify::SLOT_A.into(),
+                bytes: 64,
+                sha256: "00".repeat(32),
+            },
+            update::manifest::File {
+                name: update::verify::SLOT_B.into(),
+                bytes: 64,
+                sha256: "11".repeat(32),
+            },
+        ],
+    }
+}
+
+fn update_manifest_seeds() -> Vec<Vec<u8>> {
+    vec![update_manifest().render().into_bytes()]
+}
+
+fn update_image_seeds() -> Vec<Vec<u8>> {
+    let image = update::make(&update_manifest(), &[0xA5; 64], &[0x5A; 64], |_| [7; 64]);
+    vec![image]
+}
 
 /// The target called `name`.
 pub fn find(name: &str) -> Option<&'static Target> {

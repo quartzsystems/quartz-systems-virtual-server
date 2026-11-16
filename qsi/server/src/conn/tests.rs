@@ -51,6 +51,11 @@ impl problem::proto::Calls for Gone {
         Err(gone())
     }
 }
+impl update::proto::Calls for Gone {
+    fn call(&mut self, _: &update::proto::Request) -> Result<Vec<u8>, ipc::WireError> {
+        Err(gone())
+    }
+}
 impl vswitchd::Calls for Gone {
     fn call(&mut self, _: &vswitchd::Request) -> Result<Vec<u8>, ipc::WireError> {
         Err(gone())
@@ -126,6 +131,9 @@ struct Opens {
 }
 
 impl Opener for Opens {
+    fn stage(&mut self, _: &str, _: u64, _: bool) -> Result<Box<dyn Pipe>, Vec<qsisess::Note>> {
+        Err(Vec::new())
+    }
     fn host_dump(&mut self, _: &str) -> Result<(u64, Box<dyn Pipe>), Vec<qsisess::Note>> {
         Err(Vec::new())
     }
@@ -186,6 +194,7 @@ impl Pair {
             poold: Box::new(Gone),
             vswitchd: Box::new(Gone),
             probd: Box::new(Gone),
+            updd: Box::new(Gone),
             facts: Box::new(Gone),
         };
         let host = Conn::new(

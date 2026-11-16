@@ -42,6 +42,7 @@ fn settings(d: &std::path::Path) -> Settings {
         poold: d.join("poold.sock"),
         vswitchd: d.join("vswitchd.sock"),
         probd: d.join("probd.sock"),
+        updd: d.join("updd.sock"),
         port: 0,
         release: "V1R0M0".into(),
         build: "test".into(),

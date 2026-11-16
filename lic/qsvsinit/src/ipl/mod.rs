@@ -22,6 +22,7 @@ pub mod memory;
 pub mod mounts;
 #[cfg(target_os = "linux")]
 mod state;
+pub mod update;
 
 #[cfg(target_os = "linux")]
 pub use on_host::run;
@@ -42,7 +43,7 @@ mod on_host {
     use supervise::signal::{CHLD, INT, Signals, TERM};
 
     use super::cmdline::{self, Source};
-    use super::{choose, clock, install, memory, mounts, state as state_step};
+    use super::{choose, clock, install, memory, mounts, state as state_step, update};
     use crate::console::Console;
     use crate::host::{Host, table};
     use crate::{kvm, slot, sys};
@@ -184,6 +185,48 @@ mod on_host {
         }
     }
 
+    /// State across an update: the pending slot's first IPL copies it,
+    /// the slot that comes back after it did not confirm restores it.
+    fn update_state(host: &mut Host) {
+        if !host.data_mounted {
+            return;
+        }
+        let Some(slots) = host.slots.as_ref() else {
+            return;
+        };
+        let (ipl, fell) = match slots.ipl {
+            loadsource::record::Ipl::Trial => (update::Ipl::Trial, None),
+            loadsource::record::Ipl::FellBack { pending } => (
+                update::Ipl::FellBack,
+                Some(loadsource::record::letter(pending)),
+            ),
+            loadsource::record::Ipl::Normal => (update::Ipl::Normal, None),
+        };
+        match update::before_state(Path::new(release::DATA_DIR), ipl) {
+            Ok(update::Done::Copied) => {
+                host.post(&refcode::UPDATE_STATE_KEPT, update::COPY);
+            }
+            Ok(update::Done::Restored) => {
+                host.post(
+                    &refcode::UPDATE_STATE_RESTORED,
+                    "/data/state as it was before the update",
+                );
+            }
+            Ok(update::Done::Kept | update::Done::Dropped | update::Done::Nothing) => {}
+            Err(e) => host.line(&format!("the state across the update: {e}")),
+        }
+        if let Some(slot) = fell {
+            host.post_about(
+                &refcode::UPDATE_ROLLED_BACK,
+                &format!(
+                    "slot {slot} did not confirm; this IPL is on slot {}",
+                    host.facts.slot
+                ),
+                &[refcode::about::slot(&slot.to_string())],
+            );
+        }
+    }
+
     fn state(host: &mut Host, store: &Store) {
         let loaded = state_step::load(store, APPLIANCE.host_prefix);
         for refused in &loaded.refused {
@@ -292,6 +335,7 @@ mod on_host {
         storage(&mut host);
         data(&mut host, &sources);
         clock(&mut host);
+        update_state(&mut host);
         let store = Store::at(APPLIANCE.state_dir());
         seed(&mut host, &store);
         state(&mut host, &store);

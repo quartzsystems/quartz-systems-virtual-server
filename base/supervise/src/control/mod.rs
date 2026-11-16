@@ -67,6 +67,33 @@ pub mod about {
     pub const SYSTEM_CODE: &str = "system-code";
 }
 
+/// The appliance's code slots, as its A/B record and this IPL have them.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SlotState {
+    /// The slot this IPL came from: `A` or `B`; empty without a record.
+    pub booted: String,
+    /// The record's default slot.
+    pub default: String,
+    /// The slot pending; empty when none is.
+    pub pending: String,
+    /// The pending slot was activated: the restart into it is under way
+    /// or its trial began.
+    pub activated: bool,
+    /// The release last confirmed in slot A and in slot B; empty for
+    /// none.
+    pub confirmed: Vec<String>,
+    /// The slot that did not confirm, when this IPL came back after it.
+    pub fell_back: String,
+}
+ipc::wire_struct!(SlotState {
+    booted,
+    default,
+    pending,
+    activated,
+    confirmed,
+    fell_back
+});
+
 /// One service, as status shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServiceStatus {
@@ -181,6 +208,16 @@ ipc::rpc! {
     /// Take the appliance's own service dump, for `by`: its name, or
     /// why not. It is written in the background.
     9 => fn take_dump / TakeDump (by: String) -> Result<String, String>;
+    /// The code slots.
+    10 => fn slots / Slots () -> SlotState;
+    /// `slot` holds a new release, written on every load-source disk:
+    /// it is pending, not activated.
+    11 => fn install_slot / InstallSlot (slot: String) -> Result<(), String>;
+    /// Nothing is pending.
+    12 => fn cancel_slot / CancelSlot () -> Result<(), String>;
+    /// Restart into the pending slot, for `by`: its attempt is spent
+    /// and the firmware boots it next.
+    13 => fn activate_slot / ActivateSlot (by: String) -> Result<(), String>;
 }
 
 #[cfg(test)]

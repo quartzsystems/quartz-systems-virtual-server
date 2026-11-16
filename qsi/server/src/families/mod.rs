@@ -12,6 +12,7 @@ pub mod convert;
 pub mod host;
 mod partitions;
 pub mod service;
+pub mod update;
 pub mod vres;
 
 use qsi::any::{AnyReply, AnyRequest};
@@ -29,6 +30,8 @@ pub struct Services {
     pub vswitchd: Box<dyn vswitchd::Calls + Send>,
     /// The problem service.
     pub probd: Box<dyn problem::proto::Calls + Send>,
+    /// The update service.
+    pub updd: Box<dyn ::update::proto::Calls + Send>,
     /// What the host's state files say.
     pub facts: Box<dyn Facts>,
 }
@@ -91,6 +94,15 @@ pub enum Open {
     HostDump {
         /// The dump.
         name: String,
+    },
+    /// An update image's bytes, console to host.
+    Stage {
+        /// The name it is staged by.
+        name: String,
+        /// Its size, exactly.
+        bytes: u64,
+        /// Whether an older release may be installed.
+        allow_older: bool,
     },
     /// An optical image's bytes, console to host.
     Upload {
@@ -168,7 +180,7 @@ pub fn answer(s: &mut Services, request: AnyRequest, user: &str) -> Answer {
         }),
         AnyRequest::Vres(r) => vres::answer(s, r).into(),
         AnyRequest::Service(r) => service::answer(s, &r, user).into(),
-        AnyRequest::Update(_) => Answer::Refused(vec![base::not_agreed()]),
+        AnyRequest::Update(r) => update::answer(s, r, user),
         // Pairing is the connection's.
         AnyRequest::Pair(_) => Answer::Refused(vec![Note {
             msgid: qsi::msgid::UNKNOWN.into(),

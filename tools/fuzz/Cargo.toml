@@ -23,6 +23,7 @@ partd = { path = "../../part/partd", version = "0.1.0" }
 refcode = { path = "../../lic/refcode", version = "0.1.0" }
 # The QSI host server: what a console sends it.
 qsiserver = { path = "../../qsi/server", version = "0.1.0" }
+update = { path = "../../svc/update", version = "0.1.0" }
 # The protocol's frames, for the channel target's seeds.
 qsipart.workspace = true
 vm-memory.workspace = true

@@ -40,6 +40,11 @@ impl problem::proto::Calls for Nothing {
         Err(gone())
     }
 }
+impl update::proto::Calls for Nothing {
+    fn call(&mut self, _: &update::proto::Request) -> Result<Vec<u8>, ipc::WireError> {
+        Err(gone())
+    }
+}
 impl vswitchd::Calls for Nothing {
     fn call(&mut self, _: &vswitchd::Request) -> Result<Vec<u8>, ipc::WireError> {
         Err(gone())
@@ -79,6 +84,9 @@ impl Facts for Nothing {
     }
 }
 impl Opener for Nothing {
+    fn stage(&mut self, _: &str, _: u64, _: bool) -> Result<Box<dyn Pipe>, Vec<Note>> {
+        Err(Vec::new())
+    }
     fn host_dump(&mut self, _: &str) -> Result<(u64, Box<dyn Pipe>), Vec<Note>> {
         Err(Vec::new())
     }
@@ -121,6 +129,7 @@ fn conn() -> Conn {
         poold: Box::new(Nothing),
         vswitchd: Box::new(Nothing),
         probd: Box::new(Nothing),
+        updd: Box::new(Nothing),
         facts: Box::new(Nothing),
     };
     let hub = Arc::new(Mutex::new(Hub::memory(&Limits::default())));

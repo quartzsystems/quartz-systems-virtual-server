@@ -103,6 +103,18 @@ mod tests {
         fn take_dump(&mut self, _by: String) -> Result<String, String> {
             Err("none here".into())
         }
+        fn slots(&mut self) -> super::super::SlotState {
+            super::super::SlotState::default()
+        }
+        fn install_slot(&mut self, _slot: String) -> Result<(), String> {
+            Err("none here".into())
+        }
+        fn cancel_slot(&mut self) -> Result<(), String> {
+            Err("none here".into())
+        }
+        fn activate_slot(&mut self, _by: String) -> Result<(), String> {
+            Err("none here".into())
+        }
         fn note(&mut self, _key: String, _value: String) {}
         fn set_host(
             &mut self,

@@ -1,0 +1,33 @@
+[package]
+name = "update"
+description = "Code update: an update image staged and verified against the running image's trusted keys, installed into the slot that is not running, activated by a restart into it; the update service's socket"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+model = { path = "../../part/model", version = "0.1.0" }
+resource = { path = "../../part/resource", version = "0.1.0" }
+vswitch = { path = "../../net/vswitch", version = "0.1.0" }
+vrm.workspace = true
+ipc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+ed25519-dalek = "3.0.0"
+sha2 = "0.11.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+appliance = { path = "../../base/appliance", version = "0.1.0" }
+loadsource = { path = "../../base/loadsource", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+refcode = { path = "../../lic/refcode", version = "0.1.0" }
+partd = { path = "../../part/partd", version = "0.1.0" }
+diskimg.workspace = true
+rustix.workspace = true
+
+[lints]
+workspace = true

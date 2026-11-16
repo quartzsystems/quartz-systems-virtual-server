@@ -128,6 +128,46 @@ fn entry(
     Ok(number)
 }
 
+/// Boot `slot` once, at the next IPL: `BootNext` is its entry on the
+/// first disk of `esps`. Its entry's number.
+///
+/// # Errors
+/// No efivarfs, no ESP, or a variable that could not be written.
+pub fn boot_next(
+    vars: &Path,
+    names: &LoadSourceNames,
+    name: &str,
+    esps: &[EspLocation],
+    slot: Slot,
+) -> Result<u16, String> {
+    if !vars.is_dir() {
+        return Err(format!("{} is not there", vars.display()));
+    }
+    let esp = esps.first().ok_or("no load-source disk has an ESP")?;
+    let number = entry(vars, names, name, 0, esp, slot)?;
+    write(vars, "BootNext", &number.to_le_bytes())?;
+    Ok(number)
+}
+
+/// `BootNext` is gone: the next IPL is `BootOrder`'s.
+///
+/// # Errors
+/// It is there and could not be removed.
+pub fn clear_next(vars: &Path) -> Result<(), String> {
+    let path = vars.join(efi::var_name("BootNext"));
+    #[cfg(target_os = "linux")]
+    if let Ok(file) = fs::File::open(&path) {
+        use rustix::fs::{IFlags, ioctl_getflags, ioctl_setflags};
+        if let Ok(flags) = ioctl_getflags(&file) {
+            let _ = ioctl_setflags(&file, flags.difference(IFlags::IMMUTABLE));
+        }
+    }
+    match fs::remove_file(&path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("BootNext: {e}")),
+        _ => Ok(()),
+    }
+}
+
 /// Make `slot` the one the firmware boots: each slot of each disk of
 /// `esps` has an entry named after `name`, and `BootOrder` starts with
 /// `slot`'s entries, then the other slot's. The new order.

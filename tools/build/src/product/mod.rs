@@ -25,7 +25,7 @@ use release::LOAD_SOURCE;
 pub const INIT: &str = "qsvsinit";
 
 /// The service packages, `/qsvs/bin/<name>` in every initramfs.
-pub const SERVICES: [&str; 9] = [
+pub const SERVICES: [&str; 10] = [
     "qsvsstgd",
     "qsvslogd",
     "qsvsprobd",
@@ -34,6 +34,7 @@ pub const SERVICES: [&str; 9] = [
     "qsvsvswitchd",
     "qsvspartd",
     "qsvstools",
+    "qsvsupdd",
     "qsvsqsid",
 ];
 
@@ -58,7 +59,7 @@ pub const HOOKS_MARKER: &str = "TEST IMAGE:";
 pub const TEST_DIR: &str = "test-image";
 
 /// The manifest's `product` for a test image.
-pub const TEST_NAME: &str = "QS/VS (test image)";
+pub const TEST_NAME: &str = release::TEST_NAME;
 
 /// Which image is built.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +88,7 @@ const RELEASE_PACKAGES: &[Package] = &[
     package(SERVICES[6]),
     package(SERVICES[7]),
     package(SERVICES[8]),
+    package(SERVICES[9]),
     package(VMM),
     package(INSTALLER),
 ];
@@ -101,6 +103,7 @@ const TEST_PACKAGES: &[Package] = &[
     package(SERVICES[6]),
     package(SERVICES[7]),
     package(SERVICES[8]),
+    package(SERVICES[9]),
     package(VMM),
     package(INSTALLER),
     package(HOOK),
@@ -235,6 +238,7 @@ mod tests {
                 "qsvsvswitchd",
                 "qsvspartd",
                 "qsvstools",
+                "qsvsupdd",
                 "qsvsqsid",
                 "qsvmm",
                 "qsvsinstall"
@@ -252,6 +256,7 @@ mod tests {
                 "qsvsvswitchd",
                 "qsvspartd",
                 "qsvstools",
+                "qsvsupdd",
                 "qsvsqsid",
                 "qsvmm",
                 "qsvsinstall",

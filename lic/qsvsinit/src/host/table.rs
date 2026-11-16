@@ -103,6 +103,18 @@ pub const TOOLS: Service = Service {
     ready_within: READY_WITHIN,
 };
 
+/// The update service: staging, installing and activating code
+/// updates. After the partition manager, which it asks to shut
+/// partitions down; before the QSI server, which asks it.
+pub const UPDD: Service = Service {
+    name: update::proto::NAME,
+    binary: "/qsvs/bin/qsvsupdd",
+    args: &[],
+    order: 32,
+    needs: &[],
+    ready_within: READY_WITHIN,
+};
+
 /// The QSI host server: the one listener, last, so every service it
 /// translates to is there; the first stopped.
 pub const QSID: Service = Service {
@@ -116,7 +128,9 @@ pub const QSID: Service = Service {
 
 /// The base services.
 #[cfg(not(test_hooks))]
-pub static TABLE: &[Service] = &[STGD, LOGD, PROBD, NETD, POOLD, VSWITCHD, PARTD, TOOLS, QSID];
+pub static TABLE: &[Service] = &[
+    STGD, LOGD, PROBD, NETD, POOLD, VSWITCHD, PARTD, TOOLS, UPDD, QSID,
+];
 
 /// The base services and, in a test image, the test hooks' two.
 #[cfg(test_hooks)]
@@ -129,6 +143,7 @@ pub static TABLE: &[Service] = &[
     VSWITCHD,
     PARTD,
     TOOLS,
+    UPDD,
     QSID,
     crate::hooks::FLAKY,
     crate::hooks::CHANNEL,

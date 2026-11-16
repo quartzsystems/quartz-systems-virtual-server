@@ -53,6 +53,17 @@ pub trait Opener: Send {
     /// # Errors
     /// No such dump.
     fn host_dump(&mut self, name: &str) -> Result<(u64, Box<dyn Pipe>), Vec<Note>>;
+    /// Stage update image `name` of exactly `bytes` bytes: its pipe.
+    /// The update service says how it ended as its events.
+    ///
+    /// # Errors
+    /// The update service's refusal.
+    fn stage(
+        &mut self,
+        name: &str,
+        bytes: u64,
+        allow_older: bool,
+    ) -> Result<Box<dyn Pipe>, Vec<Note>>;
     /// Upload image `name` of exactly `bytes` bytes: its pipe, which
     /// says how it ended as an event.
     ///

@@ -141,6 +141,23 @@ pub fn probd(socket: PathBuf, hub: Shared) {
     });
 }
 
+/// The update service's events.
+pub fn updd(socket: PathBuf, hub: Shared) {
+    spawn("updd-events", move || {
+        loop {
+            let client = update::proto::Client::new(&socket);
+            let _ = client.events(
+                || {},
+                |e| {
+                    push(&hub, &crate::families::update::event(&e));
+                    true
+                },
+            );
+            thread::sleep(AGAIN);
+        }
+    });
+}
+
 /// The pool service, which sends no events: what changed between two
 /// looks.
 pub fn poold(socket: PathBuf, hub: Shared) {
@@ -226,6 +243,11 @@ pub fn host(mut facts: HostFacts, hub: Shared) {
                         })),
                     );
                     if let Some(e) = dump_failed(p) {
+                        push(&hub, &e);
+                    }
+                    if let Some(e) =
+                        crate::families::update::from_code(&p.code, &p.text, p.time_ms / 1000)
+                    {
                         push(&hub, &e);
                     }
                 }
