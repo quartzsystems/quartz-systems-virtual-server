@@ -245,12 +245,20 @@ pub fn manager_restart(run: &Run<'_>) -> Result<String, String> {
         .map_or(0, |s| s.pid);
     for i in 0..2 {
         let (was, is) = (&before[i], &after[i]);
+        // Found running is a note of the history; the code is as it was.
+        let noted = said(partd(&mut guest)?.history(ids[i]))?
+            .iter()
+            .any(|p| p.code == refcode::PARTITION_ADOPTED.code);
         if is.state != State::Running
             || is.pid != was.pid
             || is.current != was.current
-            || is.code != refcode::PARTITION_ADOPTED.code
+            || is.code != was.code
+            || !noted
         {
-            return Err(format!("{} was {was:?} and is {is:?}", name(i)));
+            return Err(format!(
+                "{} was {was:?} and is {is:?}, found running noted: {noted}",
+                name(i)
+            ));
         }
         // The VMM itself went on running.
         let busy = threads(&mut guest, is.pid)?

@@ -49,6 +49,8 @@ pub fn define(run: &Run<'_>) -> Result<String, String> {
         ..model::AutoStart::default()
     };
     said(partd(&mut guest)?.change(changed.clone()))?;
+    // Kept at the next revision.
+    changed.revision += 1;
     for id in &ids {
         let definition = said(partd(&mut guest)?.definition(*id))?;
         let names = said(partd(&mut guest)?.profiles(*id))?;

@@ -201,14 +201,23 @@ fn pulled(run: &Run<'_>, protection: &str, n: usize, pulls: &[usize]) -> Result<
     said(poold(&mut guest)?.create_vdisk("POOL1".into(), "DATA".into(), 64, true))?;
     // A pattern written through the pool, to be read back after.
     let file = "/pools/POOL1/vdisks/DATA.img";
-    channel(&mut guest)?.ask(&format!("copy /dev/urandom 0 {file} 0 {}", 32 << 20))?;
+    // Parity writes three levels deep, and a unit's failure noticed by
+    // the set, each take longer than an answer is usually given.
+    let patience = Duration::from_mins(2);
+    channel(&mut guest)?.ask_within(
+        &format!("copy /dev/urandom 0 {file} 0 {}", 32 << 20),
+        patience,
+    )?;
     let (len, sum) = channel(&mut guest)?.sum(file)?;
     for unit in pulls {
         // QEMU's drive is taken from under the host: every transfer of
         // it fails from now on.
         guest.monitor(&format!("drive_del hd{}", unit + 1))?;
         // A transfer makes the set see it.
-        channel(&mut guest)?.ask(&format!("copy {file} 0 {file}.again 0 {}", 1 << 20))?;
+        channel(&mut guest)?.ask_within(
+            &format!("copy {file} 0 {file}.again 0 {}", 1 << 20),
+            patience,
+        )?;
     }
     guest.seen(&posted(&refcode::POOL_UNIT_FAILED, "POOL1"), run.deadline())?;
     guest.seen(&posted(&refcode::POOL_SPARE_TAKEN, "POOL1"), run.deadline())?;
