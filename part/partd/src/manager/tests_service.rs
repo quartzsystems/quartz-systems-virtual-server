@@ -225,6 +225,11 @@ fn a_system_without_a_channel_is_running_after_the_wait_and_refuses_its_shut_dow
         (after.state, after.code.as_str()),
         (State::Running, "C2005090")
     );
+    assert!(record.no_channel);
+    assert!(
+        after.service.none,
+        "found with no channel, it has none still"
+    );
     for kind in [Shutdown::Delayed, Shutdown::System] {
         let Answer::Now(Err(e)) = m.begin_shut_down(id, kind, 10, false) else {
             panic!("not refused");

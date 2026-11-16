@@ -320,10 +320,9 @@ impl<S: System> Manager<S> {
         p.service.facts.caps = caps;
         p.service.facts.release.clone_from(&h.release);
         p.service.facts.system.clone_from(&h.system);
-        if p.service.facts.none {
-            // A channel that came late after all.
-            p.service.facts.none = false;
-        }
+        let late = p.service.facts.none;
+        // A channel that came late after all.
+        p.service.facts.none = false;
         // What differs from what the host gave it, said once.
         let keylock = p
             .run
@@ -369,7 +368,10 @@ impl<S: System> Manager<S> {
             let detail = format!("{name}, {} {}, version {version}", h.system, h.release);
             self.code(id, code.code, &code.text_with(&detail), true);
         }
-        if first || changed {
+        if late {
+            self.write_record(id);
+        }
+        if first || changed || late {
             self.publish_channel(id);
         }
     }
@@ -828,6 +830,7 @@ impl<S: System> Manager<S> {
                 {
                     self.set_state(id, State::Running);
                 }
+                self.write_record(id);
                 self.publish_channel(id);
             }
             if terminal {

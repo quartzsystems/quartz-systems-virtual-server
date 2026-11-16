@@ -216,7 +216,7 @@ handoff 17.
 
 | | What happens |
 |---|---|
-| the partition manager restarted | the partitions run on; each state is the run record's; the new manager connects to the sockets again, the system says hello and its current code again, which is not a second history entry; the console's next viewer gets a whole frame |
+| the partition manager restarted | the partitions run on; each state is the run record's, and so is whether its system was found to have no channel; the new manager connects to the sockets again, the system says hello and its current code again, which is not a second history entry; the console's next viewer gets a whole frame |
 | the system's daemon restarted | the system says hello again and its code and state; the waiting requests of the old connection are answered `QVS2301` |
 | the VMM ended | the channel goes with it; a viewer is told the partition ended; the waiting requests are answered `QVS2009` |
 | a connection closed for nonsense | made again after 30 s |

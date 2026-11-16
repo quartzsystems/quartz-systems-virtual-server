@@ -97,6 +97,8 @@ pub struct Record {
     pub sequence: u64,
     /// Its state when it was last written: rewritten at each change.
     pub state: State,
+    /// Its system was found to have no service channel.
+    pub no_channel: bool,
 }
 ipc::wire_struct!(Record {
     id,
@@ -104,7 +106,8 @@ ipc::wire_struct!(Record {
     current,
     pid,
     sequence,
-    state
+    state,
+    no_channel
 });
 
 /// A dump to be written: where, and what its header says.
@@ -492,6 +495,26 @@ impl<S: System> Manager<S> {
         self.subscribers.push(subscriber);
     }
 
+    /// What runs is recorded with its state, for a manager started
+    /// after this one.
+    pub(crate) fn write_record(&mut self, id: u32) {
+        let Some(partition) = self.partitions.get(&id) else {
+            return;
+        };
+        if let Some(run) = &partition.run {
+            let record = Record {
+                id,
+                profile: run.profile.clone(),
+                current: run.current.clone(),
+                pid: run.pid,
+                sequence: run.sequence,
+                state: partition.state,
+                no_channel: partition.service.facts.none,
+            };
+            self.system.record(id, Some(&record));
+        }
+    }
+
     /// Set a partition's state and say so.
     pub(crate) fn set_state(&mut self, id: u32, state: State) {
         let time = self.system.now();
@@ -503,19 +526,7 @@ impl<S: System> Manager<S> {
         }
         partition.state = state;
         let name = partition.definition.name.clone();
-        // What runs is recorded with its state, for a manager started
-        // after this one.
-        if let Some(run) = &partition.run {
-            let record = Record {
-                id,
-                profile: run.profile.clone(),
-                current: run.current.clone(),
-                pid: run.pid,
-                sequence: run.sequence,
-                state,
-            };
-            self.system.record(id, Some(&record));
-        }
+        self.write_record(id);
         self.publish(&Event::State {
             id,
             name,

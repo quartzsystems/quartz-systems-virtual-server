@@ -396,6 +396,7 @@ impl<S: System> Manager<S> {
             pid,
             sequence,
             state: State::Starting,
+            no_channel: false,
         };
         self.system.record(id, Some(&record));
         let time = self.system.now();
@@ -835,6 +836,9 @@ impl<S: System> Manager<S> {
             State::Starting
         };
         partition.service = super::service::Service::fresh();
+        // A system found to have no channel has none still, until it
+        // says hello.
+        partition.service.facts.none = record.no_channel;
         self.sequence = self.sequence.max(record.sequence + 1);
         for line in report {
             self.report(id, line, true);
