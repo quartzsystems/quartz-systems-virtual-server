@@ -24,7 +24,9 @@ Phase 7 handoff answered 37 for V1 and left the rest of it, and 6, 32,
 35 and 36, as they were; Phase 7 raised 38 and 39. Step 0 of Phase 8
 closed 38 with QS/400's handoff 18, and the Phase 8 handoff closed 39
 as recommended and left 6, 36 and 37 as they were. Phase 8 raised 40
-to 43.
+to 43. Step 0 of Phase 9 closed 41 and 42; Phase 9 left 6, 36, 37, 40
+and 43 as they were (43 is now answered by the host itself at its
+IPL), and raised 44.
 
 ## Open
 
@@ -79,6 +81,18 @@ them too, or the server cannot make a handshake: Cody to read its
 Since Step 0 of Phase 9 the host says the answer itself: a processor
 without them posts `A2010010` at the IPL, the server stays down without
 touching the cryptography, and Service Tools option 4 says why.
+
+### 44. A partition's creation time across a capture (open)
+
+Phase 9's capture and put back (`docs/PHASE9.md`, Section 5) read
+every definition and profile back the same but one field: `created`,
+the time the host made the partition, which QSI's `Change` does not
+set and the host sets when a partition is made. A partition put back
+on a host installed again is a new partition there, made then.
+Recommended: keep it so; a console that keeps its own record of when a
+partition was first made keeps it beside the capture. The other way is
+a `created` that `Change` may set, which is QS/400's protocol to
+change.
 
 ## Decided, waiting on QS/400
 
