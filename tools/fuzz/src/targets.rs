@@ -954,6 +954,12 @@ pub const TARGETS: &[Target] = &[
         seeds: channel_seeds,
         run: partd::fuzzing::frames,
     },
+    Target {
+        name: "qsi",
+        about: "what a pinned console sends the QSI host server, through its session and translation",
+        seeds: qsiserver::fuzzing::seeds,
+        run: qsiserver::fuzzing::session,
+    },
 ];
 
 /// The target called `name`.

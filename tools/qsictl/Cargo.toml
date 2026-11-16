@@ -1,0 +1,18 @@
+[package]
+name = "qsictl"
+description = "A developer's QSI console for Linux and Windows: pairs with a QS/VS host, asks it every request of QSI's families, follows its events, attaches to a partition's console. In no image"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+qsi.workspace = true
+qsisess.workspace = true
+qsitrust.workspace = true
+qsipart.workspace = true
+rustls.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

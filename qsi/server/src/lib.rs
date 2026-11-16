@@ -12,6 +12,7 @@
 pub mod conn;
 pub mod events;
 pub mod families;
+pub mod fuzzing;
 #[cfg(target_os = "linux")]
 pub mod serve;
 pub mod trust;

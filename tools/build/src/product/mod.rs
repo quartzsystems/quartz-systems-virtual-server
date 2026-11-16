@@ -253,6 +253,8 @@ mod tests {
                 "qsvshook"
             ]
         );
+        // The developer's QSI console is in no image.
+        assert!(!names(Image::Test).contains(&"qsictl"));
         assert_eq!(qsvs(Image::Release).unwrap().name, "QS/VS");
         assert_ne!(qsvs(Image::Test).unwrap().name, "QS/VS");
         // Every package is a member of the workspace.

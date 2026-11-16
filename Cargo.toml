@@ -6,6 +6,7 @@ members = [
     "tools/conformance",
     # The fuzzer: every reader of bytes a guest controls.
     "tools/fuzz",
+    "tools/qsictl",
     # Licensed Internal Code: PID 1, release identity, reference codes, the services.
     "lic/qsvsinit",
     "lic/qsvslogd",

@@ -699,6 +699,7 @@ dependencies = [
  "ipl",
  "partd",
  "qsipart",
+ "qsiserver",
  "refcode",
  "tape",
  "virtio-queue",
@@ -1509,6 +1510,18 @@ dependencies = [
  "ipc",
  "qsipart",
  "thiserror",
+]
+
+[[package]]
+name = "qsictl"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "qsi",
+ "qsipart",
+ "qsisess",
+ "qsitrust",
+ "rustls",
 ]
 
 [[package]]
