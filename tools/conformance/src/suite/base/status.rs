@@ -59,8 +59,12 @@ pub fn status(run: &Run<'_>) -> Result<String, String> {
             return Err(format!("the status's {key} is `{found}`, not `{wanted}`"));
         }
     }
+    // A host with no management address says so: the QSI server has
+    // nothing to listen on.
     let reference = fact_of(&status, fact::REFERENCE)?;
-    if !reference.starts_with(refcode::BASE_READY.code) {
+    let unmanaged = fact_of(&status, fact::MANAGEMENT)?.starts_with("none")
+        && reference.starts_with(refcode::QSI_NOT_LISTENING.code);
+    if !reference.starts_with(refcode::BASE_READY.code) && !unmanaged {
         return Err(format!("the current reference code is `{reference}`"));
     }
     if !fact_of(&status, fact::DATA)?.starts_with("/dev/") {

@@ -226,18 +226,16 @@ fn tour(guest: &mut Guest<'_>, deadline: Instant) -> Result<usize, String> {
     guest.type_keys(key::ENTER)?;
     titled(guest, MAIN_MENU, deadline)?;
 
-    // The options that are not there yet say what brings them.
-    for (number, word) in [(4, "QSI"), (8, "code update")] {
-        guest.type_keys(&format!("{number}{}", key::ENTER))?;
-        let said = guest.screen("the word of an option not there yet", deadline, |grid| {
-            grid.message()
-                .starts_with(&format!("Option {number} is not available yet."))
-        })?;
-        if !said.lines().last().unwrap_or("").contains(word) {
-            return Err(format!(
-                "option {number} does not say what brings it:\n{said}"
-            ));
-        }
+    // Option 4 is the QSI suites' to tour; it opens here.
+    option(guest, 4, "Management Console Pairing", deadline)?;
+    back(guest)?;
+    // Option 8 is not there yet and says what brings it.
+    guest.type_keys(&format!("8{}", key::ENTER))?;
+    let said = guest.screen("the word of an option not there yet", deadline, |grid| {
+        grid.message().starts_with("Option 8 is not available yet.")
+    })?;
+    if !said.lines().last().unwrap_or("").contains("code update") {
+        return Err(format!("option 8 does not say what brings it:\n{said}"));
     }
 
     held(
