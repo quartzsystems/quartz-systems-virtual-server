@@ -231,8 +231,15 @@ pub fn status_lines(
         String::new(),
         "Services:".to_string(),
     ];
-    // Two to a line, so a long table stays on the screen.
-    for pair in status.services.chunks(2) {
+    // Two to a line, or three when two would run past the lines a
+    // status screen shows: every service stays on the screen.
+    let room = (ui::KEYS_ROW - ui::BODY_ROW - 3).saturating_sub(lines.len());
+    let (across, width) = if status.services.len() <= 2 * room {
+        (2, 36)
+    } else {
+        (3, 25)
+    };
+    for pair in status.services.chunks(across) {
         let cells: Vec<String> = pair
             .iter()
             .map(|s| {
@@ -240,7 +247,7 @@ pub fn status_lines(
                     0 => String::new(),
                     n => format!(" ({n} failed)"),
                 };
-                kit::fit(&format!("{:<8} {}{failures}", s.name, s.state), 36)
+                kit::fit(&format!("{:<8} {}{failures}", s.name, s.state), width)
             })
             .collect();
         lines.push(format!("  {}", cells.join(" ")).trim_end().to_string());
@@ -391,6 +398,23 @@ mod tests {
         assert!(unanswered[8].contains("does not answer"));
         // It fits a text display.
         assert!(lines.len() <= 16);
+    }
+
+    #[test]
+    fn every_service_stays_on_the_screen() {
+        let mut many = status();
+        many.services = (0..14)
+            .map(|i| ServiceStatus {
+                name: format!("svc{i}"),
+                state: "ready".into(),
+                pid: 5,
+                failures: 0,
+            })
+            .collect();
+        let lines = status_lines(&many, "", Some(&[]));
+        assert!(lines.len() <= ui::KEYS_ROW - ui::BODY_ROW - 3);
+        let text = lines.join("\n");
+        assert!((0..14).all(|i| text.contains(&format!("svc{i} "))));
     }
 
     #[test]

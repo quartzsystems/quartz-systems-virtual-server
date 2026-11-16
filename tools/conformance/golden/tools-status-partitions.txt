@@ -12,11 +12,11 @@
  Partitions . . . . : 3 defined, 2 running
 
  Services:
-   stgd     ready                       logd     ready
-   netd     ready                       poold    ready
-   vswitchd ready                       partd    ready
-   tools    ready                       flaky    ready
-   hook     ready                       partition ready
+   stgd     ready            logd     ready            netd     ready
+   poold    ready            vswitchd ready            partd    ready
+   tools    ready            qsid     ready            flaky    ready
+   hook     ready            partition ready
+
 
 
 

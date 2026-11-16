@@ -142,7 +142,8 @@ this IPL came from, with the A/B record; the reference code posted
 last; the management line; what `/data` is mounted from; what the KVM
 probe found; the uptime; the partitions, counted: how many are defined
 and how many are running, starting, shutting down or in error; and
-each service of the table with its state and how often it has failed.
+each service of the table with its state and how often it has failed,
+two to a line, or three when two would not all fit on the screen.
 
 **F11, Display Partitions.** Every partition of the host, a row each,
 as the partition manager says: its ID, its name, its state (Not
