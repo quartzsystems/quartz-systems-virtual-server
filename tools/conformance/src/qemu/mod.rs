@@ -126,6 +126,9 @@ pub struct Launch {
     /// A port of the harness's forwarded to the QSI host server's on
     /// the management address (QEMU's user network gives it 10.0.2.15).
     pub qsi: Option<u16>,
+    /// The processor's model and features in place of the host's, under
+    /// KVM: `host,-avx2,-adx`.
+    pub cpu: Option<String>,
 }
 
 /// The PCI device number of a pinned disk's place.
@@ -199,7 +202,8 @@ fn drive(
 pub fn args(l: &Launch) -> Vec<OsString> {
     let mut a: Vec<OsString> = ["-machine", "q35"].map(OsString::from).to_vec();
     if l.kvm {
-        a.extend(["-enable-kvm", "-cpu", "host"].map(OsString::from));
+        a.extend(["-enable-kvm", "-cpu"].map(OsString::from));
+        a.push(l.cpu.as_deref().unwrap_or("host").into());
     }
     a.extend(["-m".into(), l.memory_mb.to_string().into()]);
     if l.prealloc {
@@ -359,6 +363,7 @@ mod tests {
             prealloc: false,
             uplinks: Vec::new(),
             qsi: None,
+            cpu: None,
         }
     }
 

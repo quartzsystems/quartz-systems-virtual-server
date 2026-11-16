@@ -44,6 +44,12 @@ pub mod command {
     pub const RESTART: &str = "restart";
     /// `netreload`: the network service's reload.
     pub const NET_RELOAD: &str = "netreload";
+    /// `post <code> <text>`: a code of the table posted through PID 1,
+    /// as a service posts one.
+    pub const POST: &str = "post";
+    /// `statfs <path>`: `size <bytes>` and `free <bytes>` of the file
+    /// system it is on.
+    pub const STATFS: &str = "statfs";
     /// `storage`: the storage service's status, a `fact` or `unit` a line.
     pub const STORAGE: &str = "storage";
     /// `load <megabytes>`: write and sync a file of that size under

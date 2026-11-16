@@ -55,13 +55,13 @@ fn installed_host<'a>(
 }
 
 /// From the main menu to the switches.
-fn to_switches(g: &mut Guest<'_>, deadline: Instant) -> Result<String, String> {
+pub(crate) fn to_switches(g: &mut Guest<'_>, deadline: Instant) -> Result<String, String> {
     option(g, 3, NETWORK, deadline)?;
     option(g, 3, SWITCHES, deadline)
 }
 
 /// Make switch `name` from the list: F6, the form, Enter.
-fn make(
+pub(crate) fn make(
     g: &mut Guest<'_>,
     name: &str,
     vlans: &str,

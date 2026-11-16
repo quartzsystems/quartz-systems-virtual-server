@@ -684,6 +684,21 @@ fn answer(line: &str) -> Vec<String> {
         command::COPY => copy(rest),
         command::POWER_OFF => done(control().power_off()),
         command::RESTART => done(control().restart()),
+        command::STATFS => match rustix::fs::statvfs(rest.trim()) {
+            Ok(s) => {
+                let block = s.f_frsize;
+                vec![
+                    format!("size {}", s.f_blocks.saturating_mul(block)),
+                    format!("free {}", s.f_bavail.saturating_mul(block)),
+                    word::OK.to_string(),
+                ]
+            }
+            Err(e) => error(e),
+        },
+        command::POST => {
+            let (code, text) = rest.split_once(' ').unwrap_or((rest, ""));
+            done(control().post(code.trim().to_string(), text.to_string()))
+        }
         command::NET_RELOAD => {
             let socket = release::appliance(|_| {}, |_, _| {}).net_socket();
             match netd::control::Client::new(socket).reload() {

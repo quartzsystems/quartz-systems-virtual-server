@@ -135,7 +135,7 @@ pub fn typed(text: &str) -> Vec<Key> {
 }
 
 /// A partition's state as listed.
-fn state_of(l: &mut Link, id: u32) -> Option<partitions::Status> {
+pub(crate) fn state_of(l: &mut Link, id: u32) -> Option<partitions::Status> {
     let AnyReply::Partitions(partitions::Reply::List(all)) =
         ask(l, AnyRequest::Partitions(partitions::Request::List(Empty))).ok()?
     else {
@@ -144,7 +144,7 @@ fn state_of(l: &mut Link, id: u32) -> Option<partitions::Status> {
     all.into_iter().find(|s| s.id == id)
 }
 
-fn wait_state(
+pub(crate) fn wait_state(
     l: &mut Link,
     id: u32,
     state: PartitionState,
@@ -155,7 +155,7 @@ fn wait_state(
 }
 
 /// Subscribe; the next event's number.
-fn subscribe(l: &mut Link, since: Option<u64>) -> Result<base::Subscribed, String> {
+pub(crate) fn subscribe(l: &mut Link, since: Option<u64>) -> Result<base::Subscribed, String> {
     let AnyReply::Base(base::Reply::Subscribe(s)) = ask(
         l,
         AnyRequest::Base(base::Request::Subscribe(base::Subscribe { since })),
@@ -167,7 +167,7 @@ fn subscribe(l: &mut Link, since: Option<u64>) -> Result<base::Subscribed, Strin
 }
 
 /// The events come so far: number and event.
-fn gather(l: &mut Link, within: Duration) -> Result<Vec<(u64, AnyEvent)>, String> {
+pub(crate) fn gather(l: &mut Link, within: Duration) -> Result<Vec<(u64, AnyEvent)>, String> {
     let until = Instant::now() + within;
     let mut out = Vec::new();
     while Instant::now() < until {
@@ -198,7 +198,7 @@ fn codes_of(events: &[(u64, AnyEvent)], id: u32) -> Vec<String> {
 }
 
 /// A QS/400 partition made over QSI with the image as its disk: its ID.
-pub(super) fn make_partition(l: &mut Link, name: &str) -> Result<u32, String> {
+pub(crate) fn make_partition(l: &mut Link, name: &str) -> Result<u32, String> {
     let AnyReply::Partition(partition::Reply::Create(d)) = ask(
         l,
         AnyRequest::Partition(partition::Request::Create(partition::Create {
@@ -226,7 +226,12 @@ pub(super) fn make_partition(l: &mut Link, name: &str) -> Result<u32, String> {
     Ok(d.id)
 }
 
-fn activate(l: &mut Link, id: u32, source: Option<IplSource>, profile: &str) -> Result<(), String> {
+pub(crate) fn activate(
+    l: &mut Link,
+    id: u32,
+    source: Option<IplSource>,
+    profile: &str,
+) -> Result<(), String> {
     ask(
         l,
         AnyRequest::Partition(partition::Request::Activate(partition::Activate {
@@ -239,7 +244,11 @@ fn activate(l: &mut Link, id: u32, source: Option<IplSource>, profile: &str) -> 
     .map(|_| ())
 }
 
-fn shut_down(l: &mut Link, id: u32, kind: partition::ShutdownKind) -> Result<(), String> {
+pub(crate) fn shut_down(
+    l: &mut Link,
+    id: u32,
+    kind: partition::ShutdownKind,
+) -> Result<(), String> {
     ask(
         l,
         AnyRequest::Partition(partition::Request::ShutDown(partition::ShutDown {
@@ -734,7 +743,7 @@ pub fn qsictl(run: &Run<'_>) -> Result<String, String> {
 }
 
 /// `qsictl` as the workspace built it, beside the harness's own binary.
-fn qsictl_binary() -> Result<std::path::PathBuf, String> {
+pub(crate) fn qsictl_binary() -> Result<std::path::PathBuf, String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     let dir = me.parent().ok_or("no directory of the harness")?;
     let bin = dir.join(if cfg!(windows) {

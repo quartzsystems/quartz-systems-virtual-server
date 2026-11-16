@@ -19,7 +19,7 @@
 
 mod qs400;
 mod suites;
-mod tools;
+pub(crate) mod tools;
 
 use std::net::Ipv4Addr;
 use std::path::PathBuf;

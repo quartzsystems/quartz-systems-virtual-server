@@ -11,8 +11,8 @@
 // Two consoles, a link, a host: short names read best in these steps.
 #![allow(clippy::many_single_char_names)]
 
-mod families;
-mod flows;
+pub(crate) mod families;
+pub(crate) mod flows;
 mod hostile;
 mod pairing;
 mod streams;

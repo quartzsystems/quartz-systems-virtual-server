@@ -16,6 +16,7 @@ pub mod network;
 pub mod partition;
 pub mod qsi;
 pub mod service;
+pub mod servicing;
 pub mod slotb;
 pub mod storage;
 
@@ -101,6 +102,11 @@ pub struct Images {
     pub test_iso: Option<PathBuf>,
     /// The test image's slot A and slot B UKIs.
     pub test_ukis: Option<(PathBuf, PathBuf)>,
+    /// The test image's own update image (`build update`).
+    pub test_update: Option<PathBuf>,
+    /// The key the test image's manifests are signed with: its hex
+    /// seed's file.
+    pub test_key: Option<PathBuf>,
 }
 
 /// The suites over the built images.
@@ -130,6 +136,7 @@ pub fn names() -> Vec<&'static str> {
     names.extend(network::SUITES.iter().map(|s| s.0));
     names.extend(service::SUITES.iter().map(|s| s.0));
     names.extend(qsi::SUITES.iter().map(|s| s.0));
+    names.extend(servicing::SUITES.iter().map(|s| s.0));
     names
 }
 
@@ -173,6 +180,7 @@ impl Suite {
                 prealloc: false,
                 uplinks: Vec::new(),
                 qsi: None,
+                cpu: None,
             },
             timeout: Duration::from_secs(timeout),
             allow_no_kvm: allow_no_kvm(),
@@ -222,7 +230,8 @@ impl Suite {
             .chain(storage::SUITES)
             .chain(network::SUITES)
             .chain(service::SUITES)
-            .chain(qsi::SUITES);
+            .chain(qsi::SUITES)
+            .chain(servicing::SUITES);
         for (name, suite) in suites {
             if wanted(name) {
                 done(vec![self.base_suite(name, *suite)?]);
@@ -464,6 +473,7 @@ mod tests {
                 + network::SUITES.len()
                 + service::SUITES.len()
                 + qsi::SUITES.len()
+                + servicing::SUITES.len()
         );
         assert_eq!(qsi::SUITES.len(), 13);
         assert_eq!(service::SUITES.len(), 17);

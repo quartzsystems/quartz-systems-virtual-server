@@ -47,6 +47,12 @@ pub fn test(
         test_ukis: paths::read_pointer(&test.paths.uki_pointer(UkiKind::SlotA))
             .ok()
             .zip(paths::read_pointer(&test.paths.uki_pointer(UkiKind::SlotB)).ok()),
+        test_update: paths::read_pointer(&test.paths.images().join(crate::image::update::POINTER))
+            .ok(),
+        test_key: Some(std::env::var_os("QSVS_SIGNING_KEY").map_or_else(
+            || test.paths.keys().join("dev.ed25519"),
+            std::path::PathBuf::from,
+        )),
     };
     if media == conformance::Media::Disk && images.test_disk.is_none() && only != Some("ipl") {
         bail!("the test image is not built; run `all --test-image` first");
