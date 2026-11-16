@@ -32,14 +32,35 @@ pub enum Kind {
     Restart,
 }
 
+/// A power down asked for later.
+#[derive(Clone, Debug)]
+pub struct Later {
+    /// When it begins.
+    pub at: Instant,
+    /// Off or restart.
+    pub kind: Kind,
+    /// Each partition ended at once.
+    pub immediate: bool,
+    /// Who asked.
+    pub by: String,
+}
+
 impl Host {
     /// Begin the shutdown, asked for by `by`. A second request while
     /// one runs changes nothing.
     pub fn begin_shutdown(&mut self, kind: Kind, by: &str) {
+        self.begin_shutdown_with(kind, false, by);
+    }
+
+    /// Begin the shutdown; with `immediate` each partition is ended at
+    /// once rather than through its system.
+    pub fn begin_shutdown_with(&mut self, kind: Kind, immediate: bool, by: &str) {
         if self.shutdown.is_some() {
             return;
         }
         self.shutdown = Some(kind);
+        self.immediate = immediate;
+        self.power_at = None;
         // The serial port is PID 1's again: the shutdown is said there.
         self.serial_session(false);
         let what = match kind {
@@ -56,7 +77,7 @@ impl Host {
         // The partitions first: no service is stopped under one.
         if self.sup.is_some() {
             let socket = partd::proto::socket(release::RUN_DIR);
-            self.partitions = Some(partitions::end_all(socket));
+            self.partitions = Some(partitions::end_all(socket, self.immediate));
         } else {
             self.stop_services();
         }

@@ -9,7 +9,7 @@ use std::os::unix::net::UnixListener;
 use logd::Severity;
 use refcode::post::posting_of;
 use release::fact;
-use supervise::control::{Control, HostStatus, serve};
+use supervise::control::{Control, HostState, HostStatus, MAX_POWER_DELAY, Power, serve};
 
 use super::{Host, Kind};
 
@@ -55,6 +55,67 @@ impl Control for Host {
             Err(e) => self.say(Severity::Warning, &format!("host settings refused: {e}")),
         }
         done
+    }
+
+    fn state(&mut self) -> HostState {
+        let (code, text) = self
+            .reference
+            .split_once(' ')
+            .map_or((self.reference.as_str(), ""), |(c, t)| (c, t.trim()));
+        HostState {
+            power: if self.shutdown.is_some() {
+                Power::Ending
+            } else if self.ready {
+                Power::Running
+            } else {
+                Power::Starting
+            },
+            code: code.to_string(),
+            text: text.to_string(),
+            release: release::RELEASE.to_string(),
+            slot: match self.facts.slot.as_str() {
+                s @ ("A" | "B") => s.to_string(),
+                _ => String::new(),
+            },
+            power_in: self.power_at.as_ref().map(|l| {
+                let left = l.at.saturating_duration_since(std::time::Instant::now());
+                u32::try_from(left.as_secs()).unwrap_or(u32::MAX)
+            }),
+        }
+    }
+
+    fn power_down(
+        &mut self,
+        restart: bool,
+        immediate: bool,
+        delay: u32,
+        by: String,
+    ) -> Result<(), String> {
+        if delay > MAX_POWER_DELAY {
+            return Err(format!("a delay of {delay} s; at most {MAX_POWER_DELAY}"));
+        }
+        if self.shutdown.is_some() {
+            return Err("the host is shutting down already".into());
+        }
+        let kind = if restart {
+            Kind::Restart
+        } else {
+            Kind::PowerOff
+        };
+        let by: String = by.chars().filter(|c| !c.is_control()).take(128).collect();
+        if delay == 0 {
+            self.begin_shutdown_with(kind, immediate, &by);
+        } else {
+            let what = if restart { "restart" } else { "power off" };
+            self.say(Severity::Info, &format!("{what} in {delay} s, by {by}"));
+            self.power_at = Some(super::shutdown::Later {
+                at: std::time::Instant::now() + std::time::Duration::from_secs(u64::from(delay)),
+                kind,
+                immediate,
+                by,
+            });
+        }
+        Ok(())
     }
 
     fn note(&mut self, key: String, value: String) {

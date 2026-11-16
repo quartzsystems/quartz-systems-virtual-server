@@ -98,6 +98,10 @@ pub struct Host {
     /// A Service Tools session has the serial port.
     serial_busy: bool,
     shutdown: Option<Kind>,
+    /// A power down asked for later.
+    power_at: Option<shutdown::Later>,
+    /// The shutdown ends each partition at once.
+    immediate: bool,
     /// The shutdown waits for the partitions to have ended.
     partitions: Option<std::sync::mpsc::Receiver<partitions::Outcome>>,
     /// The shutdown has unmounted `/data` and is ending the storage service.
@@ -138,6 +142,8 @@ impl Host {
             storage_lost: false,
             serial_busy: false,
             shutdown: None,
+            power_at: None,
+            immediate: false,
             partitions: None,
             unmounted: false,
             heartbeat_at: Instant::now() + HEARTBEAT,
@@ -425,8 +431,16 @@ impl Host {
         if let Some(at) = self.sup.as_ref().and_then(Supervisor::deadline) {
             deadline = deadline.min(at);
         }
+        if let Some(later) = &self.power_at {
+            deadline = deadline.min(later.at);
+        }
         let ready = self.wait(deadline);
         let now = Instant::now();
+        if self.power_at.as_ref().is_some_and(|l| now >= l.at)
+            && let Some(later) = self.power_at.take()
+        {
+            self.begin_shutdown_with(later.kind, later.immediate, &later.by);
+        }
         for what in ready {
             match what {
                 Ready::Signal => self.signalled(now),

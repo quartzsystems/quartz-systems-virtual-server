@@ -26,8 +26,9 @@ const PAUSE: Duration = Duration::from_millis(200);
 pub type Outcome = Result<u32, String>;
 
 /// Ask the partition manager at `socket` to end every partition, and
-/// wait until none is activated. The outcome arrives on the channel.
-pub fn end_all(socket: PathBuf) -> Receiver<Outcome> {
+/// wait until none is activated; with `immediate`, each is ended at
+/// once. The outcome arrives on the channel.
+pub fn end_all(socket: PathBuf, immediate: bool) -> Receiver<Outcome> {
     let (done, outcome) = mpsc::channel();
     thread::spawn(move || {
         let mut client = Client::new(socket);
@@ -41,7 +42,12 @@ pub fn end_all(socket: PathBuf) -> Receiver<Outcome> {
                 s.service.host_timeout_secs
             });
         let each = Duration::from_secs(u64::from(system)) + GRACE;
-        let Ok(count) = client.end_all() else {
+        let asked = if immediate {
+            end_now(&mut client).ok()
+        } else {
+            client.end_all().ok()
+        };
+        let Some(count) = asked else {
             let _ = done.send(Ok(0));
             return;
         };
@@ -61,4 +67,18 @@ pub fn end_all(socket: PathBuf) -> Receiver<Outcome> {
         let _ = done.send(result);
     });
     outcome
+}
+
+/// End every activated partition at once: how many were asked.
+fn end_now(client: &mut Client) -> Result<u32, std::io::Error> {
+    let active: Vec<partd::Status> = client
+        .list()
+        .map_err(std::io::Error::other)?
+        .into_iter()
+        .filter(|p| p.state.active())
+        .collect();
+    for p in &active {
+        let _ = client.shut_down(p.id);
+    }
+    Ok(u32::try_from(active.len()).unwrap_or(u32::MAX))
 }

@@ -74,7 +74,7 @@ pub fn serve(stream: UnixStream, service: &mut impl Control) -> Result<(), WireE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::control::HostStatus;
+    use crate::control::{HostState, HostStatus};
     use std::os::unix::net::UnixListener;
 
     #[derive(Default)]
@@ -104,6 +104,19 @@ mod tests {
             _time_zone: String,
             _ntp_servers: Vec<String>,
         ) -> Result<(), String> {
+            Ok(())
+        }
+        fn state(&mut self) -> HostState {
+            HostState::default()
+        }
+        fn power_down(
+            &mut self,
+            _restart: bool,
+            _immediate: bool,
+            delay: u32,
+            _by: String,
+        ) -> Result<(), String> {
+            self.off = delay == 0;
             Ok(())
         }
     }

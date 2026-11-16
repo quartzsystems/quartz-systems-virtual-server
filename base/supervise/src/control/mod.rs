@@ -56,6 +56,48 @@ impl HostStatus {
     }
 }
 
+/// Where the host is in its life.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Power {
+    /// The IPL: the base services are not all ready yet.
+    #[default]
+    Starting,
+    /// The base is ready.
+    Running,
+    /// Shutting down.
+    Ending,
+}
+ipc::wire_enum!(Power { 0 => Starting, 1 => Running, 2 => Ending });
+
+/// The host's state: what a management console is told of it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HostState {
+    /// Where it is in its life.
+    pub power: Power,
+    /// The current reference code: its code and its text, empty
+    /// before the first.
+    pub code: String,
+    /// Its text.
+    pub text: String,
+    /// The release that runs.
+    pub release: String,
+    /// The slot it runs from (`A`, `B`, or empty).
+    pub slot: String,
+    /// A power down asked for later: the seconds until it begins.
+    pub power_in: Option<u32>,
+}
+ipc::wire_struct!(HostState {
+    power,
+    code,
+    text,
+    release,
+    slot,
+    power_in
+});
+
+/// The longest delay a power down may be asked with, in seconds.
+pub const MAX_POWER_DELAY: u32 = 99_999;
+
 ipc::rpc! {
     request Request, service Control, client Calls, dispatch dispatch;
     /// The status of the host and of every service.
@@ -72,6 +114,12 @@ ipc::rpc! {
     /// writes the host's state file and takes the name and the zone
     /// into use.
     5 => fn set_host / SetHost (name: String, time_zone: String, ntp_servers: Vec<String>) -> Result<(), String>;
+    /// The host's state.
+    6 => fn state / State () -> HostState;
+    /// Power off or restart, after `delay` seconds; `immediate` ends
+    /// each partition at once instead of through its system. `by` is
+    /// who asked, for the log and the reference code.
+    7 => fn power_down / PowerDown (restart: bool, immediate: bool, delay: u32, by: String) -> Result<(), String>;
 }
 
 #[cfg(test)]
