@@ -155,6 +155,54 @@ cargo run -p build -- fuzz --target channel --secs 60
 `service-terminal` copies a dump out through a scratch disk and runs
 `readelf` on it, from binutils, on the machine that runs the harness.
 
+## Acceptance
+
+Taken in a fresh clone at `e1373ce` (Phase 7's last commit) on ext4 in
+WSL, every target empty, `QSVS_BUILD_ID=phase7`, the signing key of
+the reproducibility runs, the guest image and ISO of the pin, on
+2026-11-15. Host: rustc 1.98.0, clang 21.1.8, QEMU 10.2.1, cargo-deny
+0.20.2, kernel 6.18.33.2-microsoft-standard-WSL2, 12 processors. No
+other QEMU ran beside any suite.
+
+101 of 114 steps passed. What failed, and what came of it:
+
+| Step | Why | Since |
+|---|---|---|
+| `notices --check` | `NOTICES.txt` was not written again after the last dependency change | current from `0cb324c` on |
+| `partition-manager-restart`, `service-manager-restart` | a partition manager started again forgot that a system had no channel (the first); the channels of both partitions did not come back after the restart (the second) | the first fixed in `149761c`; the second run again in Phase 8's acceptance |
+| `partition-attributes` | the suite still expected `console local` in the record, which Phase 7 gives as `partition` | the suite, `d3285fc` |
+| `partition-recorded`, `pool-install`, `partition-identity` | the guest's own daemon wrote into the middle of the line an IPL code is on, and the harness looked for the code at the start of a line | the harness matches a code anywhere on the guest's line, `d3285fc` |
+| `partition-kill` | `pwrdwn`, sent while a CL command was ending, was taken as CL (`CPD0030`) | the suite powers down with `PWRDWNSYS`, `d3285fc` |
+| `pool-full`, `pool-pulled-raid5`, `pool-pulled-raid6` | the hooks' channel did not answer in time (`EAGAIN`) under a guest three levels deep | run again in Phase 8's acceptance |
+| `net-tagged` | a tap's statistics file was gone when read | run again in Phase 8's acceptance |
+| `service-tools` | the partition was not responding (`A2009020`) during its IPL while a QS/400 build ran beside it | run again in Phase 8's acceptance |
+
+| # | Check | Result |
+|---|---|---|
+| 1 | The pin's own commit | `b950334` |
+| 2 | Phase 7's suites | 14 of 17 passed at `e1373ce`; `service-manager-restart` and `service-tools` failed as above; 15 fuzz targets 60 s each, no finding (`channel` 187,691 runs, 2,003 edges); `test --media iso` passed |
+| 3 | The history's `BLOCKED` item gone, question 37 answered | `docs/OPEN_QUESTIONS.md` 37; 38 and 39 since closed by Phase 8 |
+| 4 | Two clean builds byte for byte; `deny`, `doctor` | identical (below); `deny` and `doctor` passed; `cargo fmt`, both clippy runs and `cargo test --workspace` passed |
+| 5 | One pin; the protocol is QS/400's crate | one `rev` for every crate; `qsipart` a dependency, nothing of it restated |
+| 6 | The release image has no listener and no action on a partition | its initramfs has no `TEST IMAGE:`, no `qsvshook`, no `qsvs.hook=` (0, 0, 0; the test image's 1, 9, 0); `sockets` passed |
+
+Phase 7 was accepted as far as these go; what failed is run again,
+with every earlier suite, in Phase 8's acceptance (`docs/PHASE8.md`).
+
+### Hashes
+
+```
+e53ba72234a5fd469a18fad5acd082c9e9b4ebe228a48a4c286e5b5a0d2e381b  images/initramfs.cpio
+b860e00113b0a86862644741cd3083b0f5d8e76205adbeadd2dbf9483544b7f6  images/initramfs-media.cpio
+c05a4180343355da428a1fd3f7d056850ca41728798d1dd7c61e11402961186d  images/qsvs-V1R0M0-a-c05a41803433.efi
+b9846e61cc4cedc65c85b2e0da288c3b818d76574f20395f1d197df52ecc68c4  images/qsvs-V1R0M0-b-b9846e61cc4c.efi
+784011d6119f054730d2ce269a3e1cb99f5be5f54950ead5722cff3f8a8a0ce8  images/qsvs-V1R0M0-d-784011d6119f.efi
+89f2b98c9573471793f1df172b79c54022ecc2df688e53698381e9ce446bf9d1  images/qsvs-V1R0M0-c05a41803433.img
+c70f2ff68075528a5847b99f565aedee8ecf9a88526e13a65e4da0fa13d958c4  images/QSVS-V1R0M0-784011d6119f.iso
+5d58e5e0b6f6a7939fd01b64fce4b4a98e0b0e847c5a1a4d6888213f9a4d1d02  images/manifest.json
+00a43ed6943762956e6fa348077a47863c8aa386e7f37c7337583cad49350da6  kernel/build/.config
+```
+
 ## Not done
 
 - `BLOCKED(phase7)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event (carried from Phase 4, `docs/PARTD.md`).
