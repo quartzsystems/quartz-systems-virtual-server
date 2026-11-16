@@ -85,7 +85,7 @@ The same release again (a rebuild) is not older and is installed.
 | Activate | refused when no slot is pending, and while partitions run unless the request says to shut them down: then each is shut down through its operating system, given the request's timeout, and ended at once after it. PID 1 then spends the slot's attempt in the record, sets the firmware's `BootNext` to the slot's entry, and restarts | `C2012050`, then the shutdown's |
 | Cancel | the pending slot is pending no more, and `BootNext` is gone | `C2012045` |
 | Confirm | at the trial IPL, when every base service is ready: the record's default and `BootOrder` become the slot (Phase 1's rule), the copy of state is dropped | `C2001095`, `C2012060` with the release now running |
-| Roll back | the pending slot never confirmed (it did not start, or its services never became ready) and the firmware booted the default: that slot clears the pending field, puts the copy of state back, opens the problem and takes a host dump | `A2001035`, `A2012070`, `C2012075`; `C2011000` |
+| Roll back | the pending slot never confirmed: it did not start, or its services were not all ready within 15 minutes of its IPL, when PID 1 restarts it; the firmware then boots the default, and that slot clears the pending field, puts the copy of state back, opens the problem and takes a host dump | `A2001035`, `A2012070`, `C2012075`; `C2011000` |
 
 ## State across an update
 

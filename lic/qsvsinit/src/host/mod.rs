@@ -37,6 +37,9 @@ const HEARTBEAT: Duration = Duration::from_secs(5);
 /// The longest the loop sleeps: the log queue is flushed and the
 /// display's clock looked at this often.
 const TICK: Duration = Duration::from_secs(1);
+/// How long a pending slot's trial has to confirm before the host is
+/// restarted into the other slot: its services never became ready.
+const TRIAL_WAIT: Duration = Duration::from_mins(15);
 /// How soon records the log service could not take are offered again.
 const RETRY: Duration = Duration::from_millis(20);
 /// What each service is given to end before it is killed.
@@ -108,6 +111,8 @@ pub struct Host {
     /// The shutdown has unmounted `/data` and is ending the storage service.
     unmounted: bool,
     heartbeat_at: Instant,
+    /// A pending slot's trial: when it is given up if not confirmed.
+    trial_until: Option<Instant>,
     /// The screen as last drawn on the serial port, without its date.
     drawn: Vec<String>,
     /// The date last drawn on the display.
@@ -148,6 +153,7 @@ impl Host {
             partitions: None,
             unmounted: false,
             heartbeat_at: Instant::now() + HEARTBEAT,
+            trial_until: None,
             drawn: Vec::new(),
             drawn_date: String::new(),
         }
@@ -208,6 +214,21 @@ impl Host {
         self.sup = Some(sup);
         self.listener = listener;
         self.buttons = button::open();
+        if self
+            .slots
+            .as_ref()
+            .is_some_and(|s| s.ipl == loadsource::record::Ipl::Trial)
+        {
+            #[cfg(test_hooks)]
+            let wait = if crate::hooks::has(crate::hooks::SHORT_TRIAL) {
+                Duration::from_secs(90)
+            } else {
+                TRIAL_WAIT
+            };
+            #[cfg(not(test_hooks))]
+            let wait = TRIAL_WAIT;
+            self.trial_until = Some(Instant::now() + wait);
+        }
         self.occurred(started);
     }
 
@@ -290,6 +311,16 @@ impl Host {
             self.line("TEST HOOK: the slot is not confirmed");
             return;
         }
+        #[cfg(test_hooks)]
+        if crate::hooks::has(crate::hooks::FAIL_TRIAL)
+            && self
+                .slots
+                .as_ref()
+                .is_some_and(|s| s.ipl == loadsource::record::Ipl::Trial)
+        {
+            self.line("TEST HOOK: the trial's services are taken as never ready");
+            return;
+        }
         if let Some(mut slots) = self.slots.take() {
             // The slot that came back after a pending one did not
             // confirm: its dump, now the services can be asked.
@@ -308,6 +339,7 @@ impl Host {
                 self.take(p);
             }
             if confirmed {
+                self.trial_until = None;
                 self.post_about(
                     &refcode::UPDATE_CONFIRMED,
                     &format!(
@@ -476,8 +508,16 @@ impl Host {
         if let Some(later) = &self.power_at {
             deadline = deadline.min(later.at);
         }
+        if let Some(at) = self.trial_until {
+            deadline = deadline.min(at);
+        }
         let ready = self.wait(deadline);
         let now = Instant::now();
+        if self.trial_until.is_some_and(|at| now >= at) && self.shutdown.is_none() {
+            self.trial_until = None;
+            self.line("the pending slot did not confirm in time: the other slot is started");
+            self.begin_shutdown(Kind::Restart, "the trial's deadline");
+        }
         if self.power_at.as_ref().is_some_and(|l| now >= l.at)
             && let Some(later) = self.power_at.take()
         {

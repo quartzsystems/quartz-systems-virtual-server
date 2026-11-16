@@ -15,6 +15,14 @@ use supervise::Service;
 /// The hook that keeps a slot on trial from confirming.
 pub const REFUSE_CONFIRM: &str = "refuse-confirm";
 
+/// The hook that keeps a pending slot's trial from confirming, as an
+/// update whose services never become ready: the trial's deadline then
+/// restarts the host into the other slot.
+pub const FAIL_TRIAL: &str = "fail-trial";
+
+/// The hook that gives a trial 90 seconds to confirm, not 15 minutes.
+pub const SHORT_TRIAL: &str = "short-trial";
+
 /// The hook that holds the host's reserve of memory while the huge
 /// pages are asked for, so the kernel gives fewer than asked.
 pub const HOLD_MEMORY: &str = "hold-memory";
