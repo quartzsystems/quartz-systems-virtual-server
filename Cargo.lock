@@ -1523,9 +1523,14 @@ dependencies = [
 name = "qsiserver"
 version = "0.1.0"
 dependencies = [
+ "ipc",
+ "model",
+ "partd",
  "qsi",
  "qsisess",
  "qsitrust",
+ "qvsmsg",
+ "resource",
  "serde",
  "state",
 ]

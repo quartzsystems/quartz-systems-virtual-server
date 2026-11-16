@@ -9,4 +9,5 @@
 //! state. It owns no partition, pool or switch state of its own: only
 //! the consoles it has paired and its event log.
 
+pub mod families;
 pub mod trust;
