@@ -23,6 +23,13 @@ vswitch = { path = "../../net/vswitch", version = "0.1.0" }
 vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
 resource = { path = "../../part/resource", version = "0.1.0" }
 qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+# Phase 8's suites: a console of QS/400's crates, through qsictl's link,
+# and the server's own conversions for the profiles they put.
+qsictl = { path = "../qsictl", version = "0.1.0" }
+qsiserver = { path = "../../qsi/server", version = "0.1.0" }
+qsi.workspace = true
+qsisess.workspace = true
+qsitrust.workspace = true
 ipc.workspace = true
 stgd = { path = "../../base/stgd", version = "0.1.0" }
 users = { path = "../../base/users", version = "0.1.0" }

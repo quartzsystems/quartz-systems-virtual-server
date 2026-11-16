@@ -14,6 +14,7 @@ pub mod base;
 pub mod install;
 pub mod network;
 pub mod partition;
+pub mod qsi;
 pub mod service;
 pub mod slotb;
 pub mod storage;
@@ -128,6 +129,7 @@ pub fn names() -> Vec<&'static str> {
     names.extend(storage::SUITES.iter().map(|s| s.0));
     names.extend(network::SUITES.iter().map(|s| s.0));
     names.extend(service::SUITES.iter().map(|s| s.0));
+    names.extend(qsi::SUITES.iter().map(|s| s.0));
     names
 }
 
@@ -170,6 +172,7 @@ impl Suite {
                 pinned: false,
                 prealloc: false,
                 uplinks: Vec::new(),
+                qsi: None,
             },
             timeout: Duration::from_secs(timeout),
             allow_no_kvm: allow_no_kvm(),
@@ -218,7 +221,8 @@ impl Suite {
             .chain(partition::SUITES)
             .chain(storage::SUITES)
             .chain(network::SUITES)
-            .chain(service::SUITES);
+            .chain(service::SUITES)
+            .chain(qsi::SUITES);
         for (name, suite) in suites {
             if wanted(name) {
                 done(vec![self.base_suite(name, *suite)?]);
@@ -459,7 +463,9 @@ mod tests {
                 + storage::SUITES.len()
                 + network::SUITES.len()
                 + service::SUITES.len()
+                + qsi::SUITES.len()
         );
+        assert_eq!(qsi::SUITES.len(), 13);
         assert_eq!(service::SUITES.len(), 17);
         assert_eq!(storage::SUITES.len(), 17);
         assert_eq!(network::SUITES.len(), 15);

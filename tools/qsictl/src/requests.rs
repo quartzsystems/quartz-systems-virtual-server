@@ -348,16 +348,7 @@ pub fn request(a: Ask) -> AnyRequest {
 /// A refusal, every message of it.
 #[must_use]
 pub fn refused(reply: &Reply) -> String {
-    match &reply.outcome {
-        qsisess::Outcome::Refused {
-            msgid, text, also, ..
-        } => {
-            let mut lines = vec![format!("{msgid} {text}")];
-            lines.extend(also.iter().map(|n| format!("{} {}", n.msgid, n.text)));
-            lines.join("\n")
-        }
-        qsisess::Outcome::Result { .. } => "not refused".into(),
-    }
+    qsictl::pair::refusal(reply)
 }
 
 /// Ask, and print the reply whole.

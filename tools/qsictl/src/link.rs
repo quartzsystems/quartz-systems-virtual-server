@@ -213,6 +213,16 @@ impl Link {
         Ok(())
     }
 
+    /// Write `bytes` into the TLS connection as they are, past the
+    /// session: for a harness that sends what no session would.
+    ///
+    /// # Errors
+    /// The connection ended.
+    pub fn send_raw(&mut self, bytes: &[u8]) -> Result<(), String> {
+        self.io.write_all(bytes).map_err(|e| e.to_string())?;
+        self.io.flush().map_err(|e| e.to_string())
+    }
+
     /// Close cleanly.
     pub fn close(&mut self) {
         self.session.close("done");

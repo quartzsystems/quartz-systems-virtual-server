@@ -123,6 +123,9 @@ pub struct Launch {
     pub prealloc: bool,
     /// Further NICs after the management one, at fixed places.
     pub uplinks: Vec<UplinkNic>,
+    /// A port of the harness's forwarded to the QSI host server's on
+    /// the management address (QEMU's user network gives it 10.0.2.15).
+    pub qsi: Option<u16>,
 }
 
 /// The PCI device number of a pinned disk's place.
@@ -284,7 +287,14 @@ pub fn args(l: &Launch) -> Vec<OsString> {
     }
     match &l.nic {
         Some(mac) => {
-            a.extend(["-netdev", "user,id=net0", "-device"].map(OsString::from));
+            let backend = match l.qsi {
+                Some(port) => format!(
+                    "user,id=net0,hostfwd=tcp:127.0.0.1:{port}-10.0.2.15:{}",
+                    release::QSI_PORT
+                ),
+                None => "user,id=net0".into(),
+            };
+            a.extend(["-netdev".into(), backend.into(), "-device".into()]);
             a.push(format!("virtio-net-pci,netdev=net0,mac={mac}").into());
         }
         None => a.extend(["-nic", "none"].map(OsString::from)),
@@ -348,6 +358,7 @@ mod tests {
             pinned: false,
             prealloc: false,
             uplinks: Vec::new(),
+            qsi: None,
         }
     }
 

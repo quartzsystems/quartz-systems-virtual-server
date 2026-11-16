@@ -143,37 +143,10 @@ fn run(cli: Cli) -> Result<(), String> {
 }
 
 fn pair(home: &Home, address: &str, password: &str, name: Option<String>) -> Result<(), String> {
-    use qsi::any::AnyRequest;
-    use qsi::pair;
     let identity = home.identity()?;
-    let mut link = Link::connect(address, &identity, None)?;
-    let host = link.peer().ok_or("the host presented no certificate")?;
-    println!("host certificate {}", host.hex());
+    let paired = qsictl::pair::pair(address, &identity, password, "qsictl")?;
+    println!("host certificate {}", paired.fingerprint.hex());
     println!("check it is the one the host's Service Tools shows");
-    let binding = link.binding(&identity)?;
-    let (exchange, start) =
-        qsitrust::pair::Console::start(password, binding, "qsictl").map_err(|e| e.to_string())?;
-    let reply = link.ask(&AnyRequest::Pair(pair::Request::Start(pair::Start {
-        spake: start.spake,
-        name: start.name,
-    })))?;
-    let Ok(Some(pair::Reply::Answer(a))) = reply.typed::<pair::Reply>() else {
-        return Err(requests::refused(&reply));
-    };
-    let (confirm, paired) = exchange
-        .answer(&qsitrust::pair::Answer {
-            spake: a.spake,
-            confirm: a.confirm,
-            name: a.name,
-        })
-        .map_err(|_| "the host's confirmation does not hold: a wrong password, or not that host")?;
-    let done = link.ask(&AnyRequest::Pair(pair::Request::Confirm(pair::Confirm {
-        confirm: confirm.confirm,
-    })))?;
-    if done.refusal().is_some() {
-        return Err(requests::refused(&done));
-    }
-    link.close();
     let kept = home::Host {
         name: name.unwrap_or_else(|| paired.name.clone()),
         address: address.to_string(),
