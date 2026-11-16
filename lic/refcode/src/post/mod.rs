@@ -10,6 +10,7 @@
 pub mod remote;
 
 use logd::{Record, Severity};
+pub use supervise::control::About;
 
 use crate::{Family, RefCode, WORD};
 
@@ -36,22 +37,40 @@ pub struct Posting {
 
 /// Post `code`, with `detail` added to its text when there is some.
 pub fn posting(code: &RefCode, detail: &str) -> Posting {
+    posting_about(code, detail, &[])
+}
+
+/// The posting of `code` with `detail`, about `about`: the resources a
+/// person finds it by, which the history keeps.
+pub fn posting_about(code: &RefCode, detail: &str, about: &[About]) -> Posting {
     let text = code.text_with(detail);
+    let mut record = Record::code(SOURCE, severity(code.family), code.code, &text);
+    record.about = about.to_vec();
     Posting {
         line: format!("{WORD} {} {text}", code.code),
-        record: Record::code(SOURCE, severity(code.family), code.code, &text),
+        record,
     }
 }
 
 /// A posting a service sent as a code and its whole text. `None` when
 /// the code is not in the table: nothing else is ever posted.
 pub fn posting_of(code: &str, text: &str) -> Option<Posting> {
+    posting_of_about(code, text, &[])
+}
+
+/// A service's posting with what it is about.
+pub fn posting_of_about(code: &str, text: &str, about: &[About]) -> Option<Posting> {
     let known = crate::find(code)?;
+    let mut record = Record::code(SOURCE, severity(known.family), known.code, text);
+    record.about = about.iter().take(MAX_ABOUT).cloned().collect();
     Some(Posting {
         line: format!("{WORD} {} {text}", known.code),
-        record: Record::code(SOURCE, severity(known.family), known.code, text),
+        record,
     })
 }
+
+/// The most resources one posting names.
+pub const MAX_ABOUT: usize = 8;
 
 #[cfg(test)]
 mod tests {

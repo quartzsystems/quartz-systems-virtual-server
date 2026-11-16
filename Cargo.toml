@@ -16,6 +16,7 @@ members = [
     "lic/qsvspoold",
     "lic/qsvsqsid",
     "lic/qsvsvswitchd",
+    "lic/qsvsprobd",
     "lic/qsvsinstall",
     # The test hooks: built into a test image only.
     "lic/qsvshook",
@@ -26,6 +27,8 @@ members = [
     "lic/qvsmsg",
     # Service Tools: QS/VS's menu and its host-specific panels.
     "svc/tools",
+    # Service: the problem log.
+    "svc/problem",
     "qsi/local",
     "qsi/server",
     # Base: what every Quartz appliance needs, product-neutral. QS/MC pins

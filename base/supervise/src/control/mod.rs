@@ -11,6 +11,62 @@ mod socket;
 #[cfg(unix)]
 pub use socket::{Client, answer, exchange, serve};
 
+/// What a posted reference code is about: a resource a person finds by
+/// its name, its location code and its serial number.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct About {
+    /// Its kind: one of [`about`].
+    pub kind: String,
+    /// A number of its kind's: a partition's ID; 0 for none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub id: u32,
+    /// The name a person finds it by.
+    #[serde(default)]
+    pub name: String,
+    /// Its location code, where it has one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub location: String,
+    /// Its serial number, where it has one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub serial: String,
+}
+ipc::wire_struct!(About {
+    kind,
+    id,
+    name,
+    location,
+    serial
+});
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's signature
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// The kinds of [`About`].
+pub mod about {
+    /// A disk unit.
+    pub const DISK_UNIT: &str = "disk-unit";
+    /// A storage pool.
+    pub const STORAGE_POOL: &str = "storage-pool";
+    /// A virtual disk.
+    pub const VIRTUAL_DISK: &str = "virtual-disk";
+    /// A physical network interface.
+    pub const NETWORK_INTERFACE: &str = "network-interface";
+    /// A virtual switch.
+    pub const VIRTUAL_SWITCH: &str = "virtual-switch";
+    /// A partition: its ID and its name.
+    pub const PARTITION: &str = "partition";
+    /// A slot of the appliance's own code.
+    pub const CODE_SLOT: &str = "code-slot";
+    /// A supervised service.
+    pub const SERVICE: &str = "service";
+    /// The appliance itself, or a part of it with no kind of its own.
+    pub const SYSTEM: &str = "system";
+    /// A reference code a partition's own system posted.
+    pub const SYSTEM_CODE: &str = "system-code";
+}
+
 /// One service, as status shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServiceStatus {
@@ -120,6 +176,8 @@ ipc::rpc! {
     /// each partition at once instead of through its system. `by` is
     /// who asked, for the log and the reference code.
     7 => fn power_down / PowerDown (restart: bool, immediate: bool, delay: u32, by: String) -> Result<(), String>;
+    /// Post a reference code with what it is about.
+    8 => fn post_about / PostAbout (code: String, text: String, about: Vec<About>) -> ();
 }
 
 #[cfg(test)]

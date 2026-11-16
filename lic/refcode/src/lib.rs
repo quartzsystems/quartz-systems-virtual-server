@@ -8,12 +8,15 @@
 //! families end in `2` (docs/REFCODES.md), which no QS/400 family does:
 //! `C2` host IPL and running, `A2` attention, `B2` fatal, `D2` power down.
 //!
+//! - [`about`]: what a posted code is about, made the same way by every
+//!   poster.
 //! - [`event`]: the code of each event the base crates report.
 //! - [`post`]: the poster: the console line and the history record,
 //!   and how a service posts through PID 1.
 
 #![forbid(unsafe_code)]
 
+pub mod about;
 pub mod event;
 pub mod post;
 
@@ -91,6 +94,8 @@ pub const CGROUPS: RefCode = progress("C2001020", "Control groups mounted");
 pub const RECORD_READ: RefCode = progress("C2001030", "A/B record read");
 /// `QSVSDATA` is mounted at `/data`.
 pub const DATA_MOUNTED: RefCode = progress("C2001040", "Data file system mounted");
+/// The data file system is under 85% used again.
+pub const DATA_HAS_ROOM: RefCode = progress("C2001045", "Data file system has room");
 /// The system clock was set from the RTC.
 pub const CLOCK_SET: RefCode = progress("C2001050", "Clock set from the RTC");
 /// The seed step ran and applied nothing.
@@ -170,6 +175,8 @@ pub const RECORD_INVALID: RefCode = attention("A2001030", "A/B record not valid"
 pub const SLOT_FELL_BACK: RefCode = attention("A2001035", "Pending slot not confirmed");
 /// `/data` is not mounted; state is in memory only.
 pub const DATA_NOT_MOUNTED: RefCode = attention("A2001040", "Data file system not mounted");
+/// The data file system is 90% used or more.
+pub const DATA_NEARLY_FULL: RefCode = attention("A2001045", "Data file system nearly full");
 /// The RTC could not be read.
 pub const CLOCK_NOT_SET: RefCode = attention("A2001050", "Clock not set from the RTC");
 /// A seed volume was found and refused.
@@ -404,6 +411,9 @@ pub const IDENTITY_DIFFERS: RefCode = attention("A2009030", "Partition identity 
 /// A delayed or operating-system shut down did not end in time and the
 /// partition was shut down immediately.
 pub const SHUTDOWN_FORCED: RefCode = attention("A2009040", "Partition shut down forced");
+/// A partition is held after its system posted a terminal code: the
+/// system's code is what the problem shows.
+pub const PARTITION_TERMINAL: RefCode = attention("A2009055", "Partition held on a terminal code");
 /// The uplink of a switch a partition's adapter is on lost carrier.
 pub const ADAPTER_UPLINK_LOST: RefCode = attention("A2009080", "Partition adapter uplink lost");
 
@@ -419,6 +429,52 @@ pub const QSI_PROCESSOR: RefCode = attention(
 );
 /// A pairing attempt did not confirm, with the attempts left.
 pub const QSI_PAIRING_FAILED: RefCode = attention("A2010030", "QSI pairing attempt failed");
+/// Pairing failed again and again: a password's attempts were spent,
+/// or an address was turned away for its failures.
+pub const QSI_PAIRING_FAILING: RefCode = attention("A2010035", "QSI pairing attempts failing");
+
+// C2011xxx, A2011xxx: service: the host's dumps.
+
+/// A host dump is being taken, with what asked for it.
+pub const HOST_DUMP_STARTED: RefCode = progress("C2011000", "Host dump started");
+/// A host dump was written, with its name and size.
+pub const HOST_DUMP_WRITTEN: RefCode = progress("C2011010", "Host dump written");
+/// A host dump was removed: deleted, or for the limits.
+pub const HOST_DUMP_REMOVED: RefCode = progress("C2011020", "Host dump removed");
+/// A host dump could not be written; nothing of it is kept.
+pub const HOST_DUMP_FAILED: RefCode = attention("A2011010", "Host dump not written");
+
+// C2012xxx, A2012xxx: code update, in the order of its steps.
+
+/// An update image was received whole and is being verified.
+pub const UPDATE_STAGED: RefCode = progress("C2012000", "Update image staged");
+/// The staged image verified: its release.
+pub const UPDATE_VERIFIED: RefCode = progress("C2012010", "Update image verified");
+/// The staged image was thrown away.
+pub const UPDATE_DISCARDED: RefCode = progress("C2012015", "Staged update discarded");
+/// The install into the other slot began.
+pub const UPDATE_INSTALLING: RefCode = progress("C2012020", "Update install started");
+/// The slot's image was written and read back on one load-source disk.
+pub const UPDATE_SLOT_WRITTEN: RefCode = progress("C2012025", "Update slot written");
+/// The slot is written on every disk and marked pending.
+pub const UPDATE_INSTALLED: RefCode = progress("C2012040", "Update installed, slot pending");
+/// The pending slot is pending no more.
+pub const UPDATE_CANCELLED: RefCode = progress("C2012045", "Pending update cancelled");
+/// The restart into the pending slot begins.
+pub const UPDATE_ACTIVATING: RefCode = progress("C2012050", "Update activation started");
+/// The state was copied before the pending slot's first IPL.
+pub const UPDATE_STATE_KEPT: RefCode = progress("C2012055", "State kept for the pending slot");
+/// The pending slot confirmed: the release that runs now.
+pub const UPDATE_CONFIRMED: RefCode = progress("C2012060", "Update confirmed");
+/// The state was put back as it was before the update.
+pub const UPDATE_STATE_RESTORED: RefCode = progress("C2012075", "State restored after a rollback");
+/// An update image was refused, with why.
+pub const UPDATE_REFUSED: RefCode = attention("A2012010", "Update image refused");
+/// An install failed, with the step and why: the slot is not pending.
+pub const UPDATE_INSTALL_FAILED: RefCode = attention("A2012030", "Update not installed");
+/// The pending slot did not confirm and the host came back on the
+/// other.
+pub const UPDATE_ROLLED_BACK: RefCode = attention("A2012070", "Update rolled back");
 
 // C2007xxx: storage pools, the pool service.
 
@@ -440,6 +496,8 @@ pub const POOL_REBUILD_FINISHED: RefCode = progress("C2007035", "Pool rebuild fi
 pub const POOL_SPARE_TAKEN: RefCode = progress("C2007040", "Hot spare taken into a pool");
 /// An image was imported into the media library.
 pub const MEDIA_IMPORTED: RefCode = progress("C2007050", "Media image imported");
+/// A pool's allocation fell under 80% after it passed 90%.
+pub const POOL_HAS_ROOM: RefCode = progress("C2007055", "Storage pool under 80% allocated");
 /// Every pool was stopped in order, at the host's shutdown.
 pub const POOLS_STOPPED: RefCode = progress("C2007090", "Storage pools stopped");
 
@@ -464,6 +522,8 @@ pub const UPLINK_RETURNED: RefCode = progress("C2008020", "Uplink interface has 
 pub const POOL_NOT_ASSEMBLED: RefCode = attention("A2007010", "Storage pool not assembled");
 /// A pool's unit failed, with the pool, the unit and its location code.
 pub const POOL_UNIT_FAILED: RefCode = attention("A2007020", "Pool unit failed");
+/// A pool is degraded and has no hot spare to rebuild onto.
+pub const POOL_EXPOSED: RefCode = attention("A2007025", "Storage pool degraded with no hot spare");
 /// A pool's rebuild or resynchronization did not finish.
 pub const POOL_REBUILD_FAILED: RefCode = attention("A2007030", "Pool rebuild not finished");
 /// More of a pool's units failed than its protection covers.
@@ -519,6 +579,7 @@ pub const ALL: &[&RefCode] = &[
     &CGROUPS,
     &RECORD_READ,
     &DATA_MOUNTED,
+    &DATA_HAS_ROOM,
     &CLOCK_SET,
     &SEED_CHECKED,
     &SEED_APPLIED,
@@ -594,6 +655,7 @@ pub const ALL: &[&RefCode] = &[
     &POOL_REBUILD_FINISHED,
     &POOL_SPARE_TAKEN,
     &MEDIA_IMPORTED,
+    &POOL_HAS_ROOM,
     &POOLS_STOPPED,
     &VSWITCHD_STARTED,
     &SWITCH_CREATED,
@@ -603,6 +665,7 @@ pub const ALL: &[&RefCode] = &[
     &RECORD_INVALID,
     &SLOT_FELL_BACK,
     &DATA_NOT_MOUNTED,
+    &DATA_NEARLY_FULL,
     &CLOCK_NOT_SET,
     &SEED_INVALID,
     &STATE_INVALID,
@@ -653,12 +716,33 @@ pub const ALL: &[&RefCode] = &[
     &NOT_RESPONDING,
     &IDENTITY_DIFFERS,
     &SHUTDOWN_FORCED,
+    &PARTITION_TERMINAL,
     &ADAPTER_UPLINK_LOST,
     &QSI_NOT_LISTENING,
     &QSI_PROCESSOR,
     &QSI_PAIRING_FAILED,
+    &QSI_PAIRING_FAILING,
+    &HOST_DUMP_STARTED,
+    &HOST_DUMP_WRITTEN,
+    &HOST_DUMP_REMOVED,
+    &HOST_DUMP_FAILED,
+    &UPDATE_STAGED,
+    &UPDATE_VERIFIED,
+    &UPDATE_DISCARDED,
+    &UPDATE_INSTALLING,
+    &UPDATE_SLOT_WRITTEN,
+    &UPDATE_INSTALLED,
+    &UPDATE_CANCELLED,
+    &UPDATE_ACTIVATING,
+    &UPDATE_STATE_KEPT,
+    &UPDATE_CONFIRMED,
+    &UPDATE_STATE_RESTORED,
+    &UPDATE_REFUSED,
+    &UPDATE_INSTALL_FAILED,
+    &UPDATE_ROLLED_BACK,
     &POOL_NOT_ASSEMBLED,
     &POOL_UNIT_FAILED,
+    &POOL_EXPOSED,
     &POOL_REBUILD_FAILED,
     &POOL_FAILED,
     &POOL_FILLING,

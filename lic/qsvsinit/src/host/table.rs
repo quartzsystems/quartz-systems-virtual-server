@@ -33,6 +33,17 @@ const LOGD: Service = Service {
     ready_within: READY_WITHIN,
 };
 
+/// The problem service: after the log service, whose history it
+/// reads, so problems are recorded whatever else runs.
+pub const PROBD: Service = Service {
+    name: problem::proto::NAME,
+    binary: "/qsvs/bin/qsvsprobd",
+    args: &[],
+    order: 12,
+    needs: &[],
+    ready_within: READY_WITHIN,
+};
+
 /// The management network and time.
 const NETD: Service = Service {
     name: "netd",
@@ -105,13 +116,14 @@ pub const QSID: Service = Service {
 
 /// The base services.
 #[cfg(not(test_hooks))]
-pub static TABLE: &[Service] = &[STGD, LOGD, NETD, POOLD, VSWITCHD, PARTD, TOOLS, QSID];
+pub static TABLE: &[Service] = &[STGD, LOGD, PROBD, NETD, POOLD, VSWITCHD, PARTD, TOOLS, QSID];
 
 /// The base services and, in a test image, the test hooks' two.
 #[cfg(test_hooks)]
 pub static TABLE: &[Service] = &[
     STGD,
     LOGD,
+    PROBD,
     NETD,
     POOLD,
     VSWITCHD,
@@ -133,6 +145,7 @@ mod tests {
         let order = supervise::table::start_order(TABLE);
         assert_eq!(TABLE[order[0]].name, "stgd");
         assert_eq!(TABLE[order[1]].name, "logd");
+        assert_eq!(TABLE[order[2]].name, "probd");
         for service in TABLE {
             assert!(service.binary.starts_with(release::BIN_DIR));
         }
@@ -141,12 +154,12 @@ mod tests {
         assert!(TABLE.iter().all(|s| !s.binary.ends_with("qsvmm")));
         // The pool service before the partition manager, which asks it
         // for a partition's disks.
-        assert_eq!(TABLE[order[3]].name, "poold");
+        assert_eq!(TABLE[order[4]].name, "poold");
         // The switch service after the network service and before the
         // partition manager, which asks it for a partition's ports.
-        assert_eq!(TABLE[order[2]].name, "netd");
-        assert_eq!(TABLE[order[4]].name, "vswitchd");
-        assert_eq!(TABLE[order[5]].name, "partd");
+        assert_eq!(TABLE[order[3]].name, "netd");
+        assert_eq!(TABLE[order[5]].name, "vswitchd");
+        assert_eq!(TABLE[order[6]].name, "partd");
         assert!(
             TABLE
                 .iter()

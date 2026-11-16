@@ -90,9 +90,10 @@ Each code goes through PID 1 into the host's history, so each is a base
 ## Sessions
 
 The host's hello names it a host, with its name, release and serial
-number and `caps::HOST_V1`: base, pair, and the nine host families. A
-request is checked by QSI's own bounds (`QSI0002`), then translated
-(`qsi/server/src/families`, following `docs/QSI.md` section 8):
+number and `caps::HOST_V1` (base, pair, and the nine host families) with
+`caps::SERVICE`, its problems. A request is checked by QSI's own bounds
+(`QSI0002`), then translated (`qsi/server/src/families`, following
+`docs/QSI.md` section 8):
 
 | Family | To |
 |---|---|
@@ -100,12 +101,16 @@ request is checked by QSI's own bounds (`QSI0002`), then translated
 | host | the partition manager (resources, settings), the inventory with the pool service's disks and the switch service's interfaces for each item's owner |
 | partitions, partition, profiles, refcodes, panel, dumps, console | the partition manager |
 | vres | the pool service (pools, virtual disks, images, volumes), the partition manager (drives, processor pools, where a disk is named, read from its profiles), the switch service (switches, ports, forwarding, VLANs, limits) |
+| service | the problem service (`docs/PROBLEMS.md`): `List`, `Get`, and `Close` as the request's user; a service resource is QSI's `System` named `service <name>` |
 
 A refusal carries every message the service gave, the first first, with
 its help (`refuse_with`). Where QSI names a conflict, its identifier
 leads and QS/VS's follow: a stale profile put is `QSI0401` then
 `QVS2013`, a new profile of a name there `QSI0402` then `QVS2012`, a
-save of a partition not activated `QSI0403` then `QVS2015`. A value of
+save of a partition not activated `QSI0403` then `QVS2015`; a problem
+not there `QSI1002` then `QVS5001`, closed already `QSI1003` then
+`QVS5002`, a close while its condition holds `QSI1001` then
+`QVS5003`. A value of
 an open enumeration the host does not have is `QSI0361`. A service that
 does not answer (its socket missing, no answer in time) is `QSI0301`,
 naming it; the session goes on and the other families answer.
@@ -142,6 +147,7 @@ One log for every session (`qsisess::EventLog`), fed by:
 | the partition manager | its subscription; a `Resources` event also brings the host family's `Resources` |
 | the switch service | its subscription |
 | the pool service | it has none: the server looks every 2 seconds and says what changed (pools, virtual disks, images, volumes) |
+| the problem service | its subscription: each problem opened, seen again, cleared or closed |
 | the host | its history file looked at every 2 seconds (base `Refcode`), PID 1's state (base `State`) |
 | uploads | their ends |
 
@@ -168,6 +174,7 @@ differs before the source's own events:
 |---|---|
 | the partition manager | after its subscription is answered: each partition made or deleted, each state, each code of a partition's history after the last the log said |
 | the switch service | after its subscription is answered: each switch made, changed (its VLANs, MTU, uplink) or deleted |
+| the problem service | after its subscription is answered: each problem the log never said (opened, and closed when it is), and each one cleared, closed or seen again since |
 | the pool service | its first look: each pool, virtual disk, image and volume |
 | the host | its history from the place the log last said |
 

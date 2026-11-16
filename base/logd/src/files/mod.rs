@@ -72,6 +72,8 @@ struct HistoryLine<'a> {
     boot: &'a str,
     code: &'a str,
     text: &'a str,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    about: &'a [supervise::control::About],
 }
 
 fn json(line: &impl Serialize) -> String {
@@ -98,6 +100,7 @@ pub fn history_line(record: &Record, boot: &str) -> Option<String> {
         boot,
         code,
         text: &record.message,
+        about: &record.about,
     }))
 }
 
@@ -203,6 +206,7 @@ mod tests {
             severity: Severity::Info,
             message: message.into(),
             code: code.map(str::to_string),
+            about: Vec::new(),
         }
     }
 

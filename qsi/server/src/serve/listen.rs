@@ -85,6 +85,8 @@ pub struct Gate {
     sessions: usize,
     handshakes: usize,
     failures: BTreeMap<IpAddr, (u32, Instant)>,
+    /// The addresses turned away for their failures that were said.
+    said: std::collections::BTreeSet<IpAddr>,
 }
 
 /// Why a connection was turned away.
@@ -106,6 +108,8 @@ impl Gate {
     pub fn admit(&mut self, ip: IpAddr, now: Instant) -> Result<(), Turned> {
         self.failures
             .retain(|_, (_, since)| now.duration_since(*since) < FAILURE_WINDOW);
+        let failures = &self.failures;
+        self.said.retain(|ip| failures.contains_key(ip));
         if self
             .failures
             .get(&ip)
@@ -121,6 +125,12 @@ impl Gate {
         }
         self.handshakes += 1;
         Ok(())
+    }
+
+    /// Whether `ip`, turned away for its failures, is to be said: the
+    /// first time in its window.
+    pub fn say_failing(&mut self, ip: IpAddr) -> bool {
+        self.said.insert(ip)
     }
 
     /// The handshake failed.
@@ -304,6 +314,12 @@ fn accept(server: &Arc<Server>, listener: &TcpListener, stop: &AtomicBool) {
                     }
                     Err(why) => {
                         server.say(&format!("a connection from {from} turned away: {why:?}"));
+                        if why == Turned::Failing && lock(&server.gate).say_failing(from.ip()) {
+                            server.post(
+                                &refcode::QSI_PAIRING_FAILING,
+                                &format!("{} turned away for its failures", from.ip()),
+                            );
+                        }
                     }
                 }
             }
@@ -385,8 +401,11 @@ mod tests {
             g.failed(ip, t);
         }
         assert_eq!(g.admit(ip, t), Err(Turned::Failing));
+        assert!(g.say_failing(ip), "said the first time");
+        assert!(!g.say_failing(ip), "and not again in its window");
         assert_eq!(g.admit(other, t), Ok(()));
         assert_eq!(g.admit(ip, t + FAILURE_WINDOW), Ok(()));
+        assert!(g.say_failing(ip), "said again in a new window");
     }
 
     #[test]

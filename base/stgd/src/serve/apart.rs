@@ -197,7 +197,13 @@ pub fn settle(
         let _ = fs::remove_file(&marker);
         return;
     };
-    let post = |what, detail: &str| (app.post)(&Event::Storage { what, detail });
+    let post = |what, detail: &str| {
+        (app.post)(&Event::Storage {
+            what,
+            detail,
+            unit: None,
+        });
+    };
     post(What::PairSplit, &apart.detail());
     shown.set(apart.status(""));
     // PID 1 looks for this: it mounts nothing and shows the choice.

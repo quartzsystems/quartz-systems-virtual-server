@@ -31,7 +31,25 @@ pub fn code_of(event: &Event<'_>) -> (&'static RefCode, String) {
         Event::NoCarrier { interface } => (&crate::NO_CARRIER, (*interface).to_string()),
         Event::NoAddress { interface } => (&crate::NO_ADDRESS, (*interface).to_string()),
         Event::TimeSynchronized { server } => (&crate::TIME_SYNCHRONIZED, (*server).to_string()),
-        Event::Storage { what, detail } => (storage(*what), (*detail).to_string()),
+        Event::Storage { what, detail, .. } => (storage(*what), (*detail).to_string()),
+    }
+}
+
+/// What an event is about: the service, the interface, the unit.
+pub fn about_of(event: &Event<'_>) -> Vec<crate::about::About> {
+    use crate::about;
+    match event {
+        Event::ServiceStopped { service } => vec![about::service(service)],
+        Event::InterfaceUp { interface }
+        | Event::NoCarrier { interface }
+        | Event::NoAddress { interface }
+        | Event::AddressAcquired { interface, .. } => vec![about::interface(interface, "")],
+        Event::Storage { unit: Some(u), .. } => vec![about::disk_unit(
+            &u.number.to_string(),
+            u.location,
+            u.serial,
+        )],
+        _ => Vec::new(),
     }
 }
 
@@ -78,13 +96,32 @@ mod tests {
             code.text_with(&detail),
             "No management interface: no interface eth7"
         );
-        let (code, detail) = code_of(&Event::Storage {
+        let failed = Event::Storage {
             what: Storage::UnitFailed,
             detail: "unit 2: missing",
-        });
+            unit: Some(appliance::Unit {
+                number: 2,
+                location: "P0-B1-D0-F0-U0",
+                serial: "S2",
+            }),
+        };
+        let (code, detail) = code_of(&failed);
         assert_eq!(
             (code.code, detail.as_str()),
             ("A2003020", "unit 2: missing")
+        );
+        let about = about_of(&failed);
+        assert_eq!(
+            (
+                about[0].kind.as_str(),
+                about[0].name.as_str(),
+                about[0].serial.as_str()
+            ),
+            ("disk-unit", "2", "S2")
+        );
+        assert_eq!(
+            about_of(&Event::ServiceStopped { service: "netd" })[0].name,
+            "netd"
         );
     }
 }

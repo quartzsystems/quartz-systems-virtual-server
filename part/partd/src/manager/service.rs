@@ -476,11 +476,26 @@ impl<S: System> Manager<S> {
         {
             return;
         }
+        let terminal = self
+            .partitions
+            .get(&id)
+            .and_then(|p| p.service.terminal.as_ref())
+            .map(|(code, _)| code.clone());
         match self.system.keep(id) {
             Ok(()) => {
                 self.kept(id);
                 let code = &refcode::PARTITION_KEPT;
                 self.code(id, code.code, &code.text_with(&name), true);
+                // The problem is the system's code: said with it.
+                if let Some(sys) = terminal {
+                    let code = &refcode::PARTITION_TERMINAL;
+                    let text = code.text_with(&format!("{name}, {sys}"));
+                    let mut about = self.about(id);
+                    about.push(refcode::about::system_code(&sys));
+                    // To the host's history only: the system's code
+                    // stays the partition's current one.
+                    self.system.post_about(code.code, &text, &about);
+                }
             }
             Err(e) => self
                 .system

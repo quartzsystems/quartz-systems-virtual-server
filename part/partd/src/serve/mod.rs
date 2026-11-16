@@ -96,9 +96,17 @@ fn lock(shared: &Shared) -> MutexGuard<'_, Manager<Machine>> {
 
 /// Post through PID 1; a busy moment is waited out.
 fn post(control: &Path, code: &str, text: &str) {
+    post_about(control, code, text, &[]);
+}
+
+/// Post through PID 1 with what the code is about.
+fn post_about(control: &Path, code: &str, text: &str, about: &[refcode::about::About]) {
     let mut client = supervise::control::Client::new(control);
     for _ in 0..10 {
-        if client.post(code.to_string(), text.to_string()).is_ok() {
+        if client
+            .post_about(code.to_string(), text.to_string(), about.to_vec())
+            .is_ok()
+        {
             return;
         }
         thread::sleep(Duration::from_millis(100));
@@ -433,12 +441,12 @@ pub fn run(service: &Service) -> io::Error {
         Settings::default()
     });
     let (watch_to, watches) = mpsc::channel();
-    let (post_to, posts) = mpsc::channel::<(String, String)>();
+    let (post_to, posts) = mpsc::channel::<(String, String, Vec<refcode::about::About>)>();
     {
         let control = control.clone();
         thread::spawn(move || {
-            for (code, text) in posts {
-                post(&control, &code, &text);
+            for (code, text, about) in posts {
+                post_about(&control, &code, &text, &about);
             }
         });
     }

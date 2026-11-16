@@ -51,13 +51,16 @@ pub struct Record {
     /// The reference code, when the record is one being posted: it
     /// goes into the history as well.
     pub code: Option<String>,
+    /// What the code is about, as whoever posted it said.
+    pub about: Vec<supervise::control::About>,
 }
 ipc::wire_struct!(Record {
     time,
     source,
     severity,
     message,
-    code
+    code,
+    about
 });
 
 impl Record {
@@ -73,6 +76,7 @@ impl Record {
             severity,
             message: message[..end].to_string(),
             code: None,
+            about: Vec::new(),
         }
     }
 

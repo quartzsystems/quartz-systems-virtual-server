@@ -11,6 +11,7 @@ pub mod base;
 pub mod convert;
 pub mod host;
 mod partitions;
+pub mod service;
 pub mod vres;
 
 use qsi::any::{AnyReply, AnyRequest};
@@ -26,6 +27,8 @@ pub struct Services {
     pub poold: Box<dyn poold::Calls + Send>,
     /// The switch service.
     pub vswitchd: Box<dyn vswitchd::Calls + Send>,
+    /// The problem service.
+    pub probd: Box<dyn problem::proto::Calls + Send>,
     /// What the host's state files say.
     pub facts: Box<dyn Facts>,
 }
@@ -150,7 +153,8 @@ pub fn answer(s: &mut Services, request: AnyRequest, user: &str) -> Answer {
             bytes: u.bytes,
         }),
         AnyRequest::Vres(r) => vres::answer(s, r).into(),
-        AnyRequest::Service(_) | AnyRequest::Update(_) => Answer::Refused(vec![base::not_agreed()]),
+        AnyRequest::Service(r) => service::answer(s, &r, user).into(),
+        AnyRequest::Update(_) => Answer::Refused(vec![base::not_agreed()]),
         // Pairing is the connection's.
         AnyRequest::Pair(_) => Answer::Refused(vec![Note {
             msgid: qsi::msgid::UNKNOWN.into(),

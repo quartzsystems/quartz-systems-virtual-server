@@ -48,6 +48,10 @@ the log service is up wait in PID 1 and reach the history in order.
 
 A service posts through PID 1's control socket
 (`lic/refcode/src/post/remote.rs`). PID 1 posts only codes of the table.
+A posting may say what it is about (`refcode::about`): each resource's
+kind, the name a person finds it by, its location code and its serial
+number, and a partition's ID. The history keeps that as the line's
+`about`, and the problem service reads it (`docs/PROBLEMS.md`).
 
 Two postings are not in the history: the heartbeat, which is on the
 serial port only, and the last code of a shutdown (`D2001090` or
@@ -78,6 +82,8 @@ installed host's history starts with its first IPL.
 | `C2009xxx`, `A2009xxx` | the partition manager's service channel to each system (`partd`, `docs/SERVICE.md`): the channel up, closed or silent, the shut down asked of a system and one forced, a partition held with its memory, dumps removed for the limits, the control panel functions, an adapter's uplink |
 
 | `C2010xxx`, `A2010xxx` | the QSI host server (`qsvsqsid`, `docs/QSISERVER.md`): its start and addresses, pairing, a console removed |
+| `C2011xxx`, `A2011xxx` | service: the host's dumps (`docs/DUMPS.md`) |
+| `C2012xxx`, `A2012xxx` | code update (`docs/UPDATE.md`): staged, verified, installed, activated, confirmed or rolled back |
 
 Later phases take further blocks and record them here.
 
@@ -156,6 +162,7 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2001020` | Control groups mounted | cgroup2 is mounted |
 | `C2001030` | A/B record read | with the default slot, the pending slot and the attempts left |
 | `C2001040` | Data file system mounted | `QSVSDATA` is mounted at `/data`, with its device |
+| `C2001045` | Data file system has room | `/data` is under 85% used again after it passed 90%, with how much; by the problem service |
 | `C2001050` | Clock set from the RTC | with the date and time |
 | `C2001060` | Seed checked | the seed step applied nothing: the host is configured, or there is no seed volume |
 | `C2001061` | Seed applied | the state files were written from `seed.toml` |
@@ -222,6 +229,20 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2010030` | QSI console paired | a console paired with the password, with its name and the start of its certificate's fingerprint |
 | `C2010040` | QSI pairing ended | the password is gone unused: it expired, its attempts ran out, or pairing was ended at the host |
 | `C2010050` | QSI console removed | a console's pin was removed at the host, with its name; it can connect no more |
+| `C2011000` | Host dump started | by PID 1, with what asked for it: a console's user, Service Tools, a service stopped after its retries, or a slot that did not confirm |
+| `C2011010` | Host dump written | with its name and size (`docs/DUMPS.md`) |
+| `C2011020` | Host dump removed | deleted, or the oldest put out for the limits, with its name |
+| `C2012000` | Update image staged | an update image was received whole, with its name and size, and is being verified |
+| `C2012010` | Update image verified | its signature, hashes, product, release and state schemas hold, with its release and build |
+| `C2012015` | Staged update discarded | the staged image was thrown away |
+| `C2012020` | Update install started | with the slot written to |
+| `C2012025` | Update slot written | the slot's image was written, synchronized and read back on one load-source disk, with the disk |
+| `C2012040` | Update installed, slot pending | every disk has the image and the A/B record marks the slot pending; the firmware's next boot is set |
+| `C2012045` | Pending update cancelled | the pending slot is pending no more; the next IPL is the default's |
+| `C2012050` | Update activation started | the restart into the pending slot begins, with the partitions shut down first |
+| `C2012055` | State kept for the pending slot | before the pending slot's first IPL reads state, PID 1 copied `/data/state` |
+| `C2012060` | Update confirmed | the pending slot confirmed, with the release that runs now; the copy of state is dropped |
+| `C2012075` | State restored after a rollback | the slot that came back put the copy of state back before any service read it |
 | `C2007000` | Pool service started | with the pools found and how many were assembled |
 | `C2007010` | Storage pool assembled | a pool's units were found by their labels, its set opened and its file system mounted, with its name, protection and state |
 | `C2007015` | Storage pool created | with its name, protection, units and capacity |
@@ -231,6 +252,7 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2007035` | Pool rebuild finished | the unit is in step |
 | `C2007040` | Hot spare taken into a pool | a hot spare took a failed unit's place, with both units' location codes; its rebuild follows |
 | `C2007050` | Media image imported | an optical image is in the media library, with its name and volume identifier |
+| `C2007055` | Storage pool under 80% allocated | a pool that passed 90% is under 80% again, with the pool |
 | `C2007090` | Storage pools stopped | at the host's shutdown, after every partition ended: each pool's file system unmounted and its set stopped in order |
 | `C2008000` | Switch service started | with the switches built from state and the partitions' ports found running |
 | `C2008010` | Virtual switch created | with its name, VLANs and MTU |
@@ -240,6 +262,7 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2001030` | A/B record not valid | no copy of the record is valid; a new one is written for the slot booted |
 | `A2001035` | Pending slot not confirmed | the pending slot did not confirm on its IPL; this IPL is on the default and the pending field is cleared |
 | `A2001040` | Data file system not mounted | `/data` could not be mounted, with the reason; state is in memory only. Nothing is reformatted |
+| `A2001045` | Data file system nearly full | `/data` is 90% used or more, with how much; by the problem service, which looks every minute |
 | `A2001050` | Clock not set from the RTC | the RTC could not be read |
 | `A2001060` | Seed not valid | a seed volume was found and refused, with the reason; nothing was written |
 | `A2001070` | State file not valid | a state file was refused, with the file and the reason; its defaults are in use |
@@ -290,12 +313,19 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2009020` | Partition not responding | the system has not answered pings on its service port for three intervals; nothing is done to it (`C2009020` when it answers again) |
 | `A2009030` | Partition identity differs | the system's hello names another serial number, side or keylock than the host gave it, with which |
 | `A2009040` | Partition shut down forced | a delayed or operating-system shut down had not ended in its time and the partition was shut down immediately |
+| `A2009055` | Partition held on a terminal code | after `C2009050`, when what held the partition was its system's terminal code, with the partition and the code: the problem it opens shows the system's code |
 | `A2009080` | Partition adapter uplink lost | the uplink of a switch one of the partition's adapters is on lost carrier: its outside traffic stopped |
 | `A2010000` | QSI server not listening | the server has no identity to present, or no management address to listen on, with which; nothing listens until it has |
 | `A2010010` | Processor lacks what the service interface needs | at the IPL, by PID 1: the processor lacks AVX2, ADX, AES or PCLMULQDQ, which QSI's cryptography needs, with which; the server listens on nothing and touches no cryptography, and everything local works |
 | `A2010030` | QSI pairing attempt failed | an attempt to pair did not confirm (a wrong password, or a relay), with the attempts left |
+| `A2010035` | QSI pairing attempts failing | a pairing password's attempts were all spent, or an address was turned away for its failed handshakes and pairings |
+| `A2011010` | Host dump not written | a host dump could not be written whole, with why; nothing of it is kept |
+| `A2012010` | Update image refused | the staged image did not verify, with which check: signature, a hash, the product, an older release without leave, or state it cannot read |
+| `A2012030` | Update not installed | an install failed, with the step and the disk; the slot is not pending and the running slot is as it was |
+| `A2012070` | Update rolled back | the pending slot did not confirm and the host came back on the other slot, with the slot and why |
 | `A2007010` | Storage pool not assembled | a pool's units were found but its set could not be opened or its file system mounted, with the pool and why; only the partitions that use it are affected |
 | `A2007020` | Pool unit failed | a unit was taken out of service or not found, with the pool, the unit, its location code and serial number |
+| `A2007025` | Storage pool degraded with no hot spare | a unit of a protected pool failed and no hot spare was there to take, with the pool: another failure may lose it |
 | `A2007030` | Pool rebuild not finished | a rebuild or resynchronization stopped, with the pool and why |
 | `A2007040` | Storage pool failed | more units are lost than the pool's protection covers: the pool is Failed, nothing more is written to its units, and its partitions are in Error |
 | `A2007050` | Storage pool 80% allocated | a pool's allocated space passed 80% of its size, with the pool, what is allocated and what is provisioned |

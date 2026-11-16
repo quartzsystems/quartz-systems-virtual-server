@@ -7,7 +7,6 @@
 use std::os::unix::net::UnixListener;
 
 use logd::Severity;
-use refcode::post::posting_of;
 use release::fact;
 use supervise::control::{Control, HostState, HostStatus, MAX_POWER_DELAY, Power, serve};
 
@@ -31,7 +30,11 @@ impl Control for Host {
     }
 
     fn post(&mut self, code: String, text: String) {
-        match posting_of(&code, &text) {
+        Control::post_about(self, code, text, Vec::new());
+    }
+
+    fn post_about(&mut self, code: String, text: String, about: Vec<supervise::control::About>) {
+        match refcode::post::posting_of_about(&code, &text, &about) {
             Some(posted) => self.take(posted),
             None => self.say(
                 Severity::Warning,

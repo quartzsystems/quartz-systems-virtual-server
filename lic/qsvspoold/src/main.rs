@@ -44,7 +44,7 @@ fn main() {
         names: &release::POOL_DISK,
         load_source: &release::LOAD_SOURCE,
         inventory,
-        post: refcode::post::remote::code,
+        post: refcode::post::remote::code_about,
         owner,
         run_dir: release::RUN_DIR,
         pools_dir: release::POOLS_DIR,

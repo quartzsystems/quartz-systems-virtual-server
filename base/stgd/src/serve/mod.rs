@@ -207,7 +207,43 @@ impl Core {
 
     /// Post an event of the load source.
     fn post(&self, what: What, detail: &str) {
-        (self.app.post)(&Event::Storage { what, detail });
+        (self.app.post)(&Event::Storage {
+            what,
+            detail,
+            unit: None,
+        });
+    }
+
+    /// Post an event of `unit`.
+    fn post_unit_of(&self, unit: &Unit, what: What, detail: &str) {
+        (self.app.post)(&Event::Storage {
+            what,
+            detail,
+            unit: Some(appliance::Unit {
+                number: unit.number,
+                location: &unit.location,
+                serial: &unit.serial,
+            }),
+        });
+    }
+
+    /// Post an event of one unit, the `number`th: its disk's location
+    /// and serial number as the inventory has them.
+    fn post_unit(&self, what: What, detail: &str, number: usize) {
+        let number = u32::try_from(number).unwrap_or(u32::MAX);
+        let unit = self.units().into_iter().find(|u| u.number == number);
+        let (location, serial) = unit
+            .as_ref()
+            .map_or(("", ""), |u| (u.location.as_str(), u.serial.as_str()));
+        (self.app.post)(&Event::Storage {
+            what,
+            detail,
+            unit: Some(appliance::Unit {
+                number,
+                location,
+                serial,
+            }),
+        });
     }
 
     /// The load-source disk that holds a member.
@@ -397,7 +433,8 @@ impl Core {
         } else {
             format!(" at {}", unit.location)
         };
-        self.post(
+        self.post_unit_of(
+            unit,
             What::UnitFailed,
             &format!(
                 "unit {}{place}, serial {}: {}",
@@ -595,7 +632,7 @@ impl Core {
             }
             Err(e) => {
                 self.failure = format!("unit {}: {e}", member + 1);
-                self.post(What::RebuildFailed, &self.failure);
+                self.post_unit(What::RebuildFailed, &self.failure, member + 1);
             }
         }
     }
@@ -649,17 +686,19 @@ impl Core {
                 };
                 self.work = None;
                 self.write_label(false);
-                self.post(
+                self.post_unit(
                     what,
                     &format!("unit {}, {} MiB", member + 1, progress.chunks),
+                    member + 1,
                 );
             }
             Ok(_) => {}
             Err(e) => {
                 self.failure = format!("unit {}: {e}", work.member + 1);
+                let member = work.member + 1;
                 self.work = None;
                 self.write_label(false);
-                self.post(What::RebuildFailed, &self.failure);
+                self.post_unit(What::RebuildFailed, &self.failure, member);
             }
         }
     }
@@ -818,6 +857,7 @@ pub fn run(appliance: &Appliance, host: Host) -> String {
             (appliance.post)(&Event::Storage {
                 what: What::SetNotAssembled,
                 detail: &e,
+                unit: None,
             });
             let _ = fs::write(&data_device, "");
             return e;

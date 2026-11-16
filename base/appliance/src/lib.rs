@@ -21,7 +21,7 @@ pub mod time;
 
 use std::path::PathBuf;
 
-pub use event::{Event, Storage};
+pub use event::{Event, Storage, Unit};
 pub use names::LoadSourceNames;
 
 /// One appliance, as the base crates see it.

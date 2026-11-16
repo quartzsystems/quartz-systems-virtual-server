@@ -70,6 +70,11 @@ impl poold::Calls for Gone {
     }
 }
 
+impl problem::proto::Calls for Gone {
+    fn call(&mut self, _: &problem::proto::Request) -> Result<Vec<u8>, ipc::WireError> {
+        Err(gone())
+    }
+}
 impl vswitchd::Calls for Gone {
     fn call(&mut self, _: &vswitchd::Request) -> Result<Vec<u8>, ipc::WireError> {
         Err(gone())
@@ -106,6 +111,7 @@ fn services(fake: &Fake) -> Services {
         partd: Box::new(fake.clone()),
         poold: Box::new(Gone),
         vswitchd: Box::new(Gone),
+        probd: Box::new(Gone),
         facts: Box::new(Gone),
     }
 }
@@ -342,4 +348,155 @@ fn an_upload_is_left_to_the_connection() {
             bytes: 2048
         })
     );
+}
+
+/// A problem service with problem 1 open and holding, and what it was
+/// asked to close.
+#[derive(Clone, Default)]
+struct Problems {
+    closed: Arc<Mutex<Vec<(u64, bool, String)>>>,
+}
+
+fn open_problem() -> problem::Problem {
+    problem::Problem {
+        summary: problem::Summary {
+            number: 1,
+            holds: true,
+            count: 2,
+            description: "Disk unit 2 of storage pool POOL1 failed or is missing.".into(),
+            msgid: "QVS5130".into(),
+            refcode: problem::Posted {
+                seq: 7,
+                code: "A2007020".into(),
+                ..problem::Posted::default()
+            },
+            ..problem::Summary::default()
+        },
+        resources: vec![
+            refcode::about::disk_unit("2", "P0-B3-D0-F0-U1", "S2"),
+            refcode::about::service("netd"),
+        ],
+        log: Vec::new(),
+    }
+}
+
+impl problem::proto::Calls for Problems {
+    fn call(&mut self, req: &problem::proto::Request) -> Result<Vec<u8>, ipc::WireError> {
+        use problem::proto::Request as R;
+        type Got = Result<problem::Problem, Vec<qvsmsg::Issued>>;
+        Ok(match req {
+            R::List { .. } => ipc::encode(&problem::Page {
+                problems: vec![open_problem().summary],
+                more: None,
+            }),
+            R::Get { number: 1 } => ipc::encode(&Ok::<_, Vec<qvsmsg::Issued>>(open_problem())),
+            R::Get { number } => ipc::encode(&Err::<problem::Problem, _>(vec![
+                qvsmsg::NO_PROBLEM.with(&[&number.to_string()]),
+            ])),
+            R::Close { number, anyway, by } => {
+                self.closed
+                    .lock()
+                    .unwrap()
+                    .push((*number, *anyway, by.clone()));
+                let got: Got = if *anyway {
+                    let mut p = open_problem();
+                    p.summary.status = problem::Status::Closed;
+                    p.summary.closed_by.clone_from(by);
+                    Ok(p)
+                } else {
+                    Err(vec![qvsmsg::PROBLEM_HOLDS.with(&[&number.to_string()])])
+                };
+                ipc::encode(&got)
+            }
+            R::Subscribe {} => ipc::encode(&()),
+        })
+    }
+}
+
+#[test]
+fn problems_are_the_problem_services_and_a_close_is_the_users() {
+    use qsi::service::{Close, Get, List, Reply, Request};
+    let fake = Fake::default();
+    let probs = Problems::default();
+    let mut s = services(&fake);
+    s.probd = Box::new(probs.clone());
+    let a = answer_as(
+        &mut s,
+        AnyRequest::Service(Request::List(List {
+            filter: qsi::service::Filter::default(),
+            before: None,
+            limit: 10,
+        })),
+    );
+    let Answer::Reply(AnyReply::Service(Reply::List(page))) = a else {
+        panic!("{a:?}")
+    };
+    assert_eq!(page.problems[0].refcode.code, "A2007020");
+    assert_eq!(
+        page.problems[0].source.kind,
+        qsi::service::SourceKind::System
+    );
+    let a = answer_as(&mut s, AnyRequest::Service(Request::Get(Get { number: 1 })));
+    let Answer::Reply(AnyReply::Service(Reply::Get(p))) = a else {
+        panic!("{a:?}")
+    };
+    assert_eq!(p.resources[0].kind, qsi::service::ResourceKind::DiskUnit);
+    assert_eq!(p.resources[0].serial, "S2");
+    assert_eq!(
+        p.resources[1].name, "service netd",
+        "a service is named as one"
+    );
+    // Refusals QSI names lead with its identifier.
+    let a = answer_as(&mut s, AnyRequest::Service(Request::Get(Get { number: 9 })));
+    let Answer::Refused(notes) = a else {
+        panic!("{a:?}")
+    };
+    assert_eq!(
+        (notes[0].msgid.as_str(), notes[1].msgid.as_str()),
+        ("QSI1002", "QVS5001")
+    );
+    let close = |anyway| AnyRequest::Service(Request::Close(Close { number: 1, anyway }));
+    let Answer::Refused(notes) = answer_as(&mut s, close(false)) else {
+        panic!()
+    };
+    assert_eq!(
+        (notes[0].msgid.as_str(), notes[1].msgid.as_str()),
+        ("QSI1001", "QVS5003")
+    );
+    let a = answer_as(&mut s, close(true));
+    let Answer::Reply(AnyReply::Service(Reply::Close(closed))) = a else {
+        panic!("{a:?}")
+    };
+    assert_eq!(closed.closed_by, "QSECOFR");
+    assert_eq!(probs.closed.lock().unwrap().last().unwrap().2, "QSECOFR");
+}
+
+#[test]
+fn problems_changed_while_the_server_was_away_are_said() {
+    use crate::events::said::{self, Said};
+    let mut p = open_problem().summary;
+    let mut log = Said::default();
+    // Never said: opened.
+    let e = said::problems(&log, std::slice::from_ref(&p), 1);
+    assert!(matches!(
+        e[..],
+        [qsi::any::AnyEvent::Service(qsi::service::Event::Opened(_))]
+    ));
+    for e in &e {
+        log.note(e);
+    }
+    assert!(said::problems(&log, std::slice::from_ref(&p), 2).is_empty());
+    // Cleared, then closed, while away.
+    p.holds = false;
+    let e = said::problems(&log, std::slice::from_ref(&p), 3);
+    assert!(matches!(
+        e[..],
+        [qsi::any::AnyEvent::Service(qsi::service::Event::Cleared(_))]
+    ));
+    p.status = problem::Status::Closed;
+    let e = said::problems(&log, std::slice::from_ref(&p), 4);
+    assert!(matches!(
+        e[..],
+        [qsi::any::AnyEvent::Service(qsi::service::Event::Closed(_))]
+    ));
 }

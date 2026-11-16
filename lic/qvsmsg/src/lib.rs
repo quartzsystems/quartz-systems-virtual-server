@@ -9,12 +9,14 @@
 //! with.
 //!
 //! - [`catalogue`]: every message.
+//! - [`problems`]: which codes open a problem, and what describes it.
 //! - [`Message`] is a catalogue entry, [`Issued`] one with its values
 //!   filled in, as it travels to whoever asked.
 
 #![forbid(unsafe_code)]
 
 pub mod catalogue;
+pub mod problems;
 
 pub use catalogue::*;
 

@@ -42,8 +42,8 @@ use crate::proto::{
 /// What the service is given by the product it runs as.
 #[derive(Clone, Copy)]
 pub struct Host {
-    /// Post a reference code.
-    pub post: fn(&'static RefCode, &str),
+    /// Post a reference code, with what it is about.
+    pub post: fn(&'static RefCode, &str, &[refcode::about::About]),
     /// The run directory: the socket and the ports' record.
     pub run_dir: &'static str,
     /// The state directory: `vswitch.toml`.
@@ -89,7 +89,16 @@ impl Env for Machine {
     }
 
     fn post(&mut self, code: &'static RefCode, detail: &str) {
-        (self.host.post)(code, detail);
+        (self.host.post)(code, detail, &[]);
+    }
+
+    fn post_about(
+        &mut self,
+        code: &'static RefCode,
+        detail: &str,
+        about: &[refcode::about::About],
+    ) {
+        (self.host.post)(code, detail, about);
     }
 
     fn log(&mut self, line: &str) {
@@ -273,6 +282,7 @@ pub fn run(host: Host) -> String {
             (host.post)(
                 &refcode::SWITCH_NOT_BUILT,
                 &format!("{}: {e}", <Switches as state::store::Document>::FILE),
+                &[],
             );
             (Switches::default(), false)
         }

@@ -117,7 +117,7 @@ pub struct Back {
 pub struct Machine {
     paths: Paths,
     watches: Sender<Watch>,
-    posts: Sender<(String, String)>,
+    posts: Sender<(String, String, Vec<refcode::about::About>)>,
     back: Back,
     /// The connections of the service channels.
     pub links: Links,
@@ -138,7 +138,7 @@ impl Machine {
     pub fn new(
         paths: Paths,
         watches: Sender<Watch>,
-        posts: Sender<(String, String)>,
+        posts: Sender<(String, String, Vec<refcode::about::About>)>,
         back: Back,
     ) -> Self {
         Self {
@@ -370,7 +370,15 @@ impl System for Machine {
     fn post(&mut self, code: &str, text: &str) {
         // Sent by a thread of its own: PID 1 may be a moment in
         // answering, and the manager is not held for it.
-        let _ = self.posts.send((code.to_string(), text.to_string()));
+        let _ = self
+            .posts
+            .send((code.to_string(), text.to_string(), Vec::new()));
+    }
+
+    fn post_about(&mut self, code: &str, text: &str, about: &[refcode::about::About]) {
+        let _ = self
+            .posts
+            .send((code.to_string(), text.to_string(), about.to_vec()));
     }
 
     fn record(&mut self, id: u32, record: Option<&Record>) {

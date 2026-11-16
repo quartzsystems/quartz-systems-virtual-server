@@ -97,6 +97,9 @@ mod tests {
         fn post(&mut self, code: String, text: String) {
             self.posted.push((code, text));
         }
+        fn post_about(&mut self, code: String, text: String, _about: Vec<super::super::About>) {
+            self.posted.push((code, text));
+        }
         fn note(&mut self, _key: String, _value: String) {}
         fn set_host(
             &mut self,

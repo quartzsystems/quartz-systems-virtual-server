@@ -98,14 +98,25 @@ impl<K: Kernel, E: Env> Core<K, E> {
                     .nic_name(location)
                     .and_then(|n| named(&links, &n).cloned())
                 {
-                    Some(l) if management.as_deref() == Some(l.name.as_str()) => self.env.post(
-                        &refcode::UPLINK_MISSING,
-                        &format!("{}, {location}: it is the management interface", s.name),
-                    ),
+                    Some(l) if management.as_deref() == Some(l.name.as_str()) => {
+                        self.env.post_about(
+                            &refcode::UPLINK_MISSING,
+                            &format!("{}, {location}: it is the management interface", s.name),
+                            &[
+                                refcode::about::interface(location, location),
+                                refcode::about::switch(&s.name),
+                            ],
+                        );
+                    }
                     Some(l) => members.push(l),
-                    None => self
-                        .env
-                        .post(&refcode::UPLINK_MISSING, &format!("{}, {location}", s.name)),
+                    None => self.env.post_about(
+                        &refcode::UPLINK_MISSING,
+                        &format!("{}, {location}", s.name),
+                        &[
+                            refcode::about::interface(location, location),
+                            refcode::about::switch(&s.name),
+                        ],
+                    ),
                 }
             }
             port = self.attach(s, u, bridge, &members)?;

@@ -27,6 +27,7 @@ use std::collections::BTreeMap;
 use std::sync::mpsc::Sender;
 
 use refcode::RefCode;
+use refcode::about::About;
 use vswitch::Switches;
 use vswitch::port::PortSpec;
 
@@ -39,6 +40,12 @@ pub trait Env {
     fn now(&self) -> u64;
     /// Post a reference code through PID 1.
     fn post(&mut self, code: &'static RefCode, detail: &str);
+    /// Post a reference code with what it is about: a switch, an
+    /// interface.
+    fn post_about(&mut self, code: &'static RefCode, detail: &str, about: &[About]) {
+        let _ = about;
+        self.post(code, detail);
+    }
     /// A line for the host's log.
     fn log(&mut self, line: &str);
     /// The host's physical network interfaces, from its inventory.
@@ -178,8 +185,11 @@ impl<K: Kernel, E: Env> Core<K, E> {
             match self.build(s) {
                 Ok(()) => built += 1,
                 Err(e) => {
-                    self.env
-                        .post(&refcode::SWITCH_NOT_BUILT, &format!("{}: {e}", s.name));
+                    self.env.post_about(
+                        &refcode::SWITCH_NOT_BUILT,
+                        &format!("{}: {e}", s.name),
+                        &[refcode::about::switch(&s.name)],
+                    );
                     self.failures.insert(s.id, e);
                 }
             }

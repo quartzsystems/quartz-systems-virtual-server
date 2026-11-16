@@ -33,6 +33,7 @@ use pool::label::{self, PoolLabel, UnitState};
 use pool::names::PoolDiskNames;
 use protect::set::{ParityWork, SetEvent};
 use refcode::RefCode;
+use refcode::about::About;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use supervise::signal::{Signals, TERM};
 
@@ -59,8 +60,8 @@ pub struct Host {
     pub load_source: &'static appliance::LoadSourceNames,
     /// The host's disks: serial numbers and location codes.
     pub inventory: fn() -> Vec<DiskIdentity>,
-    /// Post a reference code.
-    pub post: fn(&'static RefCode, &str),
+    /// Post a reference code, with what it is about.
+    pub post: fn(&'static RefCode, &str, &[About]),
     /// The host's identity, which every pool disk of its carries.
     pub owner: fn() -> Option<[u8; 16]>,
     /// The run directory: the socket and the devices' numbers.
@@ -127,9 +128,60 @@ fn logical_block(disk: &str) -> u32 {
         .unwrap_or(512)
 }
 
+/// A pool, as a posting is about it.
+fn pool_about(name: &str) -> About {
+    refcode::about::pool(name)
+}
+
+/// A pool's unit, the `member`th from 0, as a posting is about it.
+fn unit_about(member: usize, unit: Option<&pool::label::Unit>) -> About {
+    let (location, serial) = unit.map_or((String::new(), String::new()), |u| {
+        (u.location.clone(), u.serial.clone())
+    });
+    refcode::about::disk_unit(&(member + 1).to_string(), &location, &serial)
+}
+
 impl Core {
     fn post(&self, code: &'static RefCode, detail: &str) {
-        (self.host.post)(code, detail);
+        (self.host.post)(code, detail, &[]);
+    }
+
+    /// Post a code about `about`.
+    fn post_about(&self, code: &'static RefCode, detail: &str, about: &[About]) {
+        (self.host.post)(code, detail, about);
+    }
+
+    /// Post a code about pool `name`.
+    fn post_pool(&self, code: &'static RefCode, detail: &str, name: &str) {
+        self.post_about(code, detail, &[pool_about(name)]);
+    }
+
+    /// A unit of pool `i` was lost: with no hot spare to rebuild onto
+    /// and the pool not lost, it is exposed, said once until a rebuild
+    /// ends or a spare is taken.
+    fn exposed(&mut self, i: usize) {
+        let p = &mut self.pools[i];
+        let out = p
+            .label
+            .members()
+            .filter(|u| matches!(u.state, UnitState::Missing | UnitState::Failed))
+            .count();
+        if out == 0
+            || p.label.lost()
+            || !p.spares.is_empty()
+            || p.said.iter().any(|k| k == "exposed")
+        {
+            return;
+        }
+        p.said.push("exposed".into());
+        let name = p.label.name.clone();
+        let detail = format!("{name}, {out} unit(s) out of service, no hot spare");
+        self.post_pool(&refcode::POOL_EXPOSED, &detail, &name);
+    }
+
+    /// Pool `i` has its protection again, or a spare: exposed no more.
+    fn covered(&mut self, i: usize) {
+        self.pools[i].said.retain(|k| k != "exposed");
     }
 
     fn names(&self) -> &'static PoolDiskNames {
@@ -211,14 +263,18 @@ impl Core {
                 u.state = UnitState::Missing;
             }
         }
-        for u in p.label.members().filter(|u| u.state == UnitState::Missing) {
-            self.post(
+        for (n, u) in p.label.units.iter().enumerate() {
+            if u.state != UnitState::Missing {
+                continue;
+            }
+            self.post_about(
                 &refcode::POOL_UNIT_FAILED,
                 &format!(
                     "{name}, {} serial {}: missing",
                     where_(&u.location),
                     u.serial
                 ),
+                &[unit_about(n, Some(u)), pool_about(&name)],
             );
         }
         if p.label.lost() {
@@ -228,7 +284,11 @@ impl Core {
                 p.label.protection.word(),
                 p.label.protection.tolerates()
             );
-            self.post(&refcode::POOL_FAILED, &format!("{name}: {}", p.failure));
+            self.post_pool(
+                &refcode::POOL_FAILED,
+                &format!("{name}: {}", p.failure),
+                &name,
+            );
             return;
         }
         let at = create::mount_point(self.pools_dir(), &name);
@@ -239,17 +299,19 @@ impl Core {
             .and_then(|node| p.mount_at(&node, &at));
         if let Err(e) = up {
             p.failure = e;
-            self.post(
+            self.post_pool(
                 &refcode::POOL_NOT_ASSEMBLED,
                 &format!("{name}: {}", p.failure),
+                &name,
             );
             return;
         }
         p.label.clean = false;
         p.write_label(self.names(), clock(), true);
-        self.post(
+        self.post_pool(
             &refcode::POOL_ASSEMBLED,
             &format!("{name}, {}, {}", p.label.protection.word(), p.state()),
+            &name,
         );
         if let Some(Set::Mirror(m)) = &p.set
             && let Some(r) = m.resync_progress()
@@ -354,14 +416,16 @@ impl Core {
         for event in set.events() {
             if let SetEvent::Failed { member, what } = event {
                 let u = self.pools[i].label.units.get(member).cloned();
+                let about = [unit_about(member, u.as_ref()), pool_about(&name)];
                 let (serial, location) = u.map(|u| (u.serial, u.location)).unwrap_or_default();
-                self.post(
+                self.post_about(
                     &refcode::POOL_UNIT_FAILED,
                     &format!(
                         "{name}, unit {} {} serial {serial}: {what}",
                         member + 1,
                         where_(&location)
                     ),
+                    &about,
                 );
                 if self.pools[i]
                     .work
@@ -390,13 +454,14 @@ impl Core {
                 "a transfer failed on every unit that holds it".into()
             };
             let detail = format!("{name}: {}", p.failure);
-            self.post(&refcode::POOL_FAILED, &detail);
+            self.post_pool(&refcode::POOL_FAILED, &detail, &name);
             return;
         }
         if !self.pools[i].failure.is_empty() {
             return;
         }
         self.take_spare(i, &set);
+        self.exposed(i);
         self.work(i, &set);
     }
 
@@ -439,10 +504,16 @@ impl Core {
             where_(&old.map(|u| u.location).unwrap_or_default()),
         );
         let started = create::start_rebuild(names, p, member);
-        self.post(&refcode::POOL_SPARE_TAKEN, &detail);
+        let pool = p.label.name.clone();
+        self.covered(i);
+        self.post_pool(&refcode::POOL_SPARE_TAKEN, &detail, &pool);
         match started {
-            Ok(()) => self.post(&refcode::POOL_REBUILD_STARTED, &detail),
-            Err(e) => self.post(&refcode::POOL_REBUILD_FAILED, &format!("{detail}: {e}")),
+            Ok(()) => self.post_pool(&refcode::POOL_REBUILD_STARTED, &detail, &pool),
+            Err(e) => self.post_pool(
+                &refcode::POOL_REBUILD_FAILED,
+                &format!("{detail}: {e}"),
+                &pool,
+            ),
         }
     }
 
@@ -476,15 +547,19 @@ impl Core {
                     match step {
                         Ok(p) if p.complete => {
                             self.pools[i].write_label(names, clock(), true);
-                            self.post(
+                            self.covered(i);
+                            let unit = self.pools[i].label.units.get(w.member).cloned();
+                            self.post_about(
                                 &refcode::POOL_REBUILD_FINISHED,
                                 &format!("{name}, unit {}, {} MiB", w.member + 1, p.chunks),
+                                &[unit_about(w.member, unit.as_ref()), pool_about(&name)],
                             );
                         }
                         Ok(_) => self.pools[i].work = Some(w),
-                        Err(e) => self.post(
+                        Err(e) => self.post_pool(
                             &refcode::POOL_REBUILD_FAILED,
                             &format!("{name}, unit {}: {e}", w.member + 1),
+                            &name,
                         ),
                     }
                     return;
@@ -501,13 +576,18 @@ impl Core {
                     match step {
                         Ok(Some(p)) if p.complete => {
                             self.pools[i].write_label(names, clock(), true);
-                            self.post(
+                            self.post_pool(
                                 &refcode::POOL_RESYNC_FINISHED,
                                 &format!("{name}, {} of {} MiB copied", p.chunks_copied, p.chunks),
+                                &name,
                             );
                         }
                         Ok(_) => {}
-                        Err(e) => self.post(&refcode::POOL_REBUILD_FAILED, &format!("{name}: {e}")),
+                        Err(e) => self.post_pool(
+                            &refcode::POOL_REBUILD_FAILED,
+                            &format!("{name}: {e}"),
+                            &name,
+                        ),
                     }
                     return;
                 }
@@ -524,13 +604,15 @@ impl Core {
                 {
                     self.pools[i].said.push(format!("stale {member}"));
                     match create::start_rebuild(names, &mut self.pools[i], member) {
-                        Ok(()) => self.post(
+                        Ok(()) => self.post_pool(
                             &refcode::POOL_REBUILD_STARTED,
                             &format!("{name}, unit {}", member + 1),
+                            &name,
                         ),
-                        Err(e) => self.post(
+                        Err(e) => self.post_pool(
                             &refcode::POOL_REBUILD_FAILED,
                             &format!("{name}, unit {}: {e}", member + 1),
+                            &name,
                         ),
                     }
                 }
@@ -544,9 +626,10 @@ impl Core {
                 if let ParityWork::Rebuild(member, _) = work
                     && !self.pools[i].said.contains(&key)
                 {
-                    self.post(
+                    self.post_pool(
                         &refcode::POOL_REBUILD_STARTED,
                         &format!("{name}, unit {}", member + 1),
+                        &name,
                     );
                 }
                 if !self.pools[i].said.contains(&key) {
@@ -557,14 +640,24 @@ impl Core {
                     Ok(Some(p)) if p.complete => {
                         self.pools[i].said.retain(|k| *k != key);
                         self.pools[i].write_label(names, clock(), true);
+                        let mut about = vec![pool_about(&name)];
                         let code = match p.work {
                             ParityWork::Sync(_) => &refcode::POOL_RESYNC_FINISHED,
-                            ParityWork::Rebuild(..) => &refcode::POOL_REBUILD_FINISHED,
+                            ParityWork::Rebuild(member, _) => {
+                                let unit = self.pools[i].label.units.get(member).cloned();
+                                about.insert(0, unit_about(member, unit.as_ref()));
+                                self.covered(i);
+                                &refcode::POOL_REBUILD_FINISHED
+                            }
                         };
-                        self.post(code, &format!("{name}, {} blocks", p.blocks));
+                        self.post_about(code, &format!("{name}, {} blocks", p.blocks), &about);
                     }
                     Ok(_) => self.pools[i].write_label(names, clock(), false),
-                    Err(e) => self.post(&refcode::POOL_REBUILD_FAILED, &format!("{name}: {e}")),
+                    Err(e) => self.post_pool(
+                        &refcode::POOL_REBUILD_FAILED,
+                        &format!("{name}: {e}"),
+                        &name,
+                    ),
                 }
             }
             Set::Plain(_) => {}
@@ -592,27 +685,29 @@ impl Core {
             } else {
                 0
             };
+            let detail = format!(
+                "{}, {used} of {size} bytes allocated, {} provisioned",
+                p.label.name,
+                library::provisioned(p)
+            );
             if level > p.warned {
                 let code = if level == 90 {
                     &refcode::POOL_NEARLY_FULL
                 } else {
                     &refcode::POOL_FILLING
                 };
-                posts.push((
-                    code,
-                    format!(
-                        "{}, {used} of {size} bytes allocated, {} provisioned",
-                        p.label.name,
-                        library::provisioned(p)
-                    ),
-                ));
+                posts.push((code, detail, p.label.name.clone()));
+            } else if p.warned == 90 && percent < 80 {
+                // Room again after 90%: what the problem waits for.
+                posts.push((&refcode::POOL_HAS_ROOM, detail, p.label.name.clone()));
+                p.warned = 0;
             }
             if level > p.warned || percent < 75 {
                 p.warned = level;
             }
         }
-        for (code, detail) in posts {
-            self.post(code, &detail);
+        for (code, detail, name) in posts {
+            self.post_pool(code, &detail, &name);
         }
     }
 

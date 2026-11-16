@@ -157,6 +157,13 @@ impl Said {
                 true
             }
             AnyEvent::Vres(e) => self.note_vres(e),
+            AnyEvent::Service(e) => {
+                let (qsi::service::Event::Opened(n)
+                | qsi::service::Event::Seen(n)
+                | qsi::service::Event::Cleared(n)
+                | qsi::service::Event::Closed(n)) = e;
+                self.set(format!("problem.{}", n.problem.number), encoded(&n.problem))
+            }
             _ => true,
         }
     }
@@ -310,6 +317,40 @@ pub fn partitions(
                 },
             )));
         }
+    }
+    out
+}
+
+/// What the problem service has that the log did not say: each problem
+/// opened, seen again, cleared or closed since. A problem the log never
+/// said is said opened, and closed too when it is.
+pub fn problems(said: &Said, list: &[problem::Summary], now: u64) -> Vec<AnyEvent> {
+    use qsi::service::{Event as E, Noticed};
+    let mut out = Vec::new();
+    // Oldest first, as they happened.
+    for s in list.iter().rev() {
+        let now_q = crate::families::service::summary(s);
+        let before: Option<qsi::service::Summary> =
+            said.get(&format!("problem.{}", s.number)).and_then(decoded);
+        if before.as_ref() == Some(&now_q) {
+            continue;
+        }
+        let n = Noticed {
+            problem: now_q.clone(),
+            time: now,
+        };
+        let closed = now_q.status == qsi::service::ProblemStatus::Closed;
+        let event = match &before {
+            None if closed => {
+                out.push(AnyEvent::Service(E::Opened(n.clone())));
+                E::Closed(n)
+            }
+            None => E::Opened(n),
+            Some(_) if closed => E::Closed(n),
+            Some(b) if b.holds && !now_q.holds => E::Cleared(n),
+            Some(_) => E::Seen(n),
+        };
+        out.push(AnyEvent::Service(event));
     }
     out
 }

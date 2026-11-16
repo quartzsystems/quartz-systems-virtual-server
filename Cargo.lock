@@ -1488,6 +1488,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "problem"
+version = "0.1.0"
+dependencies = [
+ "appliance",
+ "ipc",
+ "logd",
+ "qvsmsg",
+ "refcode",
+ "rustix",
+ "serde",
+ "serde_json",
+ "state",
+ "supervise",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1555,6 +1571,7 @@ dependencies = [
  "model",
  "partd",
  "poold",
+ "problem",
  "qsi",
  "qsilocal",
  "qsisess",
@@ -1657,6 +1674,7 @@ dependencies = [
  "loadsource",
  "logd",
  "partd",
+ "problem",
  "qsilocal",
  "refcode",
  "release",
@@ -1744,6 +1762,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "qsvsprobd"
+version = "0.1.0"
+dependencies = [
+ "logd",
+ "problem",
+ "refcode",
+ "release",
+]
+
+[[package]]
 name = "qsvsqsid"
 version = "0.1.0"
 dependencies = [
@@ -1751,6 +1779,7 @@ dependencies = [
  "libc",
  "partd",
  "poold",
+ "problem",
  "qsilocal",
  "qsiserver",
  "qsisess",
@@ -2324,6 +2353,7 @@ dependencies = [
  "ipc",
  "libc",
  "rustix",
+ "serde",
 ]
 
 [[package]]

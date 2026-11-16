@@ -316,6 +316,13 @@ fn a_terminal_code_holds_the_partition_with_its_memory() {
     says(&mut m, id, &code("B1001234"));
     says(&mut m, id, &sys_state(qs::SysState::Down));
     assert_eq!(m.system.keep_asked, [id]);
+    // The host's history has it with the system's code, for its problem.
+    assert!(
+        m.system
+            .posted
+            .iter()
+            .any(|(c, t)| c == "A2009055" && t.contains("B1001234"))
+    );
     let s = status(&mut m, id);
     assert_eq!(s.state, State::Error);
     assert!(s.service.kept);

@@ -35,6 +35,11 @@ impl poold::Calls for Nothing {
         Err(gone())
     }
 }
+impl problem::proto::Calls for Nothing {
+    fn call(&mut self, _: &problem::proto::Request) -> Result<Vec<u8>, ipc::WireError> {
+        Err(gone())
+    }
+}
 impl vswitchd::Calls for Nothing {
     fn call(&mut self, _: &vswitchd::Request) -> Result<Vec<u8>, ipc::WireError> {
         Err(gone())
@@ -103,6 +108,7 @@ fn conn() -> Conn {
         partd: Box::new(Nothing),
         poold: Box::new(Nothing),
         vswitchd: Box::new(Nothing),
+        probd: Box::new(Nothing),
         facts: Box::new(Nothing),
     };
     let hub = Arc::new(Mutex::new(Hub::memory(&Limits::default())));

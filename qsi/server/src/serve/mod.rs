@@ -46,6 +46,8 @@ pub struct Settings {
     pub poold: PathBuf,
     /// The switch service's.
     pub vswitchd: PathBuf,
+    /// The problem service's socket.
+    pub probd: PathBuf,
     /// The port.
     pub port: u16,
     /// The release that runs.
@@ -187,7 +189,7 @@ impl Server {
         let me = crate::families::Facts::identity(&mut facts).ok();
         Hello {
             version: qsi::VERSION,
-            caps: caps::HOST_V1,
+            caps: caps::HOST_V1 | caps::SERVICE,
             kind: PeerKind::Host,
             name: me.as_ref().map_or_else(String::new, |m| m.name.clone()),
             release: self.settings.release.clone(),
@@ -201,6 +203,7 @@ impl Server {
             partd: Box::new(partd::Client::new(&self.settings.partd)),
             poold: Box::new(poold::Client::new(&self.settings.poold)),
             vswitchd: Box::new(vswitchd::Client::new(&self.settings.vswitchd)),
+            probd: Box::new(problem::proto::Client::new(&self.settings.probd)),
             facts: Box::new(self.facts()),
         }
     }
@@ -281,6 +284,7 @@ pub fn run(server: &Arc<Server>, local: std::os::unix::net::UnixListener) -> ! {
     pumps::partd(server.settings.partd.clone(), server.hub.clone());
     pumps::vswitchd(server.settings.vswitchd.clone(), server.hub.clone());
     pumps::poold(server.settings.poold.clone(), server.hub.clone());
+    pumps::probd(server.settings.probd.clone(), server.hub.clone());
     pumps::host(server.facts(), server.hub.clone());
     pumps::trust(
         server.trust.clone(),

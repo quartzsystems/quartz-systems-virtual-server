@@ -108,6 +108,39 @@ pub fn vswitchd(socket: PathBuf, hub: Shared) {
     });
 }
 
+/// The problem service's events; on taking it up, each problem compared
+/// with what the log last said of it.
+pub fn probd(socket: PathBuf, hub: Shared) {
+    spawn("probd-events", move || {
+        loop {
+            let client = problem::proto::Client::new(&socket);
+            let ready = || {
+                let mut all = Vec::new();
+                let mut before = None;
+                let mut c = client.clone();
+                // Every problem kept, a page at a time.
+                while let Ok(page) =
+                    problem::proto::Calls::list(&mut c, problem::Filter::default(), before, 500)
+                {
+                    all.extend(page.problems);
+                    match page.more {
+                        Some(m) => before = Some(m),
+                        None => break,
+                    }
+                }
+                let mut h = hub::lock(&hub);
+                let missed = said::problems(h.said(), &all, now_secs());
+                h.take_up("probd", &missed);
+            };
+            let _ = client.events(ready, |e| {
+                push(&hub, &crate::families::service::event(&e));
+                true
+            });
+            thread::sleep(AGAIN);
+        }
+    });
+}
+
 /// The pool service, which sends no events: what changed between two
 /// looks.
 pub fn poold(socket: PathBuf, hub: Shared) {
@@ -209,6 +242,13 @@ pub fn trust(trust: Trust, control: PathBuf, say: impl Fn(&str) + Send + 'static
                 say(&format!("{} {text}", code.code));
                 let mut c = supervise::control::Client::new(&control);
                 let _ = supervise::control::Calls::post(&mut c, code.code.to_string(), text);
+                // A password's last attempt failed: failing again and again.
+                if matches!(h, Happened::Failed(0)) {
+                    let code = &refcode::QSI_PAIRING_FAILING;
+                    let text = code.text_with("a pairing password's attempts were all spent");
+                    say(&format!("{} {text}", code.code));
+                    let _ = supervise::control::Calls::post(&mut c, code.code.to_string(), text);
+                }
             }
             thread::sleep(Duration::from_secs(1));
         }

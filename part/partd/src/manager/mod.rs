@@ -142,6 +142,11 @@ pub trait System {
     fn kill(&mut self, group: &str);
     /// Post a reference code through PID 1.
     fn post(&mut self, code: &str, text: &str);
+    /// Post a reference code through PID 1 with what it is about.
+    fn post_about(&mut self, code: &str, text: &str, about: &[refcode::about::About]) {
+        let _ = about;
+        self.post(code, text);
+    }
     /// Keep what a running partition is, or forget it.
     fn record(&mut self, id: u32, record: Option<&Record>);
     /// A line for the host's log.
@@ -546,9 +551,21 @@ impl<S: System> Manager<S> {
             words: Vec::new(),
         };
         if post {
-            self.system.post(code, text);
+            let about = self.about(id);
+            self.system.post_about(code, text, &about);
         }
         self.add(id, posted, post);
+    }
+
+    /// What a code of partition `id` is about: the partition.
+    pub(crate) fn about(&self, id: u32) -> Vec<refcode::about::About> {
+        self.partitions.get(&id).map_or_else(Vec::new, |p| {
+            vec![refcode::about::partition(
+                id,
+                &p.definition.name,
+                &p.definition.serial,
+            )]
+        })
     }
 
     /// Add `posted` to `id`'s history, keep it, make it the current

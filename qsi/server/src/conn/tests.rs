@@ -46,6 +46,11 @@ impl poold::Calls for Gone {
         Err(gone())
     }
 }
+impl problem::proto::Calls for Gone {
+    fn call(&mut self, _: &problem::proto::Request) -> Result<Vec<u8>, ipc::WireError> {
+        Err(gone())
+    }
+}
 impl vswitchd::Calls for Gone {
     fn call(&mut self, _: &vswitchd::Request) -> Result<Vec<u8>, ipc::WireError> {
         Err(gone())
@@ -168,6 +173,7 @@ impl Pair {
             partd: Box::new(Gone),
             poold: Box::new(Gone),
             vswitchd: Box::new(Gone),
+            probd: Box::new(Gone),
             facts: Box::new(Gone),
         };
         let host = Conn::new(

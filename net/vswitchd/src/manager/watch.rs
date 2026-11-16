@@ -96,14 +96,22 @@ impl<K: Kernel, E: Env> Core<K, E> {
                 }
                 self.carrier.insert(key, now);
                 let detail = format!("{}, {}", s.name, m.location);
+                // The interface by its location code, which the switch's
+                // uplink names it by.
+                let about = [
+                    refcode::about::interface(&m.location, &m.location),
+                    refcode::about::switch(&s.name),
+                ];
                 if now {
                     if was == Some(false) {
-                        self.env.post(&refcode::UPLINK_RETURNED, &detail);
+                        self.env
+                            .post_about(&refcode::UPLINK_RETURNED, &detail, &about);
                     }
                 } else if up > 0 {
-                    self.env.post(&refcode::UPLINK_MEMBER_DOWN, &detail);
+                    self.env
+                        .post_about(&refcode::UPLINK_MEMBER_DOWN, &detail, &about);
                 } else {
-                    self.env.post(&refcode::UPLINK_LOST, &detail);
+                    self.env.post_about(&refcode::UPLINK_LOST, &detail, &about);
                 }
                 if was.is_some() || !now {
                     let time = self.env.now();

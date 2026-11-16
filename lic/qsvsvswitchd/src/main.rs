@@ -59,7 +59,7 @@ fn main() {
     }
 
     let host = Host {
-        post: refcode::post::remote::code,
+        post: refcode::post::remote::code_about,
         run_dir: release::RUN_DIR,
         state_dir: "/data/state",
         nics,

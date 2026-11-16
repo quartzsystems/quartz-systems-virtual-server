@@ -16,6 +16,13 @@
 //! | `QVS30xx` | storage pools and their disks |
 //! | `QVS31xx` | virtual disks |
 //! | `QVS32xx` | the media library |
+//! | `QVS40xx` | virtual switches |
+//! | `QVS41xx` | uplinks and the host's interfaces |
+//! | `QVS42xx` | partitions' ports |
+//! | `QVS50xx` | the problem service |
+//! | `QVS51xx` | problems: what each condition is |
+//! | `QVS52xx` | the host's dumps |
+//! | `QVS53xx` | code update |
 
 use crate::Message;
 
@@ -696,4 +703,212 @@ catalogue! {
     PORT_MAC_IN_USE = "QVS4202",
         "MAC address &1 is the port of partition &2, slot &3.",
         "No two ports of the host have one MAC address.";
+    /// A problem number that is not in the log.
+    NO_PROBLEM = "QVS5001",
+        "There is no problem &1.",
+        "Problems are numbered from 1 and no number is used twice. The log keeps 500: past that, the oldest closed problems are removed first.";
+    /// A close of a problem closed already.
+    PROBLEM_CLOSED = "QVS5002",
+        "Problem &1 was closed already, by &2.",
+        "A closed problem stays closed. When its condition is seen again a new problem is opened.";
+    /// A close while the condition holds.
+    PROBLEM_HOLDS = "QVS5003",
+        "The condition of problem &1 still holds.",
+        "A problem is closed once its condition no longer holds, which its analysis log says. Close it anyway when the condition is understood and will be dealt with later.";
+    /// The log could not be written.
+    PROBLEMS_NOT_KEPT = "QVS5004",
+        "The problem log could not be written.",
+        "Nothing was changed. The data file system may be full or failing: look at the problems about it, then try again.";
+    /// A2001030.
+    PRB_RECORD = "QVS5101",
+        "The A/B record of the load source was not valid: &1.",
+        "No copy of the record read, and a new one was written whose default is the slot the host started from; an update that was pending is forgotten. Display the code levels (Service Tools option 8, 5). If this is seen again the load-source disk may be failing.";
+    /// A2001035.
+    PRB_SLOT_FELL_BACK = "QVS5102",
+        "Code slot &1 did not confirm, and the host went back to the other slot: &2.",
+        "An update was activated and the slot it was installed in did not become ready at its IPL. The host runs the release it ran before, with its state as it was before the restart. A host dump was taken: take it to the release's supplier.";
+    /// A2001040.
+    PRB_DATA_NOT_MOUNTED = "QVS5103",
+        "The data file system was not mounted: &1.",
+        "The host runs with its state in memory only, and keeps nothing it is told. Nothing was reformatted. Look at the load-source units, and restart the host when they are in order.";
+    /// A2001045.
+    PRB_DATA_FULL = "QVS5104",
+        "The data file system is nearly full: &1.",
+        "Logs, dumps, a staged update and the state are kept on it. Delete the dumps no longer needed (Service Tools option 8, 3) and a staged update that will not be installed. The problem is cleared when less than 85% is used.";
+    /// A2001050.
+    PRB_CLOCK = "QVS5105",
+        "The clock could not be set from the hardware clock: &1.",
+        "The host's time is wrong until a time server sets it. The hardware clock's battery may be spent. Check the time servers and the hardware.";
+    /// A2001070.
+    PRB_STATE_FILE = "QVS5106",
+        "A state file was not valid, and its defaults are in use: &1.",
+        "The file named was refused at the IPL and is left as it was; what it held is not in use. Set again what it held, at Service Tools or a management console, which writes it whole.";
+    /// A2001072.
+    PRB_MEMORY_SHORT = "QVS5107",
+        "The memory for partitions was not reserved in full: &1.",
+        "The kernel set aside fewer huge pages than the settings ask, so partitions can be given less memory. Give partitions less memory in the host's settings and restart the host, or add memory.";
+    /// A2001075.
+    PRB_IDENTITY = "QVS5108",
+        "The host's identity could not be made: &1.",
+        "Without its key and certificate the host cannot be managed over QSI. Look at the data file system; the identity is made at the next IPL.";
+    /// A2001080.
+    PRB_SERVICE_STOPPED = "QVS5109",
+        "Service &1 failed five times in ten minutes and is not started again.",
+        "What the service does is not done until the host is restarted. A host dump was taken when it stopped: take it to the release's supplier, and restart the host when you can.";
+    /// A2001095.
+    PRB_BOOT_ORDER = "QVS5110",
+        "The firmware's boot order was not written for code slot &1: &2.",
+        "The slot is confirmed in the A/B record, but the firmware may start the other slot first. Look at the firmware's boot settings; the order is written again at the next confirmation.";
+    /// A2002005.
+    PRB_NO_INTERFACE = "QVS5111",
+        "No management interface was found: &1.",
+        "No network link matches the management network's settings. Check the cable, and the interface at Service Tools option 3.";
+    /// A2002010.
+    PRB_NO_CARRIER = "QVS5112",
+        "Management interface &1 has no carrier.",
+        "Check its cable and the switch port it is connected to. The host cannot be managed over QSI until it has carrier.";
+    /// A2002020.
+    PRB_NO_ADDRESS = "QVS5113",
+        "Management interface &1 has no address.",
+        "With DHCP, look at the DHCP server; with a static address, at the settings at Service Tools option 3.";
+    /// A2003010.
+    PRB_SET_NOT_ASSEMBLED = "QVS5114",
+        "The mirrored load source was not assembled: &1.",
+        "No unit in step was found, and the data file system is not mounted. Check that the load-source disks are connected and working.";
+    /// A2003020.
+    PRB_UNIT_FAILED = "QVS5115",
+        "Load-source unit &1 is missing or failed.",
+        "The other unit carries the load source alone, without protection. Replace the disk: the storage service rebuilds onto the new one, and the problem is cleared when it is in step.";
+    /// A2003030.
+    PRB_REBUILD_FAILED = "QVS5116",
+        "The rebuild of load-source unit &1 did not finish: &2.",
+        "The unit is not in step, and the load source is still without protection. Look at the disk named, and replace it if it is failing.";
+    /// A2003040.
+    PRB_UNITS_APART = "QVS5117",
+        "The load-source units each ran without the other: &1.",
+        "The host waits at the console for the unit to keep to be chosen; the other is written again from it. Choose the unit that holds the data wanted.";
+    /// A2005060.
+    PRB_MACHINE_NOT_BUILT = "QVS5118",
+        "The machine of partition &1 could not be built: &2.",
+        "KVM, memory, a device or the privilege drop failed when the partition was activated. Deal with the reason, then activate the partition again.";
+    /// A2005120.
+    PRB_GUEST_FAULT = "QVS5119",
+        "Partition &1 ended with a guest fault: &2.",
+        "The system in the partition faulted in a way its processors could not go on from. Look at the system's own codes in the partition's history, and take its dump to the system's supplier.";
+    /// A2005130.
+    PRB_VMM_ERROR = "QVS5120",
+        "The VMM of partition &1 failed while the partition ran: &2.",
+        "The partition ended without its system being asked. Take a host dump to the release's supplier, and activate the partition again.";
+    /// A2005150.
+    PRB_VMM_KILLED = "QVS5121",
+        "The VMM of partition &1 was killed: &2.",
+        "The partition ended at once. If the host ran short of memory, give its partitions less.";
+    /// A2005160.
+    PRB_HELD_FOR_SPACE = "QVS5122",
+        "Partition &1 is held: a storage pool its virtual disks are in is full.",
+        "Its processors are stopped until the pool has room; nothing reached its system as an error. Delete what the pool does not need. The partition goes on by itself, and the problem is cleared.";
+    /// A2005170.
+    PRB_HELD_FAULT = "QVS5123",
+        "Partition &1 is held after a guest fault: &2.",
+        "Its processors are stopped and its memory kept. Dump the partition, then shut it down or restart it.";
+    /// A2005180.
+    PRB_DUMP_NOT_WRITTEN = "QVS5124",
+        "A dump of partition &1 could not be written: &2.",
+        "Nothing of it was kept. Make room in the media repository's pool and dump the partition again while it is held.";
+    /// A2006020.
+    PRB_AUTO_START = "QVS5125",
+        "Partition &1 was not started automatically: &2.",
+        "The other partitions were tried. Deal with the reason, then activate the partition.";
+    /// A2006030.
+    PRB_PARTITION_STATE = "QVS5126",
+        "A partition's definition or profile was not valid: &1.",
+        "The file named was refused when the partition manager started. Correct it, or delete the partition and create it again.";
+    /// A2006040.
+    PRB_CONTROLS = "QVS5127",
+        "The resource controls of partition &1 could not be set: &2.",
+        "Its processors or memory may not be limited as its profile asks. Shut the partition down and activate it again.";
+    /// A2006090.
+    PRB_NOT_ENDED = "QVS5128",
+        "Partitions had not ended when the host shut down: &1.",
+        "The host went down with partitions still running, and their systems may not have ended cleanly. Look at each at its next IPL.";
+    /// A2007010.
+    PRB_POOL_NOT_ASSEMBLED = "QVS5129",
+        "Storage pool &1 was not assembled: &2.",
+        "Its units were found, but its set could not be opened or its file system mounted; its partitions cannot be activated. Check its disks.";
+    /// A2007020.
+    PRB_POOL_UNIT_FAILED = "QVS5130",
+        "Disk unit &1 of storage pool &2 failed or is missing.",
+        "The pool runs on the units left, with less protection or none. Replace the disk: the pool rebuilds onto the new one or a hot spare, and the problem is cleared when the rebuild ends.";
+    /// A2007025.
+    PRB_POOL_EXPOSED = "QVS5131",
+        "Storage pool &1 is degraded and has no hot spare to rebuild onto.",
+        "Another failure may lose the pool. Replace the failed disk, or add a hot spare, as soon as you can.";
+    /// A2007030.
+    PRB_POOL_REBUILD_FAILED = "QVS5132",
+        "The rebuild of storage pool &1 did not finish: &2.",
+        "The pool is still without its full protection. Look at the disk named, and replace it if it is failing.";
+    /// A2007040.
+    PRB_POOL_FAILED = "QVS5133",
+        "Storage pool &1 failed: &2.",
+        "More units are lost than its protection covers. Nothing more is written to it and its partitions are in Error. Bring its units back, or make the pool again and restore its virtual disks.";
+    /// A2007051.
+    PRB_POOL_NEARLY_FULL = "QVS5134",
+        "Storage pool &1 is 90% allocated: &2.",
+        "A thin virtual disk that cannot grow holds its partition. Delete what the pool does not need, or move virtual disks to another pool. The problem is cleared when less than 80% is allocated.";
+    /// A2008010.
+    PRB_SWITCH_NOT_BUILT = "QVS5135",
+        "Virtual switch &1 was not built: &2.",
+        "Its partitions' adapters cannot be given ports. Deal with the reason, then change the switch at Service Tools option 3 or from a console.";
+    /// A2008020.
+    PRB_UPLINK_LOST = "QVS5136",
+        "Every interface of the uplink of virtual switch &1 lost carrier.",
+        "Traffic between its partitions goes on; traffic to and from outside the host has stopped. Check the cables and the physical switch. The problem is cleared when carrier is back.";
+    /// A2008025.
+    PRB_BOND_MEMBER_DOWN = "QVS5137",
+        "Interface &1 of the uplink of virtual switch &2 lost carrier.",
+        "The bond's other interfaces carry the traffic, without redundancy. Check the cable and the physical switch's port. The problem is cleared when carrier is back.";
+    /// A2008030.
+    PRB_UPLINK_MISSING = "QVS5138",
+        "Interface &1, in the uplink of virtual switch &2, is not on the host.",
+        "A card may have been moved or removed. Put it back, or change the switch's uplink.";
+    /// A2009010.
+    PRB_CHANNEL_CLOSED = "QVS5139",
+        "The service channel of partition &1 was closed: &2.",
+        "The system sent what is not the protocol. The partition runs on, and the channel opens again when the system says hello; the problem is then cleared. If this is seen again, take it to the system's supplier.";
+    /// A2009020.
+    PRB_NOT_RESPONDING = "QVS5140",
+        "Partition &1 is not responding on its service channel.",
+        "Its system has not answered pings for three intervals; nothing was done to it. Look at its console. The problem is cleared when it answers again.";
+    /// A2009030.
+    PRB_IDENTITY_DIFFERS = "QVS5141",
+        "The system in partition &1 names another identity than the host gave it: &2.",
+        "Its serial number, side or keylock differs from the partition's. Check that the partition's virtual disks are its own.";
+    /// A2009055.
+    PRB_TERMINAL = "QVS5142",
+        "Partition &1 is held after its system posted a terminal code: &2.",
+        "Its processors are stopped and its memory kept. The problem's reference code is the system's own: look it up in the system's documentation. Dump the partition, then shut it down or restart it.";
+    /// A2010010.
+    PRB_PROCESSOR = "QVS5143",
+        "The processor lacks what the service interface needs: &1.",
+        "QSI's cryptography needs AVX2, ADX, AES and PCLMULQDQ. The host cannot be managed over QSI on this processor; everything at its console works. Move the host to a processor that has them.";
+    /// A2010035.
+    PRB_PAIRING_FAILING = "QVS5144",
+        "Attempts to pair a management console failed again and again: &1.",
+        "A pairing password's attempts were spent, or an address was turned away for its failures. If nobody was pairing a console, someone may be trying to: look at the addresses in the system log.";
+    /// A2011010.
+    PRB_HOST_DUMP_FAILED = "QVS5146",
+        "A host dump could not be written: &1.",
+        "Nothing of it was kept. Make room on the data file system, then take the dump again (Service Tools option 8, 2).";
+    /// A2012030.
+    PRB_INSTALL_FAILED = "QVS5147",
+        "An update could not be installed into code slot &1: &2.",
+        "The slot is not pending, and the host runs on as before. Install the update again; if it fails again the load-source disk may be failing. The problem is cleared by an install that succeeds.";
+    /// B2001000.
+    PRB_PID1_FAILED = "QVS5148",
+        "The host's first process failed: &1.",
+        "The host stopped. Take the system log to the release's supplier.";
+    /// B2003000.
+    PRB_STORAGE_LOST = "QVS5149",
+        "The storage service of the mirrored load source stopped: &1.",
+        "The host stopped, its data file system without a server. Restart the host.";
 }

@@ -1,0 +1,24 @@
+[package]
+name = "problem"
+description = "The problem log: one record per condition a person should look at, opened from the reference codes posted, counted, cleared and closed; the problem service's socket"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+refcode = { path = "../../lic/refcode", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
+appliance = { path = "../../base/appliance", version = "0.1.0" }
+logd = { path = "../../base/logd", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+ipc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix.workspace = true
+
+[lints]
+workspace = true

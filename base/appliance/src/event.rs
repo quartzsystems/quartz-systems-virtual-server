@@ -90,5 +90,18 @@ pub enum Event<'a> {
         what: Storage,
         /// The units, sizes and reasons of this occurrence.
         detail: &'a str,
+        /// The unit it is about, when it is about one.
+        unit: Option<Unit<'a>>,
     },
+}
+
+/// A load-source unit an event is about: what a person finds it by.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Unit<'a> {
+    /// Its number, from 1.
+    pub number: u32,
+    /// Its disk's location code; empty when not known.
+    pub location: &'a str,
+    /// Its disk's serial number; empty when not known.
+    pub serial: &'a str,
 }

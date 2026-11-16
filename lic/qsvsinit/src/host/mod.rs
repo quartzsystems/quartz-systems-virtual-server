@@ -184,6 +184,11 @@ impl Host {
         self.take(posting(code, detail));
     }
 
+    /// Post a code of PID 1's own with what it is about.
+    pub fn post_about(&mut self, code: &RefCode, detail: &str, about: &[refcode::about::About]) {
+        self.take(refcode::post::posting_about(code, detail, about));
+    }
+
     /// One line on the console that is no reference code, logged too.
     pub fn line(&mut self, line: &str) {
         self.show(line);
@@ -237,7 +242,11 @@ impl Host {
                     self.storage_lost = true;
                     self.post(&refcode::STORAGE_LOST, "the data file system has no server");
                 }
-                Occurrence::GaveUp { service } => self.post(&refcode::SERVICE_STOPPED, service),
+                Occurrence::GaveUp { service } => self.post_about(
+                    &refcode::SERVICE_STOPPED,
+                    service,
+                    &[refcode::about::service(service)],
+                ),
                 Occurrence::Output {
                     service,
                     error,
