@@ -150,6 +150,7 @@ pub fn answer(s: &mut Services, request: AnyRequest, user: &str) -> Answer {
             bytes: u.bytes,
         }),
         AnyRequest::Vres(r) => vres::answer(s, r).into(),
+        AnyRequest::Service(_) | AnyRequest::Update(_) => Answer::Refused(vec![base::not_agreed()]),
         // Pairing is the connection's.
         AnyRequest::Pair(_) => Answer::Refused(vec![Note {
             msgid: qsi::msgid::UNKNOWN.into(),

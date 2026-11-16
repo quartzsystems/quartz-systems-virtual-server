@@ -83,6 +83,15 @@ pub fn state(s: &supervise::control::HostState) -> State {
     }
 }
 
+/// A request of a group this server's hello did not say.
+pub(super) fn not_agreed() -> Note {
+    Note {
+        msgid: qsi::msgid::NOT_AGREED.into(),
+        text: "This host does not serve that family.".into(),
+        help: String::new(),
+    }
+}
+
 /// Answer a base request that is the host's; `user` is who the
 /// console says asked, for the power down's record.
 pub(super) fn answer(s: &mut Services, r: &Request, user: &str) -> Result<AnyReply, Vec<Note>> {
@@ -100,6 +109,11 @@ pub(super) fn answer(s: &mut Services, r: &Request, user: &str) -> Result<AnyRep
         }
         Request::Refcodes(h) => Reply::Refcodes(page(&s.facts.history()?, h.before, h.limit)),
         Request::Time(_) => Reply::Time(s.facts.time()),
+        // Not agreed in this server's hello.
+        Request::Dumps(_)
+        | Request::TakeDump(_)
+        | Request::DeleteDump(_)
+        | Request::DownloadDump(_) => return Err(vec![not_agreed()]),
         // The connection's: they need the event log.
         Request::Subscribe(_) | Request::Unsubscribe(_) => {
             return Err(vec![Note {
