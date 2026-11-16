@@ -157,6 +157,21 @@ pub fn streams(run: &Run<'_>) -> Result<String, String> {
             },
         )),
     )?;
+    // Manual is an attended IPL: taken through its screens on the
+    // console stream.
+    let mut v = eventually(Duration::from_mins(5), || {
+        super::flows::Viewer::attach(&mut l, id, false).ok()
+    })
+    .ok_or("no console to take the attended IPL through")?;
+    let until = Instant::now() + Duration::from_mins(15);
+    v.until(&mut l, "IPL or Install the System", until)?;
+    let mut one = super::flows::typed("1");
+    one.push(qsipart::console::Key::Enter);
+    v.keys(&mut l, &one)?;
+    v.until(&mut l, "IPL Options", until)?;
+    v.keys(&mut l, &[qsipart::console::Key::Enter])?;
+    v.until(&mut l, "Set Major System Options", until)?;
+    v.keys(&mut l, &[qsipart::console::Key::Enter])?;
     eventually(Duration::from_mins(15), || {
         let AnyReply::Partitions(partitions::Reply::Get(p)) = ask(
             &mut l,
