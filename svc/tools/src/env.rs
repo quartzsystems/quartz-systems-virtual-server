@@ -56,6 +56,8 @@ pub struct Env {
     pools: poold::proto::Client,
     switches: vswitchd::Client,
     qsi: qsilocal::Client,
+    problems: problem::proto::Client,
+    updates: update::proto::Client,
     store: Store,
     /// The host name, as last seen in PID 1's status.
     name: String,
@@ -77,6 +79,8 @@ impl Env {
             qsi: qsilocal::Client::new(
                 std::path::Path::new(release::RUN_DIR).join(qsilocal::SOCKET_FILE),
             ),
+            problems: problem::proto::Client::new(problem::proto::socket(release::RUN_DIR)),
+            updates: update::proto::Client::new(update::proto::socket(release::RUN_DIR)),
             store: Store::at(appliance.state_dir()),
             name: release::NAME.into(),
         }
@@ -115,6 +119,33 @@ impl Env {
     /// The QSI host server's local socket: the consoles and pairing.
     pub fn qsi(&mut self) -> &mut qsilocal::Client {
         &mut self.qsi
+    }
+
+    /// The problem service.
+    pub fn problems(&mut self) -> &mut problem::proto::Client {
+        &mut self.problems
+    }
+
+    /// The update service.
+    pub fn updates(&mut self) -> &mut update::proto::Client {
+        &mut self.updates
+    }
+
+    /// Who asks, as the log and a dump say it.
+    pub fn who(&self) -> String {
+        format!("Service Tools, user {} at the {}", self.user, self.place)
+    }
+
+    /// Post a code through PID 1.
+    pub fn post(&mut self, code: &refcode::RefCode, detail: &str) {
+        let _ = self
+            .control
+            .post(code.code.to_string(), code.text_with(detail));
+    }
+
+    /// Ask PID 1 for a host dump: its name.
+    pub fn take_dump(&mut self, by: String) -> Result<String, String> {
+        self.control.take_dump(by).map_err(|e| wire(e, "PID 1"))?
     }
 
     /// Start mirrored protection with `disk`.

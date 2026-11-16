@@ -125,13 +125,9 @@ everything in Service Tools; there is one kind of user in this release.
       5. Work with service tools user IDs
       6. Date and time
       7. Display logs
-      8. Service functions  (not yet available: comes with Phase 9)
+      8. Service functions
       9. Power off or restart
 ```
-
-Option 8 is on the menu and cannot be selected: the message line says
-which phase brings it (`It comes with Phase 9, service and code
-update.`).
 
 ### 1. Work with system status
 
@@ -359,12 +355,80 @@ item 9).
 
 ### 7. Display logs
 
-1 is the reference code history, 2 the system log. Each is shown
-newest first, a page at a time: F8 goes to older lines, F7 back to
-newer ones. A line is its time in the display zone, a mark (`W` for a
-warning or an attention code, `E` for an error or a fatal code) and its
-text. The `Show` field filters by severity: 1 everything, 2 warnings
-and errors, 3 errors only.
+1 is the reference code history, 2 the system log, 3 the problem log.
+The first two are shown newest first, a page at a time: F8 goes to
+older lines, F7 back to newer ones. A line is its time in the display
+zone, a mark (`W` for a warning or an attention code, `E` for an error
+or a fatal code) and its text. The `Show` field filters by severity: 1
+everything, 2 warnings and errors, 3 errors only.
+
+**3. Problem log** (`Display Problem Log`) lists every problem the log
+keeps, open or closed, newest first, two lines each: its number, when
+it was opened and last seen, how often, its status (`Open`, `Cleared`,
+`Closed`) and its code; then its description. It is read only: option 8,
+1 works with them (`docs/PROBLEMS.md`).
+
+### 8. Service functions
+
+```
+                               Service Functions
+ Select one of the following:
+
+      1. Work with problems
+      2. Take a host dump
+      3. Work with dumps
+      4. Install an update from a removable volume
+      5. Display code levels
+      6. Shut down all partitions
+```
+
+What a host with no management console needs (`docs/PROBLEMS.md`,
+`docs/DUMPS.md`, `docs/UPDATE.md`).
+
+**1. Work with problems** (`tools-problems`) lists the open problems,
+newest first (F11 shows the closed ones too): the number, `Open` or
+`Cleared` (its condition no longer holds), when last seen, the code and
+the description. 5 shows one whole (`Display Problem`): its code and
+text, whose it is, first and last seen and how often, the message and
+what to do (its second-level text), each resource with its location
+code and serial number, and the analysis log; F7 and F8 page, F10
+closes it. 4 closes one (`Close Problem`): Enter when its condition no
+longer holds; `Y` to close it anyway while it holds. The close is the
+signed-on user's, kept in the problem.
+
+**2. Take a host dump** (`Take Host Dump`) says what a dump holds and
+that no secret goes in; Enter takes one, by the signed-on user at this
+console, and the message line names it.
+
+**3. Work with dumps** (`tools-dumps`) lists the host's dumps and each
+partition's: whose, the name, the size and when it was taken. 6 copies
+one to a removable volume (`Copy Dump to Removable Volume`): the device's
+kernel name (`sdb1`); a FAT, exFAT, ext4 or xfs volume is mounted, the
+dump written to its top directory (a partition's named after the
+partition), and the volume unmounted. 4 deletes one after Enter.
+
+**4. Install an update from a removable volume** asks for the device
+(`sdb1`), mounts it to read only and lists the update images on it
+(`.upd`, at the top or one directory down). 1 by one stages it, 2 stages
+it allowing an older release; it is copied to the host and verified,
+and a refusal says which check failed. `Update Image` then shows what it
+is (product, release, build, fixes, size) beside the release that runs
+and the slot it is written to: F10 installs it, F12 discards it.
+`Installing Update` shows the progress (F5); once the slot is pending,
+1 restarts now and 2 leaves it for later. `Confirm Restart into Update`
+lists the partitions that run, which are shut down through their
+operating systems first, with the seconds each is given (300), and
+takes `RESTART` typed.
+
+**5. Display code levels** (`Display Code Levels`) shows each slot: the
+release and build it holds, its fixes, whether the host runs from it and
+whether it is the default, and how its last activation ended (never,
+pending, confirmed, rolled back with why); then the slot pending and
+what is staged.
+
+**6. Shut down all partitions** lists the partitions that run and takes
+`SHUTDOWN` typed: each is shut down through its operating system, in
+the reverse of the order they were activated in.
 
 ### 9. Power off or restart
 
@@ -387,6 +451,12 @@ The console edits no state file itself.
 | a storage pool made, a unit replaced, a hot spare added or taken away, a pool renamed or deleted, the media repository designated, an image imported | the pool service | `docs/POOLD.md` |
 | the unit to keep, of two that ran apart | the storage service | writes the kept unit's label to both disks, assembles the set |
 | service tools users | the console service's own users' store | `users.db`, written beside and renamed, as `svcusers` does |
+| a problem closed | the problem service | `docs/PROBLEMS.md` |
+| a host dump taken | PID 1 | `docs/DUMPS.md` |
+| a host dump deleted | the console itself, in `/data/dumps/host` | the dump's file; `C2011020` |
+| a partition's dump deleted or copied | the partition manager | `docs/DUMPS.md` |
+| an update staged, installed, activated | the update service | `docs/UPDATE.md` |
+| every partition shut down | the partition manager | its `EndAll` |
 
 The users have no other owner: nothing but the local console signs
 anyone on. The logs are read, never written. The partitions are read

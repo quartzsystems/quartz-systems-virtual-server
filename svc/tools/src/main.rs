@@ -21,6 +21,7 @@ mod menu;
 mod network;
 mod partitions;
 mod pools;
+mod service;
 
 #[cfg(target_os = "linux")]
 mod on_host {

@@ -7,14 +7,14 @@
  their protection, and adds or replaces one. 3 changes the
  management network. 4 pairs a management console. 5 works
  with the users of this console. 6 sets the display zone, the
- time servers and the clock. 7 shows the logs. 9 powers the
- host off or restarts it.
+ time servers and the clock. 7 shows the logs and the
+ problem log. 8 works with problems, dumps and code update.
+ 9 powers the host off or restarts it.
 
- Option 8 is not available in this release. Partitions are
- made and run from the management console, QS/MC.
+ Partitions are made and run from the management console,
+ QS/MC.
 
  F3 or F12 signs you off. So does ten minutes without a key.
-
 
 
 

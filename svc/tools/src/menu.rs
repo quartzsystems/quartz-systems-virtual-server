@@ -28,9 +28,6 @@ pub enum Outcome {
 
 type Step = PanelFlow<Env, Outcome>;
 
-/// The options that are not there yet, and what brings them.
-const LATER: [(u8, &str); 1] = [(8, "It comes with Phase 9, service and code update.")];
-
 /// The main menu.
 pub struct MainMenu;
 
@@ -51,10 +48,7 @@ impl Panel<Env, Outcome> for MainMenu {
                 (5, "Work with service tools user IDs"),
                 (6, "Date and time"),
                 (7, "Display logs"),
-                (
-                    8,
-                    "Service functions  (not yet available: comes with Phase 9)",
-                ),
+                (8, "Service functions"),
                 (9, "Power off or restart"),
             ],
             "F1=Help   F3=Sign off   F12=Sign off",
@@ -72,7 +66,11 @@ impl Panel<Env, Outcome> for MainMenu {
             Some(7) => Flow::Push(Box::new(Choice {
                 name: "tools-logs",
                 title: "Display Logs",
-                options: [(1, "Reference code history"), (2, "System log")],
+                options: &[
+                    (1, "Reference code history"),
+                    (2, "System log"),
+                    (3, "Problem log"),
+                ],
                 help: Help {
                     title: "Display Logs",
                     lines: &[
@@ -80,13 +78,16 @@ impl Panel<Env, Outcome> for MainMenu {
                         "has posted, with its time, kept across IPLs.",
                         "",
                         "2 shows the system log: what PID 1 and the services say.",
+                        "",
+                        "3 shows the problem log: each problem the host opened,",
+                        "open or closed. Option 8, 1 works with them.",
                     ],
                 },
             })),
             Some(9) => Flow::Push(Box::new(Choice {
                 name: "tools-power",
                 title: "Power Off or Restart",
-                options: [(1, "Power off"), (2, "Restart")],
+                options: &[(1, "Power off"), (2, "Restart")],
                 help: Help {
                     title: "Power Off or Restart",
                     lines: &[
@@ -98,10 +99,8 @@ impl Panel<Env, Outcome> for MainMenu {
                     ],
                 },
             })),
-            Some(n) => match LATER.iter().find(|(option, _)| u32::from(*option) == n) {
-                Some((_, why)) => Flow::Error(format!("Option {n} is not available yet. {why}")),
-                None => Flow::Error("Selection not valid.".into()),
-            },
+            Some(8) => Flow::Push(Box::new(crate::service::ServiceMenu)),
+            Some(_) => Flow::Error("Selection not valid.".into()),
             None => Flow::Error("Type the number of an option.".into()),
         }
     }
@@ -123,11 +122,12 @@ impl Panel<Env, Outcome> for MainMenu {
                 "their protection, and adds or replaces one. 3 changes the",
                 "management network. 4 pairs a management console. 5 works",
                 "with the users of this console. 6 sets the display zone, the",
-                "time servers and the clock. 7 shows the logs. 9 powers the",
-                "host off or restarts it.",
+                "time servers and the clock. 7 shows the logs and the",
+                "problem log. 8 works with problems, dumps and code update.",
+                "9 powers the host off or restarts it.",
                 "",
-                "Option 8 is not available in this release. Partitions are",
-                "made and run from the management console, QS/MC.",
+                "Partitions are made and run from the management console,",
+                "QS/MC.",
                 "",
                 "F3 or F12 signs you off. So does ten minutes without a key.",
             ],
@@ -135,11 +135,11 @@ impl Panel<Env, Outcome> for MainMenu {
     }
 }
 
-/// A menu of two that leads to the logs or to the power confirmations.
+/// A short menu that leads to the logs or to the power confirmations.
 struct Choice {
     name: &'static str,
     title: &'static str,
-    options: [(u8, &'static str); 2],
+    options: &'static [(u8, &'static str)],
     help: Help,
 }
 
@@ -152,7 +152,7 @@ impl Panel<Env, Outcome> for Choice {
         ui::menu(
             self.title,
             &env.system(),
-            &self.options,
+            self.options,
             "F1=Help   F3=Exit   F12=Cancel",
         )
     }
@@ -162,6 +162,7 @@ impl Panel<Env, Outcome> for Choice {
         match (kit::number(fields.first()), logs) {
             (Some(1), true) => Flow::Push(Box::new(LogPanel::new(Log::History))),
             (Some(2), true) => Flow::Push(Box::new(LogPanel::new(Log::System))),
+            (Some(3), true) => Flow::Push(Box::new(crate::service::problems::Log::default())),
             (Some(1), false) => Flow::Push(Box::new(power::<Env, Outcome>(false))),
             (Some(2), false) => Flow::Push(Box::new(power::<Env, Outcome>(true))),
             _ => Flow::Error("Selection not valid.".into()),
@@ -430,8 +431,9 @@ mod tests {
     }
 
     #[test]
-    fn options_that_are_not_there_yet_say_what_brings_them() {
-        assert!(LATER.iter().all(|(n, _)| *n != 4), "option 4 is here");
-        assert!(LATER.iter().any(|(n, _)| *n == 8));
+    fn every_option_of_the_main_menu_is_there() {
+        let mut env = crate::env::Env::new("display", crate::env::open_users());
+        let s = MainMenu.render(&mut env).dump();
+        assert!(s.contains(" 8. Service functions") && !s.contains("not yet available"));
     }
 }

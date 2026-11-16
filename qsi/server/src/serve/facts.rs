@@ -158,7 +158,13 @@ impl Facts for HostFacts {
                 text: why,
                 help: String::new(),
             }]
-        })
+        })?;
+        let code = &refcode::HOST_DUMP_REMOVED;
+        let _ = Client::new(&self.paths.control).post(
+            code.code.to_string(),
+            code.text_with(&format!("{name}, by a management console")),
+        );
+        Ok(())
     }
 
     fn time(&mut self) -> Time {

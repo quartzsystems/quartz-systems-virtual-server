@@ -10,7 +10,7 @@
       5. Work with service tools user IDs
       6. Date and time
       7. Display logs
-      8. Service functions  (not yet available: comes with Phase 9)
+      8. Service functions
       9. Power off or restart
 
 
