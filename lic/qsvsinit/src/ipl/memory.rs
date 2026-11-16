@@ -59,12 +59,34 @@ pub fn reserve(store: &Store, installed_mib: u64, nr_hugepages: &Path) -> Reserv
     Reserved { wanted, given }
 }
 
-/// Memory written to and so held, `mib` of it: what the kernel cannot
-/// make huge pages of while this is kept.
+/// Memory written to and so held, `mib` of it or what is available
+/// less 256 MiB, whichever is less: what the kernel cannot make huge
+/// pages of while this is kept. In 64 MiB pieces, each asked for
+/// without aborting, so a host with less than that never stops PID 1.
 #[cfg(test_hooks)]
-pub fn hold(mib: u64) -> Vec<u8> {
-    let bytes = usize::try_from(mib << 20).unwrap_or(0);
-    std::hint::black_box(vec![1u8; bytes])
+pub fn hold(mib: u64) -> Vec<Vec<u8>> {
+    const PIECE: u64 = 64;
+    let available = fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|t| {
+            t.lines()
+                .find_map(|l| l.strip_prefix("MemAvailable:"))
+                .and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
+        })
+        .map_or(0, |kib| (kib >> 10).saturating_sub(256));
+    let mut left = mib.min(available);
+    let mut held = Vec::new();
+    while left > 0 {
+        let n = usize::try_from(left.min(PIECE) << 20).unwrap_or(0);
+        let mut piece: Vec<u8> = Vec::new();
+        if piece.try_reserve_exact(n).is_err() {
+            break;
+        }
+        piece.resize(n, 1);
+        held.push(std::hint::black_box(piece));
+        left = left.saturating_sub(PIECE);
+    }
+    held
 }
 
 #[cfg(test)]
