@@ -45,6 +45,9 @@ pub struct Link {
     pub besides: Vec<Incoming>,
     /// The user named in each request, for the host's log.
     pub user: String,
+    /// Why the session closed, once it has: who closed it and what it
+    /// said.
+    pub closed: Option<String>,
 }
 
 fn quiet(e: &std::io::Error) -> bool {
@@ -101,6 +104,7 @@ impl Link {
             io,
             t0: Instant::now(),
             besides: Vec::new(),
+            closed: None,
             user: std::env::var("USER")
                 .or_else(|_| std::env::var("USERNAME"))
                 .unwrap_or_else(|_| "qsictl".into()),
@@ -153,7 +157,28 @@ impl Link {
             Err(e) => return Err(e.to_string()),
         }
         self.session.tick(now);
-        Ok(std::iter::from_fn(|| self.session.poll()).collect())
+        let got: Vec<Incoming> = std::iter::from_fn(|| self.session.poll()).collect();
+        for i in &got {
+            if let Incoming::Closed {
+                msgid,
+                text,
+                by_peer,
+            } = i
+            {
+                let who = if *by_peer { "the host" } else { "this side" };
+                let id = msgid.as_deref().unwrap_or("cleanly");
+                self.closed = Some(format!("closed by {who} ({id}): {text}"));
+            }
+        }
+        Ok(got)
+    }
+
+    /// An error of the session, with why it closed when it has.
+    fn said(&self, e: &qsisess::Error) -> String {
+        match &self.closed {
+            Some(why) => format!("{e}: {why}"),
+            None => e.to_string(),
+        }
     }
 
     /// Ask, and wait for the reply.
@@ -165,7 +190,7 @@ impl Link {
         let id = self
             .session
             .request_any(&user, r)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| self.said(&e))?;
         let until = Instant::now() + WAIT;
         while Instant::now() < until {
             let mut reply = None;
@@ -191,7 +216,7 @@ impl Link {
             let n = self
                 .session
                 .send(stream, bytes)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| self.said(&e))?;
             bytes = &bytes[n..];
             if n == 0 {
                 let got = self.step()?;
