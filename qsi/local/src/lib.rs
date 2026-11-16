@@ -10,6 +10,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod processor;
+
 /// The socket's file, in the run directory.
 pub const SOCKET_FILE: &str = "qsvsqsid.sock";
 

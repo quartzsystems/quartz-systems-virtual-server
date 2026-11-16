@@ -196,6 +196,7 @@ screen.
 | A console stalls a stream | only that stream waits; requests and other streams go on |
 | The management address changes | the network service tells the server and the listener moves (`C2010005`); a server that was away reads PID 1's fact when it starts |
 | No identity | nothing listens (`A2010000`) until there is one |
+| The processor lacks AVX2, ADX, AES or PCLMULQDQ | PID 1 posts `A2010010` at the IPL; the server touches no cryptography and listens on nothing, and its local socket answers with the reason (`qsilocal::processor`): no pairing, the consoles listed from their file. Service Tools and the other services work |
 
 ## The local socket
 

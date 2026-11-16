@@ -292,6 +292,7 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2009040` | Partition shut down forced | a delayed or operating-system shut down had not ended in its time and the partition was shut down immediately |
 | `A2009080` | Partition adapter uplink lost | the uplink of a switch one of the partition's adapters is on lost carrier: its outside traffic stopped |
 | `A2010000` | QSI server not listening | the server has no identity to present, or no management address to listen on, with which; nothing listens until it has |
+| `A2010010` | Processor lacks what the service interface needs | at the IPL, by PID 1: the processor lacks AVX2, ADX, AES or PCLMULQDQ, which QSI's cryptography needs, with which; the server listens on nothing and touches no cryptography, and everything local works |
 | `A2010030` | QSI pairing attempt failed | an attempt to pair did not confirm (a wrong password, or a relay), with the attempts left |
 | `A2007010` | Storage pool not assembled | a pool's units were found but its set could not be opened or its file system mounted, with the pool and why; only the partitions that use it are affected |
 | `A2007020` | Pool unit failed | a unit was taken out of service or not found, with the pool, the unit, its location code and serial number |

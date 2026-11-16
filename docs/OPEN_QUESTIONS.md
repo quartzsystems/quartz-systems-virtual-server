@@ -76,6 +76,9 @@ PCLMULQDQ (QS/400's `docs/QSI.md` section 12). The harness runs QEMU
 with the host's processor and has them. The Dell's processor must have
 them too, or the server cannot make a handshake: Cody to read its
 `/proc/cpuinfo` flags (`avx2 adx aes pclmulqdq`) at its next IPL.
+Since Step 0 of Phase 9 the host says the answer itself: a processor
+without them posts `A2010010` at the IPL, the server stays down without
+touching the cryptography, and Service Tools option 4 says why.
 
 ## Decided, waiting on QS/400
 

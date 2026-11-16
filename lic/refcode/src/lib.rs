@@ -411,6 +411,12 @@ pub const ADAPTER_UPLINK_LOST: RefCode = attention("A2009080", "Partition adapte
 
 /// It cannot listen: no identity, or no address to listen on.
 pub const QSI_NOT_LISTENING: RefCode = attention("A2010000", "QSI server not listening");
+/// The processor lacks what QSI's cryptography needs, with what: the
+/// server listens on nothing, and everything local works.
+pub const QSI_PROCESSOR: RefCode = attention(
+    "A2010010",
+    "Processor lacks what the service interface needs",
+);
 /// A pairing attempt did not confirm, with the attempts left.
 pub const QSI_PAIRING_FAILED: RefCode = attention("A2010030", "QSI pairing attempt failed");
 
@@ -649,6 +655,7 @@ pub const ALL: &[&RefCode] = &[
     &SHUTDOWN_FORCED,
     &ADAPTER_UPLINK_LOST,
     &QSI_NOT_LISTENING,
+    &QSI_PROCESSOR,
     &QSI_PAIRING_FAILED,
     &POOL_NOT_ASSEMBLED,
     &POOL_UNIT_FAILED,

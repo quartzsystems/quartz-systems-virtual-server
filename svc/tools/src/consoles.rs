@@ -45,9 +45,21 @@ impl Panel<Env, Outcome> for Pairing {
     }
 
     fn render(&self, env: &mut Env) -> Screen {
-        ui::menu(
+        // A processor without what QSI's cryptography needs: said here,
+        // where pairing would be started.
+        let lacking = qsilocal::processor::lacking();
+        let lead: Vec<String> = if lacking.is_empty() {
+            Vec::new()
+        } else {
+            vec![
+                qsilocal::processor::problem(&lacking),
+                "Everything at this console works.".into(),
+            ]
+        };
+        ui::menu_after(
             TITLE,
             &env.system(),
+            &lead,
             &[
                 (1, "Work with paired consoles"),
                 (2, "Start pairing"),

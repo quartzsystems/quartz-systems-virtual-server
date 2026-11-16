@@ -7,7 +7,7 @@
 //! crate keeps nothing; this is what it asks its caller to keep
 //! (`qsitrust::Pins`, `qsitrust::pair::Guard`).
 
-mod consoles;
+pub(crate) mod consoles;
 mod pairing;
 
 pub use consoles::{Console, Consoles, MAX_CONSOLES};

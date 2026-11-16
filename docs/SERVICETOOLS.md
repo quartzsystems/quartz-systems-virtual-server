@@ -308,6 +308,12 @@ server does.
       3. Display management interface
 ```
 
+On a processor that lacks what QSI's cryptography needs (AVX2, ADX, AES,
+PCLMULQDQ; `A2010010`) the menu says so above the options, `The
+processor lacks AVX2, ADX: the service interface is down.` and
+`Everything at this console works.`, and starting pairing is refused
+with the same words.
+
 **1. Work with paired consoles** lists the consoles paired, at most two:
 the name each gave when it paired, the start of its certificate's
 fingerprint, when it last had a session, and `connected` while it has

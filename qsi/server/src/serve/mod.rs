@@ -9,7 +9,7 @@
 
 pub mod facts;
 pub mod listen;
-mod local;
+pub mod local;
 pub mod pipes;
 pub mod pumps;
 

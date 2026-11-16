@@ -95,23 +95,89 @@ impl Local for Handler<'_> {
     }
 }
 
+/// The local socket of a server that cannot run its cryptography: the
+/// consoles from their file, the reason for everything else.
+struct Without {
+    own: std::path::PathBuf,
+    problem: String,
+}
+
+impl Local for Without {
+    fn consoles(&mut self) -> Vec<Console> {
+        state::Store::at(&self.own)
+            .load::<crate::trust::consoles::Consoles>()
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+            .consoles
+            .into_iter()
+            .map(|c| Console {
+                name: c.name,
+                fingerprint: c.fingerprint,
+                paired: c.paired,
+                last_contact: c.last_contact,
+                address: c.address,
+                connected: false,
+            })
+            .collect()
+    }
+
+    fn start_pairing(&mut self) -> Result<Password, String> {
+        Err(self.problem.clone())
+    }
+
+    fn pairing(&mut self) -> Option<Pairing> {
+        None
+    }
+
+    fn end_pairing(&mut self) {}
+
+    fn remove(&mut self, _fingerprint: String) -> Result<Console, String> {
+        Err(self.problem.clone())
+    }
+
+    fn interface(&mut self) -> Interface {
+        Interface {
+            problem: self.problem.clone(),
+            ..Interface::default()
+        }
+    }
+
+    fn management(&mut self, _fact: String) {}
+}
+
+/// Answer the local socket of a server that does not run because the
+/// processor lacks what its cryptography needs (`problem`): nothing of
+/// TLS or of QSI is touched. Never returns.
+pub fn without(listener: &UnixListener, own: std::path::PathBuf, problem: String) -> ! {
+    let mut handler = Without { own, problem };
+    loop {
+        for stream in listener.incoming().flatten() {
+            answer(&mut handler, stream);
+        }
+    }
+}
+
+fn answer(handler: &mut impl Local, mut stream: std::os::unix::net::UnixStream) {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+    let Ok(request) = ipc::frame::read_frame_max(&mut stream, 64 * 1024) else {
+        return;
+    };
+    let Ok(request) = ipc::decode::<qsilocal::Request>(&request) else {
+        return;
+    };
+    let reply = qsilocal::dispatch(handler, request);
+    let _ = ipc::frame::write_frame(&mut stream, &reply);
+}
+
 /// Answer the local socket, a connection at a time, for ever.
 pub fn serve(server: Arc<Server>, listener: UnixListener) {
     let _ = std::thread::Builder::new()
         .name("local".into())
         .spawn(move || {
             for stream in listener.incoming().flatten() {
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
-                let mut s = stream;
-                let Ok(request) = ipc::frame::read_frame_max(&mut s, 64 * 1024) else {
-                    continue;
-                };
-                let Ok(request) = ipc::decode::<qsilocal::Request>(&request) else {
-                    continue;
-                };
-                let answer = qsilocal::dispatch(&mut Handler(&server), request);
-                let _ = ipc::frame::write_frame(&mut s, &answer);
+                answer(&mut Handler(&server), stream);
             }
         });
 }

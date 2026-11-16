@@ -24,6 +24,25 @@ fn main() {
     if let Err(e) = supervise::ready::signal() {
         eprintln!("could not say it is ready: {e}");
     }
+    // A processor without what the cryptography needs: the local
+    // socket only, and nothing of TLS touched (PID 1 posted A2010010).
+    let lacking = qsilocal::processor::lacking();
+    if !lacking.is_empty() {
+        let problem = qsilocal::processor::problem(&lacking);
+        eprintln!("{problem}");
+        let own = PathBuf::from(release::DATA_DIR).join("qsi");
+        let local = PathBuf::from(release::RUN_DIR).join(qsilocal::SOCKET_FILE);
+        let prepared = sys::own_directory(&own, release::QSI_USER)
+            .and_then(|()| sys::local_socket(&local))
+            .and_then(|listener| sys::drop_privileges(release::QSI_USER).map(|()| listener));
+        match prepared {
+            Ok(listener) => qsiserver::serve::local::without(&listener, own, problem),
+            Err(e) => {
+                eprintln!("the QSI server did not start: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
     // The identity is made at the first IPL with a data file system: a
     // host without one has nothing to present yet.
     let identity = loop {

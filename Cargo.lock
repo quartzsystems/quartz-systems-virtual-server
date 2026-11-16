@@ -1657,6 +1657,7 @@ dependencies = [
  "loadsource",
  "logd",
  "partd",
+ "qsilocal",
  "refcode",
  "release",
  "resource",

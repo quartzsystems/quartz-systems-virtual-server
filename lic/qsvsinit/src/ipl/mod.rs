@@ -271,6 +271,11 @@ mod on_host {
         host.facts.kvm = kvm::probe::probe().to_string();
         let kvm = host.facts.kvm.clone();
         host.line(&kvm);
+        // What the service interface's cryptography needs.
+        let lacking = qsilocal::processor::lacking();
+        if !lacking.is_empty() {
+            host.post(&refcode::QSI_PROCESSOR, &lacking.join(", "));
+        }
 
         host.post(&refcode::MOUNTED, &join(&failed));
         host.post(&refcode::CGROUPS, &join(&mounts::cgroups()));
