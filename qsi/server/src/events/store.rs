@@ -6,11 +6,8 @@
 //! log is, so a server started again numbers on from where it was and
 //! a console that reconnects is given what it missed.
 //!
-//! `qsisess::EventLog` numbers from 1. A log taken up again is made by
-//! pushing placeholders up to the first event kept and then the kept
-//! events, which so have their own numbers again. No console is sent a
-//! placeholder: one whose `since` is older than the first event kept
-//! is told to read everything again ([`Restored::since`]).
+//! The log is taken up with `qsisess::EventLog::resume`: the events
+//! kept, with their own numbers, and the next number after them.
 
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
@@ -21,13 +18,6 @@ use qsisess::{Event, EventLog, Limits};
 
 /// The file, under the server's state directory.
 pub const FILE: &str = "qsi-events.log";
-
-/// The family no event has: a placeholder's.
-const PLACEHOLDER: u16 = 0;
-
-/// The most placeholders pushed: beyond this many events the numbers
-/// start again and every console reads everything again.
-const MAX_PLACEHOLDERS: u64 = 50_000_000;
 
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
@@ -59,7 +49,7 @@ fn parse(l: &str) -> Option<Event> {
     let family = f.next()?.parse().ok()?;
     let op = f.next()?.parse().ok()?;
     let body = unhex(f.next().unwrap_or(""))?;
-    if f.next().is_some() || family == PLACEHOLDER {
+    if f.next().is_some() || seq == 0 {
         return None;
     }
     Some(Event {
@@ -83,47 +73,19 @@ pub struct Store {
     lines: usize,
 }
 
-/// A log taken up again.
-#[derive(Debug)]
-pub struct Restored {
-    /// The session's log, numbering on.
-    pub log: EventLog,
-    /// The first real event's number: an older `since` reads again.
-    pub first: u64,
-}
-
-impl Restored {
-    /// What a console's `since` is given as: one older than the first
-    /// real event is no place in this log, so it reads everything
-    /// again (a `since` newer than any event is that).
-    #[must_use]
-    pub fn since(&self, since: Option<u64>) -> Option<u64> {
-        place(self.first, since)
-    }
-}
-
-/// A console's `since` in a log whose first real event is `first`: one
-/// older is given as newer than any, which reads everything again.
-#[must_use]
-pub fn place(first: u64, since: Option<u64>) -> Option<u64> {
-    match since {
-        Some(s) if s.saturating_add(1) < first => Some(u64::MAX),
-        other => other,
-    }
-}
-
 impl Store {
-    /// The store in `dir`, and the log taken up from it: every event it
-    /// kept, with its number. A line that does not read, or that breaks
-    /// the order, ends what is taken up.
-    pub fn open(dir: &Path, limits: &Limits) -> (Self, Restored) {
+    /// The store in `dir`, and the log taken up from it: the last run
+    /// of events it kept numbered one after another, numbering on after
+    /// the last. A line that does not read is passed over; a gap or a
+    /// step back starts the run again.
+    pub fn open(dir: &Path, limits: &Limits) -> (Self, EventLog) {
         let path = dir.join(FILE);
         let mut kept: VecDeque<Event> = VecDeque::new();
         if let Ok(f) = File::open(&path) {
             for l in BufReader::new(f).lines().map_while(Result::ok) {
-                let Some(e) = parse(&l) else { break };
+                let Some(e) = parse(&l) else { continue };
                 if kept.back().is_some_and(|last| e.seq != last.seq + 1) {
-                    break;
+                    kept.clear();
                 }
                 kept.push_back(e);
             }
@@ -137,27 +99,18 @@ impl Store {
             max_bytes: limits.log_bytes,
             lines: 0,
         };
-        let mut log = EventLog::new(limits);
-        let first = kept.front().map_or(1, |e| e.seq);
-        if first > 1 && first <= MAX_PLACEHOLDERS {
-            while log.next() < first {
-                // An empty body is never longer than a message.
-                let _ = log.push(PLACEHOLDER, 0, Vec::new());
-            }
+        let next = kept.back().map_or(1, |e| e.seq.saturating_add(1));
+        // Kept events the log will not take (one longer than a message
+        // now is) are dropped; the numbers still go on.
+        let log = EventLog::resume(limits, next, kept.iter().cloned()).unwrap_or_else(|_| {
+            kept.clear();
+            EventLog::resume(limits, next, []).unwrap_or_else(|_| EventLog::new(limits))
+        });
+        for e in kept {
+            store.keep(e);
         }
-        let first = if log.next() == first {
-            for e in kept.drain(..) {
-                if log.push(e.family, e.op, e.body.clone()).is_ok() {
-                    store.keep(e);
-                }
-            }
-            // The bounds keep the same newest events in both.
-            store.kept.front().map_or(log.next(), |e| e.seq)
-        } else {
-            log.next()
-        };
         store.rewrite();
-        (store, Restored { log, first })
+        (store, log)
     }
 
     fn keep(&mut self, e: Event) {
@@ -232,34 +185,37 @@ mod tests {
             log_events: 4,
             ..Limits::default()
         };
-        let (mut store, mut r) = Store::open(&d, &limits);
-        assert_eq!((r.first, r.log.next()), (1, 1));
+        let (mut store, mut log) = Store::open(&d, &limits);
+        assert_eq!((log.first(), log.next()), (1, 1));
         for n in 0..10 {
-            push(&mut store, &mut r.log, n);
+            push(&mut store, &mut log, n);
         }
         drop(store);
-        let (_, r) = Store::open(&d, &limits);
+        let (_, log) = Store::open(&d, &limits);
         // Events 7 to 10 were kept; the next is 11.
-        assert_eq!((r.first, r.log.next()), (7, 11));
-        let seqs: Vec<u64> = r.log.from(8).map(|e| e.seq).collect();
+        assert_eq!((log.first(), log.next()), (7, 11));
+        let seqs: Vec<u64> = log.from(8).map(|e| e.seq).collect();
         assert_eq!(seqs, vec![8, 9, 10]);
-        assert_eq!(r.log.from(8).next().unwrap().body, vec![7; 3]);
-        // A console that saw 6 resumes; one that saw 5 reads again.
-        assert_eq!(r.since(Some(6)), Some(6));
-        assert_eq!(r.since(Some(5)), Some(u64::MAX));
-        assert_eq!(r.since(None), None);
+        assert_eq!(log.from(8).next().unwrap().body, vec![7; 3]);
         std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
-    fn a_damaged_file_keeps_what_reads_before_the_damage() {
+    fn a_damaged_file_keeps_the_last_whole_run() {
         let d = dir("damaged");
         std::fs::write(d.join(FILE), "3 17 1 aa\n4 17 1 bb\nnonsense\n5 17 1 cc\n").unwrap();
-        let (_, r) = Store::open(&d, &Limits::default());
-        assert_eq!((r.first, r.log.next()), (3, 5));
-        std::fs::write(d.join(FILE), "3 17 1 aa\n9 17 1 bb\n").unwrap();
-        let (_, r) = Store::open(&d, &Limits::default());
-        assert_eq!(r.log.next(), 4, "a gap ends what is taken up");
+        let (_, log) = Store::open(&d, &Limits::default());
+        assert_eq!((log.first(), log.next()), (3, 6));
+        std::fs::write(d.join(FILE), "3 17 1 aa\n9 17 1 bb\n10 17 1 cc\n").unwrap();
+        let (_, log) = Store::open(&d, &Limits::default());
+        assert_eq!(
+            (log.first(), log.next()),
+            (9, 11),
+            "a gap starts the run again"
+        );
+        std::fs::write(d.join(FILE), "").unwrap();
+        let (_, log) = Store::open(&d, &Limits::default());
+        assert_eq!((log.first(), log.next()), (1, 1));
         std::fs::remove_dir_all(&d).unwrap();
     }
 
@@ -270,9 +226,9 @@ mod tests {
             log_events: 3,
             ..Limits::default()
         };
-        let (mut store, mut r) = Store::open(&d, &limits);
+        let (mut store, mut log) = Store::open(&d, &limits);
         for n in 0..50 {
-            push(&mut store, &mut r.log, n);
+            push(&mut store, &mut log, n);
         }
         let lines = std::fs::read_to_string(d.join(FILE))
             .unwrap()

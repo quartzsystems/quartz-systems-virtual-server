@@ -10,4 +10,4 @@ pub mod store;
 pub mod translate;
 
 pub use hub::Hub;
-pub use store::{Restored, Store};
+pub use store::Store;

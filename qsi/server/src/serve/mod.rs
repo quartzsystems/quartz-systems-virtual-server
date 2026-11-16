@@ -140,8 +140,8 @@ impl Server {
         let trust = Trust::open(settings.own.clone(), now)?.lasting(settings.pairing_secs);
         let tls = qsitrust::tls::server_config(&identity, Arc::new(trust.clone()))
             .map_err(|e| e.to_string())?;
-        let (store, restored) = Store::open(&settings.own, &settings.limits);
-        let hub = Arc::new(Mutex::new(Hub::kept(store, restored)));
+        let (store, log) = Store::open(&settings.own, &settings.limits);
+        let hub = Arc::new(Mutex::new(Hub::kept(store, log)));
         Ok(Arc::new(Self {
             port: settings.port,
             limits: settings.limits,

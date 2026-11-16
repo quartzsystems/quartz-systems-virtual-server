@@ -10,14 +10,13 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use qsi::any::AnyEvent;
 use qsisess::{EventLog, Limits};
 
-use super::{Restored, Store};
+use super::Store;
 
 /// The log and its file.
 #[derive(Debug)]
 pub struct Hub {
     log: EventLog,
     store: Option<Store>,
-    first: u64,
 }
 
 /// The hub, shared by the pumps and the connections.
@@ -31,10 +30,9 @@ pub fn lock(hub: &Shared) -> MutexGuard<'_, Hub> {
 impl Hub {
     /// The log taken up from `store`.
     #[must_use]
-    pub fn kept(store: Store, restored: Restored) -> Self {
+    pub fn kept(store: Store, log: EventLog) -> Self {
         Self {
-            first: restored.first,
-            log: restored.log,
+            log,
             store: Some(store),
         }
     }
@@ -45,7 +43,6 @@ impl Hub {
         Self {
             log: EventLog::new(limits),
             store: None,
-            first: 1,
         }
     }
 
@@ -69,12 +66,6 @@ impl Hub {
     #[must_use]
     pub fn log(&self) -> &EventLog {
         &self.log
-    }
-
-    /// A console's `since`, as this log takes it.
-    #[must_use]
-    pub fn since(&self, since: Option<u64>) -> Option<u64> {
-        super::store::place(self.first, since)
     }
 
     /// Bring the file to the disk.

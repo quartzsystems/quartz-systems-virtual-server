@@ -83,14 +83,6 @@ codes it missed, from the history); the switch service's switches the
 same way. Not done in Phase 8: a console that resumes after a restart
 of the server reads the partitions as they are.
 
-### 42. An event log that begins at a number (decided, waiting on QS/400)
-
-`qsisess::EventLog` numbers from 1 and cannot be made to begin later,
-so a server started again pushes empty placeholders up to its first kept
-event (never sent to a console). Decided: QS/400's session crate gains
-`EventLog::resume(limits, next, events)`, and the placeholders go with
-the pin that brings it.
-
 ### 43. The Dell's processor and graviola (NEEDS-CODY)
 
 QSI's TLS is graviola's cryptography, which needs AVX2, ADX, AES and
@@ -344,3 +336,10 @@ handoff took it as recommended.
     memory is gone at the next IPL. QS/MC may later offer "dump and
     restart on a terminal code" as a partition's setting, which is
     function 22 asked by the host itself.
+42. **An event log that begins at a number.** Closed in Step 0 of
+    Phase 9 with QS/400's handoff 19: a server started again takes its
+    log up with `qsisess::EventLog::resume`, the events it kept with
+    their own numbers and the next after them. The placeholders are
+    gone; a console resumes as before the restart, or reads everything
+    again when the log no longer reaches back to its number
+    (`docs/QSISERVER.md`).

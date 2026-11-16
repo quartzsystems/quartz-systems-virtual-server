@@ -273,8 +273,7 @@ impl Conn {
             AnyRequest::Pair(p) => self.pair(id, p),
             AnyRequest::Base(qsi::base::Request::Subscribe(s)) => {
                 let hub = hub::lock(&self.hub);
-                let since = hub.since(s.since);
-                let _ = self.session.subscribe(id, hub.log(), since);
+                let _ = self.session.subscribe(id, hub.log(), s.since);
             }
             AnyRequest::Base(qsi::base::Request::Unsubscribe(_)) => {
                 let _ = self.session.unsubscribe(id);

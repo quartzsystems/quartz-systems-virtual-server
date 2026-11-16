@@ -147,13 +147,12 @@ A source that goes away is subscribed to again every 2 seconds.
 
 The log is kept on disk (`qsi-events.log`), bounded as the session's log
 is, and synchronized every 2 seconds. A server started again takes it up
-and numbers on: `qsisess::EventLog` numbers from 1, so the server pushes
-empty placeholders up to the first event it kept and then the kept
-events, which have their own numbers again. No console is sent a
-placeholder: one whose last event is older than the first kept is told
-to read everything again, as one whose number is newer than any. (A
-log that could begin at a number would make the placeholders
-unnecessary; QS/400's crate has none yet.)
+and numbers on, with `qsisess::EventLog::resume`: the last run of
+events the file holds numbered one after another, and the next number
+after them. A console whose last event is older than the first kept,
+or newer than any, is told to read everything again. A line that does
+not read is passed over, and a gap starts the run again: a damaged file
+loses events, never the numbers.
 
 What the services said while the server was down is not in the log: the
 partition manager and the switch service send events to whoever is
