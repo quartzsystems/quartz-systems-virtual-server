@@ -48,7 +48,12 @@ handoff 17 has a channel and writes no TLV. The handoff's rule is kept.
 
 ### Every earlier suite on the new pin
 
-BLOCKED(phase8): every suite of Phases 0 to 7 run at the current commit from empty targets; the results go in the acceptance table below.
+Every suite of Phases 0 to 7 ran in the acceptance run below, in a
+fresh clone at `0177008` with QS/400's guest image and installation
+ISO built at the pin: 90 of the 101 passed there, and the 11 that
+did not pass on the working tree after the fixes under "Acceptance".
+`net-tagged` and `service-manager-restart`, which Phase 7's run
+left unexplained, passed in it.
 
 ## Answers to Phase 7's open questions
 
@@ -160,18 +165,74 @@ host. `qsi-qsictl` runs the `qsictl` built beside the harness.
 
 ## Hashes
 
-BLOCKED(phase8): the two clean builds' manifests, from the acceptance run.
+The two clean builds of `0177008` (build ID `phase8`), the same to the
+byte:
+
+```
+385998e06f0b579c5bee688c3f96aeba1939c194891bba7c47656a5c9ecd9bd9  images/initramfs.cpio
+fdcfcc61e07823a13bbfc958f44b733717617f028fc02bc1aac669b3392d3f07  images/initramfs-media.cpio
+814e21ba5efa1975ffbcb67c267cd1f6233b05b9044a0bea699d7dc48fe863bd  images/qsvs-V1R0M0-a-814e21ba5efa.efi
+d1d640bf3f4166cd0aa5620e2ac134924e981d8a448ad48fe566a70d0285e9f4  images/qsvs-V1R0M0-b-d1d640bf3f41.efi
+0d96fed476d2eadffaa42176e003b9dec5d2c7aaef97bda30ef94b0b43734fd0  images/qsvs-V1R0M0-d-0d96fed476d2.efi
+5322085c6125f4c57ca3a03ab61f5fb723ddb4a887a2d75c97fcdff58a93b121  images/qsvs-V1R0M0-814e21ba5efa.img
+f4cc81b524ed50e7f2bd52b48bcd3a0869fa332384ed685f66c1a1f9664c590d  images/QSVS-V1R0M0-0d96fed476d2.iso
+edd5f5ffac9dbf82bfc2919054a9d4bc493711eaf43a3debb72fda193d4c80d2  images/manifest.json
+c63bb7fe966d2d741e1cf7155cbeca8020684490192df5003c3fce8814033b04  kernel/build/.config
+6bc8d23f27be8f69570a6dd6b9b9a34948e031d75edf8f25524d2283c2f2a591  x86_64-unknown-linux-musl/release/qsvsinit
+dc1eb7d0fd8f6334e593683f4c5a92b49f9e44b374df7476854612d2795608f1  x86_64-unknown-linux-musl/release/qsvmm
+ab74bfb10ec9f2c003955c44c6480b49479244618f1e4afc4480a5bbda0507ac  x86_64-unknown-linux-musl/release/qsvspartd
+d453440c9feb21ba29e0c4dd18a91e33e6a7a10f82dee33f6b6d2d647bd7cd62  x86_64-unknown-linux-musl/release/qsvspoold
+c1ca17baf2cf3bc43236f928734f66edff9d64741d050d7045eef56d248ea676  x86_64-unknown-linux-musl/release/qsvsvswitchd
+a16a7a23b950d0ad1f1f1477384ac971f84b43376ac7ac3fd063dea3bec8aa12  x86_64-unknown-linux-musl/release/qsvstools
+9bfe1528c0ad7506bf4d9a2e9acaf42a0aa1579c6383e69c54829561ce9b219e  x86_64-unknown-linux-musl/release/qsvsqsid
+```
+
+`80b3aff` changed `qsvstools` after them (the status screen below),
+so its image differs from these.
 
 ## Acceptance
 
-BLOCKED(phase8): the acceptance run of Phase 8 at its last commit.
+The acceptance run, at `0177008` in a fresh clone on ext4 (rustc
+1.98.0, clang 21.1.8, QEMU 10.2.1, WSL's 6.18 kernel, 12 processors):
+
+| Step | Result |
+|---|---|
+| two clean builds | 609 s and 505 s; every hash above the same |
+| test image | built; the hooks in it, none in the release image |
+| `doctor`, `deny`, `notices --check` | pass; 241 crates, no `links`, no C build helper |
+| `cargo fmt`, both clippy runs | clean |
+| unit tests | 629 passed, none failed |
+| `qsictl` | built; in neither image |
+| the suites of Phases 0 to 8 | 103 of 114 passed |
+| `test --media iso` | the installer's welcome |
+| the fuzz targets, 60 s each | 16 targets, no finding; `qsi` 157,126 runs, 2,008 edges |
+
+The 11 that did not pass, and what was done:
+
+| Suite | Why | Fixed |
+|---|---|---|
+| `install-serial` | it took option 4 for one not there yet; the golden status screen had no `qsid` | `72f34d2`, `80b3aff` |
+| `installed-base` | its host has no Ethernet carrier, and the current code was `A2010000` (the server has no address), which is right; the status suite now accepts it when the management line says none | `72f34d2` |
+| `partition-tools` | the golden status screen had no `qsid`; with it, eleven services in a test image ran past the lines a status screen shows and the last was dropped unsaid. The status screen now goes three to a line when two would not fit | `80b3aff` |
+| `service-tools` | its golden screen had never been written: Phase 7's run failed before it | `3bc49e1` |
+| `partition-define` | it compared a changed definition without the revision the change gave it | `3bc49e1` |
+| `partition-manager-restart` | it wanted `C2006010` as the current code, which has been a note of the history since `1481aca` | `3bc49e1` |
+| `pool-pulled-raid5`, `pool-pulled-raid6` | a 32 MiB copy onto a parity pool, three levels deep, had 10 s to answer | `3bc49e1`: two minutes |
+| `partition-ipl-a`, `partition-identity` | QS/400's own storage service lost its channel during the guest's first IPL (in `partition-identity` with write errors on the guest's `ublkb0`), and the IPL halted | nothing: both passed on a second run |
+| `partition-end` | the guest kernel, IPLing after its restart, took a double fault in its TLB flush (`INVPCID`) with its stack page missing, and panicked; the panic's restart made a second activation | nothing: passed on a second run |
+
+Each of the 11 then passed on the working tree, with the test image
+and the release image built from it. The three guest failures were in
+QS/400's guest, three levels of virtualization deep; the other suites
+that IPL QS/400 passed, and none of the three came back. Whether a
+guest ever does so on the Dell is below.
 
 | # | Check | Evidence |
 |---|---|---|
-| 1 | Step 0 is committed on its own and every Phase 0 to 7 suite passes on the new pin | `9592bd5`, `04b94ba`; the suites: pending |
-| 2 | Suites 2 to 15 pass | 15 passes; 2 to 14 pending |
+| 1 | Step 0 is committed on its own and every Phase 0 to 7 suite passes on the new pin | `9592bd5`, `04b94ba`; every suite of Phases 0 to 7 passed, 90 at `0177008` and the other 11 after the fixes above |
+| 2 | Suites 2 to 15 pass | the thirteen QSI suites and `sockets` passed at `0177008`; the `qsi` fuzz target found nothing |
 | 3 | Open questions 38 and 39 are closed; the joint gate with QS/MC is recorded as open | `docs/OPEN_QUESTIONS.md` 38, 39 closed, 40 open |
-| 4 | Two clean builds are byte-identical; `build deny` and `build doctor` pass | `deny` and `doctor` pass at `40360da`; the builds: pending |
+| 4 | Two clean builds are byte-identical; `build deny` and `build doctor` pass | the hashes above, from two clean builds of `0177008`; `deny` and `doctor` pass |
 | 5 | Every QS/400 crate is pinned at the one new commit; QSI's messages, session and pairing are QS/400's crates and nothing of them is restated | every `rev =` is `30e18c2`; `qsi`, `qsisess`, `qsitrust` are dependencies, and the server's code is translation, pins and logs |
 | 6 | The release image listens on TCP 2300 on the management addresses and nowhere else, and holds neither the hook nor `qsictl` | `sockets`, `qsi-listen`; the build's package list test (`qsictl` in no image, the hook in the test image only) |
 
@@ -189,5 +250,6 @@ BLOCKED(phase8): the acceptance run of Phase 8 at its last commit.
 - `NEEDS-CODY`: pairing at the Dell's console: Service Tools option 4 on its display, the password typed at `qsictl` on a workstation on the LAN.
 - `NEEDS-CODY`: `qsictl` from a workstation on the LAN, Linux and Windows: every request, a console attached.
 - `NEEDS-CODY`: an install of QS/400 into a partition through `qsictl`: the ISO uploaded, the partition made, source D, its console.
+- `NEEDS-CODY`: QS/400 IPLed in partitions on the Dell many times over, to see whether its storage service losing its channel or its kernel faulting in a TLB flush (both seen once each three levels deep in the acceptance run) happens with one level of virtualization.
 - `NEEDS-CODY`: the Dell's processor has AVX2, ADX, AES and PCLMULQDQ, which graviola needs (`docs/OPEN_QUESTIONS.md` item 43).
 - The joint gate with QS/MC is open (`docs/OPEN_QUESTIONS.md` item 40).
