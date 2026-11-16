@@ -235,6 +235,27 @@ pub fn paired(
     Ok((id, host, l))
 }
 
+/// How many times the host's history has `code`: read through the
+/// hook, as the serial port shows nothing of PID 1's while Service
+/// Tools has it.
+pub fn posted(q: &mut Qsi<'_>, code: &refcode::RefCode) -> usize {
+    let wanted = format!("\"code\":\"{}\"", code.code);
+    channel(&mut q.guest)
+        .and_then(|c| c.text("/data/log/refcodes.ndjson"))
+        .map_or(0, |t| t.lines().filter(|l| l.contains(&wanted)).count())
+}
+
+/// Wait until the history has `code` more than `before` times.
+pub fn posted_after(
+    q: &mut Qsi<'_>,
+    code: &refcode::RefCode,
+    before: usize,
+    within: Duration,
+) -> Result<(), String> {
+    eventually(within, || (posted(q, code) > before).then_some(()))
+        .ok_or_else(|| format!("{} was not posted", code.code))
+}
+
 /// Wait until `f` holds, by `within`.
 pub fn eventually<T>(within: Duration, mut f: impl FnMut() -> Option<T>) -> Option<T> {
     let until = Instant::now() + within;

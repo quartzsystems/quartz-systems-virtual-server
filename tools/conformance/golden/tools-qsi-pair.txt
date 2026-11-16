@@ -1,0 +1,23 @@
+                                 Start Pairing
+                                                               System:  vs-test
+
+ Type this password at the management console to pair it:
+
+       XXXX-XXXX-XXXX-XXXX
+
+ Expires . . . . . . : yyyy-mm-dd hh:mm UTC
+ Attempts left . . . : 5
+
+ The console shows the host's fingerprint. It must be this one:
+       XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
+       XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
+
+ The password is good for one pairing. It is shown here only.
+
+
+
+
+
+
+
+ F1=Help   F5=Refresh   F12=End pairing

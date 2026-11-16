@@ -27,8 +27,10 @@ pub const MAX_SESSIONS: usize = 6;
 pub const MAX_HANDSHAKES: usize = 4;
 /// How long a connection has for its handshake.
 pub const HANDSHAKE: Duration = Duration::from_secs(10);
-/// Failed handshakes from one address before it is turned away.
-pub const MAX_FAILURES: u32 = 5;
+/// Failed handshakes and pairings from one address before it is
+/// turned away: more than one password's attempts, so an operator who
+/// mistypes can use them all.
+pub const MAX_FAILURES: u32 = 10;
 /// How long failures are counted, and an address turned away.
 pub const FAILURE_WINDOW: Duration = Duration::from_secs(60);
 /// How long a session's loop waits for bytes.

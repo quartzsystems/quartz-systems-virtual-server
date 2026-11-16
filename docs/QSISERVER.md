@@ -41,7 +41,7 @@ all before installation: the installer's media runs no service table.
 | Sessions at once | 6: two consoles, each reconnecting while its old session times out, and pairing |
 | Handshakes under way at once | 4 |
 | A handshake's time | 10 s, then the connection is dropped |
-| Failed handshakes or pairings from one address | 5 in 60 s, then that address is turned away for 60 s |
+| Failed handshakes or pairings from one address | 10 in 60 s (more than one password's five attempts), then that address is turned away for 60 s |
 | The session's own (`qsisess::Limits`) | as `docs/QSI.md` section 6: 1 MiB messages, 64 requests, 16 streams, 256 KiB windows, a log of 4,096 events or 4 MiB, keep-alive 15 s and timeout 45 s |
 
 A connection turned away is closed at once and logged. Each admitted

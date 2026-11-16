@@ -31,8 +31,7 @@ fn refused_pairing(q: &Qsi<'_>, password: &str, name: &str) -> Result<String, St
 
 /// The codes posted so far that are `code`.
 fn count(q: &mut Qsi<'_>, code: &refcode::RefCode) -> usize {
-    q.guest.drain();
-    q.guest.log.matches(&code.tag()).count()
+    super::posted(q, code)
 }
 
 /// Suite 2: the password pairs once; a second use, a wrong password
@@ -51,7 +50,7 @@ pub fn pairing(run: &Run<'_>) -> Result<String, String> {
     // It pairs once.
     let id = identity("MC1")?;
     let host_print = pair(&q, &id, &password, "MC1")?.fingerprint;
-    q.guest.seen(&refcode::QSI_PAIRED.tag(), deadline)?;
+    super::posted_after(&mut q, &refcode::QSI_PAIRED, 0, Duration::from_secs(10))?;
     let mut l = link(&q, &id, host_print)?;
     let me = l.ask(&AnyRequest::Base(base::Request::Identify(Empty)))?;
     let Ok(Some(AnyReply::Base(base::Reply::Identify(me)))) = me.decode() else {
@@ -84,7 +83,12 @@ pub fn pairing(run: &Run<'_>) -> Result<String, String> {
             count(&mut q, &refcode::QSI_PAIRING_FAILED)
         ));
     }
-    q.guest.seen(&refcode::QSI_PAIRING_ENDED.tag(), deadline)?;
+    super::posted_after(
+        &mut q,
+        &refcode::QSI_PAIRING_ENDED,
+        0,
+        Duration::from_secs(10),
+    )?;
     let after = refused_pairing(&q, &good, "MC3")?;
     q.guest.type_keys(key::F12)?;
     titled(&mut q.guest, PAIRING, deadline)?;
@@ -234,7 +238,7 @@ pub fn trust(run: &Run<'_>) -> Result<String, String> {
     ))?;
     titled(&mut q.guest, "Confirm Remove of Console", deadline)?;
     q.guest.type_keys(&format!("MC-A{}", key::ENTER))?;
-    q.guest.seen(&refcode::QSI_REMOVED.tag(), deadline)?;
+    super::posted_after(&mut q, &refcode::QSI_REMOVED, 0, Duration::from_secs(10))?;
     let closed = eventually(Duration::from_secs(10), || held.step().err())
         .ok_or("the removed console's session did not end")?;
     let Err(after) = link(&q, &a, host_print) else {
