@@ -4,8 +4,9 @@
 
 //! The QSI host server's local socket: Service Tools option 4
 //! (`docs/QSISERVER.md`) asks it for the consoles, a pairing password,
-//! a console's removal and what the server listens on. Root's alone;
-//! nothing of QSI's crosses it.
+//! a console's removal and what the server listens on, and the network
+//! service tells it when the management addresses change. Root's
+//! alone; nothing of QSI's crosses it.
 
 #![forbid(unsafe_code)]
 
@@ -108,6 +109,9 @@ ipc::rpc! {
     4 => fn remove / Remove (fingerprint: String) -> Result<Console, String>;
     /// What the server listens on.
     5 => fn interface / GetInterface () -> Interface;
+    /// The network service's word: the management interface's line
+    /// changed (PID 1's `Management` fact, `10.0.2.15/24 on eth0`).
+    6 => fn management / Management (fact: String) -> ();
 }
 
 /// A client: each call is its own connection.

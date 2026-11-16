@@ -30,9 +30,11 @@ has one.
 ## The listener
 
 TCP 2300 on each IPv4 management address, and nowhere else. The
-addresses are PID 1's `management` fact, looked at every 5 seconds: the
-listener follows a DHCP renewal or a change made at Service Tools
-(`C2010005`). No address, nothing listens (`A2010000`). Nothing listens
+addresses are PID 1's `management` fact when the server starts, and
+then what the network service tells the server's local socket each time
+its line changes: the listener follows a DHCP renewal or a change made
+at Service Tools at once (`C2010005`). An address it could not bind,
+or PID 1 not answering at the start, is tried again every 2 seconds. No address, nothing listens (`A2010000`). Nothing listens
 on a switch, a bridge, a tap or a partition's network, and nothing at
 all before installation: the installer's media runs no service table.
 
@@ -192,7 +194,7 @@ screen.
 | The server ends | PID 1 starts it again; sessions are dropped; consoles reconnect and resume their events |
 | A console breaks the protocol | its session is closed and logged (`docs/QSI.md` section 4); nothing else is affected |
 | A console stalls a stream | only that stream waits; requests and other streams go on |
-| The management address changes | the listener moves within 5 seconds (`C2010005`) |
+| The management address changes | the network service tells the server and the listener moves (`C2010005`); a server that was away reads PID 1's fact when it starts |
 | No identity | nothing listens (`A2010000`) until there is one |
 
 ## The local socket
@@ -200,7 +202,9 @@ screen.
 `/run/qsvsqsid.sock` (`qsi/local`, crate `qsilocal`), root's alone, for
 Service Tools option 4: the consoles, start pairing (the password, once),
 the password out (without its text), end pairing, remove a console, and
-what the server listens on. Nothing of QSI crosses it.
+what the server listens on; and for the network service, which tells it
+the management interface's line when it changes. Nothing of QSI crosses
+it.
 
 ## Proof
 

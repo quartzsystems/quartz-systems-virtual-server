@@ -89,6 +89,10 @@ impl Local for Handler<'_> {
     fn interface(&mut self) -> Interface {
         self.0.interface()
     }
+
+    fn management(&mut self, fact: String) {
+        self.0.word.tell(fact);
+    }
 }
 
 /// Answer the local socket, a connection at a time, for ever.

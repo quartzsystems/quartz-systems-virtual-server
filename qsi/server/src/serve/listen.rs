@@ -3,15 +3,15 @@
 // root directory of this project.
 
 //! The listener: TCP on each IPv4 management address, following the
-//! management network's changes; each connection admitted within the
-//! limits, its TLS handshake done within a short time, then its session
-//! on a thread of its own.
+//! management network's changes as the network service tells them;
+//! each connection admitted within the limits, its TLS handshake done
+//! within a short time, then its session on a thread of its own.
 
 use std::collections::BTreeMap;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -35,8 +35,49 @@ pub const MAX_FAILURES: u32 = 10;
 pub const FAILURE_WINDOW: Duration = Duration::from_secs(60);
 /// How long a session's loop waits for bytes.
 const TURN: Duration = Duration::from_millis(20);
-/// How often the listener looks at the management addresses.
-const LOOK: Duration = Duration::from_secs(5);
+/// How long the listener waits to try again: PID 1 not answered at
+/// its start, or an address it could not bind.
+const AGAIN: Duration = Duration::from_secs(2);
+
+/// The network service's word that the management addresses changed:
+/// the latest line, until the listener takes it.
+#[derive(Debug, Default)]
+pub struct Word {
+    line: Mutex<Option<String>>,
+    told: Condvar,
+}
+
+impl Word {
+    /// The network service's line.
+    pub fn tell(&self, line: String) {
+        *lock(&self.line) = Some(line);
+        self.told.notify_all();
+    }
+
+    /// The next line told, waiting for one; none when `within` passed
+    /// first.
+    pub fn wait(&self, within: Option<Duration>) -> Option<String> {
+        let mut line = lock(&self.line);
+        let until = within.map(|w| Instant::now() + w);
+        while line.is_none() {
+            match until {
+                None => line = self.told.wait(line).unwrap_or_else(PoisonError::into_inner),
+                Some(t) => {
+                    let left = t.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return None;
+                    }
+                    line = self
+                        .told
+                        .wait_timeout(line, left)
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .0;
+                }
+            }
+        }
+        line.take()
+    }
+}
 
 /// The counts every connection is admitted by.
 #[derive(Debug, Default)]
@@ -272,14 +313,20 @@ fn accept(server: &Arc<Server>, listener: &TcpListener, stop: &AtomicBool) {
     }
 }
 
-/// Listen on each management address as it comes and goes; never
+/// Listen on each management address as it comes and goes: PID 1's
+/// fact at the start, then each line the network service tells. Never
 /// returns.
 pub fn listen(server: &Arc<Server>) -> ! {
     let mut on: BTreeMap<Ipv4Addr, Arc<AtomicBool>> = BTreeMap::new();
     // The first look, and whether it has listened anywhere yet.
     let (mut first, mut started) = (true, false);
+    let mut line = server.management();
     loop {
-        let wanted: Vec<Ipv4Addr> = server.management().into_iter().collect();
+        let wanted: Vec<Ipv4Addr> = line
+            .as_deref()
+            .and_then(management_address)
+            .into_iter()
+            .collect();
         let before: Vec<Ipv4Addr> = on.keys().copied().collect();
         for gone in before.iter().filter(|a| !wanted.contains(a)) {
             if let Some(stop) = on.remove(gone) {
@@ -312,7 +359,14 @@ pub fn listen(server: &Arc<Server>) -> ! {
             started |= !now.is_empty();
             first = false;
         }
-        thread::sleep(LOOK);
+        // PID 1 not answered, or an address not bound: again soon, or
+        // at the network service's word, whichever is first.
+        let short = line.is_none() || now.len() < wanted.len();
+        match server.word.wait(short.then_some(AGAIN)) {
+            Some(told) => line = Some(told),
+            None if line.is_none() => line = server.management(),
+            None => {}
+        }
     }
 }
 
@@ -354,6 +408,23 @@ mod tests {
         assert_eq!(g.admit(ip, t), Err(Turned::Full));
         g.closed();
         assert_eq!(g.admit(ip, t), Ok(()));
+    }
+
+    #[test]
+    fn the_listener_takes_the_latest_word() {
+        let w = Arc::new(Word::default());
+        assert_eq!(w.wait(Some(Duration::from_millis(10))), None);
+        w.tell("192.0.2.1/24 on eth0".into());
+        w.tell("192.0.2.2/24 on eth0".into());
+        assert_eq!(w.wait(None).as_deref(), Some("192.0.2.2/24 on eth0"));
+        let told = w.clone();
+        let t = thread::spawn(move || told.wait(None));
+        thread::sleep(Duration::from_millis(20));
+        w.tell("none: no carrier on eth0".into());
+        assert_eq!(
+            t.join().unwrap().as_deref(),
+            Some("none: no carrier on eth0")
+        );
     }
 
     #[test]

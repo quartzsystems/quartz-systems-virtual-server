@@ -121,6 +121,7 @@ pub struct Server {
     port: u16,
     limits: Limits,
     addresses: Mutex<Vec<Ipv4Addr>>,
+    word: listen::Word,
 }
 
 impl std::fmt::Debug for Server {
@@ -154,6 +155,7 @@ impl Server {
             gate: Mutex::new(Gate::default()),
             sessions: Sessions::default(),
             addresses: Mutex::new(Vec::new()),
+            word: listen::Word::default(),
         }))
     }
 
@@ -211,11 +213,11 @@ impl Server {
         }
     }
 
-    /// The management addresses now: PID 1's fact.
-    fn management(&self) -> Option<Ipv4Addr> {
+    /// The management interface's line now: PID 1's fact.
+    fn management(&self) -> Option<String> {
         let mut c = supervise::control::Client::new(&self.settings.paths.control);
         let status = c.status().ok()?;
-        listen::management_address(status.fact(appliance::NOTE_MANAGEMENT)?)
+        status.fact(appliance::NOTE_MANAGEMENT).map(str::to_string)
     }
 
     /// The listener listens on `addresses` now; `first` when it has

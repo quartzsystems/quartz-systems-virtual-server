@@ -6,7 +6,9 @@
 //! management interface and keeps the clock; it listens on nothing. The
 //! interfaces the virtual switches' state names as uplinks are reserved:
 //! the management interface is never one of them, even at an IPL before
-//! the switch service has taken them.
+//! the switch service has taken them. A change of the management
+//! interface's line goes to PID 1 and to the QSI host server, which
+//! listens on the management addresses.
 
 #[cfg(target_os = "linux")]
 fn main() {
@@ -30,7 +32,24 @@ fn main() {
             .collect()
     }
 
-    static APPLIANCE: release::Appliance = release::appliance(remote::post, remote::note);
+    /// PID 1's fact, and the QSI server's word when it is the management
+    /// line: on a thread of its own, so a server that is slow or away
+    /// never holds the network service up. A server that is away reads
+    /// PID 1's fact when it starts.
+    fn note(key: &str, value: &str) {
+        remote::note(key, value);
+        if key == appliance::NOTE_MANAGEMENT {
+            let line = value.to_string();
+            let _ = std::thread::Builder::new()
+                .name("qsid-word".into())
+                .spawn(move || {
+                    let path = std::path::Path::new(release::RUN_DIR).join(qsilocal::SOCKET_FILE);
+                    let _ = qsilocal::Calls::management(&mut qsilocal::Client::new(path), line);
+                });
+        }
+    }
+
+    static APPLIANCE: release::Appliance = release::appliance(remote::post, note);
     // It returns only when it could not start.
     let Err(e) = netd::serve::run(&APPLIANCE, reserved);
     eprintln!("the network service did not start: {e}");

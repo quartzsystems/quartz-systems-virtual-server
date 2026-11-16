@@ -1707,8 +1707,10 @@ dependencies = [
 name = "qsvsnetd"
 version = "0.1.0"
 dependencies = [
+ "appliance",
  "hostinv",
  "netd",
+ "qsilocal",
  "refcode",
  "release",
  "state",
