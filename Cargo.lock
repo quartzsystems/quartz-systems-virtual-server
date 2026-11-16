@@ -1512,6 +1512,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "qsilocal"
+version = "0.1.0"
+dependencies = [
+ "ipc",
+]
+
+[[package]]
 name = "qsipart"
 version = "0.1.0"
 source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=30e18c2e5ff4896bbb56a754760c530dfa96c26c#30e18c2e5ff4896bbb56a754760c530dfa96c26c"
@@ -1524,17 +1531,22 @@ dependencies = [
 name = "qsiserver"
 version = "0.1.0"
 dependencies = [
+ "appliance",
  "ipc",
+ "logd",
  "model",
  "partd",
  "poold",
  "qsi",
+ "qsilocal",
  "qsisess",
  "qsitrust",
  "qvsmsg",
  "refcode",
  "resource",
+ "rustls",
  "serde",
+ "serde_json",
  "state",
  "supervise",
  "vswitch",

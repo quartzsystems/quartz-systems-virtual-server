@@ -296,6 +296,22 @@ pub const PANEL_DONE: RefCode = progress("C2009070", "Partition control panel fu
 /// An uplink of a switch a partition's adapter is on has carrier again.
 pub const ADAPTER_UPLINK_BACK: RefCode = progress("C2009080", "Partition adapter uplink back");
 
+// C2010xxx: the QSI host server (`docs/QSISERVER.md`).
+
+/// The server listens, with its addresses.
+pub const QSI_STARTED: RefCode = progress("C2010000", "QSI server started");
+/// The addresses it listens on changed with the management network's.
+pub const QSI_ADDRESSES: RefCode = progress("C2010005", "QSI server addresses changed");
+/// A pairing password was made at the host's console.
+pub const QSI_PAIRING_STARTED: RefCode = progress("C2010020", "QSI pairing started");
+/// A console paired, with its name and fingerprint.
+pub const QSI_PAIRED: RefCode = progress("C2010030", "QSI console paired");
+/// The password is gone unused: it expired, ran out of attempts, or
+/// pairing was ended at the host.
+pub const QSI_PAIRING_ENDED: RefCode = progress("C2010040", "QSI pairing ended");
+/// A console was removed at the host.
+pub const QSI_REMOVED: RefCode = progress("C2010050", "QSI console removed");
+
 // A2005xxx: a partition that cannot IPL, and one that ended badly.
 
 /// The profile is not one a partition can be made from.
@@ -390,6 +406,13 @@ pub const IDENTITY_DIFFERS: RefCode = attention("A2009030", "Partition identity 
 pub const SHUTDOWN_FORCED: RefCode = attention("A2009040", "Partition shut down forced");
 /// The uplink of a switch a partition's adapter is on lost carrier.
 pub const ADAPTER_UPLINK_LOST: RefCode = attention("A2009080", "Partition adapter uplink lost");
+
+// A2010xxx: attention from the QSI host server.
+
+/// It cannot listen: no identity, or no address to listen on.
+pub const QSI_NOT_LISTENING: RefCode = attention("A2010000", "QSI server not listening");
+/// A pairing attempt did not confirm, with the attempts left.
+pub const QSI_PAIRING_FAILED: RefCode = attention("A2010030", "QSI pairing attempt failed");
 
 // C2007xxx: storage pools, the pool service.
 
@@ -550,6 +573,12 @@ pub const ALL: &[&RefCode] = &[
     &DUMP_REMOVED,
     &PANEL_DONE,
     &ADAPTER_UPLINK_BACK,
+    &QSI_STARTED,
+    &QSI_ADDRESSES,
+    &QSI_PAIRING_STARTED,
+    &QSI_PAIRED,
+    &QSI_PAIRING_ENDED,
+    &QSI_REMOVED,
     &POOLD_STARTED,
     &POOL_ASSEMBLED,
     &POOL_CREATED,
@@ -619,6 +648,8 @@ pub const ALL: &[&RefCode] = &[
     &IDENTITY_DIFFERS,
     &SHUTDOWN_FORCED,
     &ADAPTER_UPLINK_LOST,
+    &QSI_NOT_LISTENING,
+    &QSI_PAIRING_FAILED,
     &POOL_NOT_ASSEMBLED,
     &POOL_UNIT_FAILED,
     &POOL_REBUILD_FAILED,

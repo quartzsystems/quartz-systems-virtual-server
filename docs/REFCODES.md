@@ -77,7 +77,9 @@ installed host's history starts with its first IPL.
 | `C2008xxx`, `A2008xxx` | virtual switches (`vswitchd`, the switch service): its start, switches made, changed and deleted, an uplink's carrier lost and back, a switch not built |
 | `C2009xxx`, `A2009xxx` | the partition manager's service channel to each system (`partd`, `docs/SERVICE.md`): the channel up, closed or silent, the shut down asked of a system and one forced, a partition held with its memory, dumps removed for the limits, the control panel functions, an adapter's uplink |
 
-Later phases take further blocks (QSI) and record them here.
+| `C2010xxx`, `A2010xxx` | the QSI host server (`qsvsqsid`, `docs/QSISERVER.md`): its start and addresses, pairing, a console removed |
+
+Later phases take further blocks and record them here.
 
 ## A partition's codes
 
@@ -214,6 +216,12 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2009060` | Partition dump removed | the oldest dump of the partition was removed to keep its dumps within their number and size |
 | `C2009070` | Partition control panel function | a function that acts on the partition was carried out, with its number |
 | `C2009080` | Partition adapter uplink back | the uplink of a switch one of the partition's adapters is on has carrier again |
+| `C2010000` | QSI server started | the server listens on TCP 2300 of the management addresses, with them and the host's certificate fingerprint |
+| `C2010005` | QSI server addresses changed | the management network's addresses changed and the server listens on the new ones, with them |
+| `C2010020` | QSI pairing started | a pairing password was made at the host's console; it is good for one pairing, 15 minutes and five attempts |
+| `C2010030` | QSI console paired | a console paired with the password, with its name and the start of its certificate's fingerprint |
+| `C2010040` | QSI pairing ended | the password is gone unused: it expired, its attempts ran out, or pairing was ended at the host |
+| `C2010050` | QSI console removed | a console's pin was removed at the host, with its name; it can connect no more |
 | `C2007000` | Pool service started | with the pools found and how many were assembled |
 | `C2007010` | Storage pool assembled | a pool's units were found by their labels, its set opened and its file system mounted, with its name, protection and state |
 | `C2007015` | Storage pool created | with its name, protection, units and capacity |
@@ -283,6 +291,8 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2009030` | Partition identity differs | the system's hello names another serial number, side or keylock than the host gave it, with which |
 | `A2009040` | Partition shut down forced | a delayed or operating-system shut down had not ended in its time and the partition was shut down immediately |
 | `A2009080` | Partition adapter uplink lost | the uplink of a switch one of the partition's adapters is on lost carrier: its outside traffic stopped |
+| `A2010000` | QSI server not listening | the server has no identity to present, or no management address to listen on, with which; nothing listens until it has |
+| `A2010030` | QSI pairing attempt failed | an attempt to pair did not confirm (a wrong password, or a relay), with the attempts left |
 | `A2007010` | Storage pool not assembled | a pool's units were found but its set could not be opened or its file system mounted, with the pool and why; only the partitions that use it are affected |
 | `A2007020` | Pool unit failed | a unit was taken out of service or not found, with the pool, the unit, its location code and serial number |
 | `A2007030` | Pool rebuild not finished | a rebuild or resynchronization stopped, with the pool and why |

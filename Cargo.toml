@@ -24,6 +24,7 @@ members = [
     "lic/qvsmsg",
     # Service Tools: QS/VS's menu and its host-specific panels.
     "svc/tools",
+    "qsi/local",
     "qsi/server",
     # Base: what every Quartz appliance needs, product-neutral. QS/MC pins
     # these from this repository.
@@ -125,6 +126,9 @@ libc = "0.2.190"
 rustix = { version = "1.1.6", features = ["fs", "mount", "event", "process", "system", "time", "pipe", "termios", "net"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+# TLS for the QSI host server, as QS/400's trust crate has it: no
+# default features, so no C and no other cryptography.
+rustls = { version = "0.23.46", default-features = false, features = ["std"] }
 toml = "1.1.8"
 
 [workspace.lints.rust]

@@ -12,4 +12,6 @@
 pub mod conn;
 pub mod events;
 pub mod families;
+#[cfg(target_os = "linux")]
+pub mod serve;
 pub mod trust;

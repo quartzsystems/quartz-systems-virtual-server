@@ -1,0 +1,13 @@
+[package]
+name = "qsilocal"
+description = "The QSI host server's local socket: the consoles, a pairing password, a console's removal and what it listens on, for Service Tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ipc.workspace = true
+
+[lints]
+workspace = true
