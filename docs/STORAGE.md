@@ -241,6 +241,59 @@ end (1 MiB at least, 64 MiB at most). Writes reach the host's page
 cache and are made durable when the guest writes a filemark, asks for
 none (its flush), or the volume is unmounted.
 
+## Tape pass-through
+
+A physical tape drive of the host can stand behind a partition's tape
+device in place of a volume of the library: the drive stays on its
+controller, which the host keeps, and the partition's commands reach it
+one at a time. To give the whole controller instead, see
+`docs/PHYSICALIO.md`. Media changers are not passed (V1).
+
+- The host lists its drives from `/sys/class/scsi_tape` with their
+  location codes (a disk's, with the SCSI address), vendor, product and
+  serial number (`C2013050` when one is found), at Service Tools option
+  10 and over QSI's `vres` family (`TapeDrives`, event `0x000A`).
+- An operator releases a drive at option 10 as a device is released,
+  its location typed in full; it is kept in `physio.toml` by its
+  location and serial number.
+- A profile's tape device names it with `@` and its location code as
+  its medium (`media = "@P0000-B00-D08-F0-T0.0.3.0"`, `docs/PROFILE.md`).
+  It cannot be loaded or unloaded as a volume can (`QVS2421`).
+- One holder at a time: a second partition naming a held drive is
+  refused at activation (`QVS2403`).
+
+The partition manager opens the drive's SCSI generic device (`/dev/sgN`)
+as root, since the kernel lets only a process with `CAP_SYS_RAWIO` send
+a tape's commands, and relays for the partition: `qsvmm` is handed one
+end of a socket and nothing of the drive. `qsvmm`'s virtio-scsi tape
+function takes each command from the guest, checks it, and sends it
+over the socket as a bounded frame; the relay checks it again and
+carries it out with `SG_IO`; the drive's status, sense and data come
+back unchanged. The relay's frames are at most 1 MiB of data, a 16-byte
+command and 96 bytes of sense.
+
+The allow-list (`stg/tape/src/passthrough.rs`, `ALLOWED`) is a tape
+drive's sequential-access commands and what QS/400's tape driver uses:
+TEST UNIT READY, REWIND, REQUEST SENSE, READ BLOCK LIMITS, READ(6),
+WRITE(6), WRITE FILEMARKS(6) and (16), SPACE(6) and (16), INQUIRY,
+VERIFY(6), MODE SELECT and MODE SENSE (6 and 10), RESERVE(6),
+RELEASE(6), ERASE(6), LOAD UNLOAD, PREVENT ALLOW MEDIUM REMOVAL,
+LOCATE(10) and (16), READ POSITION, REPORT DENSITY SUPPORT, LOG SENSE,
+READ ATTRIBUTE and REPORT LUNS. Anything else is answered in front of
+the drive with CHECK CONDITION, ILLEGAL REQUEST, INVALID COMMAND
+OPERATION CODE (`5/20/00`); a firmware download, a diagnostic or a
+changer's command never reaches it, whatever the list says; a six-byte
+command whose LUN bits name past the drive is refused the same way.
+`qsvmm` refuses first and counts what it refused in its report at the
+partition's end (`refused N`); what reaches the relay and is refused
+there is logged with `QVS3302`.
+
+A drive that goes away (its SCSI device removed, its controller reset,
+the cable out) ends the command in flight and every later one with a
+transport failure, posts `A2013080` once and opens its problem; the
+partition runs on. The drive is listed as not present until it comes
+back.
+
 ## Limits
 
 From QS/400's answers (handoff 15) and this phase's choices; each is

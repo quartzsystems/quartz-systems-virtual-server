@@ -197,7 +197,9 @@ pub fn spawn_relay(
                 };
                 let (answer, reached) = pt::relay(drive.as_mut(), &command);
                 if let Err(why) = reached {
-                    eprintln!("relay {location}: refused: {}", why.words());
+                    let op = format!("{:#04x}", command.cdb.first().copied().unwrap_or(0));
+                    let said = qvsmsg::DRIVE_COMMAND_REFUSED.with(&[&op, &location]);
+                    eprintln!("relay: {said} {}", why.words());
                 }
                 if answer.gone && !said_gone {
                     said_gone = true;
