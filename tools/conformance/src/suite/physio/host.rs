@@ -61,19 +61,23 @@ fn rig<'a>(run: &Run<'a>, iommu: bool, devices: Vec<Passed>) -> Result<Guest<'a>
     host(run, &l)
 }
 
-/// The codes that opened the host's problems, from the problem
-/// service's book.
-fn opened(guest: &mut Session) -> Result<Vec<String>, String> {
-    // The problem service looks at the history every few seconds.
-    std::thread::sleep(Duration::from_secs(5));
-    let text = channel(guest)?.text("/data/state/problems.json")?;
-    Ok(text
-        .split("\"opened_by\":\"")
-        .skip(1)
-        .filter_map(|rest| rest.split('"').next())
-        .map(str::to_string)
-        .collect())
+/// Wait until the problem service's book has a problem of `code`.
+pub(crate) fn problem_of(guest: &mut Session, code: &refcode::RefCode) -> Result<(), String> {
+    let until = std::time::Instant::now() + Duration::from_mins(2);
+    loop {
+        let book = channel(guest)?.text(PROBLEMS).unwrap_or_default();
+        if book.contains(code.code) {
+            return Ok(());
+        }
+        if std::time::Instant::now() >= until {
+            return Err(format!("no problem of {}: {book}", code.code));
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
 }
+
+/// The problem service's book.
+const PROBLEMS: &str = "/data/problems/problems.json";
 
 /// The device at `location`, as the partition manager has it.
 fn device(guest: &mut Session, location: &str) -> Result<pio::Device, String> {
@@ -206,16 +210,7 @@ pub fn iommu_off(run: &Run<'_>) -> Result<String, String> {
     let g = &mut guest;
     let off = posted(&refcode::PHYSIO_OFF, "");
     let line = g.line_with(&off[..off.len() - 1], run.deadline())?;
-    let problems = opened(g)?;
-    if !problems
-        .iter()
-        .any(|p| p.contains(refcode::PHYSIO_OFF.code))
-    {
-        return Err(format!(
-            "no problem of {}: {problems:?}",
-            refcode::PHYSIO_OFF.code
-        ));
-    }
+    problem_of(g, &refcode::PHYSIO_OFF)?;
     let nvme = located(g, PASSED_NVME, 0)?;
     let d = device(g, &nvme)?;
     let why = d
@@ -328,13 +323,7 @@ pub fn reset(run: &Run<'_>) -> Result<String, String> {
         return Err(format!("a device that did not reset: {refused:?}"));
     }
     let fenced = guest.line_with(refcode::DEVICE_FENCED.code, run.deadline())?;
-    let problems = opened(&mut guest)?;
-    if !problems
-        .iter()
-        .any(|p| p.contains(refcode::DEVICE_FENCED.code))
-    {
-        return Err(format!("no problem of the fence: {problems:?}"));
-    }
+    problem_of(&mut guest, &refcode::DEVICE_FENCED)?;
     // The fence lasts until the host restarts, whatever the file says.
     channel(&mut guest)?.ask(&format!("{} {NO_RESET}", command::RM))?;
     let still = partd(&mut guest)?
@@ -401,13 +390,7 @@ pub fn restart(run: &Run<'_>) -> Result<String, String> {
     if !driver.contains("DRIVER=vfio-pci") {
         return Err(format!("the controller after the IPL: {driver}"));
     }
-    let problems = opened(&mut guest)?;
-    if !problems
-        .iter()
-        .any(|p| p.contains(refcode::DEVICE_MISSING.code))
-    {
-        return Err(format!("no problem of the missing adapter: {problems:?}"));
-    }
+    problem_of(&mut guest, &refcode::DEVICE_MISSING)?;
     let id = manager::partition(&mut guest, "IO")?;
     activate(
         &mut guest,

@@ -136,11 +136,7 @@ pub fn double(run: &Run<'_>) -> Result<String, String> {
     if after.contains("status 0x0 sense 0x0/0x0") {
         return Err(format!("a command after the drive went: {after}"));
     }
-    std::thread::sleep(Duration::from_secs(5));
-    let problems = channel(g)?.text("/data/state/problems.json")?;
-    if !problems.contains(refcode::DRIVE_GONE.code) {
-        return Err(format!("no problem of the drive gone: {problems}"));
-    }
+    super::host::problem_of(g, &refcode::DRIVE_GONE)?;
     end(g, first)?;
     Ok(format!(
         "{location} ({VENDOR} {PRODUCT}) released and given to FIRST: `{seen}`, `{data}`; \
