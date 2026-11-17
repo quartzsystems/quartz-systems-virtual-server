@@ -350,7 +350,7 @@ pub fn reset(run: &Run<'_>) -> Result<String, String> {
     l.passed = passed(run)?;
     l.nic = Some(MANAGEMENT_MAC.into());
     let mut guest = host(run, &l)?;
-    guest.expect(&posted(&refcode::DEVICE_BOUND, &nvme), run.deadline())?;
+    guest.seen(&posted(&refcode::DEVICE_BOUND, &nvme), run.deadline())?;
     said(partd(&mut guest)?.activate(id, "IO".into(), None, None))?;
     let again = probed(&mut guest, "IO", "DISK nvme", run)?;
     end(&mut guest, id)?;
@@ -385,8 +385,8 @@ pub fn restart(run: &Run<'_>) -> Result<String, String> {
         .collect();
     let mut guest = host(run, &l)?;
     let deadline = run.deadline();
-    guest.expect(&posted(&refcode::DEVICE_BOUND, &nvme), deadline)?;
-    guest.expect(&posted(&refcode::DEVICE_MISSING, &nic), deadline)?;
+    guest.seen(&posted(&refcode::DEVICE_BOUND, &nvme), deadline)?;
+    guest.seen(&posted(&refcode::DEVICE_MISSING, &nic), deadline)?;
     let bound = guest.log_position(&posted(&refcode::DEVICE_BOUND, &nvme));
     let started = guest.log_position(refcode::SERVICES_STARTED.code);
     if bound.zip(started).is_none_or(|(b, s)| b > s) {
