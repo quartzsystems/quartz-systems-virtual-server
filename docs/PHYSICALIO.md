@@ -72,7 +72,11 @@ devices and names released ones in profiles; it cannot release one.
   together; the panel lists them first. The partition manager unbinds
   each from its host driver, gives it to `vfio-pci` (a group that does
   not bind whole goes back to the host's drivers), keeps it in
-  `physio.toml` and posts `C2013010`.
+  `physio.toml` and posts `C2013010`. A released adapter is no network
+  interface of the host from then on: PID 1 writes the inventory again
+  when the code is posted, and again at each IPL once it has bound the
+  released devices, so Service Tools, the switch service and a console
+  never offer it.
 - **Take back** (option 4): only while no partition holds it and no
   profile names it (`QVS2403`, `QVS2415`). The group goes back to the
   host's drivers together; `C2013015`.
