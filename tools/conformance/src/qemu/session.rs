@@ -267,6 +267,12 @@ impl Session {
         }
     }
 
+    /// Where in the serial log so far `needle` first is.
+    pub fn log_position(&mut self, needle: &str) -> Option<usize> {
+        self.drain();
+        self.log.find(needle)
+    }
+
     /// Whether the serial log so far has `needle`, matched or not.
     pub fn said(&mut self, needle: &str) -> bool {
         self.drain();

@@ -31,10 +31,9 @@ const NVME_BYTES: u64 = 64 << 20;
 
 /// The devices every suite here gives the host.
 pub fn passed(run: &Run<'_>) -> Result<Vec<Passed>, String> {
+    // Blank at each rig: what a partition finds on it is this run's.
     let nvme = run.file("nvme.img");
-    if !nvme.is_file() {
-        blank(&nvme, NVME_BYTES)?;
-    }
+    blank(&nvme, NVME_BYTES)?;
     Ok(vec![
         Passed::Nic {
             place: PASSED_NIC,
@@ -118,10 +117,10 @@ pub fn probed(
     needle: &str,
     run: &Run<'_>,
 ) -> Result<String, String> {
-    let line = guest.line_with(
-        &format!("{name}| PIO {needle}"),
-        run.deadline() + Duration::from_mins(3),
-    )?;
+    // The probe's lines are whole once it has said it is done.
+    let deadline = run.deadline() + Duration::from_mins(3);
+    guest.seen(&format!("{name}| PIO DONE"), deadline)?;
+    let line = guest.line_with(&format!("{name}| PIO {needle}"), deadline)?;
     Ok(line
         .split_once("| ")
         .map_or(line.as_str(), |(_, l)| l)

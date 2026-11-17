@@ -10,6 +10,7 @@
 //! - [`devices`]: a host's devices given to partitions.
 
 pub mod devices;
+mod host;
 mod tape;
 
 use super::base::SuiteFn;
@@ -21,4 +22,10 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("pio-tape-span", tape::span),
     ("pio-tape-volumes", tape::volumes),
     ("pio-nvme", devices::nvme),
+    ("pio-refused", host::refused),
+    ("pio-group", host::group),
+    ("pio-iommu-off", host::iommu_off),
+    ("pio-held", host::held),
+    ("pio-reset", host::reset),
+    ("pio-restart", host::restart),
 ];

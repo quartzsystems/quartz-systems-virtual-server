@@ -163,6 +163,17 @@ pub enum Passed {
         /// Its place.
         place: u8,
     },
+    /// A disk's virtio controller as function 0 and an Ethernet
+    /// function as function 1 of one place: one group, which the host
+    /// keeps once the disk is a pool's.
+    Shared {
+        /// Its place.
+        place: u8,
+        /// The disk's file.
+        path: PathBuf,
+        /// The disk's serial number.
+        serial: String,
+    },
 }
 
 /// The places of the devices to give away: after the uplinks.
@@ -171,6 +182,8 @@ pub const PASSED_NIC: u8 = 0x1A;
 pub const PASSED_NVME: u8 = 0x1B;
 /// The pair's place.
 pub const PASSED_PAIR: u8 = 0x1C;
+/// The place of a disk and an adapter that share a group.
+pub const PASSED_SHARED: u8 = 0x1D;
 
 /// The PCI device number of a pinned disk's place.
 const FIRST_PLACE: u8 = 0x10;
@@ -406,6 +419,28 @@ pub fn args(l: &Launch) -> Vec<OsString> {
                 ));
                 a.push("-device".into());
                 a.push(format!("nvme,drive=pio{i},serial={serial},addr={place:#x}").into());
+            }
+            Passed::Shared {
+                place,
+                path,
+                serial,
+            } => {
+                a.push("-drive".into());
+                a.push(join(
+                    &format!("if=none,id=pio{i},format=raw,file="),
+                    path,
+                    "",
+                ));
+                a.push("-device".into());
+                a.push(
+                    format!(
+                        "virtio-blk-pci,drive=pio{i},serial={serial},addr={place:#x}.0,multifunction=on"
+                    )
+                    .into(),
+                );
+                a.extend(["-netdev".into(), format!("user,id=pio{i}n").into()]);
+                a.push("-device".into());
+                a.push(format!("e1000e,netdev=pio{i}n,addr={place:#x}.1").into());
             }
             Passed::Pair { place } => {
                 for f in 0..2 {

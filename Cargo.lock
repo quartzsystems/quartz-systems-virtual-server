@@ -336,6 +336,7 @@ dependencies = [
  "netlink",
  "ntp",
  "partd",
+ "pio",
  "poold",
  "qsi",
  "qsictl",

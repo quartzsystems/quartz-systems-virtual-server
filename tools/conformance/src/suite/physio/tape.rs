@@ -140,9 +140,15 @@ fn enter(guest: &mut Session, id: u32, line: &str) -> Result<(), String> {
 /// command so that only what follows it is the command's.
 fn mark(guest: &mut Session, id: u32) -> Result<String, String> {
     static NEXT: AtomicU32 = AtomicU32::new(1);
-    let m = format!("QSVS MARK {:04}", NEXT.fetch_add(1, Ordering::Relaxed));
-    enter(guest, id, &format!("SNDPGMMSG MSG('{m}')"))?;
-    // The command's echo has the text too; the message is a second line.
+    // A data area of a name of its own in the job's QTEMP: its command
+    // echoes the name, and its completion message names it again.
+    let m = format!("QM{:04}", NEXT.fetch_add(1, Ordering::Relaxed));
+    enter(
+        guest,
+        id,
+        &format!("CRTDTAARA DTAARA(QTEMP/{m}) TYPE(*CHAR) LEN(1)"),
+    )?;
+    // The command's echo has the name too; the message is a second line.
     let deadline = Instant::now() + Duration::from_mins(1);
     loop {
         if screen(guest, id)?.text.matches(&m).count() >= 2 {
@@ -150,7 +156,7 @@ fn mark(guest: &mut Session, id: u32) -> Result<String, String> {
         }
         if Instant::now() >= deadline {
             let s = screen(guest, id)?.text;
-            return Err(format!("SNDPGMMSG did not show `{m}`:\n{s}"));
+            return Err(format!("CRTDTAARA did not show `{m}`:\n{s}"));
         }
         std::thread::sleep(Duration::from_millis(300));
     }
