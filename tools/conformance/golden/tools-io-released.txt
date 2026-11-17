@@ -1,0 +1,24 @@
+                          Work with I/O for Partitions
+                                                               System:  vs-test
+
+ 2=Release   4=Take back   5=Display
+
+ Opt Location                  Description              Use
+     P0000-B00-D00-F0          host bridge              host: bridge
+     P0000-B00-D01-F0          display adapter          host: display
+     P0000-B00-D02-F0          Ethernet adapter         host: management
+     P0000-B00-D10-F0          SCSI controller          host: load source
+     P0000-B00-D11-F0          SCSI controller          cannot be released
+     P0000-B00-D1A-F0          Ethernet adapter         released
+     P0000-B00-D1B-F0          NVMe controller          not released
+     P0000-B00-D1C-F0          NVMe controller          not released
+     P0000-B00-D1C-F1          NVMe controller          not released
+     P0000-B00-D1F-F0          bridge                   host: bridge
+     P0000-B00-D1F-F2          SATA controller          cannot be released
+     P0000-B00-D1F-F3          PCI device               cannot be released
+
+
+                                                                       Bottom
+
+ F1=Help   F3=Exit   F5=Refresh   F7=Backward   F8=Forward   F12=Cancel
+

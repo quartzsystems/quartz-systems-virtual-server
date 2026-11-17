@@ -441,19 +441,26 @@ set clean, and the machine stops.
 ### 10. Work with I/O for partitions
 
 Every PCI device and physical tape drive of the host, by location code,
-14 to a page (F7 and F8), with what the host uses each for, whether it
-is released for partitions and which partition holds it
-(`docs/PHYSICALIO.md`):
+14 to a page (F7 and F8), with what each is, what the host uses it for,
+whether it is released for partitions and which partition holds it
+(`docs/PHYSICALIO.md`). The test harness's host, its adapter at `1A`
+released:
 
 ```
                           Work with I/O for Partitions
  2=Release   4=Take back   5=Display
 
  Opt Location                  Description              Use
-  _  P0000-B00-D02-F0          NVMe controller          host: load-source di
-  _  P0000-B00-D1A-F0          Ethernet controller      released
-  _  P0000-B00-D1B-F0          NVMe controller          held by IO
-  _  NOPCI-ST0                 tape drive Linux scsi_de not released
+     P0000-B00-D00-F0          host bridge              host: bridge
+     P0000-B00-D01-F0          display adapter          host: display
+     P0000-B00-D02-F0          Ethernet adapter         host: management
+     P0000-B00-D10-F0          SCSI controller          host: load source
+     P0000-B00-D11-F0          SCSI controller          cannot be released
+     P0000-B00-D1A-F0          Ethernet adapter         released
+     P0000-B00-D1B-F0          NVMe controller          not released
+     P0000-B00-D1C-F0          NVMe controller          not released
+     P0000-B00-D1C-F1          NVMe controller          not released
+     P0000-B00-D1F-F0          bridge                   host: bridge
 ```
 
 - **2, Release.** `Confirm Release for Partitions` lists every device of
