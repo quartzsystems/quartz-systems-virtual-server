@@ -109,7 +109,9 @@ about each partition's service channel (`docs/SERVICE.md`): the
 channel connected, closed or silent, a shut down asked of the system
 and one forced, a partition held with its memory, a dump removed, a
 panel function, an adapter's uplink. A `C2009` code of progress is a
-note of the history and never the current code.
+note of the history and never the current code. So is a `C2011` code of
+a host dump: a dump taken when a service stopped or a slot went back
+leaves that code the host's current one.
 
 Since Phase 7 the system in a partition posts its own codes on its
 service channel: they are QS/400's, in its own families, and go into

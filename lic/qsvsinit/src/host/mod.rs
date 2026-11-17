@@ -37,6 +37,8 @@ const HEARTBEAT: Duration = Duration::from_secs(5);
 /// The longest the loop sleeps: the log queue is flushed and the
 /// display's clock looked at this often.
 const TICK: Duration = Duration::from_secs(1);
+/// The host dump's progress codes: notes, never the current code.
+const HOST_DUMP_CODES: &str = "C2011";
 /// How long a pending slot's trial has to confirm before the host is
 /// restarted into the other slot: its services never became ready.
 const TRIAL_WAIT: Duration = Duration::from_mins(15);
@@ -177,12 +179,16 @@ impl Host {
 
     fn take(&mut self, posted: Posting) {
         self.show(&posted.line);
-        self.reference = posted
+        let reference = posted
             .line
             .strip_prefix(refcode::WORD)
             .unwrap_or(&posted.line)
-            .trim_start()
-            .to_string();
+            .trim_start();
+        // A host dump's codes are notes of the history: the code they
+        // follow, a service stopped or a slot gone back, stays current.
+        if !reference.starts_with(HOST_DUMP_CODES) {
+            self.reference = reference.to_string();
+        }
         self.log.send(posted.record);
     }
 
