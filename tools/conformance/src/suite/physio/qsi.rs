@@ -21,7 +21,7 @@ use qsi::host::{host as h, partition, profiles, vres};
 use qsictl::link::Link;
 use qsvshook::proto::command;
 
-use super::devices::{NIC_MAC, located, passed, probed, profile};
+use super::devices::{located, passed, probed, profile};
 use crate::qemu::PASSED_NVME;
 use crate::suite::base::{Run, channel};
 use crate::suite::install::{Kind, boot, installed, machine};
@@ -285,7 +285,7 @@ pub fn over_qsi(run: &Run<'_>) -> Result<String, String> {
          `{disk}`, `{st}`; OTHER refused {held}; IO's units to {:?} over QSI, 1.20 refused \
          {outside}; the drive held by IO over QSI; {device_events} device, {drive_events} \
          drive and {entitlement_events} entitlement event(s); qsictl io, tape and partition \
-         entitlement --units 0.50 answered ({} {NIC_MAC} unused)",
+         entitlement --units 0.50 answered (qsictl io: {} lines)",
         a.len(),
         drive.location,
         changed.units,
