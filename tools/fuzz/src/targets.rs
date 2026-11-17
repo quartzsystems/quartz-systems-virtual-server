@@ -863,6 +863,148 @@ fn tape(data: &[u8]) {
     }
 }
 
+/// The relay of the `passed-tape` target in the same thread: each
+/// frame the device writes is carried to the double at once, as the
+/// partition manager's relay would, and its answer waits to be read.
+struct Relayed {
+    drive: Arc<Mutex<tape::passthrough::Double>>,
+    written: Vec<u8>,
+    answers: Cursor<Vec<u8>>,
+}
+
+impl io::Write for Relayed {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.written.extend_from_slice(buf);
+        loop {
+            let mut at = Cursor::new(&self.written[..]);
+            let Ok(Some(body)) = tape::passthrough::read_frame(&mut at) else {
+                break;
+            };
+            let used = usize::try_from(at.position()).unwrap_or(self.written.len());
+            self.written.drain(..used);
+            let Some(command) = tape::passthrough::Command::decode(&body) else {
+                continue;
+            };
+            let mut drive = self.drive.lock().expect("the double");
+            let (answer, _) = tape::passthrough::relay(&mut *drive, &command);
+            let mut all = self.answers.get_ref()
+                [usize::try_from(self.answers.position()).unwrap_or(0)..]
+                .to_vec();
+            all.extend_from_slice(&answer.encode());
+            self.answers = Cursor::new(all);
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl io::Read for Relayed {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.answers.read(buf)
+    }
+}
+
+/// A physical drive's tape device: the guest's commands and data through
+/// the allow-list and the relay to a drive whose answers are the input's
+/// too; then the input as frames the relay reads. Nothing outside the
+/// allow-list may reach the drive.
+fn passed_tape(data: &[u8]) {
+    use tape::passthrough::{Answer, Command, Double, allowed, read_frame};
+    // The drive's answers from the input's end: status, sense and data
+    // of lengths the input names.
+    let (commands, answers) = data.split_at(data.len() / 2);
+    let mut double = Double::default();
+    let mut rest = answers;
+    while rest.len() >= 4 && double.answers.len() < 64 {
+        let sense = usize::from(rest[1] % 120).min(rest.len() - 4);
+        let room = rest.len() - 4 - sense;
+        let len = (usize::from(u16::from_le_bytes([rest[2], rest[3]]))).min(room);
+        double.answers.push_back(Answer {
+            status: rest[0],
+            sense: rest[4..4 + sense].to_vec(),
+            data: rest[4 + sense..4 + sense + len].to_vec(),
+            resid: 0,
+            gone: rest[0] == 0xFF,
+        });
+        rest = &rest[4 + sense + len..];
+    }
+    let drive = Arc::new(Mutex::new(double));
+    let link = Relayed {
+        drive: drive.clone(),
+        written: Vec::new(),
+        answers: Cursor::new(Vec::new()),
+    };
+    let device = devices::virtio::scsi::passed::PassedTape::new(Box::new(link));
+    let mut bounce = Bounce::new(1 << 20);
+    let mut rest = commands;
+    while rest.len() >= 16 {
+        let (cdb, after) = rest.split_at(16);
+        let len = usize::from(cdb[15]).min(after.len());
+        let mut out = &after[..len];
+        let mut back = Vec::new();
+        let _ = devices::virtio::scsi::unit::Unit::run(
+            &device,
+            &cdb[..usize::from(cdb[14] % 17).max(1)],
+            1,
+            &mut out,
+            &mut back,
+            &mut bounce,
+        );
+        rest = &after[len..];
+    }
+    for command in &drive.lock().expect("the double").seen {
+        assert!(
+            allowed(&command.cdb).is_ok(),
+            "a command outside the allow-list reached the drive: {:02x?}",
+            command.cdb
+        );
+    }
+    // The same bytes as frames the relay reads from a VMM.
+    let mut frames = Cursor::new(data);
+    while let Ok(Some(body)) = read_frame(&mut frames) {
+        if let Some(c) = Command::decode(&body) {
+            let _ = c.encode();
+        }
+        if let Some(a) = Answer::decode(&body) {
+            let _ = a.encode();
+        }
+    }
+}
+
+fn passed_tape_seeds() -> Vec<Vec<u8>> {
+    let cdbs: [&[u8]; 6] = [
+        &[0x00, 0, 0, 0, 0, 0],
+        &[0x12, 0, 0, 0, 96, 0],
+        &[0x0A, 0, 0, 0, 16, 0],
+        &[0x08, 0, 0, 0, 16, 0],
+        &[0x3B, 0x05, 0, 0, 0, 0, 0, 0, 16, 0],
+        &[0x01, 0x20, 0, 0, 0, 0],
+    ];
+    cdbs.iter()
+        .map(|c| {
+            let mut commands = vec![0u8; 16];
+            commands[..c.len()].copy_from_slice(c);
+            #[allow(clippy::cast_possible_truncation)] // 16 at most
+            {
+                commands[14] = c.len() as u8;
+            }
+            commands[15] = 16;
+            commands.extend_from_slice(&[0xA5; 16]);
+            let mut answers = vec![0u8, 18, 8, 0];
+            answers
+                .extend_from_slice(&[0x70, 0, 5, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0x20, 0, 0, 0, 0, 0]);
+            answers.extend_from_slice(b"QSVSFUZZ");
+            let mut input = commands.clone();
+            input.extend_from_slice(&vec![0u8; answers.len().saturating_sub(commands.len())]);
+            input.extend_from_slice(&answers);
+            input
+        })
+        .collect()
+}
+
 /// What reached a passed function's configuration space: each write's
 /// offset and bytes.
 type Seen = Arc<Mutex<Vec<(u16, Vec<u8>)>>>;
@@ -1057,6 +1199,12 @@ pub const TARGETS: &[Target] = &[
         about: "SCSI commands and their data to a virtual tape drive, and its volume read back",
         seeds: tape_seeds,
         run: tape,
+    },
+    Target {
+        name: "passed-tape",
+        about: "SCSI commands to a physical drive's tape device, through the allow-list and the relay's frames",
+        seeds: passed_tape_seeds,
+        run: passed_tape,
     },
     Target {
         name: "gpt",
