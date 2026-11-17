@@ -184,7 +184,7 @@ pub fn seeds() -> Vec<Vec<u8>> {
     }
     let mut out = Vec::new();
     for (request, _) in qsi::samples::exchanges() {
-        if console.request_any("QSECOFR", &request).is_ok() {
+        if console.request_any("ADMIN", &request).is_ok() {
             let mut one = vec![61];
             one.extend(&first);
             one.extend(console.take_output());

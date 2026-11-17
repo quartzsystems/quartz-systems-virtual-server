@@ -132,7 +132,7 @@ fn services(fake: &Fake) -> Services {
 }
 
 fn answer_as(s: &mut Services, r: AnyRequest) -> Answer {
-    answer(s, r, "QSECOFR")
+    answer(s, r, "ADMIN")
 }
 
 fn refused(a: Answer) -> Vec<String> {
@@ -482,8 +482,8 @@ fn problems_are_the_problem_services_and_a_close_is_the_users() {
     let Answer::Reply(AnyReply::Service(Reply::Close(closed))) = a else {
         panic!("{a:?}")
     };
-    assert_eq!(closed.closed_by, "QSECOFR");
-    assert_eq!(probs.closed.lock().unwrap().last().unwrap().2, "QSECOFR");
+    assert_eq!(closed.closed_by, "ADMIN");
+    assert_eq!(probs.closed.lock().unwrap().last().unwrap().2, "ADMIN");
 }
 
 #[test]

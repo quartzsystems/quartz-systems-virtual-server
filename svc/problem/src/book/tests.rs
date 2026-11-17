@@ -102,13 +102,13 @@ fn a_pulled_pool_disk_opens_one_problem_and_its_rebuild_clears_it() {
 fn a_problem_is_closed_by_a_person() {
     let mut b = Book::default();
     b.take(&pulled(1, "S1"), 10);
-    let refused = b.close(1, false, "QSECOFR", 11).unwrap_err();
+    let refused = b.close(1, false, "ADMIN", 11).unwrap_err();
     assert_eq!(refused[0].id, "QVS5003");
-    let closed = b.close(1, true, "QSECOFR", 12).unwrap();
+    let closed = b.close(1, true, "ADMIN", 12).unwrap();
     assert_eq!(closed.notice, Notice::Closed);
     assert_eq!(
         (closed.problem.closed_by.as_str(), closed.problem.closed_at),
-        ("QSECOFR", 12)
+        ("ADMIN", 12)
     );
     assert!(
         b.get(1)

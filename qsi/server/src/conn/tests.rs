@@ -251,7 +251,7 @@ impl Pair {
     }
 
     fn ask(&mut self, r: &AnyRequest) -> qsisess::Reply {
-        let id = self.console.request_any("QSECOFR", r).unwrap();
+        let id = self.console.request_any("ADMIN", r).unwrap();
         let mut reply = None;
         for i in self.pump() {
             match i {

@@ -614,7 +614,7 @@ pub fn end_to_end(run: &Run<'_>) -> Result<String, String> {
     })
     .ok_or("no console on the installed system")?;
     v.until(&mut l, "Sign On", Instant::now() + Duration::from_mins(30))?;
-    let mut keys = typed("QSECOFR");
+    let mut keys = typed("ADMIN");
     keys.push(Key::FieldExit);
     keys.extend(typed("Quartz1"));
     keys.push(Key::Enter);
@@ -658,7 +658,7 @@ pub fn end_to_end(run: &Run<'_>) -> Result<String, String> {
     Ok(format!(
         "over QSI only: {up}; disk {} thin; partition {id} with its profile; source D: {} codes \
          as events, the installer to Sign On on the console stream; shut down by its system; the \
-         recorded side to Sign On, signed on as QSECOFR (`{}`); shut down by its system; the \
+         recorded side to Sign On, signed on as ADMIN (`{}`); shut down by its system; the \
          partition and its disk deleted",
         disk.name,
         codes.len(),

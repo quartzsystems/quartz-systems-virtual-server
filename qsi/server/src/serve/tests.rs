@@ -140,7 +140,7 @@ impl Console {
     }
 
     fn ask(&mut self, r: &AnyRequest) -> Reply {
-        let id = self.session.request_any("QSECOFR", r).unwrap();
+        let id = self.session.request_any("ADMIN", r).unwrap();
         let until = Instant::now() + Duration::from_secs(10);
         while Instant::now() < until {
             for i in self.step().expect("the connection") {

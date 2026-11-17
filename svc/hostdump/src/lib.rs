@@ -63,7 +63,7 @@ mod tests {
         identity::ensure(&state, "VSHOST", "S1", 1_794_834_942).unwrap();
         fs::write(
             state.join(users::FILE),
-            users::first("QSECOFR", &users::hash("Passw0rd!x").unwrap(), 1).unwrap(),
+            users::first("ADMIN", &users::hash("Passw0rd!x").unwrap(), 1).unwrap(),
         )
         .unwrap();
         fs::write(state.join("host.toml"), "name = \"VSHOST\"\n").unwrap();
@@ -99,7 +99,7 @@ mod tests {
         let paths = host(&d);
         let store = Store::at(d.join("dumps"));
         let asked = Asked {
-            by: "Service Tools, user QSECOFR".into(),
+            by: "Service Tools, user ADMIN".into(),
             release: "QS/VS V1R0M0".into(),
             host: "VSHOST S1".into(),
             status: "logd ready".into(),
@@ -141,8 +141,8 @@ mod tests {
         let manifest = String::from_utf8_lossy(&entries.last().unwrap().1).into_owned();
         assert!(manifest.contains("state/host.toml"));
         assert!(manifest.contains("state/identity.key: the host's private key"));
-        assert!(manifest.contains("By Service Tools, user QSECOFR"));
-        assert_eq!(store.list()[0].by, "Service Tools, user QSECOFR");
+        assert!(manifest.contains("By Service Tools, user ADMIN"));
+        assert_eq!(store.list()[0].by, "Service Tools, user ADMIN");
         fs::remove_dir_all(&d).unwrap();
     }
 
