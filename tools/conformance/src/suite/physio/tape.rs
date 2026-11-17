@@ -486,7 +486,8 @@ fn reply_g(guest: &mut Session, id: u32) -> Result<(), String> {
 }
 
 /// BIGLIB, larger than one volume: 2 Mi records of 10 bytes, made by
-/// doubling a stream file in Qshell and copying it into a member.
+/// doubling a stream file in Qshell and copying it into a member. The
+/// first line is letters: digits before `>` would name a descriptor.
 fn big_library(guest: &mut Session, id: u32, notes: &mut String) -> Result<(), String> {
     ok(
         guest,
@@ -499,19 +500,19 @@ fn big_library(guest: &mut Session, id: u32, notes: &mut String) -> Result<(), S
     enter(
         guest,
         id,
-        "QSH CMD('cd /tmp;echo 012345678>b;for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 \
+        "QSH CMD('cd /tmp;echo abcdefghi >b;for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 \
          18 19 20 21;do cat b b>c;mv c b;done;ls -l b')",
     )?;
     let (which, s) = until(
         guest,
         id,
         &m,
-        &["Press ENTER", "exit status", "rror"],
+        &["Press ENTER", "Press Enter", "exit status", "rror"],
         Duration::from_mins(30),
     )
     .map_err(|s| format!("QSH:\n{s}"))?;
     let _ = writeln!(notes, "QSH: `{}`", line_with(&s, " b"));
-    if which == 0 {
+    if which <= 1 {
         keys(guest, id, &[key(Key::Enter)])?;
         wait_screen(
             guest,
