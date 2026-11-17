@@ -65,6 +65,10 @@ pub mod about {
     pub const SYSTEM: &str = "system";
     /// A reference code a partition's own system posted.
     pub const SYSTEM_CODE: &str = "system-code";
+    /// A PCI device: its location code.
+    pub const DEVICE: &str = "device";
+    /// A physical tape drive: its location code.
+    pub const TAPE_DRIVE: &str = "tape-drive";
 }
 
 /// The appliance's code slots, as its A/B record and this IPL have them.

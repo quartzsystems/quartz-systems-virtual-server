@@ -84,6 +84,7 @@ installed host's history starts with its first IPL.
 | `C2010xxx`, `A2010xxx` | the QSI host server (`qsvsqsid`, `docs/QSISERVER.md`): its start and addresses, pairing, a console removed |
 | `C2011xxx`, `A2011xxx` | service: the host's dumps (`docs/DUMPS.md`) |
 | `C2012xxx`, `A2012xxx` | code update (`docs/UPDATE.md`): staged, verified, installed, activated, confirmed or rolled back |
+| `C2013xxx`, `A2013xxx` | physical I/O (`docs/PHYSICALIO.md`): the IOMMU at the IPL (PID 1), devices released, bound, given, given back and fenced (`partd`), physical tape drives, a running partition's entitlement |
 
 Later phases take further blocks and record them here.
 
@@ -245,6 +246,14 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2012055` | State kept for the pending slot | before the pending slot's first IPL reads state, PID 1 copied `/data/state` |
 | `C2012060` | Update confirmed | the pending slot confirmed, with the release that runs now; the copy of state is dropped |
 | `C2012075` | State restored after a rollback | the slot that came back put the copy of state back before any service read it |
+| `C2013000` | Physical I/O checked | at the IPL, by PID 1: the IOMMU and interrupt remapping are on, with how many released devices were bound |
+| `C2013010` | Device released for partitions | a device and the rest of its isolation group were released at Service Tools option 10, with their location codes |
+| `C2013015` | Device taken back by the host | a device and its group were taken back at Service Tools option 10; the host's drivers have them again |
+| `C2013020` | Released device bound | at the IPL, a released device was given to the pass-through driver before any service started |
+| `C2013030` | Device given to a partition | at an activation, a device was reset and its descriptors handed to the partition's VMM, with the partition |
+| `C2013035` | Device given back | at a partition's end, a device was reset and is free again, with the partition |
+| `C2013040` | Partition entitlement changed | a running shared partition's processing units, capping or weight changed, with before and after and who asked |
+| `C2013050` | Physical tape drive found | a physical tape drive that had gone away is on the host again |
 | `C2007000` | Pool service started | with the pools found and how many were assembled |
 | `C2007010` | Storage pool assembled | a pool's units were found by their labels, its set opened and its file system mounted, with its name, protection and state |
 | `C2007015` | Storage pool created | with its name, protection, units and capacity |
@@ -325,6 +334,11 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2012010` | Update image refused | the staged image did not verify, with which check: signature, a hash, the product, an older release without leave, or state it cannot read |
 | `A2012030` | Update not installed | an install failed, with the step and the disk; the slot is not pending and the running slot is as it was |
 | `A2012070` | Update rolled back | the pending slot did not confirm and the host came back on the other slot, with the slot and why |
+| `A2013010` | IOMMU or interrupt remapping off | at the IPL, by PID 1: the firmware has DMA remapping or interrupt remapping off, with which; nothing can be released and no device is given, and everything else works |
+| `A2013030` | Released device not found | at the IPL, a released device is not on the host, with its location code; it is not bound and partitions that require it are not activated |
+| `A2013035` | Released device group changed | at the IPL, a released device's isolation group is not what it was when it was released, with what changed; it is not bound |
+| `A2013050` | Device did not reset | a device did not reset before a partition got it or after one ended, with the partition: it is fenced, given to no partition until the host restarts |
+| `A2013080` | Physical tape drive went away | a physical tape drive a partition held is gone (cable, power): its commands end with an error until it comes back |
 | `A2007010` | Storage pool not assembled | a pool's units were found but its set could not be opened or its file system mounted, with the pool and why; only the partitions that use it are affected |
 | `A2007020` | Pool unit failed | a unit was taken out of service or not found, with the pool, the unit, its location code and serial number |
 | `A2007025` | Storage pool degraded with no hot spare | a unit of a protected pool failed and no hot spare was there to take, with the pool: another failure may lose it |

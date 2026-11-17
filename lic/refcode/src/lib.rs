@@ -476,6 +476,40 @@ pub const UPDATE_INSTALL_FAILED: RefCode = attention("A2012030", "Update not ins
 /// other.
 pub const UPDATE_ROLLED_BACK: RefCode = attention("A2012070", "Update rolled back");
 
+// C2013xxx, A2013xxx: physical I/O: the IOMMU at the IPL, devices
+// released, given and reset, physical tape drives, a running
+// partition's entitlement.
+
+/// At the IPL, by PID 1: the IOMMU and interrupt remapping are on, with
+/// the released devices bound to the pass-through driver.
+pub const PHYSIO_CHECKED: RefCode = progress("C2013000", "Physical I/O checked");
+/// A device and its isolation group were released for partitions.
+pub const DEVICE_RELEASED: RefCode = progress("C2013010", "Device released for partitions");
+/// A device and its group were taken back by the host.
+pub const DEVICE_TAKEN_BACK: RefCode = progress("C2013015", "Device taken back by the host");
+/// At the IPL, a released device was bound to the pass-through driver.
+pub const DEVICE_BOUND: RefCode = progress("C2013020", "Released device bound");
+/// A device was reset and given to a partition at its activation.
+pub const DEVICE_ASSIGNED: RefCode = progress("C2013030", "Device given to a partition");
+/// A device was reset and given back at a partition's end.
+pub const DEVICE_RETURNED: RefCode = progress("C2013035", "Device given back");
+/// A running partition's processing units, capping or weight changed.
+pub const ENTITLEMENT_CHANGED: RefCode = progress("C2013040", "Partition entitlement changed");
+/// A physical tape drive is on the host again.
+pub const DRIVE_FOUND: RefCode = progress("C2013050", "Physical tape drive found");
+/// At the IPL, by PID 1: the IOMMU or interrupt remapping is off,
+/// with which; nothing can be released.
+pub const PHYSIO_OFF: RefCode = attention("A2013010", "IOMMU or interrupt remapping off");
+/// A released device was not found at the IPL.
+pub const DEVICE_MISSING: RefCode = attention("A2013030", "Released device not found");
+/// A released device's isolation group changed: it was not bound.
+pub const DEVICE_GROUP_CHANGED: RefCode = attention("A2013035", "Released device group changed");
+/// A device did not reset: it is fenced until the host restarts.
+pub const DEVICE_FENCED: RefCode = attention("A2013050", "Device did not reset");
+/// A physical tape drive went away while a partition held it, or was
+/// not found.
+pub const DRIVE_GONE: RefCode = attention("A2013080", "Physical tape drive went away");
+
 // C2007xxx: storage pools, the pool service.
 
 /// The pool service started, with the pools it found.
@@ -737,9 +771,22 @@ pub const ALL: &[&RefCode] = &[
     &UPDATE_STATE_KEPT,
     &UPDATE_CONFIRMED,
     &UPDATE_STATE_RESTORED,
+    &PHYSIO_CHECKED,
+    &DEVICE_RELEASED,
+    &DEVICE_TAKEN_BACK,
+    &DEVICE_BOUND,
+    &DEVICE_ASSIGNED,
+    &DEVICE_RETURNED,
+    &ENTITLEMENT_CHANGED,
+    &DRIVE_FOUND,
     &UPDATE_REFUSED,
     &UPDATE_INSTALL_FAILED,
     &UPDATE_ROLLED_BACK,
+    &PHYSIO_OFF,
+    &DEVICE_MISSING,
+    &DEVICE_GROUP_CHANGED,
+    &DEVICE_FENCED,
+    &DRIVE_GONE,
     &POOL_NOT_ASSEMBLED,
     &POOL_UNIT_FAILED,
     &POOL_EXPOSED,

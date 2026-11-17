@@ -152,6 +152,35 @@ wording.
 | `QVS2315` | Partition &1's console has shown nothing yet. | The system has not sent its console's screen. It sends it once its IPL has started; ask again in a moment. |
 | `QVS2316` | Partition &1's system says its &2 is &3; the definition has &4. | The system read its identity from its own LIC record or its system values, and it differs from what the host gives the partition. The partition runs on. When the disk is another partition's, correct the profile; otherwise IPL the system again so it reads what the host wrote. |
 | `QVS2317` | Partition &1's service channel was closed: &2. | The system sent what is not the partition service protocol, or more than it allows. The channel is closed and the partition runs on; it is opened again when the system's service daemon says hello again. |
+| `QVS2401` | No device of the host is at location &1. | A profile's physical I/O names the host's devices by location code, as Service Tools option 10 lists them. Check the code, or whether the device was removed from the machine. |
+| `QVS2402` | Device &1 is not released for partitions. | A device is given to a partition only after an operator releases it at the host, at Service Tools option 10. Release it there, or take it out of the profile. |
+| `QVS2403` | Device &1 is held by partition &2. | A device is one partition's at a time. It is given back when that partition ends. |
+| `QVS2404` | Device &1 cannot be given without &2. | The host's IOMMU cannot tell the devices of one isolation group apart, so they go to one partition together or not at all. Name every device of the group in the profile, or none of them. |
+| `QVS2405` | Device &1 cannot be given now: &2 | Service Tools option 10 shows why a device cannot be given. A device fenced after a failed reset is given again once the host has been restarted. |
+| `QVS2406` | Device &1 is the host's: &2. | The controllers of the load source and of every storage pool's disks, the management interface, every uplink, the console's display adapter and the PCI bridges stay the host's. They cannot be released. |
+| `QVS2407` | Device &1 shares its isolation group with &2, which is the host's: &3. | A group goes to a partition whole, and the host keeps that device, so no device of the group can be released. Another slot may put the device in a group of its own. |
+| `QVS2408` | Device &1 cannot be reset alone. | A device is reset before a partition is given it and after the partition ends, so that nothing of one partition reaches the next. One with no function-level, power-management or bus reset cannot be released. |
+| `QVS2409` | Device &1 cannot signal message interrupts. | A partition's device interrupts by MSI or MSI-X only, which the host's interrupt remapping checks. A device with line interrupts alone cannot be released. |
+| `QVS2410` | The host's IOMMU is not on. | No device can be released without DMA remapping: a device given to a partition could reach the whole machine's memory. Turn VT-d or AMD-Vi on in the firmware's setup and restart the host. |
+| `QVS2411` | The host's interrupts are not remapped. | No device can be released without interrupt remapping: a device given to a partition could send any interrupt to the host. Turn interrupt remapping on in the firmware's setup (with VT-d or AMD-Vi) and restart the host. |
+| `QVS2412` | Device &1 did not reset and is fenced until the host is restarted. | A device that does not reset could carry one partition's data to the next, so it is not given again. Restart the host; if it fails again, service the device. |
+| `QVS2413` | Released device &1 is not on the host. | It was released for partitions and was not found at this IPL. Put it back, or take it back at Service Tools option 10 so that it is released no more. |
+| `QVS2414` | The isolation group of released device &1 is not what it was: &2. | The group was checked when the device was released; it changed since, so the device was not given to the pass-through driver. Take it back and release it again at Service Tools option 10. |
+| `QVS2415` | Device &1 is named by &2. | A device a profile names stays released. Take it out of every profile first. |
+| `QVS2416` | Device &1 is released already. | Nothing was changed. |
+| `QVS2417` | Device &1 could not be given to &2: &3 | The kernel refused the driver. The device is as it was. The host's system log has the kernel's message. |
+| `QVS2418` | Device &1 was left out of partition &2: &3 | The device is not required, so the partition was activated without it. Mark it required to have the activation fail instead. |
+| `QVS2419` | &1 is not the location code of the device to be released. | A release is confirmed by typing the device's location code in full, as the panel shows it. |
+| `QVS2420` | Location &1 is not a tape drive of the host. | A tape device names a volume of the media library, or a physical tape drive as @ and its location code. Service Tools option 10 lists the host's tape drives. |
+| `QVS2421` | The tape device in slot &1 of partition &2 is the physical drive &3. | A physical drive's cartridge is changed by hand at the drive; only a virtual drive's volume is mounted and unmounted from a console. |
+| `QVS2422` | Device &1 could not be opened for partition &2: &3 | The device stays released and is not held. The host's system log has the kernel's message. |
+| `QVS2501` | Partition &1 is not running. | A partition's entitlement changes while it runs; one that is not activated takes its profile's at its activation. |
+| `QVS2502` | Partition &1 has dedicated processors. | Only a shared-processor partition's processing units, capping and weight change while it runs. Dedicated processors, virtual processors and memory change at activation. |
+| `QVS2503` | &1 processing units are outside partition &2's profile: &3 to &4. | A running partition's units stay within its profile's minimum and maximum units. Change the profile, then activate the partition again, for more or fewer. |
+| `QVS2504` | &1 processing units do not suit partition &2's &3 virtual processors: &4 to &5. | Each virtual processor needs 0.05 units at least and is worth 1.00 at most. Its virtual processors change at activation only. |
+| `QVS2505` | Pool &1 has not &2 processing units for partition &3: &4 are available to it. | What the partition holds now and what no partition of the pool holds are all it can have. Lower another partition's units first, or ask for less. |
+| `QVS2506` | The entitlement change is not valid: &1. | A change names at least one of the units, capping and weight; a weight is 0 to 255. |
+| `QVS2507` | Partition &1's entitlement was not changed: &2 | The partition keeps what it had. The host's system log has the reason. |
 | `QVS3001` | Storage pool name &1 is not valid. | A storage pool's name is 1 to 10 characters: the letters A to Z, the digits 0 to 9 and the underscore, with a letter first. |
 | `QVS3002` | A storage pool named &1 exists. | Every storage pool of a host has a name of its own. Choose another. |
 | `QVS3003` | There is no storage pool &1. | The host's storage pools are listed in Work with storage pools. |
@@ -187,6 +216,8 @@ wording.
 | `QVS3207` | The image &1 is not the size it was said to be, or is not whole 2048-byte blocks. | An image is uploaded whole, in one request that says its size; one that is cut off leaves nothing. |
 | `QVS3208` | Tape volume &1 cannot be made: &2. | A volume identifier is 1 to 6 of A to Z and 0 to 9; a volume's capacity is 16 MiB to 16 TiB. |
 | `QVS3209` | An import into the media library is under way. | One import from a device of the host runs at a time. The history says when it ends. |
+| `QVS3301` | Physical tape drive &1 is not on the host. | Its cable or power may be off. A partition that held it gets an error for each command until it comes back; it is given again at the partition's next activation. |
+| `QVS3302` | Command &1 was not sent to physical tape drive &2. | A partition's commands reach a physical drive through an allow-list (docs/STORAGE.md): firmware downloads and commands addressed past the drive are never passed. |
 | `QVS4001` | Switch name &1 is not valid. | A virtual switch's name is 1 to 10 characters: the letters A to Z, the digits 0 to 9 and the underscore, with a letter first. |
 | `QVS4002` | There is already a switch named &1. | No two switches of a host have one name. Choose another name. |
 | `QVS4003` | There is no switch named &1. | The host's switches are listed in Work with virtual switches. |
@@ -263,6 +294,11 @@ wording.
 | `QVS5147` | An update could not be installed into code slot &1: &2. | The slot is not pending, and the host runs on as before. Install the update again; if it fails again the load-source disk may be failing. The problem is cleared by an install that succeeds. |
 | `QVS5148` | The host's first process failed: &1. | The host stopped. Take the system log to the release's supplier. |
 | `QVS5149` | The storage service of the mirrored load source stopped: &1. | The host stopped, its data file system without a server. Restart the host. |
+| `QVS5150` | The host's IOMMU or interrupt remapping is off: &1. | No device can be released for partitions, and none is given to one. Everything else works. Turn VT-d or AMD-Vi and interrupt remapping on in the firmware's setup and restart the host. |
+| `QVS5151` | Released device &1 was not found at the IPL. | Partitions that require it are not activated; the others are. Put the device back and restart the host, or take it back at Service Tools option 10. |
+| `QVS5152` | Released device &1 was not given to the pass-through driver: its isolation group changed. | A firmware update or a card moved can change a group. Take the device back and release it again at Service Tools option 10, where the new group is shown. |
+| `QVS5153` | Device &1 did not reset and is fenced. | It is not given to any partition until the host is restarted. If it fails to reset again, service the device or take it back. |
+| `QVS5154` | Physical tape drive &1 went away. | Check its cable and power. The partition that held it gets an error for each command until it comes back. |
 | `QVS5201` | There is no host dump &1. | A host dump's name is HOSTDUMP- and the time it was taken. The list shows the dumps kept: at most 8, the oldest put out first. |
 | `QVS5202` | A host dump is being taken: &1. | One host dump is taken at a time. Wait for it to be written, then ask again. |
 | `QVS5301` | Update image &1 is not signed by a key this host trusts. | An image is installed only if its manifest is signed by a key the running release trusts, and nothing turns that off. Get the image from the release's supplier again. |

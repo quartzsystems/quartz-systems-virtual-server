@@ -33,6 +33,10 @@ pub mod kind {
     pub const CODE_SLOT: &str = "code-slot";
     /// One of the host's supervised services.
     pub const SERVICE: &str = "service";
+    /// A PCI device of the host.
+    pub const DEVICE: &str = "device";
+    /// A physical tape drive.
+    pub const TAPE_DRIVE: &str = "tape-drive";
 }
 
 /// How a condition opens a problem.
@@ -274,6 +278,21 @@ pub const CONDITIONS: &[Condition] = &[
         "A2012070",
         "A2001035, posted by the slot that came back, opens the problem.",
     ),
+    opens("A2013010", &PRB_NO_IOMMU, &[], &["C2013000"]),
+    opens(
+        "A2013030",
+        &PRB_DEVICE_GONE,
+        &[DEVICE],
+        &["C2013020", "C2013015"],
+    ),
+    opens(
+        "A2013035",
+        &PRB_DEVICE_GROUP_CHANGED,
+        &[DEVICE],
+        &["C2013020", "C2013015"],
+    ),
+    opens("A2013050", &PRB_DEVICE_FENCED, &[DEVICE], &["C2013020"]),
+    opens("A2013080", &PRB_DRIVE_GONE, &[TAPE_DRIVE], &["C2013050"]),
     opens("B2001000", &PRB_PID1_FAILED, &[], &[]),
     opens("B2003000", &PRB_STORAGE_LOST, &[], &[]),
 ];

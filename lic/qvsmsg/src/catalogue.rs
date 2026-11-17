@@ -13,9 +13,12 @@
 //! | `QVS21xx` | activation and resources |
 //! | `QVS22xx` | shared processor pools and host settings |
 //! | `QVS23xx` | the service channel: shut down, the panel, dumps, the console |
+//! | `QVS24xx` | physical I/O: devices released, given and reset |
+//! | `QVS25xx` | a running partition's entitlement |
 //! | `QVS30xx` | storage pools and their disks |
 //! | `QVS31xx` | virtual disks |
 //! | `QVS32xx` | the media library |
+//! | `QVS33xx` | physical tape drives |
 //! | `QVS40xx` | virtual switches |
 //! | `QVS41xx` | uplinks and the host's interfaces |
 //! | `QVS42xx` | partitions' ports |
@@ -467,6 +470,124 @@ catalogue! {
     CHANNEL_CLOSED = "QVS2317",
         "Partition &1's service channel was closed: &2.",
         "The system sent what is not the partition service protocol, or more than it allows. The channel is closed and the partition runs on; it is opened again when the system's service daemon says hello again.";
+
+    /// QSI1301: a location no device of the host has.
+    DEVICE_UNKNOWN = "QVS2401",
+        "No device of the host is at location &1.",
+        "A profile's physical I/O names the host's devices by location code, as Service Tools option 10 lists them. Check the code, or whether the device was removed from the machine.";
+    /// QSI1302.
+    DEVICE_NOT_RELEASED = "QVS2402",
+        "Device &1 is not released for partitions.",
+        "A device is given to a partition only after an operator releases it at the host, at Service Tools option 10. Release it there, or take it out of the profile.";
+    /// QSI1303: another partition holds the device or drive.
+    DEVICE_HELD = "QVS2403",
+        "Device &1 is held by partition &2.",
+        "A device is one partition's at a time. It is given back when that partition ends.";
+    /// QSI1304: a profile names part of an isolation group.
+    DEVICE_GROUP_SPLIT = "QVS2404",
+        "Device &1 cannot be given without &2.",
+        "The host's IOMMU cannot tell the devices of one isolation group apart, so they go to one partition together or not at all. Name every device of the group in the profile, or none of them.";
+    /// QSI1305: it cannot be given now; the reason follows.
+    DEVICE_NOT_ASSIGNABLE = "QVS2405",
+        "Device &1 cannot be given now: &2",
+        "Service Tools option 10 shows why a device cannot be given. A device fenced after a failed reset is given again once the host has been restarted.";
+    /// A device the host uses.
+    DEVICE_HOST_USES = "QVS2406",
+        "Device &1 is the host's: &2.",
+        "The controllers of the load source and of every storage pool's disks, the management interface, every uplink, the console's display adapter and the PCI bridges stay the host's. They cannot be released.";
+    /// A device whose isolation group has one the host uses.
+    DEVICE_GROUP_HOST = "QVS2407",
+        "Device &1 shares its isolation group with &2, which is the host's: &3.",
+        "A group goes to a partition whole, and the host keeps that device, so no device of the group can be released. Another slot may put the device in a group of its own.";
+    /// No reset.
+    DEVICE_NO_RESET = "QVS2408",
+        "Device &1 cannot be reset alone.",
+        "A device is reset before a partition is given it and after the partition ends, so that nothing of one partition reaches the next. One with no function-level, power-management or bus reset cannot be released.";
+    /// No message-signalled interrupts.
+    DEVICE_NO_MSI = "QVS2409",
+        "Device &1 cannot signal message interrupts.",
+        "A partition's device interrupts by MSI or MSI-X only, which the host's interrupt remapping checks. A device with line interrupts alone cannot be released.";
+    /// The IOMMU is off.
+    NO_IOMMU = "QVS2410",
+        "The host's IOMMU is not on.",
+        "No device can be released without DMA remapping: a device given to a partition could reach the whole machine's memory. Turn VT-d or AMD-Vi on in the firmware's setup and restart the host.";
+    /// Interrupt remapping is off.
+    NO_REMAPPING = "QVS2411",
+        "The host's interrupts are not remapped.",
+        "No device can be released without interrupt remapping: a device given to a partition could send any interrupt to the host. Turn interrupt remapping on in the firmware's setup (with VT-d or AMD-Vi) and restart the host.";
+    /// A device fenced after a failed reset.
+    DEVICE_FENCED = "QVS2412",
+        "Device &1 did not reset and is fenced until the host is restarted.",
+        "A device that does not reset could carry one partition's data to the next, so it is not given again. Restart the host; if it fails again, service the device.";
+    /// A released device not on the host.
+    DEVICE_GONE = "QVS2413",
+        "Released device &1 is not on the host.",
+        "It was released for partitions and was not found at this IPL. Put it back, or take it back at Service Tools option 10 so that it is released no more.";
+    /// A released device whose group changed.
+    DEVICE_GROUP_CHANGED = "QVS2414",
+        "The isolation group of released device &1 is not what it was: &2.",
+        "The group was checked when the device was released; it changed since, so the device was not given to the pass-through driver. Take it back and release it again at Service Tools option 10.";
+    /// A device a profile names cannot be taken back.
+    DEVICE_NAMED = "QVS2415",
+        "Device &1 is named by &2.",
+        "A device a profile names stays released. Take it out of every profile first.";
+    /// Already released.
+    DEVICE_RELEASED_ALREADY = "QVS2416",
+        "Device &1 is released already.",
+        "Nothing was changed.";
+    /// The device could not be bound or unbound.
+    DEVICE_NOT_BOUND = "QVS2417",
+        "Device &1 could not be given to &2: &3",
+        "The kernel refused the driver. The device is as it was. The host's system log has the kernel's message.";
+    /// A device that is not required was left out of an activation.
+    DEVICE_LEFT_OUT = "QVS2418",
+        "Device &1 was left out of partition &2: &3",
+        "The device is not required, so the partition was activated without it. Mark it required to have the activation fail instead.";
+    /// The name typed to release a device is not its location code.
+    DEVICE_CONFIRM = "QVS2419",
+        "&1 is not the location code of the device to be released.",
+        "A release is confirmed by typing the device's location code in full, as the panel shows it.";
+    /// QSI1306.
+    NOT_A_DRIVE = "QVS2420",
+        "Location &1 is not a tape drive of the host.",
+        "A tape device names a volume of the media library, or a physical tape drive as @ and its location code. Service Tools option 10 lists the host's tape drives.";
+    /// QSI1307.
+    DRIVE_SLOT_PHYSICAL = "QVS2421",
+        "The tape device in slot &1 of partition &2 is the physical drive &3.",
+        "A physical drive's cartridge is changed by hand at the drive; only a virtual drive's volume is mounted and unmounted from a console.";
+    /// The device could not be handed to the VMM.
+    DEVICE_NOT_OPENED = "QVS2422",
+        "Device &1 could not be opened for partition &2: &3",
+        "The device stays released and is not held. The host's system log has the kernel's message.";
+
+    /// QSI1401.
+    ENTITLEMENT_NOT_RUNNING = "QVS2501",
+        "Partition &1 is not running.",
+        "A partition's entitlement changes while it runs; one that is not activated takes its profile's at its activation.";
+    /// QSI1402.
+    ENTITLEMENT_DEDICATED = "QVS2502",
+        "Partition &1 has dedicated processors.",
+        "Only a shared-processor partition's processing units, capping and weight change while it runs. Dedicated processors, virtual processors and memory change at activation.";
+    /// QSI1403.
+    ENTITLEMENT_OUTSIDE = "QVS2503",
+        "&1 processing units are outside partition &2's profile: &3 to &4.",
+        "A running partition's units stay within its profile's minimum and maximum units. Change the profile, then activate the partition again, for more or fewer.";
+    /// QSI1404.
+    ENTITLEMENT_VIRTUALS = "QVS2504",
+        "&1 processing units do not suit partition &2's &3 virtual processors: &4 to &5.",
+        "Each virtual processor needs 0.05 units at least and is worth 1.00 at most. Its virtual processors change at activation only.";
+    /// QSI1405.
+    ENTITLEMENT_POOL_SHORT = "QVS2505",
+        "Pool &1 has not &2 processing units for partition &3: &4 are available to it.",
+        "What the partition holds now and what no partition of the pool holds are all it can have. Lower another partition's units first, or ask for less.";
+    /// Nothing to change, or a weight out of range.
+    ENTITLEMENT_INVALID = "QVS2506",
+        "The entitlement change is not valid: &1.",
+        "A change names at least one of the units, capping and weight; a weight is 0 to 255.";
+    /// The kernel's controls refused the change.
+    ENTITLEMENT_NOT_APPLIED = "QVS2507",
+        "Partition &1's entitlement was not changed: &2",
+        "The partition keeps what it had. The host's system log has the reason.";
     /// A storage pool's name breaks the naming rule.
     SPOOL_NAME_INVALID = "QVS3001",
         "Storage pool name &1 is not valid.",
@@ -607,6 +728,15 @@ catalogue! {
     IMPORT_BUSY = "QVS3209",
         "An import into the media library is under way.",
         "One import from a device of the host runs at a time. The history says when it ends.";
+
+    /// A physical tape drive went away.
+    DRIVE_GONE = "QVS3301",
+        "Physical tape drive &1 is not on the host.",
+        "Its cable or power may be off. A partition that held it gets an error for each command until it comes back; it is given again at the partition's next activation.";
+    /// A command outside the allow-list.
+    DRIVE_COMMAND_REFUSED = "QVS3302",
+        "Command &1 was not sent to physical tape drive &2.",
+        "A partition's commands reach a physical drive through an allow-list (docs/STORAGE.md): firmware downloads and commands addressed past the drive are never passed.";
     /// A switch's name that is not one.
     SWITCH_NAME_INVALID = "QVS4001",
         "Switch name &1 is not valid.",
@@ -911,6 +1041,27 @@ catalogue! {
     PRB_STORAGE_LOST = "QVS5149",
         "The storage service of the mirrored load source stopped: &1.",
         "The host stopped, its data file system without a server. Restart the host.";
+
+    /// A2013010.
+    PRB_NO_IOMMU = "QVS5150",
+        "The host's IOMMU or interrupt remapping is off: &1.",
+        "No device can be released for partitions, and none is given to one. Everything else works. Turn VT-d or AMD-Vi and interrupt remapping on in the firmware's setup and restart the host.";
+    /// A2013030.
+    PRB_DEVICE_GONE = "QVS5151",
+        "Released device &1 was not found at the IPL.",
+        "Partitions that require it are not activated; the others are. Put the device back and restart the host, or take it back at Service Tools option 10.";
+    /// A2013035.
+    PRB_DEVICE_GROUP_CHANGED = "QVS5152",
+        "Released device &1 was not given to the pass-through driver: its isolation group changed.",
+        "A firmware update or a card moved can change a group. Take the device back and release it again at Service Tools option 10, where the new group is shown.";
+    /// A2013050.
+    PRB_DEVICE_FENCED = "QVS5153",
+        "Device &1 did not reset and is fenced.",
+        "It is not given to any partition until the host is restarted. If it fails to reset again, service the device or take it back.";
+    /// A2013080.
+    PRB_DRIVE_GONE = "QVS5154",
+        "Physical tape drive &1 went away.",
+        "Check its cable and power. The partition that held it gets an error for each command until it comes back.";
     /// No host dump of that name.
     HOST_DUMP_MISSING = "QVS5201",
         "There is no host dump &1.",

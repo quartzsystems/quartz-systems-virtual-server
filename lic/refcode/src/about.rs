@@ -47,6 +47,26 @@ pub fn interface(name: &str, location: &str) -> About {
     }
 }
 
+/// A PCI device of the host, named by its location code.
+#[must_use]
+pub fn device(location: &str) -> About {
+    About {
+        location: location.into(),
+        ..of(kind::DEVICE, location)
+    }
+}
+
+/// A physical tape drive, named by its location code, with its serial
+/// number.
+#[must_use]
+pub fn tape_drive(location: &str, serial: &str) -> About {
+    About {
+        location: location.into(),
+        serial: serial.into(),
+        ..of(kind::TAPE_DRIVE, location)
+    }
+}
+
 /// A virtual switch.
 #[must_use]
 pub fn switch(name: &str) -> About {

@@ -119,6 +119,11 @@ posted with.
 | `A2012010` | no | An image refused is answered to whoever staged it, with why, and is not kept. | | | |
 | `A2012030` | yes | An update could not be installed into code slot &1: &2. | `QVS5147` | code-slot | `C2012040` |
 | `A2012070` | no | A2001035, posted by the slot that came back, opens the problem. | | | |
+| `A2013010` | yes | The host's IOMMU or interrupt remapping is off: &1. | `QVS5150` | the host | `C2013000` |
+| `A2013030` | yes | Released device &1 was not found at the IPL. | `QVS5151` | device | `C2013020`, `C2013015` |
+| `A2013035` | yes | Released device &1 was not given to the pass-through driver: its isolation group changed. | `QVS5152` | device | `C2013020`, `C2013015` |
+| `A2013050` | yes | Device &1 did not reset and is fenced. | `QVS5153` | device | `C2013020` |
+| `A2013080` | yes | Physical tape drive &1 went away. | `QVS5154` | tape-drive | `C2013050` |
 | `B2001000` | yes | The host's first process failed: &1. | `QVS5148` | the host | a person only |
 | `B2003000` | yes | The storage service of the mirrored load source stopped: &1. | `QVS5149` | the host | a person only |
 <!-- end of problems -->
