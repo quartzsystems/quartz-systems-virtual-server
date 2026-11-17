@@ -156,7 +156,9 @@ pub fn over_qsi(run: &Run<'_>) -> Result<String, String> {
     };
     qsictl(&["init"])?;
     qsictl(&["pair", &q.address, &password, "--as", "vs"])?;
-    to_pairing(&mut q, deadline)?;
+    // A second pairing from option 4's menu.
+    q.guest.type_keys(crate::qemu::term::key::F12)?;
+    crate::suite::install::titled(&mut q.guest, crate::suite::qsi::PAIRING, deadline)?;
     let (password, _) = start_pairing(&mut q, deadline)?;
     let id = crate::suite::qsi::identity("PIO")?;
     let fingerprint = pair(&q, &id, &password, "PIO")?.fingerprint;
