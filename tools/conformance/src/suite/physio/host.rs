@@ -33,10 +33,13 @@ fn all_passed(run: &Run<'_>) -> Result<Vec<Passed>, String> {
     let mut all = passed(run)?;
     let shared = run.file("shared.img");
     blank(&shared, 1 << 30)?;
+    let beside = run.file("beside.img");
+    blank(&beside, 64 << 20)?;
     all.push(Passed::Shared {
         place: PASSED_SHARED,
         path: shared,
         serial: SHARED_SERIAL.into(),
+        beside,
     });
     Ok(all)
 }
@@ -150,7 +153,7 @@ pub fn refused(run: &Run<'_>) -> Result<String, String> {
         }
         said_why.push(format!("{what} {location}: `{}`", why.text));
     }
-    // The adapter in the pool member's group.
+    // The controller in the pool member's group.
     let beside = format!("P0000-B00-D{PASSED_SHARED:02X}-F1");
     let why = not_releasable(g, &beside)?;
     if !why.is(&qvsmsg::DEVICE_GROUP_HOST) || !why.text.contains(&pool_member) {

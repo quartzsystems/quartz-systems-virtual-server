@@ -34,6 +34,10 @@ pub fn passed(run: &Run<'_>) -> Result<Vec<Passed>, String> {
     // Blank at each rig: what a partition finds on it is this run's.
     let nvme = run.file("nvme.img");
     blank(&nvme, NVME_BYTES)?;
+    let pair = [run.file("pair0.img"), run.file("pair1.img")];
+    for p in &pair {
+        blank(p, NVME_BYTES)?;
+    }
     Ok(vec![
         Passed::Nic {
             place: PASSED_NIC,
@@ -44,7 +48,10 @@ pub fn passed(run: &Run<'_>) -> Result<Vec<Passed>, String> {
             path: nvme,
             serial: NVME_SERIAL.into(),
         },
-        Passed::Pair { place: PASSED_PAIR },
+        Passed::Pair {
+            place: PASSED_PAIR,
+            paths: pair,
+        },
     ])
 }
 

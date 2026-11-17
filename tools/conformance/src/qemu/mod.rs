@@ -157,15 +157,20 @@ pub enum Passed {
         /// Its serial number.
         serial: String,
     },
-    /// Two Ethernet functions of one device, which share an isolation
-    /// group: functions 0 and 1 of the place.
+    /// Two `NVMe` functions of one device, which share an isolation
+    /// group: functions 0 and 1 of the place, each with a namespace in
+    /// its file. Not Intel's: Linux takes an Intel root-complex
+    /// endpoint for isolated whatever its neighbours
+    /// (`pci_quirk_rciep_acs`), so two e1000e would not share one.
     Pair {
         /// Its place.
         place: u8,
+        /// The functions' namespaces.
+        paths: [PathBuf; 2],
     },
-    /// A disk's virtio controller as function 0 and an Ethernet
-    /// function as function 1 of one place: one group, which the host
-    /// keeps once the disk is a pool's.
+    /// A disk's virtio controller as function 0 and an `NVMe` function
+    /// as function 1 of one place: one group, which the host keeps
+    /// once the disk is a pool's.
     Shared {
         /// Its place.
         place: u8,
@@ -173,6 +178,8 @@ pub enum Passed {
         path: PathBuf,
         /// The disk's serial number.
         serial: String,
+        /// The `NVMe` function's namespace.
+        beside: PathBuf,
     },
 }
 
@@ -424,6 +431,7 @@ pub fn args(l: &Launch) -> Vec<OsString> {
                 place,
                 path,
                 serial,
+                beside,
             } => {
                 a.push("-drive".into());
                 a.push(join(
@@ -438,16 +446,31 @@ pub fn args(l: &Launch) -> Vec<OsString> {
                     )
                     .into(),
                 );
-                a.extend(["-netdev".into(), format!("user,id=pio{i}n").into()]);
+                a.push("-drive".into());
+                a.push(join(
+                    &format!("if=none,id=pio{i}b,format=raw,file="),
+                    beside,
+                    "",
+                ));
                 a.push("-device".into());
-                a.push(format!("e1000e,netdev=pio{i}n,addr={place:#x}.1").into());
+                a.push(format!("nvme,drive=pio{i}b,serial=QSVSBESIDE,addr={place:#x}.1").into());
             }
-            Passed::Pair { place } => {
-                for f in 0..2 {
-                    a.extend(["-netdev".into(), format!("user,id=pio{i}f{f}").into()]);
+            Passed::Pair { place, paths } => {
+                for (f, path) in paths.iter().enumerate() {
+                    a.push("-drive".into());
+                    a.push(join(
+                        &format!("if=none,id=pio{i}f{f},format=raw,file="),
+                        path,
+                        "",
+                    ));
                     let multi = if f == 0 { ",multifunction=on" } else { "" };
                     a.push("-device".into());
-                    a.push(format!("e1000e,netdev=pio{i}f{f},addr={place:#x}.{f}{multi}").into());
+                    a.push(
+                        format!(
+                            "nvme,drive=pio{i}f{f},serial=QSVSPAIR{f},addr={place:#x}.{f}{multi}"
+                        )
+                        .into(),
+                    );
                 }
             }
         }
