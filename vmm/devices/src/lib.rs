@@ -18,8 +18,8 @@
 //! writes outside what the guest was given, or allocates by a length
 //! the guest names (`docs/VMM.md`).
 //!
-//! `unsafe` lives only in `sys`: two block-device ioctls and
-//! vhost-net's.
+//! `unsafe` lives only in `sys`: two block-device ioctls,
+//! vhost-net's and VFIO's.
 
 #![deny(unsafe_code)]
 
@@ -30,6 +30,11 @@ pub mod platform;
 #[cfg(target_os = "linux")]
 mod sys;
 pub mod virtio;
+
+/// VFIO's container, groups and devices, for the VMM to give a host's
+/// function to the partition.
+#[cfg(target_os = "linux")]
+pub use sys::vfio;
 
 /// The guest's memory.
 pub type Memory = vm_memory::GuestMemoryMmap<()>;

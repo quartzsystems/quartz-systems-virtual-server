@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 
 use qsi::any::AnyEvent;
-use qsi::host::{dumps, partitions, profiles, refcodes, vres};
+use qsi::host::{dumps, host, partitions, profiles, refcodes, vres};
 
 use crate::families::convert;
 use crate::families::vres as v;
@@ -104,6 +104,54 @@ pub fn partd(e: &partd::Event) -> AnyEvent {
             default: *default,
             time: *time,
         })),
+        E::Device { .. } => AnyEvent::Host(device_event(e)),
+    }
+}
+
+/// A device's change, as the host family's event of it.
+fn device_event(e: &partd::Event) -> host::Event {
+    use partd::proto::DeviceChange as C;
+    let partd::Event::Device {
+        location,
+        change,
+        partition,
+        name,
+        profile,
+        device,
+        note,
+        time,
+    } = e
+    else {
+        unreachable!("only a device's event is given")
+    };
+    let changed = || host::DeviceChanged {
+        location: location.clone(),
+        device: device.as_ref().map(convert::device),
+        time: *time,
+    };
+    let held = || host::DeviceHeld {
+        location: location.clone(),
+        holder: host::DeviceHolder {
+            partition: *partition,
+            name: name.clone(),
+            profile: profile.clone(),
+        },
+        time: *time,
+    };
+    match change {
+        C::Released => host::Event::Released(changed()),
+        C::TakenBack => host::Event::TakenBack(changed()),
+        C::Assigned => host::Event::Assigned(held()),
+        C::Returned => host::Event::Returned(held()),
+        C::ResetFailed => host::Event::ResetFailed(host::ResetFailed {
+            location: location.clone(),
+            partition: *partition,
+            note: note.as_ref().map_or_else(
+                || convert::note(&qvsmsg::DEVICE_FENCED.with(&[location])),
+                convert::note,
+            ),
+            time: *time,
+        }),
     }
 }
 

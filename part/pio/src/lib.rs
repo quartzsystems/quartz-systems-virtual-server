@@ -10,13 +10,17 @@
 //! - [`released`]: `physio.toml`, the devices released for partitions.
 //! - [`assign`]: what an activation is given of a profile's physical
 //!   I/O, and every reason it is not.
+//! - [`bind`]: the kernel's PCI files: a function given to the
+//!   pass-through driver or back, reset, its group.
 //!
-//! Like `resource`, this is arithmetic: it reads no file of the system
-//! and writes none. The partition manager and PID 1 bring it the facts.
+//! But for [`bind`], this is arithmetic, as `resource` is: it reads no
+//! file of the system and writes none. The partition manager and PID 1
+//! bring it the facts.
 
 #![forbid(unsafe_code)]
 
 pub mod assign;
+pub mod bind;
 pub mod device;
 pub mod released;
 

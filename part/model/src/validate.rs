@@ -442,13 +442,6 @@ pub fn profile(profile: &Profile, limits: Limits) -> Vec<Issued> {
     errors
 }
 
-/// The first section of `profile` that a later phase brings, as the
-/// message an activation refuses it with; `None` when it uses none.
-pub fn not_yet(profile: &Profile) -> Option<Issued> {
-    let refuse = |what: &str, phase: u32| qvsmsg::NOT_YET.with(&[what, &phase.to_string()]);
-    (!profile.physical_io.is_empty()).then(|| refuse("Physical I/O", 10))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,7 +463,6 @@ mod tests {
         assert_eq!(profile(&sample::dedicated(), LIMITS), []);
         assert_eq!(profile(&sample::shared(), LIMITS), []);
         assert_eq!(definition(&sample::definition()), []);
-        assert!(not_yet(&sample::shared()).is_none());
     }
 
     #[test]
@@ -612,19 +604,15 @@ mod tests {
             location: "P0000-B00-D05-F0".into(),
             required: true,
         });
+        // Optical and tape devices, IPL source D, Ethernet adapters and
+        // physical I/O are taken: the host's devices are the partition
+        // manager's to check against what the host has.
         assert_eq!(profile(&p, LIMITS), []);
-        // Optical and tape devices, IPL source D and Ethernet adapters
-        // are taken; physical I/O is Phase 10's.
-        let refused = not_yet(&p).unwrap();
-        assert!(refused.is(&qvsmsg::NOT_YET));
-        assert!(refused.text.contains("Phase 10"));
-        p.physical_io.clear();
         p.boot = Boot {
             source: IplSource::D,
             ..Boot::default()
         };
         assert_eq!(profile(&p, LIMITS), []);
-        assert_eq!(not_yet(&p), None);
         // Source D with no optical device is refused.
         p.optical.clear();
         assert_eq!(ids(&profile(&p, LIMITS)), [qvsmsg::NO_OPTICAL.id]);

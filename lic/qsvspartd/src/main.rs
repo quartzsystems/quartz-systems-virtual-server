@@ -48,6 +48,9 @@ fn main() {
         switches: vswitchd::socket(release::RUN_DIR),
         // A unit backed by a host path is a test image's alone.
         host_paths: cfg!(test_hooks),
+        // So is a device made to fail its reset (the test hooks write
+        // the file).
+        no_reset: cfg!(test_hooks).then(|| PathBuf::from("/run/qsvshook.noreset")),
     };
     // It returns only when it could not start.
     let e = run(&service);

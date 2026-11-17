@@ -52,6 +52,13 @@
 //! [[port]]                 # a port of the virtio-console, by its name
 //! name = "systems.quartz.qsvs.service.0"
 //! socket = "/proc/self/fd/7"   # a listening Unix socket
+//!
+//! vfio = "/proc/self/fd/8"     # the container, with physical I/O
+//!
+//! [[device]]               # a host's PCI function given whole
+//! location = "P0000-B00-D06-F0"
+//! address = "0000:00:06.0"
+//! group = "/proc/self/fd/9"    # its isolation group; one for its group
 //! ```
 //!
 //! A backing store, a medium or a volume the partition manager has
@@ -202,6 +209,34 @@ pub struct ConsolePort {
     pub socket: PathBuf,
 }
 
+/// A host's PCI function given to the partition whole, as written.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Device {
+    /// Its location code, for what is reported.
+    pub location: String,
+    /// Its PCI address on the host, `0000:00:06.0`.
+    pub address: String,
+    /// Its isolation group, opened by the partition manager: every
+    /// device of one group names the same descriptor.
+    pub group: PathBuf,
+}
+
+/// The most devices of physical I/O.
+pub const MAX_DEVICES: usize = 16;
+
+/// Whether `a` is a PCI address: `0000:00:06.0`.
+pub fn valid_address(a: &str) -> bool {
+    let b = a.as_bytes();
+    b.len() == 12
+        && b.iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b':',
+            10 => *c == b'.',
+            11 => (b'0'..=b'7').contains(c),
+            _ => c.is_ascii_hexdigit(),
+        })
+}
+
 /// The most ports of the virtio-console.
 pub const MAX_PORTS: usize = 4;
 /// A port name's most bytes.
@@ -256,6 +291,13 @@ pub struct Config {
     /// The virtio-console's ports; none, and it has no virtio-console.
     #[serde(default, rename = "port", skip_serializing_if = "Vec::is_empty")]
     pub ports: Vec<ConsolePort>,
+    /// The VFIO container, opened by the partition manager: with
+    /// devices, and only then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vfio: Option<PathBuf>,
+    /// The host's devices given whole.
+    #[serde(default, rename = "device", skip_serializing_if = "Vec::is_empty")]
+    pub devices: Vec<Device>,
 }
 
 /// A partition, as it is to be activated: a [`Config`] that was checked.
@@ -525,6 +567,45 @@ fn console_ports(config: &Config, paths: &[&PathBuf], net: &[Net]) -> Result<(),
     Ok(())
 }
 
+/// The devices of physical I/O: the container with them and only with
+/// them, every group a descriptor of its own that no other device of
+/// the partition has, no address twice.
+fn physical(config: &Config, taken: &[&PathBuf]) -> Result<(), ConfigError> {
+    if config.devices.len() > MAX_DEVICES {
+        return refuse(format!("device: {MAX_DEVICES} at most"));
+    }
+    match (&config.vfio, config.devices.is_empty()) {
+        (None, true) => return Ok(()),
+        (Some(_), true) => return refuse("vfio: only with devices"),
+        (None, false) => return refuse("device: needs vfio, the container"),
+        (Some(v), false) => {
+            if crate::net::descriptor(v).is_none() || taken.contains(&v) {
+                return refuse("vfio: a /proc/self/fd path, and no other device's");
+            }
+        }
+    }
+    let mut addresses: Vec<&str> = Vec::new();
+    for d in &config.devices {
+        if !valid_address(&d.address) || addresses.contains(&d.address.as_str()) {
+            return refuse(format!(
+                "device {}: address is a PCI address, no other device's",
+                d.location
+            ));
+        }
+        addresses.push(&d.address);
+        let fine = crate::net::descriptor(&d.group).is_some()
+            && !taken.contains(&&d.group)
+            && Some(&d.group) != config.vfio.as_ref();
+        if !fine || d.location.is_empty() || d.location.len() > 64 {
+            return refuse(format!(
+                "device {}: group is a /proc/self/fd path no virtual device has",
+                d.location
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn nets(
     config: &Config,
     partition_slots: &[u32],
@@ -684,6 +765,10 @@ pub fn check(config: Config) -> Result<Partition, ConfigError> {
         .collect();
     let net = nets(&config, &used, &paths)?;
     console_ports(&config, &paths, &net)?;
+    let mut taken = paths.clone();
+    taken.extend(net.iter().filter_map(|n| n.tap.as_ref()));
+    taken.extend(config.ports.iter().map(|p| &p.socket));
+    physical(&config, &taken)?;
     if side == Side::Media && optical.is_empty() {
         return refuse("side: d needs an optical device");
     }
@@ -738,6 +823,8 @@ pub fn sample(backing: &str) -> Config {
         tape: Vec::new(),
         net: Vec::new(),
         ports: Vec::new(),
+        vfio: None,
+        devices: Vec::new(),
     }
 }
 

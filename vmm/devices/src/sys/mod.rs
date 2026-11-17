@@ -4,7 +4,8 @@
 
 //! The ioctls this crate makes: two on a block device a LUN is kept
 //! in, to give a range back and to make a range read as zeros; and
-//! vhost-net's, with the tap's offloads ([`vhost`]).
+//! vhost-net's, with the tap's offloads ([`vhost`]); VFIO's, for a
+//! host's function given to the partition ([`vfio`]).
 
 #![allow(unsafe_code)]
 
@@ -13,6 +14,7 @@ use std::io;
 
 use rustix::ioctl::{Opcode, Setter, ioctl, opcode};
 
+pub mod vfio;
 pub mod vhost;
 
 /// `_IO(0x12, 119)`: `BLKDISCARD`.

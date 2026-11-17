@@ -26,7 +26,7 @@ use vswitchd::Calls as _;
 use super::channel::Links;
 use super::files;
 use super::sys;
-use crate::manager::{DumpOrder, Port, Record, System};
+use crate::manager::{DumpOrder, PhysioFacts, Port, Record, System};
 use crate::proto::{DumpInfo, Posted};
 
 /// A VMM to be watched.
@@ -62,6 +62,12 @@ pub struct Paths {
     pub host_paths: bool,
     /// The state directory: each partition's history is in it.
     pub state: PathBuf,
+    /// sysfs.
+    pub sys: PathBuf,
+    /// Where the VFIO container and groups are.
+    pub vfio: PathBuf,
+    /// A test image's file of addresses whose reset fails.
+    pub no_reset: Option<PathBuf>,
 }
 
 impl Paths {
@@ -130,6 +136,9 @@ pub struct Machine {
     /// The taps the switch service gave each partition, in order: the
     /// VMM's after the pool service's files.
     taps: BTreeMap<u32, Vec<File>>,
+    /// The VFIO container and groups opened for each partition: the
+    /// VMM's after the channel's sockets.
+    vfio: BTreeMap<u32, Vec<File>>,
 }
 
 impl Machine {
@@ -150,6 +159,7 @@ impl Machine {
             sockets: BTreeMap::new(),
             held: BTreeMap::new(),
             taps: BTreeMap::new(),
+            vfio: BTreeMap::new(),
         }
     }
 
@@ -197,6 +207,7 @@ impl Machine {
                     .into_iter()
                     .map(|l| File::from(std::os::fd::OwnedFd::from(l))),
             )
+            .chain(self.vfio.remove(&id).unwrap_or_default())
             .collect();
         let mut child = sys::spawn_with(&mut command, procs, files)?;
         // The whole configuration, then the end of its input.
@@ -597,4 +608,100 @@ impl System for Machine {
     fn kept_history(&mut self, id: u32) -> Vec<Posted> {
         files::read_history(&files::history_path(&self.paths.state, id))
     }
+
+    fn physio_facts(&mut self) -> PhysioFacts {
+        let roots = hostinv::Roots {
+            sys: self.paths.sys.clone(),
+            proc: PathBuf::from("/proc"),
+        };
+        let mut uses = pio::HostUses::default();
+        if let Ok(disks) = self.pools().disks() {
+            for d in disks {
+                if d.what.starts_with("Load source") {
+                    uses.load_source.push(d.location.clone());
+                }
+                if !d.pool.is_empty() {
+                    uses.pool_members.push((d.pool.clone(), d.location.clone()));
+                }
+            }
+        }
+        if let Ok(interfaces) = self.switch_service().interfaces() {
+            for i in interfaces {
+                if i.management {
+                    uses.management.push(i.location.clone());
+                }
+                if !i.switch.is_empty() {
+                    uses.uplinks.push((i.switch.clone(), i.location.clone()));
+                }
+            }
+        }
+        PhysioFacts {
+            pci: hostinv::pci(&roots),
+            iommu: hostinv::iommu(&roots),
+            uses,
+        }
+    }
+
+    fn bind(&mut self, address: &str, passthrough: bool) -> Result<(), String> {
+        if passthrough {
+            pio::bind::to_passthrough(&self.paths.sys, address)
+        } else {
+            pio::bind::to_host(&self.paths.sys, address)
+        }
+    }
+
+    fn reset(&mut self, address: &str) -> Result<(), String> {
+        if let Some(file) = &self.paths.no_reset
+            && fs::read_to_string(file).is_ok_and(|t| t.lines().any(|l| l.trim() == address))
+        {
+            return Err("the test hooks made its reset fail".into());
+        }
+        pio::bind::reset(&self.paths.sys, address)
+    }
+
+    fn open_vfio(
+        &mut self,
+        id: u32,
+        groups: &[u32],
+        first: usize,
+    ) -> Result<(String, Vec<(u32, String)>), String> {
+        let open = |path: PathBuf| {
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&path)
+                .map_err(|e| format!("{}: {e}", path.display()))
+        };
+        let mut files = vec![open(self.paths.vfio.join("vfio"))?];
+        let mut paths = Vec::new();
+        for (i, g) in groups.iter().enumerate() {
+            files.push(open(self.paths.vfio.join(g.to_string()))?);
+            paths.push((*g, format!("/proc/self/fd/{}", first + 1 + i)));
+        }
+        self.vfio.insert(id, files);
+        Ok((format!("/proc/self/fd/{first}"), paths))
+    }
+
+    fn keep_fenced(&mut self, fenced: &[String]) {
+        let mut text = fenced.join("\n");
+        text.push('\n');
+        if let Err(e) = state::atomic_write(&self.paths.run.join(FENCED), text.as_bytes()) {
+            self.log(&format!("the fenced devices were not kept: {e}"));
+        }
+    }
+
+    fn fenced(&mut self) -> Vec<String> {
+        fs::read_to_string(self.paths.run.join(FENCED))
+            .map(|t| {
+                t.lines()
+                    .map(str::to_string)
+                    .filter(|l| !l.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
+
+/// The devices fenced since the IPL, in the run directory: a manager
+/// started again keeps them, a host restarted forgets them.
+const FENCED: &str = "fenced";

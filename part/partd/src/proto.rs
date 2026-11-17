@@ -220,6 +220,7 @@ ipc::wire_struct!(Posted {
 
 /// Something that happened to a partition.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)] // made once and sent: a device's whole view
 pub enum Event {
     /// Its state changed.
     State {
@@ -304,6 +305,25 @@ pub enum Event {
         /// When.
         time: u64,
     },
+    /// A device of physical I/O changed hands.
+    Device {
+        /// Its location code.
+        location: String,
+        /// What happened.
+        change: DeviceChange,
+        /// The partition it was given to or given back by; 0 for none.
+        partition: u32,
+        /// That partition's name.
+        name: String,
+        /// The profile that partition was activated with.
+        profile: String,
+        /// The device as it is now; none when it is not on the host.
+        device: Option<pio::Device>,
+        /// Why it was fenced, for a reset that failed.
+        note: Option<Issued>,
+        /// When.
+        time: u64,
+    },
 }
 ipc::wire_enum!(Event {
     0 => State { id, name, state, time },
@@ -313,7 +333,43 @@ ipc::wire_enum!(Event {
     4 => Channel { id, name, service, time },
     5 => Dump { id, name, dump, error, time },
     6 => Profile { id, name, profile, revision, default, time },
+    7 => Device { location, change, partition, name, profile, device, note, time },
 });
+
+/// What happened to a device of physical I/O.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeviceChange {
+    /// It was released for partitions at the host.
+    Released,
+    /// It was taken back at the host.
+    TakenBack,
+    /// It was given to a partition at its activation.
+    Assigned,
+    /// It was given back at the partition's end, reset.
+    Returned,
+    /// It did not reset, and is fenced.
+    ResetFailed,
+}
+ipc::wire_enum!(DeviceChange {
+    0 => Released,
+    1 => TakenBack,
+    2 => Assigned,
+    3 => Returned,
+    4 => ResetFailed,
+});
+
+impl DeviceChange {
+    /// As the log says it.
+    pub fn word(self) -> &'static str {
+        match self {
+            DeviceChange::Released => "released",
+            DeviceChange::TakenBack => "taken back",
+            DeviceChange::Assigned => "given",
+            DeviceChange::Returned => "given back",
+            DeviceChange::ResetFailed => "fenced, its reset failed",
+        }
+    }
+}
 
 impl Event {
     /// The partition it is about.
@@ -326,6 +382,7 @@ impl Event {
             | Event::Channel { id, .. }
             | Event::Dump { id, .. }
             | Event::Profile { id, .. } => *id,
+            Event::Device { partition, .. } => *partition,
         }
     }
 }
@@ -464,6 +521,16 @@ ipc::rpc! {
     37 => fn change_at / ChangeAt (definition: Definition, revision: u64) -> Result<u64, Refused>;
     /// A partition's profiles with their revisions, by name.
     38 => fn profile_entries / ProfileEntries (id: u32) -> Result<Vec<ProfileEntry>, Refused>;
+    /// The host's PCI devices as physical I/O sees them, by location
+    /// code (`docs/PHYSICALIO.md`).
+    39 => fn devices / Devices () -> Vec<pio::Device>;
+    /// Release the device at `location` and the rest of its isolation
+    /// group for partitions, `confirm` the location typed in full. The
+    /// locations released.
+    40 => fn release / Release (location: String, confirm: String) -> Result<Vec<String>, Refused>;
+    /// Take the device at `location` and its group back for the host,
+    /// when no profile names any of them. The locations taken back.
+    41 => fn take_back / TakeBack (location: String) -> Result<Vec<String>, Refused>;
 }
 
 /// The most bytes of a dump in one frame of a read.

@@ -502,9 +502,11 @@ name = "devices"
 version = "0.1.0"
 dependencies = [
  "arch",
+ "libc",
  "rustix",
  "tape",
  "thiserror",
+ "vfio-bindings",
  "virtio-queue",
  "vm-memory",
  "vm-superio",
@@ -1422,9 +1424,11 @@ dependencies = [
  "console-port",
  "dump",
  "fdpass",
+ "hostinv",
  "ipc",
  "libc",
  "model",
+ "pio",
  "poold",
  "qsipart",
  "qsvmm",
@@ -1603,6 +1607,7 @@ dependencies = [
  "logd",
  "model",
  "partd",
+ "pio",
  "poold",
  "problem",
  "qsi",
@@ -2805,6 +2810,12 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vfio-bindings"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01ac6d51577178c2d364280bba14d43efaa948ff5557182c0fa0757207642af2"
 
 [[package]]
 name = "virtio-bindings"

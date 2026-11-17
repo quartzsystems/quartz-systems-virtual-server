@@ -185,12 +185,16 @@ impl<S: System> Manager<S> {
 
     /// Create a profile or replace the one of its name: its revision.
     pub(crate) fn put_kept(&mut self, id: u32, profile: Profile) -> Result<u64, Refused> {
-        let partition = self.partition(id)?;
+        self.partition(id)?;
         let mut profile = profile;
-        let errors = model::validate::profile(&profile, self.limits());
+        let mut errors = model::validate::profile(&profile, self.limits());
+        if errors.is_empty() {
+            errors = self.check_physical(&profile);
+        }
         if !errors.is_empty() {
             return Err(errors);
         }
+        let partition = self.partition(id)?;
         let new = !partition.profiles.contains_key(&profile.name);
         if new && partition.profiles.len() >= MAX_PROFILES {
             return Err(one(qvsmsg::TOO_MANY_PROFILES
@@ -887,6 +891,18 @@ impl<S: System> Partitions for Manager<S> {
 
     fn profile_entries(&mut self, id: u32) -> Result<Vec<ProfileEntry>, Refused> {
         self.entries(id)
+    }
+
+    fn devices(&mut self) -> Vec<pio::Device> {
+        self.device_list()
+    }
+
+    fn release(&mut self, location: String, confirm: String) -> Result<Vec<String>, Refused> {
+        self.release_device(&location, &confirm)
+    }
+
+    fn take_back(&mut self, location: String) -> Result<Vec<String>, Refused> {
+        self.take_back_device(&location)
     }
 
     fn named(&mut self, pool: String, name: String) -> Vec<String> {

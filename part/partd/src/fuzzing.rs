@@ -100,6 +100,27 @@ impl System for Null {
     fn kept_history(&mut self, _: u32) -> Vec<Posted> {
         Vec::new()
     }
+    fn physio_facts(&mut self) -> crate::manager::PhysioFacts {
+        crate::manager::PhysioFacts::default()
+    }
+    fn bind(&mut self, _: &str, _: bool) -> Result<(), String> {
+        Err("no machine".into())
+    }
+    fn reset(&mut self, _: &str) -> Result<(), String> {
+        Err("no machine".into())
+    }
+    fn open_vfio(
+        &mut self,
+        _: u32,
+        _: &[u32],
+        _: usize,
+    ) -> Result<(String, Vec<(u32, String)>), String> {
+        Err("no machine".into())
+    }
+    fn keep_fenced(&mut self, _: &[String]) {}
+    fn fenced(&mut self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 fn manager() -> &'static Mutex<(Manager<Null>, u32)> {

@@ -1,6 +1,6 @@
 [package]
 name = "devices"
-description = "A partition's devices: the 16550, the CMOS clock, the reset line and the power-off register; the PCI bus; the virtio-pci transport with virtio-scsi and virtio-rng"
+description = "A partition's devices: the 16550, the CMOS clock, the reset line and the power-off register; the PCI bus; the virtio-pci transport with virtio-scsi and virtio-rng; a host's function passed through"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,10 @@ rustix.workspace = true
 thiserror.workspace = true
 # The tape volume a virtual tape drive reads and writes.
 tape = { path = "../../stg/tape", version = "0.1.0" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+vfio-bindings.workspace = true
+libc.workspace = true
 
 [lints]
 workspace = true

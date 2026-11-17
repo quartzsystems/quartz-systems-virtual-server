@@ -22,8 +22,8 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 
 use arch::layout::{
-    ACPI_START, CMOS_PORT, I8042_PORT, IDENTITY_MAP_START, PCI_CONFIG_PORT, PCI_MEM_START, Ram,
-    SERIAL_IRQ, SERIAL_PORT, SLEEP_PORT, TSS_START,
+    ACPI_START, CMOS_PORT, I8042_PORT, IDENTITY_MAP_START, PCI_CONFIG_PORT, PCI_MEM_END,
+    PCI_MEM_START, Ram, SERIAL_IRQ, SERIAL_PORT, SLEEP_PORT, TSS_START,
 };
 use devices::Memory;
 use devices::bus::Bus;
@@ -32,6 +32,7 @@ use devices::legacy::power::Power;
 use devices::legacy::reset::Reset;
 use devices::legacy::serial::{Output, Serial};
 use devices::pci::PciBus;
+use devices::pci::passthrough::{Passthrough, Placer};
 use devices::platform::{Platform, Requests};
 use devices::virtio::rng::Rng;
 use devices::virtio::scsi::{Scsi, Unit, Units};
@@ -53,6 +54,10 @@ const NEEDED: [(Cap, &str); 6] = [
     (Cap::Pit2, "an in-kernel PIT"),
     (Cap::TscDeadlineTimer, "the TSC deadline timer"),
 ];
+
+/// The first KVM memory slot of a passed function's BARs: RAM has the
+/// ones below.
+const PASSED_SLOTS: u32 = 32;
 
 /// Bytes of PCI memory space each function is given for its BARs.
 const FUNCTION_SPACE: u32 = 0x1_0000;
@@ -199,7 +204,10 @@ pub enum Function {
 /// the reset line and the power-off register telling `requests`, and
 /// on the PCI bus a function for each of `adapters`, a virtio-scsi one
 /// with its units or a virtio-net one, then the virtio-console when
-/// there is one, and last virtio-rng reading `entropy`.
+/// there is one, virtio-rng reading `entropy`, and last each of the
+/// host's functions `passed`, by location code, its BARs mapped into
+/// the guest. The partition's memory is already mapped for their DMA.
+#[allow(clippy::too_many_arguments)] // each is a kind of device
 pub fn devices(
     vm: &Arc<VmFd>,
     memory: &Arc<Memory>,
@@ -208,6 +216,7 @@ pub fn devices(
     adapters: Vec<Function>,
     console: Option<devices::virtio::console::Console>,
     entropy: File,
+    passed: Vec<(String, devices::vfio::Device)>,
 ) -> io::Result<Devices> {
     let platform: Arc<dyn Platform> = Arc::new(KvmPlatform::new(vm.clone()));
     let requests = Arc::new(requests);
@@ -262,6 +271,26 @@ pub fn devices(
         pci.add(Arc::new(Mutex::new(function)))
             .ok_or_else(|| io::Error::other("the PCI bus is full"))?;
         base += FUNCTION_SPACE;
+    }
+    let mut placer = Placer::new(u64::from(base), PCI_MEM_END);
+    let mut slot = PASSED_SLOTS;
+    for (location, device) in passed {
+        let fail = |e: io::Error| io::Error::other(format!("{location}: {e}"));
+        let regions = device.regions();
+        let mapper = device.try_clone().map_err(fail)?;
+        let mut function =
+            Passthrough::new(Box::new(device), regions, platform.clone(), &mut placer)
+                .map_err(fail)?;
+        for m in function.mappings() {
+            let region = mapper.map(m.bar, m.offset, m.len).map_err(fail)?;
+            crate::sys::register_memory(vm, slot, m.guest, m.len, region.as_ptr()).map_err(fail)?;
+            // Mapped for as long as the VM is open: the process's life.
+            std::mem::forget(region);
+            slot += 1;
+        }
+        function.dma_ready();
+        pci.add(Arc::new(Mutex::new(function)))
+            .ok_or_else(|| io::Error::other("the PCI bus is full"))?;
     }
     let pci = Arc::new(Mutex::new(pci));
     put(

@@ -76,6 +76,22 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
+    /// The devices released for partitions; none when there is no
+    /// file. `Err` when the file is refused.
+    pub fn released(&self) -> Result<pio::Released, String> {
+        state::Store::at(&self.state_dir)
+            .load::<pio::Released>()
+            .map(Option::unwrap_or_default)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Keep the devices released.
+    pub fn save_released(&self, released: &pio::Released) -> Result<(), String> {
+        state::Store::at(&self.state_dir)
+            .save(released)
+            .map_err(|e| e.to_string())
+    }
+
     /// Every partition that is kept, in ID order, and what was
     /// refused: a file and the reason.
     pub fn load(&self) -> (Vec<Kept>, Vec<String>) {

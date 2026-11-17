@@ -10,10 +10,13 @@
 //! - [`bus`]: the host bridge: configuration access by the two ports
 //!   and by memory, and the BARs' addresses.
 //! - [`msix`]: the MSI-X table of a function.
+//! - [`passthrough`]: a host's function given whole, its configuration
+//!   space presented by the VMM.
 
 pub mod bus;
 pub mod config;
 pub mod msix;
+pub mod passthrough;
 
 pub use bus::{PciBus, PciDevice};
 pub use config::Config;

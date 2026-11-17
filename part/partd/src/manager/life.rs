@@ -117,9 +117,6 @@ impl<S: System> Manager<S> {
         if !errors.is_empty() {
             return Err(errors);
         }
-        if let Some(refused) = model::validate::not_yet(profile) {
-            return Err(vec![refused]);
-        }
         if source == Some(IplSource::D) && profile.optical.is_empty() {
             return Err(vec![qvsmsg::NO_OPTICAL.with(&[])]);
         }
@@ -364,6 +361,7 @@ impl<S: System> Manager<S> {
             }
         };
         self.channel_stores(id, &name, &mut stores)?;
+        let given = self.devices_for(id, &name, &profile, &mut stores)?;
         stores.ipl_type = ipl_type;
         let vcpus = self.host.vcpus(&current.processors);
         let written = config::build(
@@ -384,9 +382,12 @@ impl<S: System> Manager<S> {
                 self.system.give_back(id, &[]);
                 self.system.close_ports(id);
                 let _ = self.apply_base();
+                let locations: Vec<String> = given.iter().map(|g| g.location.clone()).collect();
+                self.return_devices(id, &name, &locations);
                 return Err(vec![qvsmsg::VMM_NOT_STARTED.with(&[&name, &e])]);
             }
         };
+        let devices: Vec<String> = given.iter().map(|g| g.location.clone()).collect();
         let sequence = self.sequence;
         self.sequence += 1;
         let record = Record {
@@ -397,6 +398,7 @@ impl<S: System> Manager<S> {
             sequence,
             state: State::Starting,
             no_channel: false,
+            devices: devices.clone(),
         };
         self.system.record(id, Some(&record));
         let time = self.system.now();
@@ -417,6 +419,7 @@ impl<S: System> Manager<S> {
                 ports,
                 kept: false,
                 uplinks_down: Vec::new(),
+                devices,
             });
             partition.last_profile = profile_name.to_string();
             partition.message = None;
@@ -425,6 +428,7 @@ impl<S: System> Manager<S> {
             partition.console = console_port::Console::new();
         }
         self.set_state(id, State::Starting);
+        self.assigned(id, &name, &given);
         self.publish(&Event::Resources {
             id,
             name,
@@ -432,6 +436,67 @@ impl<S: System> Manager<S> {
             time,
         });
         Ok(())
+    }
+
+    /// The host's devices of `profile` for the activation of `id`, each
+    /// reset, their container and groups opened into `stores` after the
+    /// service channel's sockets. What was held is given back when they
+    /// cannot be.
+    fn devices_for(
+        &mut self,
+        id: u32,
+        name: &str,
+        profile: &Profile,
+        stores: &mut config::Stores,
+    ) -> Result<Vec<super::physio::Given>, Vec<Issued>> {
+        let (given, left_out) = match self.assign_devices(id, name, &profile.physical_io) {
+            Ok(g) => g,
+            Err(refused) => {
+                self.system.give_back(id, &[]);
+                self.system.close_ports(id);
+                return Err(refused);
+            }
+        };
+        for why in &left_out {
+            self.system.log(&format!("{name}: {why}"));
+        }
+        if given.is_empty() {
+            return Ok(given);
+        }
+        let mut groups: Vec<u32> = given.iter().map(|g| g.group).collect();
+        groups.sort_unstable();
+        groups.dedup();
+        let taps = stores.net.iter().filter(|n| n.tap.is_some()).count();
+        let first = 3 + stores.files + taps + stores.ports.len();
+        match self.system.open_vfio(id, &groups, first) {
+            Ok((container, paths)) => {
+                stores.vfio = Some(container);
+                stores.devices = given
+                    .iter()
+                    .map(|g| qsvmm::config::Device {
+                        location: g.location.clone(),
+                        address: g.address.clone(),
+                        group: paths
+                            .iter()
+                            .find(|(n, _)| *n == g.group)
+                            .map(|(_, p)| p.into())
+                            .unwrap_or_default(),
+                    })
+                    .collect();
+                Ok(given)
+            }
+            Err(e) => {
+                self.system.give_back(id, &[]);
+                self.system.close_ports(id);
+                let locations: Vec<String> = given.iter().map(|g| g.location.clone()).collect();
+                self.return_devices(id, name, &locations);
+                Err(vec![qvsmsg::DEVICE_NOT_OPENED.with(&[
+                    &locations.join(", "),
+                    name,
+                    &e,
+                ])])
+            }
+        }
     }
 
     /// An activation that failed: the partition stays as it was, with
@@ -529,6 +594,7 @@ impl<S: System> Manager<S> {
         self.system.record(id, None);
         self.system.give_back(id, &[]);
         self.system.close_ports(id);
+        self.return_devices(id, &name, &run.devices);
         if let Err(e) = self.apply_base() {
             self.system.log(&format!("resource controls: {e}"));
         }
@@ -815,6 +881,7 @@ impl<S: System> Manager<S> {
             plan: None,
             kept: false,
             uplinks_down: Vec::new(),
+            devices: record.devices.clone(),
             media: partition
                 .profiles
                 .get(&record.profile)

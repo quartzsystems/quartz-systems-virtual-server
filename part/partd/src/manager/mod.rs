@@ -23,6 +23,7 @@ mod console;
 mod dumps;
 mod life;
 mod panel;
+mod physio;
 mod profiles;
 mod requests;
 mod service;
@@ -30,6 +31,7 @@ mod service;
 pub use console::VIEWER_QUEUE;
 pub use dumps::valid_name as valid_dump_name;
 pub use life::code_of;
+pub use physio::PhysioFacts;
 pub use service::{Answer, Port};
 #[cfg(test)]
 mod tests;
@@ -99,6 +101,8 @@ pub struct Record {
     pub state: State,
     /// Its system was found to have no service channel.
     pub no_channel: bool,
+    /// The host's devices it holds, by location code.
+    pub devices: Vec<String>,
 }
 ipc::wire_struct!(Record {
     id,
@@ -107,7 +111,8 @@ ipc::wire_struct!(Record {
     pid,
     sequence,
     state,
-    no_channel
+    no_channel,
+    devices
 });
 
 /// A dump to be written: where, and what its header says.
@@ -210,6 +215,28 @@ pub trait System {
     fn keep_history(&mut self, id: u32, history: &[Posted]);
     /// `id`'s history as it was kept.
     fn kept_history(&mut self, id: u32) -> Vec<Posted>;
+    /// The host's PCI devices now, its IOMMU and what it uses.
+    fn physio_facts(&mut self) -> PhysioFacts;
+    /// Give the function at `address` to the pass-through driver, or
+    /// back to the host's drivers.
+    fn bind(&mut self, address: &str, passthrough: bool) -> Result<(), String>;
+    /// Reset the function at `address` alone.
+    fn reset(&mut self, address: &str) -> Result<(), String>;
+    /// Open the VFIO container and the isolation groups `groups` for
+    /// `id`'s next VMM, kept by the machine until the VMM is started
+    /// with them, after the service channel's sockets: `first` is the
+    /// container's descriptor. The container's path and each group's.
+    fn open_vfio(
+        &mut self,
+        id: u32,
+        groups: &[u32],
+        first: usize,
+    ) -> Result<(String, Vec<(u32, String)>), String>;
+    /// Keep the fenced devices for a manager started again before the
+    /// host restarts.
+    fn keep_fenced(&mut self, fenced: &[String]);
+    /// The devices fenced since the host's IPL.
+    fn fenced(&mut self) -> Vec<String>;
 }
 
 /// How a shut down asked of the system goes on.
@@ -252,6 +279,8 @@ pub(crate) struct Run {
     pub(crate) kept: bool,
     /// The switches of its adapters whose uplink is down.
     pub(crate) uplinks_down: Vec<String>,
+    /// The host's devices it holds, by location code.
+    pub(crate) devices: Vec<String>,
 }
 
 /// One partition.
@@ -383,6 +412,10 @@ pub struct Manager<S: System> {
     pub(crate) ending: Option<Vec<u32>>,
     /// The next number for a request asked of a system, or a viewer.
     pub(crate) next_tag: u64,
+    /// The devices released for partitions.
+    pub(crate) released: pio::Released,
+    /// The devices fenced since the host's IPL, by location code.
+    pub(crate) fenced: Vec<String>,
 }
 
 impl<S: System> Manager<S> {
@@ -412,6 +445,15 @@ impl<S: System> Manager<S> {
                 (id, p)
             })
             .collect();
+        let released = store.released().unwrap_or_else(|reason| {
+            system.log(&format!("refused: {reason}"));
+            system.post(
+                refcode::PARTITION_STATE_INVALID.code,
+                &refcode::PARTITION_STATE_INVALID.text_with(&reason),
+            );
+            pio::Released::default()
+        });
+        let fenced = system.fenced();
         Self {
             system,
             store,
@@ -422,6 +464,8 @@ impl<S: System> Manager<S> {
             sequence: 1,
             ending: None,
             next_tag: 1,
+            released,
+            fenced,
         }
     }
 
@@ -490,6 +534,18 @@ impl<S: System> Manager<S> {
                 None => format!("{name}: dump {dump} written"),
                 Some(e) => format!("{name}: dump {dump} not written: {e}"),
             },
+            Event::Device {
+                location,
+                change,
+                name,
+                ..
+            } => {
+                if name.is_empty() {
+                    format!("device {location}: {}", change.word())
+                } else {
+                    format!("device {location}: {}, partition {name}", change.word())
+                }
+            }
         };
         self.system.log(&line);
         self.subscribers.retain(|s| s.send(event.clone()).is_ok());
@@ -515,6 +571,7 @@ impl<S: System> Manager<S> {
                 sequence: run.sequence,
                 state: partition.state,
                 no_channel: partition.service.facts.none,
+                devices: run.devices.clone(),
             };
             self.system.record(id, Some(&record));
         }

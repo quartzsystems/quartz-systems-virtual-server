@@ -39,6 +39,8 @@ pub mod dump;
 #[cfg(target_os = "linux")]
 pub mod machine;
 #[cfg(target_os = "linux")]
+pub mod physio;
+#[cfg(target_os = "linux")]
 pub mod run;
 #[cfg(target_os = "linux")]
 pub mod serial;

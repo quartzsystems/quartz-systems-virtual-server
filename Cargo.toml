@@ -123,6 +123,9 @@ linux-loader = { version = "0.14.0", default-features = false, features = ["bzim
 vm-superio = "0.8.2"
 vmm-sys-util = "0.15.0"
 acpi_tables = "0.2.1"
+# VFIO's structures for physical I/O (docs/PHASE10.md says why the calls
+# are the VMM's own and not vfio-ioctls').
+vfio-bindings = "0.7.0"
 
 anyhow = "1.0.104"
 thiserror = "2.0.21"

@@ -33,6 +33,89 @@ pub fn notes(issued: &[qvsmsg::Issued]) -> Vec<Note> {
         .collect()
 }
 
+/// QSI's identifier for a refusal of physical I/O (`QSI1301` to
+/// `QSI1307`) or of a running partition's entitlement (`QSI1401` to
+/// `QSI1405`), from the host's message; none for any other.
+pub fn qsi_identifier(id: &str) -> Option<&'static str> {
+    use qsi::host::host::physio as p;
+    use qsi::host::partition::entitlement as e;
+    Some(match id {
+        "QVS2401" => p::UNKNOWN_LOCATION,
+        "QVS2402" => p::NOT_RELEASED,
+        "QVS2403" => p::HELD,
+        "QVS2404" => p::GROUP_SPLIT,
+        "QVS2405" | "QVS2406" | "QVS2407" | "QVS2408" | "QVS2409" | "QVS2410" | "QVS2411"
+        | "QVS2412" | "QVS2413" | "QVS2414" => p::NOT_ASSIGNABLE,
+        "QVS2420" => p::NOT_A_DRIVE,
+        "QVS2421" => p::NOT_VIRTUAL,
+        "QVS2501" => e::NOT_RUNNING,
+        "QVS2502" => e::DEDICATED,
+        "QVS2503" => e::OUTSIDE_PROFILE,
+        "QVS2504" => e::VIRTUALS,
+        "QVS2505" => e::POOL_SHORT,
+        _ => return None,
+    })
+}
+
+/// A refusal's notes, led by QSI's identifier for the first when it
+/// has one: the host's own follow (`docs/QSI.md` section 7).
+pub fn led(notes: Vec<Note>) -> Vec<Note> {
+    let Some(ours) = notes.first().and_then(|n| qsi_identifier(&n.msgid)) else {
+        return notes;
+    };
+    let mut all = vec![Note {
+        msgid: ours.into(),
+        text: notes[0].text.clone(),
+        help: notes[0].help.clone(),
+    }];
+    all.extend(notes);
+    all
+}
+
+/// Why a device cannot be given, as QSI's open blocker: the host's own
+/// reasons after QSI's five.
+pub fn blocker(b: pio::Blocker) -> qsi::host::host::Blocker {
+    use qsi::host::host::Blocker as Q;
+    match b {
+        pio::Blocker::HostUses => Q::HostUses,
+        pio::Blocker::NotReleased => Q::NotReleased,
+        pio::Blocker::GroupNotReleased => Q::GroupNotReleased,
+        pio::Blocker::NoReset => Q::NoReset,
+        pio::Blocker::NoRemapping => Q::NoRemapping,
+        pio::Blocker::NoIommu => Q::Other(6),
+        pio::Blocker::NoMessageInterrupts => Q::Other(7),
+        pio::Blocker::Fenced => Q::Other(8),
+        pio::Blocker::Gone => Q::Other(9),
+        pio::Blocker::GroupChanged => Q::Other(10),
+    }
+}
+
+/// A device as QSI has it.
+pub fn device(d: &pio::Device) -> qsi::host::host::Device {
+    let hex = |s: &str| u32::from_str_radix(s, 16).unwrap_or(0);
+    qsi::host::host::Device {
+        location: d.location.clone(),
+        address: d.address.clone(),
+        class: hex(&d.class),
+        vendor: u16::try_from(hex(&d.vendor)).unwrap_or(0),
+        device: u16::try_from(hex(&d.device)).unwrap_or(0),
+        description: d.description.clone(),
+        released: d.released,
+        assignable: d.assignable(),
+        blocked: d.blocked.as_ref().map(|(b, why)| qsi::host::host::Blocked {
+            reason: blocker(*b),
+            note: note(why),
+        }),
+        group: d.group.unwrap_or(0),
+        with: d.with.clone(),
+        holder: d.holder.as_ref().map(|h| qsi::host::host::DeviceHolder {
+            partition: h.partition,
+            name: h.name.clone(),
+            profile: h.profile.clone(),
+        }),
+    }
+}
+
 /// One message of QS/VS's, as a QSI note.
 pub fn note(i: &qvsmsg::Issued) -> q::Note {
     q::Note {

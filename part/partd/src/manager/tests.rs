@@ -50,6 +50,12 @@ pub struct Fake {
     pub dump_orders: Vec<(u32, super::DumpOrder)>,
     pub dumps: BTreeMap<u32, Vec<crate::proto::DumpInfo>>,
     pub histories: BTreeMap<u32, Vec<crate::proto::Posted>>,
+    pub physio: super::PhysioFacts,
+    pub bound: Vec<(String, bool)>,
+    pub resets: Vec<String>,
+    pub no_reset: Vec<String>,
+    pub vfio: Vec<(u32, Vec<u32>, usize)>,
+    pub fenced: Vec<String>,
 }
 
 impl System for Fake {
@@ -193,6 +199,39 @@ impl System for Fake {
     }
     fn kept_history(&mut self, id: u32) -> Vec<crate::proto::Posted> {
         self.histories.get(&id).cloned().unwrap_or_default()
+    }
+    fn physio_facts(&mut self) -> super::PhysioFacts {
+        self.physio.clone()
+    }
+    fn bind(&mut self, address: &str, passthrough: bool) -> Result<(), String> {
+        self.bound.push((address.to_string(), passthrough));
+        Ok(())
+    }
+    fn reset(&mut self, address: &str) -> Result<(), String> {
+        self.resets.push(address.to_string());
+        if self.no_reset.iter().any(|a| a == address) {
+            return Err("the double does not reset it".into());
+        }
+        Ok(())
+    }
+    fn open_vfio(
+        &mut self,
+        id: u32,
+        groups: &[u32],
+        first: usize,
+    ) -> Result<(String, Vec<(u32, String)>), String> {
+        self.vfio.push((id, groups.to_vec(), first));
+        let paths = (first + 1..)
+            .zip(groups)
+            .map(|(fd, g)| (*g, format!("/proc/self/fd/{fd}")))
+            .collect();
+        Ok((format!("/proc/self/fd/{first}"), paths))
+    }
+    fn keep_fenced(&mut self, fenced: &[String]) {
+        self.fenced = fenced.to_vec();
+    }
+    fn fenced(&mut self) -> Vec<String> {
+        self.fenced.clone()
     }
 }
 
@@ -673,8 +712,8 @@ fn the_keylock_is_the_definition_s_unless_the_activation_says() {
     assert!(config.contains("keylock = \"secure\"") && config.contains("side = \"a\""));
     assert!(config.contains("vcpus = 4") && !config.contains("pin"));
     assert_eq!(m.list().remove(0).profile, "SHARED");
-    // IPL source D wants an optical drive; the sections of later
-    // phases are refused by the phase that brings them.
+    // IPL source D wants an optical drive; a device the host does not
+    // have is refused as the profile is put.
     m.ended(id, Ended::Exit(0));
     let refused = m
         .activate(id, String::new(), Some(IplSource::D), None)
@@ -686,9 +725,8 @@ fn the_keylock_is_the_definition_s_unless_the_activation_says() {
         location: "P0000-B00-D05-F0".into(),
         required: true,
     });
-    m.put_profile(id, later).unwrap();
-    let refused = m.activate(id, "NET".into(), None, None).unwrap_err();
-    assert!(refused[0].text.contains("Phase 10"), "{}", refused[0]);
+    let refused = m.put_profile(id, later).unwrap_err();
+    assert!(refused[0].is(&qvsmsg::DEVICE_UNKNOWN), "{}", refused[0]);
     assert_eq!(
         ids(&m.activate(id, "NOSUCH".into(), None, None).unwrap_err()),
         [qvsmsg::PROFILE_MISSING.id]
@@ -1140,4 +1178,153 @@ fn an_activation_opens_each_adapters_port_and_the_end_closes_them() {
     let listed = m.list().into_iter().find(|s| s.id == id).unwrap();
     assert_eq!(listed.ethernet.len(), 1);
     assert!(!listed.ethernet[0].link);
+}
+
+/// The harness's devices: a management adapter, a network adapter and
+/// a disk controller each alone, a pair that share a group.
+fn physio() -> super::PhysioFacts {
+    let pci = |address: &str, location: &str, class: &str, group: u32| state::doc::inventory::Pci {
+        address: address.into(),
+        vendor: "8086".into(),
+        device: "10d3".into(),
+        class: class.into(),
+        driver: None,
+        location: location.into(),
+        group: Some(group),
+        reset: vec!["flr".into()],
+        interrupts: vec!["msix".into()],
+        boot_display: false,
+    };
+    super::PhysioFacts {
+        pci: vec![
+            pci("0000:00:03.0", "P0000-B00-D03-F0", "020000", 3),
+            pci("0000:00:05.0", "P0000-B00-D05-F0", "020000", 5),
+            pci("0000:00:06.0", "P0000-B00-D06-F0", "010802", 6),
+            pci("0000:00:07.0", "P0000-B00-D07-F0", "020000", 7),
+            pci("0000:00:07.1", "P0000-B00-D07-F1", "020000", 7),
+        ],
+        iommu: state::doc::inventory::Iommu {
+            translation: true,
+            remapping: true,
+        },
+        uses: pio::HostUses {
+            management: vec!["P0000-B00-D03-F0-E0".into()],
+            ..pio::HostUses::default()
+        },
+    }
+}
+
+fn with_devices(m: &mut Manager<Fake>, id: u32, name: &str, wanted: &[(&str, bool)]) {
+    let mut p = m.profile(id, "NORMAL".into()).unwrap();
+    p.name = name.into();
+    p.physical_io = wanted
+        .iter()
+        .map(|(l, r)| model::PhysicalIo {
+            location: (*l).into(),
+            required: *r,
+        })
+        .collect();
+    m.put_profile(id, p).unwrap();
+}
+
+#[test]
+fn devices_are_released_given_whole_reset_and_fenced() {
+    let scratch = Scratch::new("physio");
+    let mut m = scratch.manager();
+    m.system.physio = physio();
+    let a = partition(&mut m, "FIRST");
+    let b = partition(&mut m, "SECOND");
+    // The host's own is not released; a release is typed in full.
+    let refused = m
+        .release("P0000-B00-D03-F0".into(), "P0000-B00-D03-F0".into())
+        .unwrap_err();
+    assert!(refused[0].is(&qvsmsg::DEVICE_HOST_USES), "{}", refused[0]);
+    let refused = m
+        .release("P0000-B00-D06-F0".into(), "P0000".into())
+        .unwrap_err();
+    assert!(refused[0].is(&qvsmsg::DEVICE_CONFIRM));
+    // The pair goes together.
+    let pair = m
+        .release("P0000-B00-D07-F1".into(), "P0000-B00-D07-F1".into())
+        .unwrap();
+    assert_eq!(pair, ["P0000-B00-D07-F1", "P0000-B00-D07-F0"]);
+    assert_eq!(m.system.bound.len(), 2);
+    for l in ["P0000-B00-D06-F0", "P0000-B00-D05-F0"] {
+        m.release(l.into(), l.into()).unwrap();
+    }
+    assert_eq!(Store::at(&scratch.0).released().unwrap().devices.len(), 4);
+    // A profile that names one of the pair is refused by name.
+    let mut split = m.profile(a, "NORMAL".into()).unwrap();
+    split.name = "SPLIT".into();
+    split.physical_io = vec![model::PhysicalIo {
+        location: "P0000-B00-D07-F0".into(),
+        required: true,
+    }];
+    let refused = m.put_profile(a, split).unwrap_err();
+    assert!(refused[0].is(&qvsmsg::DEVICE_GROUP_SPLIT), "{}", refused[0]);
+    // FIRST gets the controller, reset, its group opened after the
+    // channel's sockets.
+    with_devices(&mut m, a, "IO", &[("P0000-B00-D06-F0", true)]);
+    m.activate(a, "IO".into(), None, None).unwrap();
+    assert_eq!(m.system.resets, ["0000:00:06.0"]);
+    // After the service channel's two sockets, 3 and 4.
+    assert_eq!(m.system.vfio, [(a, vec![6], 5)]);
+    let (_, _, config) = m.system.launched.last().unwrap();
+    assert!(config.contains("vfio = \"/proc/self/fd/5\""), "{config}");
+    assert!(config.contains("address = \"0000:00:06.0\""), "{config}");
+    assert!(config.contains("group = \"/proc/self/fd/6\""), "{config}");
+    // Held: SECOND fails by name when it requires it, and goes without
+    // it when it does not.
+    with_devices(&mut m, b, "IO", &[("P0000-B00-D06-F0", true)]);
+    let refused = m.activate(b, "IO".into(), None, None).unwrap_err();
+    assert!(refused[0].is(&qvsmsg::DEVICE_HELD) && refused[0].text.contains("FIRST"));
+    with_devices(
+        &mut m,
+        b,
+        "SOME",
+        &[("P0000-B00-D06-F0", false), ("P0000-B00-D05-F0", true)],
+    );
+    m.activate(b, "SOME".into(), None, None).unwrap();
+    assert_eq!(m.system.vfio.last().unwrap().1, [5]);
+    // A device a profile names is not taken back; one held neither.
+    let refused = m.take_back("P0000-B00-D06-F0".into()).unwrap_err();
+    assert!(refused[0].is(&qvsmsg::DEVICE_HELD), "{}", refused[0]);
+    // FIRST's VMM is killed: the controller is reset and free again.
+    m.ended(a, Ended::Signal(9));
+    assert_eq!(m.system.resets.last().unwrap(), "0000:00:06.0");
+    let devices = m.devices();
+    let nvme = devices
+        .iter()
+        .find(|d| d.location == "P0000-B00-D06-F0")
+        .unwrap();
+    assert!(nvme.holder.is_none() && nvme.assignable());
+    // A reset that fails fences it until the host restarts.
+    m.system.no_reset.push("0000:00:06.0".into());
+    let refused = m.activate(a, "IO".into(), None, None).unwrap_err();
+    assert!(
+        refused[0].is(&qvsmsg::DEVICE_NOT_ASSIGNABLE),
+        "{}",
+        refused[0]
+    );
+    assert!(m.system.posted.iter().any(|(c, _)| c == "A2013050"));
+    assert_eq!(m.system.fenced, ["P0000-B00-D06-F0"]);
+    m.system.no_reset.clear();
+    let refused = m.activate(a, "IO".into(), None, None).unwrap_err();
+    assert!(refused[0].text.contains("fenced"), "{}", refused[0]);
+    // Taken back once no profile names it.
+    let refused = m.take_back("P0000-B00-D06-F0".into()).unwrap_err();
+    assert!(refused[0].is(&qvsmsg::DEVICE_NAMED), "{}", refused[0]);
+    m.delete_profile(a, "IO".into()).unwrap();
+    m.ended(b, Ended::Exit(0));
+    m.delete_profile(b, "IO".into()).unwrap();
+    m.delete_profile(b, "SOME".into()).unwrap();
+    assert_eq!(
+        m.take_back("P0000-B00-D06-F0".into()).unwrap(),
+        ["P0000-B00-D06-F0"]
+    );
+    assert!(m.system.fenced.is_empty());
+    assert_eq!(
+        m.system.bound.last().unwrap(),
+        &("0000:00:06.0".to_string(), false)
+    );
 }

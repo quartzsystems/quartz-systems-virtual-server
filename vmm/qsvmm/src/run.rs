@@ -368,6 +368,58 @@ fn guest_requests(ends: Sender<(End, String)>) -> Requests {
     })
 }
 
+/// The partition's processors, each entering at `entry`.
+fn create_vcpus(
+    hypervisor: &Hypervisor,
+    partition: &Partition,
+    entry: u64,
+) -> Result<Vec<kvm_ioctls::VcpuFd>, Stop> {
+    let config = &partition.config;
+    (0..config.vcpus)
+        .map(|index| {
+            vcpu::create(
+                &hypervisor.kvm,
+                &hypervisor.vm,
+                index,
+                config.vcpus,
+                config.threads_per_core,
+                entry,
+            )
+            .map_err(not_built("processors"))
+        })
+        .collect()
+}
+
+/// The partition's devices of physical I/O, their DMA mapped over the
+/// whole of `memory`: each with its location code, for the bus.
+fn map_devices(
+    physio: Option<crate::physio::Physio>,
+    memory: &devices::Memory,
+) -> Result<Vec<(String, devices::vfio::Device)>, Stop> {
+    let Some(p) = physio else {
+        return Ok(Vec::new());
+    };
+    let mapped = p
+        .map_memory(memory)
+        .map_err(not_built("a device of physical I/O"))?;
+    eprintln!(
+        "qsvmm: physical I/O: {} device(s) in {} group(s), {} MiB mapped for DMA",
+        p.devices.len(),
+        p.groups(),
+        mapped >> 20
+    );
+    let devices = p
+        .devices
+        .iter()
+        .map(|(d, v)| Ok((d.location.clone(), v.try_clone()?)))
+        .collect::<io::Result<Vec<_>>>()
+        .map_err(not_built("a device of physical I/O"))?;
+    // The container and the groups stay open as long as the process
+    // does: their devices' DMA needs them.
+    std::mem::forget(p);
+    Ok(devices)
+}
+
 /// The steps as root, the drop, and the start.
 fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     let root = sys::is_root();
@@ -399,6 +451,8 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         detail: format!("an optical or tape device: {e}"),
     })?;
     let nets = crate::net::open(partition).map_err(not_built("an Ethernet adapter"))?;
+    let physio = crate::physio::open(partition, &hypervisor.vm)
+        .map_err(not_built("a device of physical I/O"))?;
     let functions = functions(partition, adapters, drive_units, nets);
     post(
         &refcode::PARTITION_DISKS_OPENED,
@@ -410,6 +464,7 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
     );
     let entropy = File::open("/dev/urandom").map_err(not_built("/dev/urandom"))?;
     let (memory, loaded) = load_memory(partition, &hypervisor, &ram)?;
+    let passed = map_devices(physio, &memory)?;
     let (ends, ended) = mpsc::channel::<(End, String)>();
     let (tap, queue) = serial::queue();
     let requests = guest_requests(ends.clone());
@@ -424,21 +479,10 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         functions,
         console,
         entropy,
+        passed,
     )
     .map_err(not_built("devices"))?;
-    let mut vcpus = Vec::with_capacity(config.vcpus as usize);
-    for index in 0..config.vcpus {
-        let created = vcpu::create(
-            &hypervisor.kvm,
-            &hypervisor.vm,
-            index,
-            config.vcpus,
-            config.threads_per_core,
-            loaded.entry,
-        )
-        .map_err(not_built("processors"))?;
-        vcpus.push(created);
-    }
+    let vcpus = create_vcpus(&hypervisor, partition, loaded.entry)?;
     machine_built(partition)?;
 
     // From here on nothing needs root, and no thread exists yet.

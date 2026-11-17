@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use model::{ConsoleMode, Definition, IplSource, IplType, Keylock, Profile};
-use qsvmm::config::{Adapter, Config, Net, Optical, TapeDrive, Unit};
+use qsvmm::config::{Adapter, Config, Device, Net, Optical, TapeDrive, Unit};
 use resource::{Current, Vcpus};
 
 /// What the units and devices are kept in, as `qsvmm` names them: a
@@ -31,6 +31,10 @@ pub struct Stores {
     /// The IPL type of this activation, when it is not the profile's:
     /// control panel function 02's.
     pub ipl_type: Option<IplType>,
+    /// The VFIO container, with devices of physical I/O.
+    pub vfio: Option<String>,
+    /// The host's devices given, each with its group's descriptor.
+    pub devices: Vec<Device>,
 }
 
 /// The serial number of a unit whose profile gives none: the
@@ -132,6 +136,8 @@ pub fn build(
             .collect(),
         net: stores.net.clone(),
         ports: stores.ports.clone(),
+        vfio: stores.vfio.clone().map(Into::into),
+        devices: stores.devices.clone(),
     }
 }
 

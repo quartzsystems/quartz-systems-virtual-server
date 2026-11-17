@@ -16,6 +16,7 @@ state = { path = "../../base/state", version = "0.1.0" }
 # The services a request is translated to: their sockets' types and
 # clients.
 partd = { path = "../../part/partd", version = "0.1.0" }
+pio = { path = "../../part/pio", version = "0.1.0" }
 model = { path = "../../part/model", version = "0.1.0" }
 resource = { path = "../../part/resource", version = "0.1.0" }
 poold = { path = "../../stg/poold", version = "0.1.0" }

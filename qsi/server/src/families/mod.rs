@@ -150,7 +150,7 @@ pub(crate) fn local<T>(
     r: Result<Result<T, Vec<qvsmsg::Issued>>, ipc::WireError>,
 ) -> Result<T, Vec<Note>> {
     r.map_err(|e| down(name, &e))?
-        .map_err(|issued| convert::notes(&issued))
+        .map_err(|issued| convert::led(convert::notes(&issued)))
 }
 
 /// A local call that does not refuse.

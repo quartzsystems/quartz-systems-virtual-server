@@ -85,6 +85,9 @@ pub struct Service {
     pub switches: PathBuf,
     /// Whether a host path may back a unit: a test image's.
     pub host_paths: bool,
+    /// A file of PCI addresses whose reset is made to fail: a test
+    /// image's alone.
+    pub no_reset: Option<PathBuf>,
 }
 
 /// How often the pools are asked whether one failed.
@@ -429,6 +432,9 @@ pub fn run(service: &Service) -> io::Error {
         partitions: service.run_dir.join("partitions"),
         host_paths: service.host_paths,
         state: service.state_dir.clone(),
+        sys: PathBuf::from("/sys"),
+        vfio: PathBuf::from("/dev/vfio"),
+        no_reset: service.no_reset.clone(),
     };
     if let Err(e) = fs::create_dir_all(&paths.run) {
         return e;
