@@ -15,7 +15,7 @@ mod cpu;
 mod disks;
 mod memory;
 mod net;
-mod pci;
+pub(crate) mod pci;
 mod place;
 pub(crate) mod threads;
 
@@ -33,6 +33,19 @@ pub(crate) fn interfaces(roots: &Roots) -> Vec<state::doc::inventory::Interface>
     net::read(sys, &slots)
 }
 
+/// The IOMMU alone: what PID 1 checks at the IPL.
+pub(crate) fn iommu(roots: &Roots) -> state::doc::inventory::Iommu {
+    pci::iommu(&roots.sys, &roots.proc)
+}
+
+/// The PCI devices alone, as they are now: what the partition manager
+/// reads when it releases, gives and takes back devices.
+pub(crate) fn pci(roots: &Roots) -> Vec<state::doc::inventory::Pci> {
+    let table = smbios::table(&roots.sys);
+    let slots = place::slots(&roots.sys, &table);
+    pci::read(&roots.sys, &slots)
+}
+
 /// The whole inventory.
 pub(crate) fn inventory(roots: &Roots, kept_serial: Option<&str>) -> Inventory {
     let sys = &roots.sys;
@@ -47,6 +60,7 @@ pub(crate) fn inventory(roots: &Roots, kept_serial: Option<&str>) -> Inventory {
         disks: disks::read(sys, &slots),
         interfaces: net::read(sys, &slots),
         pci: pci::read(sys, &slots),
+        iommu: pci::iommu(sys, &roots.proc),
     }
 }
 

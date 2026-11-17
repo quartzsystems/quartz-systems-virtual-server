@@ -64,6 +64,20 @@ pub fn interfaces(roots: &Roots) -> Vec<state::doc::inventory::Interface> {
     read::interfaces(roots)
 }
 
+/// The IOMMU: whether it translates and remaps interrupts.
+pub fn iommu(roots: &Roots) -> state::doc::inventory::Iommu {
+    read::iommu(roots)
+}
+
+/// The PCI devices as they are now, with their isolation groups, resets
+/// and interrupts.
+pub fn pci(roots: &Roots) -> Vec<state::doc::inventory::Pci> {
+    read::pci(roots)
+}
+
+/// The interrupts a function's configuration space says it can signal.
+pub use read::pci::{interrupt_kinds, remapped};
+
 /// The serial DMI gives, when it is a real one: not empty and not a
 /// placeholder such as `Not Specified` or `To Be Filled By O.E.M.`.
 pub fn dmi_serial(roots: &Roots) -> Option<String> {

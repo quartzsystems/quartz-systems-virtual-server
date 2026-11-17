@@ -112,6 +112,32 @@ pub struct Pci {
     pub driver: Option<String>,
     /// The location code.
     pub location: String,
+    /// Its IOMMU isolation group: the functions the IOMMU cannot tell
+    /// apart from it. None without an IOMMU.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<u32>,
+    /// How the kernel can reset it alone, in its order: `flr`, `pm`,
+    /// `bus` and the like. Empty when it cannot.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reset: Vec<String>,
+    /// The interrupts it can signal: `msi`, `msix`, `intx`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interrupts: Vec<String>,
+    /// Whether the firmware's console was on it (a display adapter).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub boot_display: bool,
+}
+
+/// The IOMMU, as the kernel has it at the IPL.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Iommu {
+    /// DMA remapping: the IOMMU translates what devices reach.
+    #[serde(default)]
+    pub translation: bool,
+    /// Interrupt remapping: a device's messages are checked too.
+    #[serde(default)]
+    pub remapping: bool,
 }
 
 /// `inventory.toml`.
@@ -136,6 +162,9 @@ pub struct Inventory {
     /// The PCI devices, by address.
     #[serde(default)]
     pub pci: Vec<Pci>,
+    /// The IOMMU.
+    #[serde(default)]
+    pub iommu: Iommu,
 }
 
 impl Document for Inventory {
@@ -198,7 +227,15 @@ mod tests {
                 class: "020000".into(),
                 driver: Some("virtio-pci".into()),
                 location: "P0000-B00-D02-F0".into(),
+                group: Some(3),
+                reset: vec!["flr".into()],
+                interrupts: vec!["msix".into()],
+                boot_display: false,
             }],
+            iommu: Iommu {
+                translation: true,
+                remapping: true,
+            },
         };
         let text = render(&inv).unwrap();
         assert!(text.contains("[[disks]]"), "{text}");
