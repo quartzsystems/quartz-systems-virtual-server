@@ -45,6 +45,16 @@ const FAILURES: &[&str] = &[
     "is not ready",                        // CPF6760
     "The save ended",                      // CPF3794
     "Nothing named was found in the save", // CPF3780
+    // The same by identifier, which QS/400 puts before its own text
+    // where that is not the catalogue's (`docs/QS400_GUEST.md`).
+    "CPF6708",
+    "CPF6768",
+    "CPF6772",
+    "CPF6720",
+    "CPF6718",
+    "CPF6760",
+    "CPF3794",
+    "CPF3780",
     "not found",
     "not allowed",
     "not valid",
