@@ -34,6 +34,19 @@ pin was already QS/400's.
 | `qsi::host::model::Profile` gains `physical_io` | converted both ways (`qsi/server/src/families/convert.rs`) |
 | nothing else | the pin broke only the server's three exhaustive matches over the host, vres and partition families; format, both lint runs and every unit test passed at `5734221` |
 
+### Every earlier suite on the new pin
+
+In a clone at `5734221` with its own target, from images built there,
+one suite at a time: 123 of the 130 suites of Phases 0 to 9 passed in
+the first run, and the other 7 when each ran again alone
+(`partition-manager-restart`, `partition-identity`,
+`pool-pulled-mirrored`, `net-internal`, `net-service-kill`,
+`service-silent`, `qsi-two-consoles`). Each of the 7 had failed by time
+while a build or another suite's QEMU ran beside it; two of them by
+QS/400's own storage service ending in its partition (`B1001040`,
+`B1001060`), which did not happen again. The harness then gave no host
+an IOMMU; the acceptance run did (below).
+
 The answers to the open questions given with the phase: 44 kept as
 recommended (closed, `docs/OPEN_QUESTIONS.md`); 36 by Section 1
 (below); 6, 37, 40 and 43 unchanged.
