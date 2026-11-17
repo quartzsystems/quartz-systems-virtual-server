@@ -153,16 +153,23 @@ fn mark(guest: &mut Session, id: u32) -> Result<String, String> {
     // A data area of a name of its own in the job's QTEMP: its command
     // echoes the name, and its completion message names it again.
     let m = format!("QM{:04}", NEXT.fetch_add(1, Ordering::Relaxed));
-    enter(
-        guest,
-        id,
-        &format!("CRTDTAARA DTAARA(QTEMP/{m}) TYPE(*CHAR) LEN(1)"),
-    )?;
+    let command = format!("CRTDTAARA DTAARA(QTEMP/{m}) TYPE(*CHAR) LEN(1)");
+    enter(guest, id, &command)?;
     // The command's echo has the name too; the message is a second line.
+    // Keys typed while the screen was still being drawn can be lost: the
+    // name nowhere after 20 s, it is typed again, twice at most.
     let deadline = Instant::now() + Duration::from_mins(1);
+    let mut again = Instant::now() + Duration::from_secs(20);
+    let mut tries = 1;
     loop {
-        if screen(guest, id)?.text.matches(&m).count() >= 2 {
+        let shown = screen(guest, id)?.text.matches(&m).count();
+        if shown >= 2 {
             return Ok(m);
+        }
+        if shown == 0 && tries < 3 && Instant::now() >= again {
+            enter(guest, id, &command)?;
+            tries += 1;
+            again = Instant::now() + Duration::from_secs(20);
         }
         if Instant::now() >= deadline {
             let s = screen(guest, id)?.text;
