@@ -172,5 +172,7 @@ pub(super) fn answer(s: &mut Services, r: &Request) -> Answered {
             let interfaces = reached(VSWITCHD, s.vswitchd.interfaces())?;
             Reply::Hardware(hardware(&inventory, &disks, &interfaces))
         }
+        // Physical I/O's (bit 17), which this server does not offer.
+        Request::Devices(_) => return Err(vec![super::base::not_agreed()]),
     }))
 }

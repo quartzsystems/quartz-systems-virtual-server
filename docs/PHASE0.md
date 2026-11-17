@@ -9,12 +9,15 @@ Every QS/400 crate is a git dependency on
 `https://github.com/quartzsystems/quartz-systems-400` at one commit:
 
 ```
-39105ca27a1c49553b3bc659615987e6c260ca65
+2e950f9f641da2adf38feba0b75cd3a267bba657
 ```
 
-It has QS/400's handoff 19: QSI's `service` and `update` families,
-a system's own dumps in `base`, and `EventLog::resume` in `qsisess`
-(`docs/PHASE9.md`, Step 0). Phase 8 was built at `30e18c2e`, which had
+It has QS/400's handoff 20: QSI's physical I/O, the host's physical
+tape drives and a running partition's entitlement (`qsi::host`,
+`qsi::vres`, partition version 2; `docs/PHASE10.md`, Step 0). Phase 9
+was built at `39105ca2`, which had handoff 19: QSI's `service` and
+`update` families, a system's own dumps in `base`, and
+`EventLog::resume` in `qsisess`. Phase 8 was built at `30e18c2e`, which had
 handoff 18 (`qsi`, `qsisess`, `qsitrust`, the service channel TLV);
 Phase 7 at `5ce33f1`, which had handoff 17 (`qsipart`, the console
 port). Phase 6 ended at `a9d5c8a4`, which had QS/400's handoff 16:

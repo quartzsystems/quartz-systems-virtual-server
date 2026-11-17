@@ -109,6 +109,8 @@ pub(super) fn partition(s: &mut Services, r: partition::Request) -> Answered {
             local(PARTD, s.partd.restart(r.id))?;
             Reply::Restart(Empty)
         }
+        // Version 2 (bit 18), which this server does not offer.
+        Request::Entitlement(_) => return Err(vec![super::base::not_agreed()]),
     }))
 }
 

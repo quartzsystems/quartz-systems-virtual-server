@@ -231,6 +231,8 @@ pub(super) fn answer(s: &mut Services, r: Request) -> Answered {
         }
         // A stream's: the connection opens it.
         Request::ImageUpload(_) => Err(not_here()),
+        // Physical I/O's (bit 17), which this server does not offer.
+        Request::TapeDrives(_) => Err(vec![super::base::not_agreed()]),
     }?;
     Ok(AnyReply::Vres(reply))
 }
