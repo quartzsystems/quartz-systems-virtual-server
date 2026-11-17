@@ -71,8 +71,8 @@ mod tests {
     fn a_drive_behind_an_adapter_is_read_with_its_generic_device() {
         let tree = Tree::new("tapes");
         let dev = "sys/devices/pci0000:00/0000:00:08.0/host2/target2:0:3/2:0:3:0";
-        tree.file(&format!("{dev}/vendor"), "IBM     \n");
-        tree.file(&format!("{dev}/model"), "ULT3580-TD8     \n");
+        tree.file(&format!("{dev}/vendor"), "QUARTZ  \n");
+        tree.file(&format!("{dev}/model"), "LTO8 DRIVE      \n");
         tree.file(&format!("{dev}/type"), "1\n");
         let mut page = vec![0u8, 0x80, 0, 10];
         page.extend_from_slice(b"1013000123");
@@ -87,8 +87,8 @@ mod tests {
             found,
             [TapeDrive {
                 location: "P0000-B00-D08-F0-T0.0.3.0".into(),
-                vendor: "IBM".into(),
-                product: "ULT3580-TD8".into(),
+                vendor: "QUARTZ".into(),
+                product: "LTO8 DRIVE".into(),
                 serial: "1013000123".into(),
                 sg: "sg2".into(),
                 st: "st0".into(),

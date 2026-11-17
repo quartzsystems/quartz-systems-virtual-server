@@ -9,8 +9,10 @@
 //!   virtual tape drive.
 //! - [`devices`]: a host's devices given to partitions.
 //! - [`tools`]: a release at Service Tools option 10.
+//! - [`drive`]: tape pass-through against the double.
 
 pub mod devices;
+mod drive;
 mod host;
 mod tape;
 mod tools;
@@ -31,4 +33,5 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("pio-held", host::held),
     ("pio-reset", host::reset),
     ("pio-restart", host::restart),
+    ("pio-tape-double", drive::double),
 ];
