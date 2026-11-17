@@ -13,7 +13,7 @@ use partd::{Calls as _, State};
 use poold::proto::Calls as _;
 use qsvshook::proto::command;
 
-use super::devices::{activate, end, located, passed, probed, profile, release};
+use super::devices::{activate, end, located, passed, probed, profile, profile_on, release};
 use crate::qemu::image::blank;
 use crate::qemu::session::Session;
 use crate::qemu::{Far, PASSED_NIC, PASSED_NVME, PASSED_PAIR, PASSED_SHARED, Passed, UplinkNic};
@@ -44,11 +44,17 @@ fn all_passed(run: &Run<'_>) -> Result<Vec<Passed>, String> {
     Ok(all)
 }
 
+/// The second copy of the test image: `/dev/vdc`, for a partition
+/// beside the first.
+const SECOND_UNIT: &str = "/dev/vdc";
+
 /// A host with the IOMMU or without it, its management NIC, an uplink
-/// NIC, the devices, the test image's copy as a unit.
+/// NIC, the devices, two copies of the test image as units.
 fn rig<'a>(run: &Run<'a>, iommu: bool, devices: Vec<Passed>) -> Result<Guest<'a>, String> {
     fresh_host(run)?;
-    let units = vec![unit(run, run.disk)?];
+    let second = run.file("unit2.img");
+    crate::qemu::image::sparse_copy(run.disk, &second)?;
+    let units = vec![unit(run, run.disk)?, second];
     let mut l = launch(run, &units)?;
     l.iommu = iommu;
     l.passed = devices;
@@ -256,7 +262,7 @@ pub fn held(run: &Run<'_>) -> Result<String, String> {
     let second = manager::partition(g, "SECOND")?;
     activate(g, first, profile("IO", &[(&nvme, true)]))?;
     probed(g, "FIRST", "DISK nvme", run)?;
-    let p = profile("IO", &[(&nvme, true), (&nic, true)]);
+    let p = profile_on("IO", &[(&nvme, true), (&nic, true)], SECOND_UNIT);
     said(partd(g)?.put_profile(second, p))?;
     let refused = partd(g)?
         .activate(second, "IO".into(), None, None)
@@ -265,7 +271,11 @@ pub fn held(run: &Run<'_>) -> Result<String, String> {
     if !refused[0].is(&qvsmsg::DEVICE_HELD) || !refused[0].text.contains("FIRST") {
         return Err(format!("required and held: {refused:?}"));
     }
-    activate(g, second, profile("SOME", &[(&nvme, false), (&nic, true)]))?;
+    activate(
+        g,
+        second,
+        profile_on("SOME", &[(&nvme, false), (&nic, true)], SECOND_UNIT),
+    )?;
     let listed = probed(g, "SECOND", "GUEST", run)?;
     if listed.contains("nvme") {
         return Err(format!("SECOND was given the held controller: {listed}"));

@@ -90,7 +90,12 @@ pub fn release(guest: &mut Session, location: &str) -> Result<Vec<String>, Strin
 /// A profile of the test image's copy with `devices`, each required or
 /// not.
 pub fn profile(name: &str, devices: &[(&str, bool)]) -> Profile {
-    let mut spec = Spec::new(1, QSVS_MEMORY_MIB, crate::suite::partition::UNIT);
+    profile_on(name, devices, crate::suite::partition::UNIT)
+}
+
+/// The same, the copy on the host's disk `unit`.
+pub fn profile_on(name: &str, devices: &[(&str, bool)], unit: &str) -> Profile {
+    let mut spec = Spec::new(1, QSVS_MEMORY_MIB, unit);
     spec.side = IplSource::A;
     spec.name = name.into();
     let mut p = spec.profile();
