@@ -216,16 +216,16 @@ pub fn keys(guest: &mut Session, id: u32, inputs: &[ConsoleIn]) -> Result<Viewed
     view(guest, id, "view", 500, inputs)
 }
 
-/// ADMIN's password after its first change: QS/400's own
+/// QSECOFR's password after its first change: QS/400's own
 /// conformance's.
 pub const SECOFR_PASSWORD: &str = "Quartz2026";
 
-/// Sign on at the console by its keys, whatever state ADMIN's
+/// Sign on at the console by its keys, whatever state QSECOFR's
 /// password is in; leaves the first menu showing.
 pub fn sign_on(guest: &mut Session, id: u32, deadline: Instant) -> Result<(), String> {
-    for pw in [SECOFR_PASSWORD, "ADMIN"] {
+    for pw in [SECOFR_PASSWORD, "QSECOFR"] {
         let mut k = vec![key(Key::Home)];
-        k.extend(typed("ADMIN"));
+        k.extend(typed("QSECOFR"));
         k.push(key(Key::FieldExit));
         k.extend(typed(pw));
         k.push(key(Key::FieldExit));
@@ -264,7 +264,7 @@ pub fn sign_on(guest: &mut Session, id: u32, deadline: Instant) -> Result<(), St
         }
     }
     Err(format!(
-        "ADMIN could not sign on:\n{}",
+        "QSECOFR could not sign on:\n{}",
         screen(guest, id).map(|s| s.text).unwrap_or_default()
     ))
 }

@@ -69,7 +69,7 @@ pub fn console(run: &Run<'_>) -> Result<String, String> {
     // Back to the menu for whoever comes next.
     keys(&mut guest, id, &[key(Key::Function(12))])?;
     Ok(format!(
-        "the sign-on display as QS/400's golden signon/{golden} (12 rows); ADMIN signed on and \
+        "the sign-on display as QS/400's golden signon/{golden} (12 rows); QSECOFR signed on and \
          DSPLIBL run by keys from the viewer; attached again, one whole frame equal to the \
          screen; a second viewer refused (QVS2314) and one that took over got a whole frame, \
          the first told `{}`",
