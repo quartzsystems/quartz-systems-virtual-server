@@ -152,3 +152,24 @@ the physical drive.
 Linux takes any Intel root-complex endpoint for isolated
 (`pci_quirk_rciep_acs`), so two emulated Intel functions never share a
 group: the shared groups are of QEMU's NVMe (`1b36`).
+
+## The IOMMU's cost
+
+Phase 6's baseline (`net-throughput`: ICMP echoes from the harness's
+station through an uplink to a partition and back, rounds of 50, three
+levels deep) at `1651bcd`, once with every host's emulated IOMMU and
+interrupt remapping on and once with `QSVS_NO_IOMMU=1`, one after the
+other on the same machine:
+
+| Echo size | IOMMU on | IOMMU off | Phase 6 |
+|---|---|---|---|
+| 1472 bytes | 4,939 replies/s, 119.7 Mb/s | 4,171 replies/s, 101.0 Mb/s | 5,742 replies/s, 139.1 Mb/s |
+| 56 bytes | 11,044 replies/s, 17.3 Mb/s | 10,913 replies/s, 17.1 Mb/s | 10,430 replies/s, 16.4 Mb/s |
+
+No cost can be told from the noise between runs: the run without the
+IOMMU was the slower. That is what the design gives. A partition's
+frames go through vhost-net from its tap, in the host's memory: no
+device of the host does DMA for them. The uplink here is a virtio
+device, which QEMU does not put behind its IOMMU. A real host's uplink
+NIC is translated, lazily (`IOMMU_DEFAULT_DMA_LAZY`); what that costs a
+physical adapter is the Dell's to measure (`NEEDS-CODY` below).
