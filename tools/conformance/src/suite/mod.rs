@@ -183,6 +183,8 @@ impl Suite {
                 uplinks: Vec::new(),
                 qsi: None,
                 cpu: None,
+                iommu: false,
+                passed: Vec::new(),
             },
             timeout: Duration::from_secs(timeout),
             allow_no_kvm: allow_no_kvm(),

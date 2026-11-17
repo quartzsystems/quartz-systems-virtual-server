@@ -14,6 +14,7 @@
 //! | `scsi` | a SCSI command and its data |
 //! | `virtqueue` | guest memory with the virtio-scsi queues and the virtio-rng queue in it |
 //! | `devices` | reads and writes of the I/O ports, PCI configuration space and the virtio BARs |
+//! | `passthrough` | reads and writes of a passed function's configuration space and BARs |
 //! | `report` | what a VMM writes on its standard error, where text of the guest's can end up, as the partition manager reads it |
 //! | `netctrl` | guest memory with the virtio-net control queue in it, and a control request's bytes |
 //! | `console` | guest memory with the virtio-console control queues and a port's queues in it, and control messages' bytes |
@@ -862,6 +863,181 @@ fn tape(data: &[u8]) {
     }
 }
 
+/// What reached a passed function's configuration space: each write's
+/// offset and bytes.
+type Seen = Arc<Mutex<Vec<(u16, Vec<u8>)>>>;
+
+/// A host's function as the pass-through target has it: an `NVMe`-like
+/// space with every kind of capability, and a record of what reached
+/// it.
+struct Passed {
+    space: [u8; 256],
+    seen: Seen,
+}
+
+impl devices::pci::passthrough::Function for Passed {
+    fn config_read(&self, offset: u16, data: &mut [u8]) {
+        for (i, d) in data.iter_mut().enumerate() {
+            *d = self
+                .space
+                .get(usize::from(offset) + i)
+                .copied()
+                .unwrap_or(0xFF);
+        }
+    }
+    fn config_write(&self, offset: u16, data: &[u8]) {
+        if let Ok(mut seen) = self.seen.lock() {
+            seen.push((offset, data.to_vec()));
+        }
+    }
+    fn bar_read(&self, _: usize, _: u64, data: &mut [u8]) {
+        data.fill(0x5A);
+    }
+    fn bar_write(&self, _: usize, _: u64, _: &[u8]) {}
+    fn interrupts(
+        &self,
+        _: devices::pci::passthrough::Interrupts,
+        _: &[&EventFd],
+    ) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The function's own space: power management, MSI (64-bit, masks), a
+/// vendor capability, PCI Express, MSI-X; a 64-bit BAR 0, an I/O BAR 2,
+/// a ROM, an interrupt pin, device-specific bytes.
+fn passed_space() -> [u8; 256] {
+    let mut d = [0u8; 256];
+    d[0..4].copy_from_slice(&[0x36, 0x1b, 0x10, 0x00]);
+    d[0x06] = 0x10;
+    d[0x09..0x0C].copy_from_slice(&[0x02, 0x08, 0x01]);
+    d[0x0E] = 0x80;
+    d[0x10..0x14].copy_from_slice(&0xFEB0_0004u32.to_le_bytes());
+    d[0x18..0x1C].copy_from_slice(&0x0000_C001u32.to_le_bytes());
+    d[0x30..0x34].copy_from_slice(&0xFEA0_0000u32.to_le_bytes());
+    d[0x34] = 0x40;
+    d[0x3D] = 1;
+    d[0x40..0x48].copy_from_slice(&[0x01, 0x50, 0x03, 0x00, 0x08, 0x00, 0x00, 0x00]);
+    d[0x50] = 0x05;
+    d[0x51] = 0x70;
+    d[0x52..0x54].copy_from_slice(&0x0186u16.to_le_bytes());
+    d[0x70] = 0x09;
+    d[0x71] = 0x80;
+    d[0x80] = 0x10;
+    d[0x81] = 0xC0;
+    d[0xC0] = 0x11;
+    d[0xC2..0xC4].copy_from_slice(&0x001Fu16.to_le_bytes());
+    d[0xC4..0xC8].copy_from_slice(&0x0000_2000u32.to_le_bytes());
+    d[0xC8..0xCC].copy_from_slice(&0x0000_3000u32.to_le_bytes());
+    d[0xF0] = 0xAB;
+    d
+}
+
+fn passthrough_seeds() -> Vec<Vec<u8>> {
+    // Each access: a kind (0 configuration write, 1 configuration read,
+    // 2 BAR write, 3 BAR read), two bytes of offset, a length, eight
+    // bytes of data. A driver's first steps, then sizing, MSI and MSI-X.
+    let access = |kind: u8, offset: u16, len: u8, data: u64| {
+        let mut a = vec![kind];
+        a.extend_from_slice(&offset.to_le_bytes());
+        a.push(len);
+        a.extend_from_slice(&data.to_le_bytes());
+        a
+    };
+    let mut seed = Vec::new();
+    seed.extend(access(1, 0x00, 4, 0));
+    seed.extend(access(0, 0x10, 4, 0xFFFF_FFFF));
+    seed.extend(access(1, 0x10, 4, 0));
+    seed.extend(access(0, 0x10, 4, 0xE000_0000));
+    seed.extend(access(0, 0x04, 2, 0x0407));
+    seed.extend(access(0, 0x54, 4, 0xFEE0_0000));
+    seed.extend(access(0, 0x52, 2, 0x0021));
+    seed.extend(access(2, 0x2000, 4, 0xFEE0_0000));
+    seed.extend(access(0, 0xC2, 2, 0x8000));
+    seed.extend(access(0, 0x44, 1, 3));
+    seed.extend(access(0, 0x30, 4, 0xFFFF_FFFF));
+    seed.extend(access(3, 0x1000, 8, 0));
+    vec![seed]
+}
+
+/// A guest's accesses to a passed function's configuration space and
+/// BARs. Whatever they are, nothing reaches the device's configuration
+/// space but the command and status registers, the command never turns
+/// `INTx` or I/O decoding on there, and the header the VMM presents
+/// (IDs, the BAR's place, the ROM, the pin) is what it was.
+fn passthrough(data: &[u8]) {
+    use devices::pci::PciDevice as _;
+    use devices::pci::passthrough::{Passthrough, Placer, Region};
+
+    let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+    let function = Passed {
+        space: passed_space(),
+        seen: seen.clone(),
+    };
+    let mut regions = [Region::default(); 6];
+    regions[0] = Region {
+        size: 0x4000,
+        mappable: true,
+    };
+    regions[2] = Region {
+        size: 0x100,
+        mappable: false,
+    };
+    let platform: Arc<dyn Platform> = Arc::new(Nothing(Mutex::new(0)));
+    let mut placer = Placer::new(0xC010_0000, 0xE800_0000);
+    let Ok(mut p) = Passthrough::new(Box::new(function), regions, platform, &mut placer) else {
+        panic!("the function is refused");
+    };
+    p.dma_ready();
+    let read = |p: &mut Passthrough, at: usize| {
+        let mut b = [0u8; 4];
+        p.read_config(at, &mut b);
+        u32::from_le_bytes(b)
+    };
+    let before = [
+        read(&mut p, 0),
+        read(&mut p, 0x30),
+        read(&mut p, 0x3C) & 0xFF00,
+    ];
+    for access in data.as_chunks::<12>().0 {
+        let offset = u16::from_le_bytes([access[1], access[2]]);
+        let len = usize::from(access[3] % 9).max(1);
+        let bytes = &access[4..4 + len];
+        match access[0] % 4 {
+            0 => p.write_config(usize::from(offset), bytes),
+            1 => p.read_config(usize::from(offset), &mut [0u8; 8][..len]),
+            2 => p.write_bar(0, u64::from(offset), bytes),
+            _ => p.read_bar(0, u64::from(offset), &mut [0u8; 8][..len]),
+        }
+        // Not sized: the BAR is where the VMM put it.
+        let low = read(&mut p, 0x10);
+        assert!(
+            low == 0xE7FF_C004 || low == 0xFFFF_C004,
+            "BAR 0 reads {low:#x}"
+        );
+        assert_eq!(
+            [
+                read(&mut p, 0),
+                read(&mut p, 0x30),
+                read(&mut p, 0x3C) & 0xFF00
+            ],
+            before
+        );
+    }
+    let seen = seen.lock().map(|s| s.clone()).unwrap_or_default();
+    for (offset, bytes) in seen {
+        match offset {
+            0x04 => {
+                let command = u16::from_le_bytes([bytes[0], bytes.get(1).copied().unwrap_or(0)]);
+                assert_ne!(command & (1 << 10), 0, "INTx on at the device");
+                assert_eq!(command & 1, 0, "I/O decoding on at the device");
+            }
+            0x06 => {}
+            other => panic!("a write reached the device's configuration space at {other:#x}"),
+        }
+    }
+}
+
 /// Every target.
 pub const TARGETS: &[Target] = &[
     Target {
@@ -923,6 +1099,12 @@ pub const TARGETS: &[Target] = &[
         about: "guest memory holding the virtio-scsi and virtio-rng queues",
         seeds: virtqueue_seeds,
         run: virtqueue,
+    },
+    Target {
+        name: "passthrough",
+        about: "a guest's accesses to a host's function given to its partition: configuration space and BARs",
+        seeds: passthrough_seeds,
+        run: passthrough,
     },
     Target {
         name: "devices",

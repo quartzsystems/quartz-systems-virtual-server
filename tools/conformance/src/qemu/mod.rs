@@ -129,7 +129,48 @@ pub struct Launch {
     /// The processor's model and features in place of the host's, under
     /// KVM: `host,-avx2,-adx`.
     pub cpu: Option<String>,
+    /// An emulated IOMMU with interrupt remapping (Phase 10): the host's
+    /// kernel can give its devices to partitions.
+    pub iommu: bool,
+    /// Emulated PCI devices for the host to give partitions, at fixed
+    /// places.
+    pub passed: Vec<Passed>,
 }
+
+/// A device for the host to give to a partition.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Passed {
+    /// An Intel Ethernet adapter (e1000e) on QEMU's user network, which
+    /// answers DHCP.
+    Nic {
+        /// Its place on the root bus.
+        place: u8,
+        /// Its MAC address.
+        mac: String,
+    },
+    /// An `NVMe` controller with one namespace kept in `path`.
+    Nvme {
+        /// Its place.
+        place: u8,
+        /// Its namespace's file.
+        path: PathBuf,
+        /// Its serial number.
+        serial: String,
+    },
+    /// Two Ethernet functions of one device, which share an isolation
+    /// group: functions 0 and 1 of the place.
+    Pair {
+        /// Its place.
+        place: u8,
+    },
+}
+
+/// The places of the devices to give away: after the uplinks.
+pub const PASSED_NIC: u8 = 0x1A;
+/// The `NVMe` controller's place.
+pub const PASSED_NVME: u8 = 0x1B;
+/// The pair's place.
+pub const PASSED_PAIR: u8 = 0x1C;
 
 /// The PCI device number of a pinned disk's place.
 const FIRST_PLACE: u8 = 0x10;
@@ -200,7 +241,16 @@ fn drive(
 /// standard output.
 #[allow(clippy::too_many_lines)] // one switch after another
 pub fn args(l: &Launch) -> Vec<OsString> {
-    let mut a: Vec<OsString> = ["-machine", "q35"].map(OsString::from).to_vec();
+    // Interrupt remapping wants the I/O APIC in QEMU, not in KVM.
+    let machine = if l.iommu {
+        "q35,kernel-irqchip=split"
+    } else {
+        "q35"
+    };
+    let mut a: Vec<OsString> = ["-machine", machine].map(OsString::from).to_vec();
+    if l.iommu {
+        a.extend(["-device", "intel-iommu,intremap=on,caching-mode=on"].map(OsString::from));
+    }
     if l.kvm {
         a.extend(["-enable-kvm", "-cpu"].map(OsString::from));
         a.push(l.cpu.as_deref().unwrap_or("host").into());
@@ -336,6 +386,37 @@ pub fn args(l: &Launch) -> Vec<OsString> {
             .into(),
         );
     }
+    for (i, p) in l.passed.iter().enumerate() {
+        match p {
+            Passed::Nic { place, mac } => {
+                a.extend(["-netdev".into(), format!("user,id=pio{i}").into()]);
+                a.push("-device".into());
+                a.push(format!("e1000e,netdev=pio{i},mac={mac},addr={place:#x}").into());
+            }
+            Passed::Nvme {
+                place,
+                path,
+                serial,
+            } => {
+                a.push("-drive".into());
+                a.push(join(
+                    &format!("if=none,id=pio{i},format=raw,file="),
+                    path,
+                    "",
+                ));
+                a.push("-device".into());
+                a.push(format!("nvme,drive=pio{i},serial={serial},addr={place:#x}").into());
+            }
+            Passed::Pair { place } => {
+                for f in 0..2 {
+                    a.extend(["-netdev".into(), format!("user,id=pio{i}f{f}").into()]);
+                    let multi = if f == 0 { ",multifunction=on" } else { "" };
+                    a.push("-device".into());
+                    a.push(format!("e1000e,netdev=pio{i}f{f},addr={place:#x}.{f}{multi}").into());
+                }
+            }
+        }
+    }
     if !l.oem.is_empty() {
         let values: Vec<String> = l.oem.iter().map(|v| format!("value={v}")).collect();
         a.push("-smbios".into());
@@ -373,6 +454,8 @@ mod tests {
             uplinks: Vec::new(),
             qsi: None,
             cpu: None,
+            iommu: false,
+            passed: Vec::new(),
         }
     }
 
