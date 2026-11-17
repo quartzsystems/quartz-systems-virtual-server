@@ -14,6 +14,10 @@ pub const TEST_FRAGMENT: &str = "qsvs-test.config";
 
 /// The baked command line, before each UKI's own word.
 pub const CMDLINE: &str = "console=ttyS0,115200 console=tty0 panic=-1 quiet";
+/// The test image's: its tape double makes no device until the test
+/// hooks ask for one.
+pub const TEST_CMDLINE: &str =
+    "console=ttyS0,115200 console=tty0 panic=-1 quiet scsi_debug.add_host=0";
 
 /// Symbols QS/VS needs `=y`, past the pipeline's baseline.
 pub const REQUIRED_Y: &[&str] = &[

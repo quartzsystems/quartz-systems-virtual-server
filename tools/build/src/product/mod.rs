@@ -118,9 +118,12 @@ pub fn qsvs(image: Image) -> Result<Product> {
         Image::Release => (release::NAME, RELEASE_PACKAGES, initramfs::entries),
         Image::Test => (TEST_NAME, TEST_PACKAGES, initramfs::test_entries),
     };
-    let fragments: &'static [&'static str] = match image {
-        Image::Release => &[kernel::FRAGMENT],
-        Image::Test => &[kernel::FRAGMENT, kernel::TEST_FRAGMENT],
+    let (fragments, cmdline): (&'static [&'static str], _) = match image {
+        Image::Release => (&[kernel::FRAGMENT], kernel::CMDLINE),
+        Image::Test => (
+            &[kernel::FRAGMENT, kernel::TEST_FRAGMENT],
+            kernel::TEST_CMDLINE,
+        ),
     };
     let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -139,7 +142,7 @@ pub fn qsvs(image: Image) -> Result<Product> {
         fragments,
         required_y: kernel::REQUIRED_Y,
         required_n: kernel::REQUIRED_N,
-        cmdline: kernel::CMDLINE,
+        cmdline,
         packages,
         init: INIT,
         kinds: &UkiKind::ALL,
@@ -233,6 +236,13 @@ mod tests {
         );
         let release = include_str!("../../../../kernel/config/qsvs.config");
         assert!(!release.contains("SCSI_DEBUG"));
+        // The double makes no device at the IPL; a release has no word of it.
+        assert_eq!(qsvs(Image::Release).unwrap().cmdline, kernel::CMDLINE);
+        let test = qsvs(Image::Test).unwrap();
+        assert_eq!(
+            (test.uki_cmdline)(&test, UkiKind::SlotA, false),
+            format!("{} scsi_debug.add_host=0 qsvs.slot=A", kernel::CMDLINE)
+        );
     }
 
     #[test]
