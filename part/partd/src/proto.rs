@@ -305,6 +305,21 @@ pub enum Event {
         /// When.
         time: u64,
     },
+    /// A running partition's entitlement changed.
+    Entitlement {
+        /// The partition.
+        id: u32,
+        /// Its name.
+        name: String,
+        /// What it held before.
+        before: Current,
+        /// What it holds now.
+        current: Current,
+        /// Who asked, in the asker's words.
+        by: String,
+        /// When.
+        time: u64,
+    },
     /// A device of physical I/O changed hands.
     Device {
         /// Its location code.
@@ -334,6 +349,7 @@ ipc::wire_enum!(Event {
     5 => Dump { id, name, dump, error, time },
     6 => Profile { id, name, profile, revision, default, time },
     7 => Device { location, change, partition, name, profile, device, note, time },
+    8 => Entitlement { id, name, before, current, by, time },
 });
 
 /// What happened to a device of physical I/O.
@@ -381,7 +397,8 @@ impl Event {
             | Event::Defined { id, .. }
             | Event::Channel { id, .. }
             | Event::Dump { id, .. }
-            | Event::Profile { id, .. } => *id,
+            | Event::Profile { id, .. }
+            | Event::Entitlement { id, .. } => *id,
             Event::Device { partition, .. } => *partition,
         }
     }
@@ -531,6 +548,10 @@ ipc::rpc! {
     /// Take the device at `location` and its group back for the host,
     /// when no profile names any of them. The locations taken back.
     41 => fn take_back / TakeBack (location: String) -> Result<Vec<String>, Refused>;
+    /// Change a running shared partition's processing units, capping or
+    /// weight (`docs/RESOURCES.md`); `by` says who asked. What it holds
+    /// now. Its profile is not changed.
+    42 => fn entitlement / ChangeEntitlement (id: u32, change: resource::Entitlement, by: String) -> Result<Current, Refused>;
 }
 
 /// The most bytes of a dump in one frame of a read.

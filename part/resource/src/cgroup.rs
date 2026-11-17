@@ -184,6 +184,18 @@ pub fn partition(host: &Host, id: u32, current: &Current) -> Vec<Step> {
     plan
 }
 
+/// What changes in the group of the partition `id` when its
+/// entitlement does while it runs: its quota and its weight, nothing
+/// else.
+pub fn entitlement(host: &Host, id: u32, current: &Current) -> Vec<Step> {
+    partition(host, id, current)
+        .into_iter()
+        .filter(|s| {
+            matches!(s, Step::Write(file, _) if file.ends_with("/cpu.max") || file.ends_with("/cpu.weight"))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

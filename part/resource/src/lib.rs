@@ -18,9 +18,11 @@
 
 pub mod account;
 pub mod cgroup;
+pub mod entitle;
 pub mod settings;
 pub mod topology;
 
 pub use account::{Amount, Current, Held, Host, HostResources, PoolStatus, Processors, Vcpus};
+pub use entitle::Entitlement;
 pub use settings::{Pool, Service, Settings};
 pub use topology::{Thread, Topology};

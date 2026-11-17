@@ -167,7 +167,7 @@ pub fn answer(s: &mut Services, request: AnyRequest, user: &str) -> Answer {
         }
         AnyRequest::Base(r) => base::answer(s, &r, user).into(),
         AnyRequest::Partitions(r) => partitions::partitions(s, &r).into(),
-        AnyRequest::Partition(r) => partitions::partition(s, r).into(),
+        AnyRequest::Partition(r) => partitions::partition(s, r, user).into(),
         AnyRequest::Profiles(r) => partitions::profiles(s, r).into(),
         AnyRequest::Refcodes(r) => partitions::refcodes(s, &r).into(),
         AnyRequest::Panel(r) => partitions::panel(s, &r).into(),

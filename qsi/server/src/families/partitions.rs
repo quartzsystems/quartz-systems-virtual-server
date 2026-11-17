@@ -7,6 +7,7 @@
 
 use qsi::Empty;
 use qsi::any::AnyReply;
+use qsi::host::model as q;
 use qsi::host::{console, dumps, panel, partition, partitions, profiles, refcodes};
 use qsisess::Note;
 
@@ -64,7 +65,8 @@ pub(super) fn partitions(s: &mut Services, r: &partitions::Request) -> Answered 
     }))
 }
 
-pub(super) fn partition(s: &mut Services, r: partition::Request) -> Answered {
+/// Answer a partition request; a change of entitlement is `user`'s.
+pub(super) fn partition(s: &mut Services, r: partition::Request, user: &str) -> Answered {
     use partition::{Reply, Request, ShutdownKind};
     Ok(AnyReply::Partition(match r {
         Request::Create(c) => {
@@ -109,8 +111,22 @@ pub(super) fn partition(s: &mut Services, r: partition::Request) -> Answered {
             local(PARTD, s.partd.restart(r.id))?;
             Reply::Restart(Empty)
         }
-        // Version 2 (bit 18), which this server does not offer.
-        Request::Entitlement(_) => return Err(vec![super::base::not_agreed()]),
+        Request::Entitlement(e) => {
+            let sharing = match e.sharing {
+                None => None,
+                Some(q::Sharing::Capped) => Some(model::Sharing::Capped),
+                Some(q::Sharing::Uncapped) => Some(model::Sharing::Uncapped),
+                Some(q::Sharing::Other(_)) => return Err(vec![no_such("sharing mode")]),
+            };
+            let change = resource::Entitlement {
+                units: e.units.map(model::Units),
+                sharing,
+                weight: e.weight,
+            };
+            let by = format!("a management console, user {user:?}");
+            let current = local(PARTD, s.partd.entitlement(e.id, change, by))?;
+            Reply::Entitlement(convert::current(&current))
+        }
     }))
 }
 

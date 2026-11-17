@@ -27,6 +27,79 @@ fn one(message: Issued) -> Refused {
 }
 
 impl<S: System> Manager<S> {
+    /// Change the entitlement of `id`, running with shared processors:
+    /// its control group first, then its record, then the events.
+    fn change_entitlement(
+        &mut self,
+        id: u32,
+        change: resource::Entitlement,
+        by: &str,
+    ) -> Result<Current, Refused> {
+        let partition = self.partition(id)?;
+        let name = partition.definition.name.clone();
+        let running = matches!(partition.state, State::Starting | State::Running);
+        let Some(run) = partition.run.as_ref().filter(|_| running) else {
+            return Err(one(qvsmsg::ENTITLEMENT_NOT_RUNNING.with(&[&name])));
+        };
+        let profile = partition
+            .profiles
+            .get(&run.profile)
+            .cloned()
+            .ok_or_else(|| one(qvsmsg::PROFILE_MISSING.with(&[&name, &run.profile])))?;
+        let before = run.current.clone();
+        let after = self
+            .host
+            .entitle(&self.held(), id, &name, &profile, change)?;
+        let plan = resource::cgroup::entitlement(&self.host, id, &after);
+        self.system
+            .apply(&plan)
+            .map_err(|e| one(qvsmsg::ENTITLEMENT_NOT_APPLIED.with(&[&name, &e])))?;
+        if let Some(run) = self.partitions.get_mut(&id).and_then(|p| p.run.as_mut()) {
+            run.current = after.clone();
+        }
+        self.write_record(id);
+        let words = |c: &Current| match &c.processors {
+            Processors::Shared {
+                units,
+                capped,
+                weight,
+                ..
+            } => {
+                if *capped {
+                    format!("{units} capped")
+                } else {
+                    format!("{units} uncapped weight {weight}")
+                }
+            }
+            Processors::Dedicated { cores } => format!("{} cores", cores.len()),
+        };
+        let code = &refcode::ENTITLEMENT_CHANGED;
+        self.system.post(
+            code.code,
+            &code.text_with(&format!(
+                "{name}: {} to {}, by {by}",
+                words(&before),
+                words(&after)
+            )),
+        );
+        let time = self.system.now();
+        self.publish(&Event::Entitlement {
+            id,
+            name: name.clone(),
+            before,
+            current: after.clone(),
+            by: by.to_string(),
+            time,
+        });
+        self.publish(&Event::Resources {
+            id,
+            name,
+            current: Some(after.clone()),
+            time,
+        });
+        Ok(after)
+    }
+
     /// A running partition's name and what its device in `slot` takes.
     fn media_slot(&self, id: u32, slot: u32) -> Result<(String, poold::proto::Kind), Refused> {
         let partition = self.partition(id)?;
@@ -895,6 +968,15 @@ impl<S: System> Partitions for Manager<S> {
 
     fn devices(&mut self) -> Vec<pio::Device> {
         self.device_list()
+    }
+
+    fn entitlement(
+        &mut self,
+        id: u32,
+        change: resource::Entitlement,
+        by: String,
+    ) -> Result<Current, Refused> {
+        self.change_entitlement(id, change, &by)
     }
 
     fn release(&mut self, location: String, confirm: String) -> Result<Vec<String>, Refused> {

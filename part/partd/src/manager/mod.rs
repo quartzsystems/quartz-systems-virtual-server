@@ -534,6 +534,12 @@ impl<S: System> Manager<S> {
                 None => format!("{name}: dump {dump} written"),
                 Some(e) => format!("{name}: dump {dump} not written: {e}"),
             },
+            Event::Entitlement {
+                name, current, by, ..
+            } => format!(
+                "{name}: entitled to {} processing units, by {by}",
+                current.processors.units()
+            ),
             Event::Device {
                 location,
                 change,

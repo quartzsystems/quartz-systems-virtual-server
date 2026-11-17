@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 
 use qsi::any::AnyEvent;
-use qsi::host::{dumps, host, partitions, profiles, refcodes, vres};
+use qsi::host::{dumps, host, partition, partitions, profiles, refcodes, vres};
 
 use crate::families::convert;
 use crate::families::vres as v;
@@ -105,6 +105,23 @@ pub fn partd(e: &partd::Event) -> AnyEvent {
             time: *time,
         })),
         E::Device { .. } => AnyEvent::Host(device_event(e)),
+        E::Entitlement {
+            id,
+            name,
+            before,
+            current,
+            by,
+            time,
+        } => AnyEvent::Partition(partition::Event::Entitlement(
+            partition::EntitlementChanged {
+                id: *id,
+                name: name.clone(),
+                before: convert::current(before),
+                current: convert::current(current),
+                by: by.clone(),
+                time: *time,
+            },
+        )),
     }
 }
 

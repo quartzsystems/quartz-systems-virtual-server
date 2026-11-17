@@ -1328,3 +1328,50 @@ fn devices_are_released_given_whole_reset_and_fenced() {
         &("0000:00:06.0".to_string(), false)
     );
 }
+
+#[test]
+fn a_running_shared_partition_s_entitlement_changes_until_its_next_activation() {
+    let scratch = Scratch::new("entitle");
+    let mut m = scratch.manager();
+    let id = partition(&mut m, "PROD");
+    let up = |units: u32| resource::Entitlement {
+        units: Some(model::Units(units)),
+        ..resource::Entitlement::default()
+    };
+    let refused = m.entitlement(id, up(100), "OPER".into()).unwrap_err();
+    assert!(refused[0].is(&qvsmsg::ENTITLEMENT_NOT_RUNNING));
+    m.activate(id, "SHARED".into(), None, None).unwrap();
+    let before = m.list().remove(0).current.unwrap();
+    let held = before.processors.units();
+    let after = m.entitlement(id, up(held.0 + 10), "OPER".into()).unwrap();
+    assert_eq!(after.processors.units(), model::Units(held.0 + 10));
+    assert_eq!(m.list().remove(0).current.unwrap(), after);
+    assert!(
+        m.system
+            .applied
+            .iter()
+            .any(|s| matches!(s, Step::Write(f, _) if f == "qsvs/pools/DEFAULT/p1/cpu.max"))
+    );
+    assert_eq!(m.system.records[&id].current, after);
+    assert!(
+        m.system
+            .posted
+            .iter()
+            .any(|(c, t)| c == "C2013040" && t.contains("by OPER"))
+    );
+    // Outside the profile: refused by name.
+    let refused = m.entitlement(id, up(10_000), "OPER".into()).unwrap_err();
+    assert!(
+        refused.iter().any(|r| r.is(&qvsmsg::ENTITLEMENT_OUTSIDE)),
+        "{refused:?}"
+    );
+    // The next activation is the profile's again.
+    m.ended(id, Ended::Exit(0));
+    m.activate(id, "SHARED".into(), None, None).unwrap();
+    assert_eq!(m.list().remove(0).current.unwrap(), before);
+    // A dedicated partition is refused.
+    m.ended(id, Ended::Exit(0));
+    m.activate(id, "NORMAL".into(), None, None).unwrap();
+    let refused = m.entitlement(id, up(100), "OPER".into()).unwrap_err();
+    assert!(refused[0].is(&qvsmsg::ENTITLEMENT_DEDICATED));
+}
