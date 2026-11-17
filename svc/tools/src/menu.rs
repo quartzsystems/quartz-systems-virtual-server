@@ -101,7 +101,7 @@ impl Panel<Env, Outcome> for MainMenu {
                 },
             })),
             Some(8) => Flow::Push(Box::new(crate::service::ServiceMenu)),
-            Some(10) => Flow::Push(Box::new(crate::physio::Io)),
+            Some(10) => Flow::Push(Box::new(crate::physio::Io::default())),
             Some(_) => Flow::Error("Selection not valid.".into()),
             None => Flow::Error("Type the number of an option.".into()),
         }

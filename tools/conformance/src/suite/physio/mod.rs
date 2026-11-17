@@ -8,10 +8,12 @@
 //! - [`tape`]: Section 1, QS/400 saving to and restoring from the
 //!   virtual tape drive.
 //! - [`devices`]: a host's devices given to partitions.
+//! - [`tools`]: a release at Service Tools option 10.
 
 pub mod devices;
 mod host;
 mod tape;
+mod tools;
 
 use super::base::SuiteFn;
 
@@ -21,6 +23,7 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("pio-tape-save", tape::save),
     ("pio-tape-span", tape::span),
     ("pio-tape-volumes", tape::volumes),
+    ("pio-tools", tools::service_tools),
     ("pio-nvme", devices::nvme),
     ("pio-refused", host::refused),
     ("pio-group", host::group),

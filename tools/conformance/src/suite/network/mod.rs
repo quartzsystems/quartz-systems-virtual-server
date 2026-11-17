@@ -18,7 +18,7 @@
 //! in the run directory.
 
 mod qs400;
-mod suites;
+pub(crate) mod suites;
 pub(crate) mod tools;
 
 use std::net::Ipv4Addr;

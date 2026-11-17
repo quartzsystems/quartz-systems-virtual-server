@@ -21,6 +21,8 @@ use crate::menu::Outcome;
 type Step = PanelFlow<Env, Outcome>;
 
 const TITLE: &str = "Work with I/O for Partitions";
+/// Rows of the list on one page; the foot is under them.
+const ROWS: usize = 14;
 
 fn partd() -> partd::Client {
     partd::Client::new(partd::proto::socket(release::RUN_DIR))
@@ -115,8 +117,11 @@ fn rows() -> Option<Vec<Row>> {
     Some(rows)
 }
 
-/// `Work with I/O for partitions`.
-pub struct Io;
+/// `Work with I/O for partitions`, `top` the first row shown.
+#[derive(Default)]
+pub struct Io {
+    top: usize,
+}
 
 impl Panel<Env, Outcome> for Io {
     fn name(&self) -> &'static str {
@@ -132,7 +137,7 @@ impl Panel<Env, Outcome> for Io {
                 "F3=Exit   F12=Cancel",
             );
         };
-        let lines: Vec<String> = list
+        let all: Vec<String> = list
             .iter()
             .map(|r| {
                 format!(
@@ -143,16 +148,19 @@ impl Panel<Env, Outcome> for Io {
                 )
             })
             .collect();
+        let (lines, foot) = kit::window(&all, self.top, ROWS);
         let mut s = ui::list(
             TITLE,
             &env.system(),
             "2=Release   4=Take back   5=Display",
             "Opt Location                  Description              Use",
             &lines,
-            "F1=Help   F3=Exit   F5=Refresh   F12=Cancel",
+            "F1=Help   F3=Exit   F5=Refresh   F7=Backward   F8=Forward   F12=Cancel",
         );
         if lines.is_empty() {
             kit::put(&mut s, ui::BODY_ROW + 3, "(The host has no PCI device.)");
+        } else {
+            kit::put(&mut s, ui::BODY_ROW + 3 + ROWS, &format!("{foot:>76}"));
         }
         s
     }
@@ -163,6 +171,7 @@ impl Panel<Env, Outcome> for Io {
         };
         let chosen: Vec<(&Row, u32)> = list
             .iter()
+            .skip(self.top.min(list.len().saturating_sub(1)))
             .zip(fields)
             .filter_map(|(r, f)| kit::number(Some(f)).map(|n| (r, n)))
             .collect();
@@ -189,6 +198,11 @@ impl Panel<Env, Outcome> for Io {
 
     fn function(&mut self, key: u8, _fields: &[String], _env: &mut Env) -> Step {
         match key {
+            7 | 8 => {
+                let len = rows().map_or(0, |all| all.len());
+                self.top = kit::scroll(self.top, key, len, ROWS);
+                Flow::Stay
+            }
             3 => Flow::PopAll,
             12 => Flow::Pop,
             _ => Flow::Stay,
@@ -207,7 +221,8 @@ impl Panel<Env, Outcome> for Io {
                 "then name it in a profile. The rest of its isolation group goes",
                 "with it, and its location code is typed to confirm. 4 takes a",
                 "device back once no profile names it and no partition holds it.",
-                "5 shows a device whole, and why it cannot be released.",
+                "5 shows a device whole, and why it cannot be released. F7 and",
+                "F8 page through the list.",
                 "",
                 "The host keeps its load source's and its pools' controllers,",
                 "the management interface, every uplink and the display.",
@@ -379,7 +394,7 @@ impl Panel<Env, Outcome> for Release {
         let typed = fields.first().map_or("", |f| f.trim()).to_string();
         let location = self.row.location().to_string();
         match asked(partd().release(location, typed)) {
-            Ok(_) => Flow::Reset(Box::new(Io)),
+            Ok(_) => Flow::Reset(Box::new(Io::default())),
             Err(e) => Flow::Error(e),
         }
     }
@@ -423,7 +438,7 @@ impl Panel<Env, Outcome> for TakeBack {
 
     fn enter(&mut self, _fields: &[String], _env: &mut Env) -> Step {
         match asked(partd().take_back(self.location.clone())) {
-            Ok(_) => Flow::Reset(Box::new(Io)),
+            Ok(_) => Flow::Reset(Box::new(Io::default())),
             Err(e) => Flow::Error(e),
         }
     }
