@@ -22,9 +22,10 @@ const INTEL: &str = "/sys/kernel/debug/iommu/intel";
 /// The page tables of the device at `address`, as the driver dumps them.
 fn record(g: &mut Session, address: &str) -> Result<(String, String), String> {
     channel(g)?.ask(command::DEBUGFS)?;
-    // One file of every domain in older kernels; one for each device
-    // and PASID since 6.6, the device's own DMA under PASID 0.
+    // One file of every domain in older kernels; since 6.6 one in each
+    // device's directory for its own DMA, and one a PASID below it.
     let candidates = [
+        format!("{INTEL}/{address}/domain_translation_struct"),
         format!("{INTEL}/{address}/0/domain_translation_struct"),
         format!("{INTEL}/domain_translation_struct"),
     ];
@@ -36,7 +37,17 @@ fn record(g: &mut Session, address: &str) -> Result<(String, String), String> {
             Err(e) => tried.push(format!("{path}: {e}")),
         }
     }
-    Err(format!("no record of {address}: {}", tried.join("; ")))
+    let mut listed = |dir: &str| {
+        channel(g)
+            .and_then(|c| c.ls(dir))
+            .map_or_else(|e| e, |names| names.join(" "))
+    };
+    Err(format!(
+        "no record of {address}: {}; {INTEL} has: {}; its directory: {}",
+        tried.join("; "),
+        listed(INTEL),
+        listed(&format!("{INTEL}/{address}"))
+    ))
 }
 
 /// The ranges of I/O virtual addresses a dump maps: each leaf line is
