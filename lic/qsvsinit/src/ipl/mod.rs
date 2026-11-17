@@ -275,6 +275,65 @@ mod on_host {
         host.post(code, &reserved.detail());
     }
 
+    /// The physical I/O step (`docs/PHYSICALIO.md`): the IOMMU and
+    /// interrupt remapping checked, and each released device given to
+    /// the pass-through driver before any service starts. One that is
+    /// gone, or whose isolation group changed, is not.
+    fn physio(host: &mut Host, store: &Store) {
+        let roots = hostinv::Roots::default();
+        let iommu = hostinv::iommu(&roots);
+        if !iommu.translation || !iommu.remapping {
+            let which = match (iommu.translation, iommu.remapping) {
+                (false, false) => "DMA remapping and interrupt remapping are off",
+                (false, true) => "DMA remapping is off",
+                _ => "interrupt remapping is off",
+            };
+            host.post(&refcode::PHYSIO_OFF, which);
+            return;
+        }
+        let released = match store.load::<pio::Released>() {
+            Ok(r) => r.unwrap_or_default(),
+            Err(e) => {
+                host.post(&refcode::STATE_INVALID, &e.to_string());
+                pio::Released::default()
+            }
+        };
+        let pci = hostinv::pci(&roots);
+        let mut bound = 0;
+        for at in released.at_ipl(&pci) {
+            match at {
+                pio::released::AtIpl::Bind { location, address } => {
+                    let about = [refcode::about::device(&location)];
+                    match pio::bind::to_passthrough(&roots.sys, &address) {
+                        Ok(()) => {
+                            host.post_about(&refcode::DEVICE_BOUND, &location, &about);
+                            bound += 1;
+                        }
+                        Err(e) => host.post_about(
+                            &refcode::DEVICE_MISSING,
+                            &format!("{location}: not bound: {e}"),
+                            &about,
+                        ),
+                    }
+                }
+                pio::released::AtIpl::Gone { location } => host.post_about(
+                    &refcode::DEVICE_MISSING,
+                    &location,
+                    &[refcode::about::device(&location)],
+                ),
+                pio::released::AtIpl::Changed { location, what } => host.post_about(
+                    &refcode::DEVICE_GROUP_CHANGED,
+                    &format!("{location}: {what}"),
+                    &[refcode::about::device(&location)],
+                ),
+            }
+        }
+        host.post(
+            &refcode::PHYSIO_CHECKED,
+            &format!("{bound} released device(s) bound"),
+        );
+    }
+
     /// The host's identity: made at the first IPL that has a data
     /// file system to keep it on, and never again.
     fn identity(host: &mut Host) {
@@ -353,6 +412,10 @@ mod on_host {
         seed(&mut host, &store);
         state(&mut host, &store);
         partition_memory(&mut host, &store);
+        physio(&mut host, &store);
+        // A test image IPLed as a partition says what it was given.
+        #[cfg(test_hooks)]
+        crate::hooks::guest_probe(&mut host);
         identity(&mut host);
         services(&mut host);
         host.run()

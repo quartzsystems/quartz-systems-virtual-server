@@ -1714,6 +1714,7 @@ dependencies = [
  "loadsource",
  "logd",
  "partd",
+ "pio",
  "poold",
  "problem",
  "qsilocal",
