@@ -20,6 +20,7 @@
 
 mod config;
 mod console;
+mod drives;
 mod dumps;
 mod life;
 mod panel;
@@ -29,6 +30,7 @@ mod requests;
 mod service;
 
 pub use console::VIEWER_QUEUE;
+pub use drives::DriveFacts;
 pub use dumps::valid_name as valid_dump_name;
 pub use life::code_of;
 pub use physio::PhysioFacts;
@@ -103,6 +105,8 @@ pub struct Record {
     pub no_channel: bool,
     /// The host's devices it holds, by location code.
     pub devices: Vec<String>,
+    /// The physical tape drives it holds: each slot and location code.
+    pub drives: Vec<(u32, String)>,
 }
 ipc::wire_struct!(Record {
     id,
@@ -112,7 +116,8 @@ ipc::wire_struct!(Record {
     sequence,
     state,
     no_channel,
-    devices
+    devices,
+    drives
 });
 
 /// A dump to be written: where, and what its header says.
@@ -237,6 +242,20 @@ pub trait System {
     fn keep_fenced(&mut self, fenced: &[String]);
     /// The devices fenced since the host's IPL.
     fn fenced(&mut self) -> Vec<String>;
+    /// The host's physical tape drives; whether a cartridge is in each
+    /// is asked of those not in `held`.
+    fn tape_drives(&mut self, held: &[String]) -> Vec<DriveFacts>;
+    /// Open the drive at `location` (its SCSI generic device `sg`) for
+    /// `id`'s next VMM with a relay to it, kept by the machine until the
+    /// VMM is started with it, after the VFIO descriptors: `fd` is its
+    /// descriptor there. Its path.
+    fn open_drive(
+        &mut self,
+        id: u32,
+        location: &str,
+        sg: &str,
+        fd: usize,
+    ) -> Result<String, String>;
 }
 
 /// How a shut down asked of the system goes on.
@@ -281,6 +300,8 @@ pub(crate) struct Run {
     pub(crate) uplinks_down: Vec<String>,
     /// The host's devices it holds, by location code.
     pub(crate) devices: Vec<String>,
+    /// The physical tape drives it holds: each slot and location code.
+    pub(crate) drives: Vec<(u32, String)>,
 }
 
 /// One partition.
@@ -534,6 +555,14 @@ impl<S: System> Manager<S> {
                 None => format!("{name}: dump {dump} written"),
                 Some(e) => format!("{name}: dump {dump} not written: {e}"),
             },
+            Event::TapeDrive {
+                location, drive, ..
+            } => match drive {
+                Some(d) if d.holder != 0 => format!("tape drive {location}: held by {}", d.name),
+                Some(d) if d.released => format!("tape drive {location}: released"),
+                Some(_) => format!("tape drive {location}: the host's"),
+                None => format!("tape drive {location}: not on the host"),
+            },
             Event::Entitlement {
                 name, current, by, ..
             } => format!(
@@ -578,6 +607,7 @@ impl<S: System> Manager<S> {
                 state: partition.state,
                 no_channel: partition.service.facts.none,
                 devices: run.devices.clone(),
+                drives: run.drives.clone(),
             };
             self.system.record(id, Some(&record));
         }

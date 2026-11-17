@@ -56,6 +56,8 @@ pub struct Fake {
     pub no_reset: Vec<String>,
     pub vfio: Vec<(u32, Vec<u32>, usize)>,
     pub fenced: Vec<String>,
+    pub drives: Vec<super::DriveFacts>,
+    pub opened_drives: Vec<(u32, String, usize)>,
 }
 
 impl System for Fake {
@@ -232,6 +234,19 @@ impl System for Fake {
     }
     fn fenced(&mut self) -> Vec<String> {
         self.fenced.clone()
+    }
+    fn tape_drives(&mut self, _held: &[String]) -> Vec<super::DriveFacts> {
+        self.drives.clone()
+    }
+    fn open_drive(
+        &mut self,
+        id: u32,
+        location: &str,
+        _sg: &str,
+        fd: usize,
+    ) -> Result<String, String> {
+        self.opened_drives.push((id, location.to_string(), fd));
+        Ok(format!("/proc/self/fd/{fd}"))
     }
 }
 
@@ -1374,4 +1389,67 @@ fn a_running_shared_partition_s_entitlement_changes_until_its_next_activation() 
     m.activate(id, "NORMAL".into(), None, None).unwrap();
     let refused = m.entitlement(id, up(100), "OPER".into()).unwrap_err();
     assert!(refused[0].is(&qvsmsg::ENTITLEMENT_DEDICATED));
+}
+
+#[test]
+fn a_physical_tape_drive_is_released_held_by_one_and_never_loaded_from_a_console() {
+    const DRIVE: &str = "NOPCI-ST0";
+    let scratch = Scratch::new("drives");
+    let mut m = scratch.manager();
+    m.system.drives = vec![super::DriveFacts {
+        location: DRIVE.into(),
+        vendor: "Linux".into(),
+        product: "scsi_debug".into(),
+        serial: "SD0".into(),
+        sg: "sg1".into(),
+        loaded: Some(true),
+    }];
+    let a = partition(&mut m, "FIRST");
+    let b = partition(&mut m, "SECOND");
+    let with_drive = |m: &mut Manager<Fake>, id: u32, location: &str| {
+        let mut p = m.profile(id, "NORMAL".into()).unwrap();
+        p.name = "TAPE".into();
+        p.tape = vec![model::MediaDevice {
+            slot: 7,
+            media: Some(format!("@{location}")),
+        }];
+        m.put_profile(id, p)
+    };
+    let refused = with_drive(&mut m, a, "NOPCI-ST9").unwrap_err();
+    assert!(refused[0].is(&qvsmsg::NOT_A_DRIVE), "{}", refused[0]);
+    with_drive(&mut m, a, DRIVE).unwrap();
+    with_drive(&mut m, b, DRIVE).unwrap();
+    // Not released: refused by name.
+    let refused = m.activate(a, "TAPE".into(), None, None).unwrap_err();
+    assert!(
+        refused[0].is(&qvsmsg::DEVICE_NOT_RELEASED),
+        "{}",
+        refused[0]
+    );
+    assert_eq!(m.release(DRIVE.into(), DRIVE.into()).unwrap(), [DRIVE]);
+    m.activate(a, "TAPE".into(), None, None).unwrap();
+    assert_eq!(m.system.opened_drives, [(a, DRIVE.to_string(), 5)]);
+    let (_, _, config) = m.system.launched.last().unwrap();
+    assert!(config.contains("drive = \"/proc/self/fd/5\""), "{config}");
+    assert!(
+        config.contains(&format!("location = \"{DRIVE}\"")),
+        "{config}"
+    );
+    let listed = m.tape_drives();
+    assert_eq!((listed[0].holder, listed[0].slot), (a, 7));
+    // One holder at a time.
+    let refused = m.activate(b, "TAPE".into(), None, None).unwrap_err();
+    assert!(refused[0].is(&qvsmsg::DEVICE_HELD) && refused[0].text.contains("FIRST"));
+    // Its cartridge is changed at the drive.
+    let refused = m.load_media(a, 7, "SAVE1".into()).unwrap_err();
+    assert!(
+        refused[0].is(&qvsmsg::DRIVE_SLOT_PHYSICAL),
+        "{}",
+        refused[0]
+    );
+    // Named by profiles: not taken back.
+    m.ended(a, Ended::Exit(0));
+    let refused = m.take_back(DRIVE.into()).unwrap_err();
+    assert!(refused[0].is(&qvsmsg::DEVICE_NAMED), "{}", refused[0]);
+    assert_eq!(m.tape_drives()[0].holder, 0);
 }

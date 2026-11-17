@@ -21,6 +21,9 @@ pub struct Stores {
     /// A tape device's volume by its slot: the file, its name, its
     /// capacity in MiB and its write protection.
     pub tape: BTreeMap<u32, (String, String, u64, bool)>,
+    /// A tape device's physical drive by its slot: the relay's socket
+    /// and the drive's location code.
+    pub drives: BTreeMap<u32, (String, String)>,
     /// How many files the pool service gave: the taps' follow them.
     pub files: usize,
     /// The Ethernet adapters, each with its tap or none.
@@ -131,6 +134,12 @@ pub fn build(
                     name: volume.map(|(_, name, ..)| name.clone()).unwrap_or_default(),
                     capacity_mib: volume.map_or(0, |(_, _, cap, _)| *cap),
                     protected: volume.is_some_and(|(.., p)| *p),
+                    drive: stores.drives.get(&t.slot).map(|(path, _)| path.into()),
+                    location: stores
+                        .drives
+                        .get(&t.slot)
+                        .map(|(_, l)| l.clone())
+                        .unwrap_or_default(),
                 }
             })
             .collect(),

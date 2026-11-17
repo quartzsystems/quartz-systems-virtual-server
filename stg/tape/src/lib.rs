@@ -13,6 +13,8 @@
 //!   warning.
 //! - [`volume`]: what is kept beside the image: the volume identifier,
 //!   its capacity and whether it is write-protected.
+//! - [`passthrough`]: a physical drive passed through: the allow-list,
+//!   the frames between the VMM and the relay, the drive.
 //!
 //! The image is written by a guest, so a damaged one is read up to its
 //! last whole header and ends there; nothing here panics on it or
@@ -20,6 +22,7 @@
 
 pub mod aws;
 pub mod medium;
+pub mod passthrough;
 pub mod volume;
 
 pub use medium::{Medium, Read, Stop, Store, TapeError};

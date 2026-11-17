@@ -77,6 +77,13 @@ pub fn pci(roots: &Roots) -> Vec<state::doc::inventory::Pci> {
 
 /// The interrupts a function's configuration space says it can signal.
 pub use read::pci::{interrupt_kinds, remapped};
+/// A physical tape drive.
+pub use read::tapes::TapeDrive;
+
+/// The physical tape drives, by their tape device's number.
+pub fn tapes(roots: &Roots) -> Vec<TapeDrive> {
+    read::tapes(roots)
+}
 
 /// The serial DMI gives, when it is a real one: not empty and not a
 /// placeholder such as `Not Specified` or `To Be Filled By O.E.M.`.

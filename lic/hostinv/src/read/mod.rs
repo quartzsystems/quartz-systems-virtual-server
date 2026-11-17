@@ -17,6 +17,7 @@ mod memory;
 mod net;
 pub(crate) mod pci;
 mod place;
+pub(crate) mod tapes;
 pub(crate) mod threads;
 
 use state::Inventory;
@@ -44,6 +45,13 @@ pub(crate) fn pci(roots: &Roots) -> Vec<state::doc::inventory::Pci> {
     let table = smbios::table(&roots.sys);
     let slots = place::slots(&roots.sys, &table);
     pci::read(&roots.sys, &slots)
+}
+
+/// The physical tape drives.
+pub(crate) fn tapes(roots: &Roots) -> Vec<tapes::TapeDrive> {
+    let table = smbios::table(&roots.sys);
+    let slots = place::slots(&roots.sys, &table);
+    tapes::read(&roots.sys, &slots)
 }
 
 /// The whole inventory.

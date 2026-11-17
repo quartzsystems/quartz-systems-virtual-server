@@ -33,6 +33,7 @@ pub mod backing;
 pub mod cdb;
 pub mod lun;
 pub mod optical;
+pub mod passed;
 pub mod tape;
 pub mod unit;
 
@@ -71,6 +72,7 @@ const STATUS_CHECK_CONDITION: u8 = 2;
 const RESPONSE_OK: u8 = 0;
 const RESPONSE_OVERRUN: u8 = 1;
 const RESPONSE_BAD_TARGET: u8 = 3;
+const RESPONSE_TRANSPORT_FAILURE: u8 = 6;
 const RESPONSE_FUNCTION_COMPLETE: u8 = 0;
 const RESPONSE_FUNCTION_REJECTED: u8 = 11;
 
@@ -197,6 +199,22 @@ pub fn request(
             given,
         ),
         Err(Failure::Overrun) => (response(RESPONSE_OVERRUN, STATUS_GOOD, None, 0), 0),
+        Err(Failure::Answer {
+            status,
+            sense,
+            given,
+        }) => {
+            let mut r = response(RESPONSE_OK, status, None, in_bytes - given.min(in_bytes));
+            let n = sense.len().min(SENSE_BYTES);
+            #[allow(clippy::cast_possible_truncation)] // 96 at most
+            r[..4].copy_from_slice(&(n as u32).to_le_bytes());
+            r[12..12 + n].copy_from_slice(&sense[..n]);
+            (r, given)
+        }
+        Err(Failure::Unreachable) => (
+            response(RESPONSE_TRANSPORT_FAILURE, STATUS_GOOD, None, in_bytes),
+            0,
+        ),
     }
 }
 

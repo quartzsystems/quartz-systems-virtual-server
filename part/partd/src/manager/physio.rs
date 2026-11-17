@@ -122,6 +122,9 @@ impl<S: System> Manager<S> {
         confirm: &str,
     ) -> Result<Vec<String>, Refused> {
         let devices = self.device_list();
+        if !devices.iter().any(|d| d.location == location) && self.is_drive(location) {
+            return self.release_drive(location, confirm);
+        }
         let d = devices
             .iter()
             .find(|d| d.location == location && d.present)
@@ -200,6 +203,9 @@ impl<S: System> Manager<S> {
     /// Take the device at `location` and its group back for the host.
     /// The locations taken back.
     pub(crate) fn take_back_device(&mut self, location: &str) -> Result<Vec<String>, Refused> {
+        if self.released.has_drive(location) {
+            return self.take_back_drive(location);
+        }
         let Some(kept) = self
             .released
             .devices

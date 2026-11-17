@@ -1440,6 +1440,7 @@ dependencies = [
  "state",
  "supervise",
  "svcchan",
+ "tape",
  "vswitch",
  "vswitchd",
 ]

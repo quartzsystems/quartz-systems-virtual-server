@@ -107,11 +107,23 @@ impl<S: System> Manager<S> {
         if !matches!(partition.state, State::Starting | State::Running) {
             return Err(one(qvsmsg::PARTITION_NOT_ACTIVE.with(&[&name])));
         }
-        let kind = partition
-            .profiles
-            .get(&partition.last_profile)
+        let profile = partition.profiles.get(&partition.last_profile);
+        let kind = profile
             .and_then(|p| media_kind(p, slot))
             .ok_or_else(|| one(qvsmsg::MEDIA_SLOT_MISSING.with(&[&name, &slot.to_string()])))?;
+        // A physical drive's cartridge is changed at the drive.
+        if let Some((_, location)) = profile
+            .map(super::drives::named_drives)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(s, _)| *s == slot)
+        {
+            return Err(one(qvsmsg::DRIVE_SLOT_PHYSICAL.with(&[
+                &slot.to_string(),
+                &name,
+                &location,
+            ])));
+        }
         Ok((name, kind))
     }
 
@@ -263,6 +275,7 @@ impl<S: System> Manager<S> {
         let mut errors = model::validate::profile(&profile, self.limits());
         if errors.is_empty() {
             errors = self.check_physical(&profile);
+            errors.extend(self.check_drives(&profile));
         }
         if !errors.is_empty() {
             return Err(errors);
@@ -802,7 +815,24 @@ impl<S: System> Partitions for Manager<S> {
             }
         })?;
         let answer = self.system.control(id, "media", None).unwrap_or_default();
-        Ok(answer
+        // A physical drive's slot is the partition manager's to say.
+        let drives: Vec<MediaSlot> = self
+            .partitions
+            .get(&id)
+            .and_then(|p| p.run.as_ref())
+            .map(|r| {
+                r.drives
+                    .iter()
+                    .map(|(slot, location)| MediaSlot {
+                        slot: *slot,
+                        kind: "drive".into(),
+                        name: location.clone(),
+                        prevented: false,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut slots: Vec<MediaSlot> = answer
             .lines()
             .filter_map(|l| {
                 let mut w = l.split_whitespace();
@@ -821,7 +851,10 @@ impl<S: System> Partitions for Manager<S> {
                     prevented,
                 })
             })
-            .collect())
+            .collect();
+        slots.extend(drives);
+        slots.sort_by_key(|m| m.slot);
+        Ok(slots)
     }
 
     fn adapters(&mut self, id: u32) -> Vec<vswitchd::Adapter> {
@@ -985,6 +1018,10 @@ impl<S: System> Partitions for Manager<S> {
 
     fn take_back(&mut self, location: String) -> Result<Vec<String>, Refused> {
         self.take_back_device(&location)
+    }
+
+    fn tape_drives(&mut self) -> Vec<crate::proto::TapeDrive> {
+        self.drive_list()
     }
 
     fn named(&mut self, pool: String, name: String) -> Vec<String> {

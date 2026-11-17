@@ -175,13 +175,29 @@ fn named(s: &mut Services, pool: &str, name: &str) -> Result<Vec<vres::Naming>, 
 fn drive(m: &partd::proto::MediaSlot) -> vres::Drive {
     vres::Drive {
         slot: m.slot,
-        kind: if m.kind == "tape" {
-            vres::DriveKind::Tape
-        } else {
-            vres::DriveKind::Optical
+        kind: match m.kind.as_str() {
+            "tape" => vres::DriveKind::Tape,
+            "drive" => vres::DriveKind::PhysicalTape,
+            _ => vres::DriveKind::Optical,
         },
         name: m.name.clone(),
         prevented: m.prevented,
+    }
+}
+
+/// A physical tape drive as QSI has it.
+pub fn tape_drive(d: &partd::proto::TapeDrive) -> vres::TapeDrive {
+    vres::TapeDrive {
+        location: d.location.clone(),
+        vendor: d.vendor.clone(),
+        product: d.product.clone(),
+        serial: d.serial.clone(),
+        released: d.released,
+        loaded: d.loaded,
+        holder: Holder {
+            partition: d.holder,
+            slot: d.slot,
+        },
     }
 }
 
@@ -231,8 +247,15 @@ pub(super) fn answer(s: &mut Services, r: Request) -> Answered {
         }
         // A stream's: the connection opens it.
         Request::ImageUpload(_) => Err(not_here()),
-        // Physical I/O's (bit 17), which this server does not offer.
-        Request::TapeDrives(_) => Err(vec![super::base::not_agreed()]),
+        Request::TapeDrives(_) => reached(PARTD, s.partd.tape_drives()).map(|drives| {
+            Reply::TapeDrives(
+                drives
+                    .iter()
+                    .filter(|d| d.present)
+                    .map(tape_drive)
+                    .collect(),
+            )
+        }),
     }?;
     Ok(AnyReply::Vres(reply))
 }

@@ -35,6 +35,8 @@ release = { path = "../../lic/release", version = "0.1.0" }
 [target.'cfg(target_os = "linux")'.dependencies]
 # The host's PCI devices and IOMMU as they are now.
 hostinv = { path = "../../lic/hostinv", version = "0.1.0" }
+# A physical tape drive passed through: the allow-list and the relay.
+tape = { path = "../../stg/tape", version = "0.1.0" }
 rustix.workspace = true
 libc.workspace = true
 

@@ -191,7 +191,7 @@ impl Server {
         let me = crate::families::Facts::identity(&mut facts).ok();
         Hello {
             version: qsi::VERSION,
-            caps: caps::HOST_V1 | caps::SERVICING,
+            caps: caps::HOST_V1 | caps::SERVICING | caps::PHYSICAL_IO | caps::PARTITION_V2,
             kind: PeerKind::Host,
             name: me.as_ref().map_or_else(String::new, |m| m.name.clone()),
             release: self.settings.release.clone(),

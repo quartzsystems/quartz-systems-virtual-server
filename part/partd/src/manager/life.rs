@@ -170,6 +170,10 @@ impl<S: System> Manager<S> {
             let (Some(name), Some(kind)) = (medium, media_kind(profile, *slot)) else {
                 continue;
             };
+            // A physical drive is the machine's to open, not the pool's.
+            if kind == Kind::Volume && model::validate::tape_drive(name).is_some() {
+                continue;
+            }
             wants.push(Want {
                 kind,
                 pool: String::new(),
@@ -352,16 +356,7 @@ impl<S: System> Manager<S> {
         };
         let definition = partition.definition.clone();
         let media = media.unwrap_or_else(|| profile_media(&profile));
-        let mut stores = self.hold_stores(id, &profile, &media)?;
-        let ports = match self.open_ports(id, &name, &profile, &mut stores) {
-            Ok(ports) => ports,
-            Err(refused) => {
-                self.system.give_back(id, &[]);
-                return Err(refused);
-            }
-        };
-        self.channel_stores(id, &name, &mut stores)?;
-        let given = self.devices_for(id, &name, &profile, &mut stores)?;
+        let (mut stores, ports, given, drives) = self.gather(id, &name, &profile, &media)?;
         stores.ipl_type = ipl_type;
         let vcpus = self.host.vcpus(&current.processors);
         let written = config::build(
@@ -399,6 +394,7 @@ impl<S: System> Manager<S> {
             state: State::Starting,
             no_channel: false,
             devices: devices.clone(),
+            drives: drives.clone(),
         };
         self.system.record(id, Some(&record));
         let time = self.system.now();
@@ -420,6 +416,7 @@ impl<S: System> Manager<S> {
                 kept: false,
                 uplinks_down: Vec::new(),
                 devices,
+                drives: drives.clone(),
             });
             partition.last_profile = profile_name.to_string();
             partition.message = None;
@@ -429,6 +426,7 @@ impl<S: System> Manager<S> {
         }
         self.set_state(id, State::Starting);
         self.assigned(id, &name, &given);
+        self.drives_moved(&drives);
         self.publish(&Event::Resources {
             id,
             name,
@@ -436,6 +434,83 @@ impl<S: System> Manager<S> {
             time,
         });
         Ok(())
+    }
+
+    /// What the VMM of `id` (`name`) is given of `profile` with `media`:
+    /// what the pool service holds, the ports, the channel's sockets,
+    /// the host's devices and the tape drives, each the VMM's
+    /// descriptors in that order. Each adapter's slot and whether its
+    /// port was opened, the devices and the drives.
+    #[allow(clippy::type_complexity)] // the parts of a launch, in order
+    fn gather(
+        &mut self,
+        id: u32,
+        name: &str,
+        profile: &Profile,
+        media: &[(u32, Option<String>)],
+    ) -> Result<
+        (
+            config::Stores,
+            Vec<(u32, bool)>,
+            Vec<super::physio::Given>,
+            Vec<(u32, String)>,
+        ),
+        Vec<Issued>,
+    > {
+        let mut stores = self.hold_stores(id, profile, media)?;
+        let ports = match self.open_ports(id, name, profile, &mut stores) {
+            Ok(ports) => ports,
+            Err(refused) => {
+                self.system.give_back(id, &[]);
+                return Err(refused);
+            }
+        };
+        self.channel_stores(id, name, &mut stores)?;
+        let given = self.devices_for(id, name, profile, &mut stores)?;
+        let drives = self.drive_stores(id, name, profile, &mut stores, &given)?;
+        Ok((stores, ports, given, drives))
+    }
+
+    /// The physical tape drives of `profile` for the activation of `id`,
+    /// each with its relay, into `stores` after the VFIO descriptors.
+    /// What was held and given is given back when they cannot be.
+    fn drive_stores(
+        &mut self,
+        id: u32,
+        name: &str,
+        profile: &Profile,
+        stores: &mut config::Stores,
+        given: &[super::physio::Given],
+    ) -> Result<Vec<(u32, String)>, Vec<Issued>> {
+        let taps = stores.net.iter().filter(|n| n.tap.is_some()).count();
+        let groups = stores
+            .devices
+            .iter()
+            .map(|d| &d.group)
+            .collect::<std::collections::BTreeSet<_>>();
+        let vfio = if stores.vfio.is_some() {
+            1 + groups.len()
+        } else {
+            0
+        };
+        let first = 3 + stores.files + taps + stores.ports.len() + vfio;
+        match self.drives_for(id, name, profile, first) {
+            Ok(opened) => {
+                let mut held = Vec::new();
+                for (slot, path, location) in opened {
+                    stores.drives.insert(slot, (path, location.clone()));
+                    held.push((slot, location));
+                }
+                Ok(held)
+            }
+            Err(refused) => {
+                self.system.give_back(id, &[]);
+                self.system.close_ports(id);
+                let locations: Vec<String> = given.iter().map(|g| g.location.clone()).collect();
+                self.return_devices(id, name, &locations);
+                Err(refused)
+            }
+        }
     }
 
     /// The host's devices of `profile` for the activation of `id`, each
@@ -595,6 +670,7 @@ impl<S: System> Manager<S> {
         self.system.give_back(id, &[]);
         self.system.close_ports(id);
         self.return_devices(id, &name, &run.devices);
+        self.drives_moved(&run.drives);
         if let Err(e) = self.apply_base() {
             self.system.log(&format!("resource controls: {e}"));
         }
@@ -882,6 +958,7 @@ impl<S: System> Manager<S> {
             kept: false,
             uplinks_down: Vec::new(),
             devices: record.devices.clone(),
+            drives: record.drives.clone(),
             media: partition
                 .profiles
                 .get(&record.profile)

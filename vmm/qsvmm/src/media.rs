@@ -34,6 +34,7 @@ use std::time::Duration;
 use devices::virtio::scsi::Unit;
 use devices::virtio::scsi::backing::ImageFile;
 use devices::virtio::scsi::optical::{self, Optical};
+use devices::virtio::scsi::passed::PassedTape;
 use devices::virtio::scsi::tape::{self, Tape};
 
 use crate::config::Partition;
@@ -78,6 +79,14 @@ pub fn open(partition: &Partition) -> io::Result<(Drives, SlotUnits)> {
         drives.optical.push((o.slot, drive));
     }
     for t in &partition.tape {
+        if let Some(path) = &t.drive {
+            let fd = crate::net::descriptor(path)
+                .ok_or_else(|| other(format!("tape slot {}: no descriptor", t.slot)))?;
+            let link = crate::sys::inherited_stream(fd)
+                .map_err(|e| other(format!("tape slot {}: {e}", t.slot)))?;
+            units.push((t.slot, Arc::new(PassedTape::new(Box::new(link)))));
+            continue;
+        }
         let drive =
             Arc::new(Tape::new(&t.serial).ok_or_else(|| other(format!("tape slot {}", t.slot)))?);
         if let Some(path) = &t.volume {

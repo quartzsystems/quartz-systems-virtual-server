@@ -26,6 +26,7 @@ pub mod channel;
 mod console;
 pub mod files;
 pub mod machine;
+mod sg;
 mod sys;
 pub mod watch;
 

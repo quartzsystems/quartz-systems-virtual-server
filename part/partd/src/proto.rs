@@ -320,6 +320,16 @@ pub enum Event {
         /// When.
         time: u64,
     },
+    /// A physical tape drive was released or taken back, held or given
+    /// back, or came or went.
+    TapeDrive {
+        /// Its location code.
+        location: String,
+        /// It now; none when it is not on the host.
+        drive: Option<TapeDrive>,
+        /// When.
+        time: u64,
+    },
     /// A device of physical I/O changed hands.
     Device {
         /// Its location code.
@@ -350,6 +360,44 @@ ipc::wire_enum!(Event {
     6 => Profile { id, name, profile, revision, default, time },
     7 => Device { location, change, partition, name, profile, device, note, time },
     8 => Entitlement { id, name, before, current, by, time },
+    9 => TapeDrive { location, drive, time },
+});
+
+/// A physical tape drive of the host (`docs/STORAGE.md`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TapeDrive {
+    /// Its location code.
+    pub location: String,
+    /// Its vendor.
+    pub vendor: String,
+    /// Its product.
+    pub product: String,
+    /// Its serial number.
+    pub serial: String,
+    /// Whether it is on the host.
+    pub present: bool,
+    /// Whether it is released for partitions.
+    pub released: bool,
+    /// Whether a cartridge is in it, as last seen while nobody held it.
+    pub loaded: bool,
+    /// The partition that holds it; 0 for none.
+    pub holder: u32,
+    /// That partition's name.
+    pub name: String,
+    /// Its tape device's slot there.
+    pub slot: u32,
+}
+ipc::wire_struct!(TapeDrive {
+    location,
+    vendor,
+    product,
+    serial,
+    present,
+    released,
+    loaded,
+    holder,
+    name,
+    slot
 });
 
 /// What happened to a device of physical I/O.
@@ -400,6 +448,7 @@ impl Event {
             | Event::Profile { id, .. }
             | Event::Entitlement { id, .. } => *id,
             Event::Device { partition, .. } => *partition,
+            Event::TapeDrive { drive, .. } => drive.as_ref().map_or(0, |d| d.holder),
         }
     }
 }
@@ -552,6 +601,10 @@ ipc::rpc! {
     /// weight (`docs/RESOURCES.md`); `by` says who asked. What it holds
     /// now. Its profile is not changed.
     42 => fn entitlement / ChangeEntitlement (id: u32, change: resource::Entitlement, by: String) -> Result<Current, Refused>;
+    /// The host's physical tape drives, by location code. A drive is
+    /// released and taken back with [`Calls::release`] and
+    /// [`Calls::take_back`], as a device is.
+    43 => fn tape_drives / TapeDrives () -> Vec<TapeDrive>;
 }
 
 /// The most bytes of a dump in one frame of a read.

@@ -135,7 +135,7 @@ fn model(dir: &Path, transport: &str) -> String {
 }
 
 /// The serial number, from the first node that has one.
-fn serial(dir: &Path) -> String {
+pub(crate) fn serial(dir: &Path) -> String {
     let found = |serial: Option<String>| serial.filter(|s| !s.is_empty());
     found(text(dir.join("device/serial")))
         .or_else(|| found(text(dir.join("serial"))))
@@ -168,7 +168,7 @@ fn namespace(dir: &Path, name: &str) -> u32 {
 
 /// The SCSI address in the path, its host counted among the hosts of
 /// the disk's PCI function; `Whole` when the path has none.
-fn scsi_unit(node: &Node) -> Unit {
+pub(crate) fn scsi_unit(node: &Node) -> Unit {
     let address = node.parts.iter().rev().find_map(|part| {
         let mut fields = part.split(':');
         let host: u32 = fields.next()?.parse().ok()?;

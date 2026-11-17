@@ -678,7 +678,7 @@ impl Unit for Tape {
         // A filemark or the early warning is a condition, not a refusal.
         let refused = match &result {
             Err(Failure::Check(sense) | Failure::Partial(sense, _)) => sense.key != NO_SENSE,
-            Err(Failure::Overrun) => true,
+            Err(Failure::Overrun | Failure::Answer { .. } | Failure::Unreachable) => true,
             Ok(_) => false,
         };
         if refused {
@@ -760,7 +760,7 @@ mod tests {
                 data.truncate(n);
                 Err((sense, data))
             }
-            Err(Failure::Overrun) => panic!("overrun"),
+            Err(other) => panic!("{other:?}"),
         }
     }
 

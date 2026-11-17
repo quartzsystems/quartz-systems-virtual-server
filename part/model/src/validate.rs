@@ -104,6 +104,21 @@ pub fn valid_store_name(name: &str) -> bool {
         && name.as_bytes()[0].is_ascii_alphabetic()
 }
 
+/// What marks a tape device's medium as a physical drive: `@` and the
+/// drive's location code (QSI's `MediaDevice::drive`).
+pub const DRIVE_MARK: char = '@';
+
+/// The location code of the physical drive a tape device's medium
+/// names; none for a volume of the media library.
+pub fn tape_drive(media: &str) -> Option<&str> {
+    let location = media.strip_prefix(DRIVE_MARK)?;
+    let fine = (1..=64).contains(&location.len())
+        && location
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'-' || b == b'.');
+    fine.then_some(location)
+}
+
 /// A unit's backing store as written: `POOL/NAME`, or an absolute path.
 pub fn backing(written: &str) -> Option<Backing<'_>> {
     if written.starts_with('/') {
@@ -402,7 +417,13 @@ fn ethernet(profile: &Profile, errors: &mut Vec<Issued>) {
 fn later(profile: &Profile, errors: &mut Vec<Issued>) {
     for (kind, devices) in [("optical", &profile.optical), ("tape", &profile.tape)] {
         for device in devices {
-            if let Some(media) = device.media.as_deref().filter(|m| !valid_store_name(m)) {
+            // A tape device may name a physical drive instead.
+            let drive = |m: &str| kind == "tape" && tape_drive(m).is_some();
+            if let Some(media) = device
+                .media
+                .as_deref()
+                .filter(|m| !valid_store_name(m) && !drive(m))
+            {
                 errors.push(qvsmsg::MEDIA_INVALID.with(&[kind, &device.slot.to_string(), media]));
             }
         }
@@ -463,6 +484,29 @@ mod tests {
         assert_eq!(profile(&sample::dedicated(), LIMITS), []);
         assert_eq!(profile(&sample::shared(), LIMITS), []);
         assert_eq!(definition(&sample::definition()), []);
+    }
+
+    #[test]
+    fn a_tape_device_may_name_a_physical_drive_and_an_optical_one_may_not() {
+        assert_eq!(
+            tape_drive("@P0000-B00-D08-F0-T0.0.3.0"),
+            Some("P0000-B00-D08-F0-T0.0.3.0")
+        );
+        assert_eq!(tape_drive("@NOPCI-ST0"), Some("NOPCI-ST0"));
+        for bad in ["SAVE1", "@", "@a/b", "@P0000 B00"] {
+            assert_eq!(tape_drive(bad), None, "{bad}");
+        }
+        let mut p = sample::dedicated();
+        p.tape.push(MediaDevice {
+            slot: 7,
+            media: Some("@NOPCI-ST0".into()),
+        });
+        assert_eq!(profile(&p, LIMITS), []);
+        p.optical.push(MediaDevice {
+            slot: 8,
+            media: Some("@NOPCI-SR0".into()),
+        });
+        assert_eq!(ids(&profile(&p, LIMITS)), [qvsmsg::MEDIA_INVALID.id]);
     }
 
     #[test]

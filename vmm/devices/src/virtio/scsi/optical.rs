@@ -603,7 +603,7 @@ mod tests {
         match drive.run(cdb, 1, &mut io::empty(), &mut out, &mut bounce) {
             Ok(_) => Ok(out),
             Err(Failure::Check(sense) | Failure::Partial(sense, _)) => Err(sense),
-            Err(Failure::Overrun) => panic!("overrun"),
+            Err(other) => panic!("{other:?}"),
         }
     }
 

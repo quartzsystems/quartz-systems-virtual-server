@@ -104,7 +104,24 @@ pub fn partd(e: &partd::Event) -> AnyEvent {
             default: *default,
             time: *time,
         })),
+        E::Device { .. } | E::TapeDrive { .. } | E::Entitlement { .. } => physical(e),
+    }
+}
+
+/// Phase 10's events: a device's, a tape drive's, an entitlement's.
+fn physical(e: &partd::Event) -> AnyEvent {
+    use partd::Event as E;
+    match e {
         E::Device { .. } => AnyEvent::Host(device_event(e)),
+        E::TapeDrive {
+            location,
+            drive,
+            time,
+        } => AnyEvent::Vres(vres::Event::TapeDrive(vres::TapeDriveChanged {
+            location: location.clone(),
+            drive: drive.as_ref().filter(|d| d.present).map(v::tape_drive),
+            time: *time,
+        })),
         E::Entitlement {
             id,
             name,
@@ -122,6 +139,8 @@ pub fn partd(e: &partd::Event) -> AnyEvent {
                 time: *time,
             },
         )),
+        // The partition manager's other events are `partd`'s above.
+        _ => unreachable!("only Phase 10's events are given"),
     }
 }
 

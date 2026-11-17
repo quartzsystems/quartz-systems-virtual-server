@@ -43,6 +43,12 @@
 //! capacity_mib = 4096
 //! protected = false
 //!
+//! [[tape]]                 # a physical drive passed through
+//! slot = 6
+//! serial = "K2M4103-6-0"
+//! drive = "/proc/self/fd/10"   # the partition manager's relay to it
+//! location = "P0000-B00-D08-F0-T0.0.3.0"
+//!
 //! [[net]]                  # a virtual Ethernet adapter
 //! slot = 5
 //! mac = "02:5a:3c:00:03:05"
@@ -165,6 +171,13 @@ pub struct TapeDrive {
     /// Whether the volume is write-protected.
     #[serde(default)]
     pub protected: bool,
+    /// A physical drive passed through in its place: the partition
+    /// manager's relay to it, a connected socket, as a descriptor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drive: Option<PathBuf>,
+    /// The physical drive's location code, for reports.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub location: String,
 }
 
 /// A virtual Ethernet adapter, as written.
@@ -523,6 +536,24 @@ fn media_devices(
         }
     }
     for t in &config.tape {
+        if t.drive.is_some() && t.volume.is_some() {
+            return refuse(format!(
+                "tape slot {}: a volume or a drive, not both",
+                t.slot
+            ));
+        }
+        if t.drive
+            .as_ref()
+            .is_some_and(|d| crate::net::descriptor(d).is_none())
+        {
+            return refuse(format!(
+                "tape slot {}: drive is a /proc/self/fd path",
+                t.slot
+            ));
+        }
+        if t.drive.is_some() {
+            continue;
+        }
         if t.volume.is_some() && !(16..=16 << 20).contains(&t.capacity_mib) {
             return refuse(format!("tape slot {}: capacity_mib 16 to 16777216", t.slot));
         }
@@ -761,7 +792,10 @@ pub fn check(config: Config) -> Result<Partition, ConfigError> {
         .iter()
         .flat_map(|a| a.units.iter().map(|u| &u.backing))
         .chain(optical.iter().filter_map(|o| o.media.as_ref()))
-        .chain(tape.iter().filter_map(|t| t.volume.as_ref()))
+        .chain(
+            tape.iter()
+                .filter_map(|t| t.volume.as_ref().or(t.drive.as_ref())),
+        )
         .collect();
     let net = nets(&config, &used, &paths)?;
     console_ports(&config, &paths, &net)?;
@@ -1005,6 +1039,8 @@ mod tests {
             name: "SAVE1".into(),
             capacity_mib: 1024,
             protected: false,
+            drive: None,
+            location: String::new(),
         }];
         let p = parse(&render(&config)).unwrap();
         assert_eq!(p.side, Side::Media);

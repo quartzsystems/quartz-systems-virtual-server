@@ -121,6 +121,12 @@ impl System for Null {
     fn fenced(&mut self) -> Vec<String> {
         Vec::new()
     }
+    fn tape_drives(&mut self, _: &[String]) -> Vec<crate::manager::DriveFacts> {
+        Vec::new()
+    }
+    fn open_drive(&mut self, _: u32, _: &str, _: &str, _: usize) -> Result<String, String> {
+        Err("no machine".into())
+    }
 }
 
 fn manager() -> &'static Mutex<(Manager<Null>, u32)> {

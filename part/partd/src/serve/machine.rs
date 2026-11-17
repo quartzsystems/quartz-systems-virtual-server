@@ -139,6 +139,11 @@ pub struct Machine {
     /// The VFIO container and groups opened for each partition: the
     /// VMM's after the channel's sockets.
     vfio: BTreeMap<u32, Vec<File>>,
+    /// The VMM's ends of each partition's tape drives' relays: after the
+    /// VFIO descriptors.
+    drives: BTreeMap<u32, Vec<File>>,
+    /// The drives a relay found gone, until they are seen again.
+    gone: std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>,
 }
 
 impl Machine {
@@ -160,6 +165,8 @@ impl Machine {
             held: BTreeMap::new(),
             taps: BTreeMap::new(),
             vfio: BTreeMap::new(),
+            drives: BTreeMap::new(),
+            gone: std::sync::Arc::default(),
         }
     }
 
@@ -208,6 +215,7 @@ impl Machine {
                     .map(|l| File::from(std::os::fd::OwnedFd::from(l))),
             )
             .chain(self.vfio.remove(&id).unwrap_or_default())
+            .chain(self.drives.remove(&id).unwrap_or_default())
             .collect();
         let mut child = sys::spawn_with(&mut command, procs, files)?;
         // The whole configuration, then the end of its input.
@@ -437,6 +445,9 @@ impl System for Machine {
     fn give_back(&mut self, id: u32, wants: &[Want]) {
         if wants.is_empty() {
             self.held.remove(&id);
+            // What a VMM that did not start was to have goes with it.
+            self.vfio.remove(&id);
+            self.drives.remove(&id);
         } else if let Some(held) = self.held.get_mut(&id) {
             held.retain(|(w, _)| !wants.iter().any(|x| x.kind == w.kind && x.slot == w.slot));
         }
@@ -688,6 +699,82 @@ impl System for Machine {
         if let Err(e) = state::atomic_write(&self.paths.run.join(FENCED), text.as_bytes()) {
             self.log(&format!("the fenced devices were not kept: {e}"));
         }
+    }
+
+    fn tape_drives(&mut self, held: &[String]) -> Vec<crate::manager::DriveFacts> {
+        let roots = hostinv::Roots {
+            sys: self.paths.sys.clone(),
+            proc: PathBuf::from("/proc"),
+        };
+        let drives = hostinv::tapes(&roots);
+        // A drive that came back says so, which clears its problem.
+        let back: Vec<String> = {
+            let mut gone = self
+                .gone
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let back: Vec<String> = gone
+                .iter()
+                .filter(|l| drives.iter().any(|d| d.location == **l))
+                .cloned()
+                .collect();
+            for l in &back {
+                gone.remove(l);
+            }
+            back
+        };
+        for l in back {
+            let code = &refcode::DRIVE_FOUND;
+            self.post_about(
+                code.code,
+                &code.text_with(&l),
+                &[refcode::about::tape_drive(&l, "")],
+            );
+        }
+        drives
+            .into_iter()
+            .map(|t| crate::manager::DriveFacts {
+                loaded: (!held.contains(&t.location)).then(|| super::sg::loaded(&t.sg)),
+                location: t.location,
+                vendor: t.vendor,
+                product: t.product,
+                serial: t.serial,
+                sg: t.sg,
+            })
+            .collect()
+    }
+
+    fn open_drive(
+        &mut self,
+        id: u32,
+        location: &str,
+        sg: &str,
+        fd: usize,
+    ) -> Result<String, String> {
+        let drive = super::sg::SgDrive::open(sg).map_err(|e| format!("/dev/{sg}: {e}"))?;
+        let (near, far) = UnixStream::pair().map_err(|e| e.to_string())?;
+        let gone = self.gone.clone();
+        let posts = self.posts.clone();
+        let (tx, rx) = std::sync::mpsc::channel::<(String, String, Vec<refcode::about::About>)>();
+        // The relay's posts go through here, so a drive gone is known.
+        let at = location.to_string();
+        thread::spawn(move || {
+            for post in rx {
+                if post.0 == refcode::DRIVE_GONE.code {
+                    gone.lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .insert(at.clone());
+                }
+                let _ = posts.send(post);
+            }
+        });
+        super::sg::spawn_relay(far, Box::new(drive), location.to_string(), tx)
+            .map_err(|e| e.to_string())?;
+        self.drives
+            .entry(id)
+            .or_default()
+            .push(File::from(std::os::fd::OwnedFd::from(near)));
+        Ok(format!("/proc/self/fd/{fd}"))
     }
 
     fn fenced(&mut self) -> Vec<String> {

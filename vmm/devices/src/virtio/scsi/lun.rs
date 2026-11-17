@@ -35,7 +35,7 @@ const PRODUCT: &[u8; 16] = b"VIRTUAL DISK    ";
 const REVISION: &[u8; 4] = b"0100";
 
 /// How a command went wrong.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Failure {
     /// A check condition with sense data.
     Check(Sense),
@@ -44,6 +44,18 @@ pub enum Failure {
     Partial(Sense, usize),
     /// The guest's buffers do not hold the transfer the command names.
     Overrun,
+    /// A passed drive's own answer: its status and its sense data as it
+    /// gave them, after the bytes given were written to the initiator.
+    Answer {
+        /// The status.
+        status: u8,
+        /// The sense data.
+        sense: Vec<u8>,
+        /// The bytes written.
+        given: usize,
+    },
+    /// A passed drive cannot be reached: a transport failure.
+    Unreachable,
 }
 
 impl From<Sense> for Failure {
