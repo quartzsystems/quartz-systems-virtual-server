@@ -175,7 +175,7 @@ pub fn guest_probe(host: &mut crate::host::Host) {
 /// A passed tape drive as the guest sees it: what its INQUIRY said, a
 /// block written and read back through `st`, a WRITE BUFFER the host
 /// must refuse; then, on a thread, TEST UNIT READY every two seconds for
-/// ten minutes, each change said on the console.
+/// ten minutes, each change said on the serial port.
 fn tape_probe(sys: &std::path::Path) -> Vec<String> {
     use std::fs;
     use std::io::{Read, Write};
@@ -243,7 +243,9 @@ fn tape_probe(sys: &std::path::Path) -> Vec<String> {
             for _ in 0..300 {
                 let now = sg_command(&tur, &[0; 6], &[]);
                 if now != last {
-                    if let Ok(mut c) = fs::OpenOptions::new().write(true).open("/dev/console") {
+                    // The serial port: /dev/console is the display's,
+                    // the command line's last console.
+                    if let Ok(mut c) = fs::OpenOptions::new().write(true).open("/dev/ttyS0") {
                         let line = format!("PIO TAPE {st_name} TUR {now}\r\n");
                         let _ = c.write_all(line.as_bytes());
                     }
