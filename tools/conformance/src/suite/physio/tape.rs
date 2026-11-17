@@ -214,12 +214,14 @@ fn until(
 
 /// `needle` and every failure, in that order.
 fn with_failures(needle: &str) -> Vec<&str> {
-    let mut all = vec![needle];
+    let mut all: Vec<&str> = needle.split(" | ").collect();
     all.extend_from_slice(FAILURES);
     all
 }
 
-/// Run `cmd` and require `needle`; the screen.
+/// Run `cmd` and require `needle`, or one of its alternatives between
+/// ` | `: the catalogue's text and what QS/400 sends where the two
+/// differ (`docs/QS400_GUEST.md`); the screen.
 fn ok(
     guest: &mut Session,
     id: u32,
@@ -227,8 +229,9 @@ fn ok(
     needle: &str,
     within: Duration,
 ) -> Result<String, String> {
+    let successes = needle.split(" | ").count();
     match command(guest, id, cmd, &with_failures(needle), within)? {
-        (0, s) => Ok(s),
+        (i, s) if i < successes => Ok(s),
         (_, s) => Err(format!("`{cmd}` failed:\n{s}")),
     }
 }
@@ -360,7 +363,7 @@ pub fn save(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         "CRTLIB LIB(TAPLIB)",
-        "Library TAPLIB created",
+        "Library TAPLIB created | TAPLIB *LIB created",
         two,
     )?;
     for (_, cmd) in OBJECTS {
@@ -376,7 +379,7 @@ pub fn save(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         &format!("INZTAP DEV({DEVICE}) NEWVOL(SAV001) CHECK(*NO)"),
-        "Volume SAV001 is initialized",
+        "Volume SAV001 is initialized | Volume SAV001 initialized",
         Duration::from_mins(5),
     )?;
     let s = ok(
@@ -403,7 +406,7 @@ pub fn save(run: &Run<'_>) -> Result<String, String> {
         g,
         second,
         &format!("RSTLIB SAVLIB(TAPLIB) DEV({DEVICE})"),
-        "objects restored to library TAPLIB",
+        "objects restored to library TAPLIB | objects restored to TAPLIB",
         Duration::from_mins(15),
     )?;
     let _ = writeln!(notes, "RSTLIB: `{}`", line_with(&s, "objects restored"));
@@ -479,7 +482,7 @@ fn big_library(guest: &mut Session, id: u32, notes: &mut String) -> Result<(), S
         guest,
         id,
         "CRTLIB LIB(BIGLIB)",
-        "Library BIGLIB created",
+        "Library BIGLIB created | BIGLIB *LIB created",
         Duration::from_mins(2),
     )?;
     let m = mark(guest, id)?;
@@ -573,7 +576,7 @@ pub fn span(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         &inz("SPN002"),
-        "Volume SPN002 is initialized",
+        "Volume SPN002 is initialized | Volume SPN002 initialized",
         five,
     )?;
     unmount(g, first)?;
@@ -582,7 +585,7 @@ pub fn span(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         &inz("SPN001"),
-        "Volume SPN001 is initialized",
+        "Volume SPN001 is initialized | Volume SPN001 initialized",
         five,
     )?;
     big_library(g, first, &mut notes)?;
@@ -604,7 +607,7 @@ pub fn span(run: &Run<'_>) -> Result<String, String> {
         g,
         second,
         &format!("RSTLIB SAVLIB(BIGLIB) DEV({DEVICE}) VOL(SPN001 SPN002)"),
-        "objects restored to library BIGLIB",
+        "objects restored to library BIGLIB | objects restored to BIGLIB",
         &mut notes,
     )?;
     let _ = writeln!(notes, "RSTLIB: `{}`", line_with(&s, "objects restored"));
@@ -754,14 +757,14 @@ pub fn volumes(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         &format!("INZTAP DEV({DEVICE}) NEWVOL(PRT001) CHECK(*NO)"),
-        "Volume PRT001 is initialized",
+        "Volume PRT001 is initialized | Volume PRT001 initialized",
         Duration::from_mins(5),
     )?;
     ok(
         g,
         first,
         "CRTLIB LIB(SMALL)",
-        "Library SMALL created",
+        "Library SMALL created | SMALL *LIB created",
         Duration::from_mins(2),
     )?;
     unmount(g, first)?;
@@ -775,7 +778,7 @@ pub fn volumes(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         &format!("INZTAP DEV({DEVICE}) NEWVOL(PRT002) CHECK(*NO)"),
-        &["is initialized"],
+        &["is initialized", "initialized on device"],
     )?;
     let _ = writeln!(notes, "PROT1 protected: INZTAP {o}");
     let _ = writeln!(
@@ -798,7 +801,7 @@ pub fn volumes(run: &Run<'_>) -> Result<String, String> {
             g,
             first,
             &format!("INZTAP DEV({DEVICE}) NEWVOL({identifier}) CHECK(*YES)"),
-            &["is initialized", "has not expired"],
+            &["is initialized", "initialized on device", "has not expired"],
         )?;
         let _ = writeln!(notes, "{name}: INZTAP CHECK(*YES) {o}");
     }
