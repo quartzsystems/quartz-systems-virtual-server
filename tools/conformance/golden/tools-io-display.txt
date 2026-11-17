@@ -1,0 +1,24 @@
+                           Display I/O for Partitions
+                                                               System:  vs-test
+
+ Location code . . . . :  P0000-B00-D1A-F0
+ Description . . . . . :  Ethernet adapter 8086:10d3
+ PCI address . . . . . :  0000:00:1a.0
+ Isolation group . . . :  5
+ Goes with . . . . . . :  nothing else
+ Reset . . . . . . . . :  pm
+ Interrupts  . . . . . :  msi, msix, intx
+ Use . . . . . . . . . :  not released
+
+ It can be released for partitions.
+
+
+
+
+
+
+
+
+
+ F1=Help   F3=Exit   F12=Cancel
+

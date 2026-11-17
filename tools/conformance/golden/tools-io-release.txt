@@ -1,0 +1,24 @@
+                         Confirm Release for Partitions
+                                                               System:  vs-test
+
+ Type its location code . :
+
+ P0000-B00-D1A-F0 is given to the pass-through driver
+ now: the host's drivers let go of it, and a partition whose
+ profile names it is given it at its activation.
+ Nothing else goes with it.
+
+
+
+
+
+
+
+
+
+
+
+
+
+ F1=Help   F12=Cancel
+

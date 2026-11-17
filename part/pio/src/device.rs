@@ -57,6 +57,18 @@ impl Use {
             Use::Bridge => "a PCI bridge".into(),
         }
     }
+
+    /// The same in a list's column: 20 characters but for a long name.
+    pub fn short(&self) -> String {
+        match self {
+            Use::LoadSource => "load source".into(),
+            Use::Pool { pool } => format!("pool {pool}"),
+            Use::Management => "management".into(),
+            Use::Uplink { switch } => format!("uplink {switch}"),
+            Use::Display => "display".into(),
+            Use::Bridge => "bridge".into(),
+        }
+    }
 }
 
 /// Why a device cannot be given to a partition now. The first five

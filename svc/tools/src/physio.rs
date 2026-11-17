@@ -62,12 +62,22 @@ impl Row {
         }
     }
 
-    /// What the host uses it for, or where it is.
-    fn state(&self) -> String {
+    /// What it is, in a list's column.
+    fn kind(&self) -> String {
+        match self {
+            Row::Device(d) => pio::device::kind(&d.class).to_string(),
+            Row::Drive(d) => format!("tape drive {}", d.product),
+        }
+    }
+
+    /// What the host uses it for, or where it is; in full, or as a
+    /// list's column has room for.
+    fn state(&self, full: bool) -> String {
         match self {
             Row::Device(d) => {
                 if let Some(u) = d.uses.first() {
-                    return format!("host: {}", u.words());
+                    let words = if full { u.words() } else { u.short() };
+                    return format!("host: {words}");
                 }
                 if let Some(h) = &d.holder {
                     return format!("held by {}", h.name);
@@ -143,8 +153,8 @@ impl Panel<Env, Outcome> for Io {
                 format!(
                     "{} {} {}",
                     kit::fit(r.location(), 25),
-                    kit::fit(&r.description(), 24),
-                    kit::fit(&r.state(), 25)
+                    kit::fit(&r.kind(), 24),
+                    kit::fit(&r.state(false), 25)
                 )
             })
             .collect();
@@ -279,7 +289,7 @@ fn whole(row: &Row) -> Vec<String> {
                     }
                 ),
                 format!("Interrupts  . . . . . :  {}", d.interrupts.join(", ")),
-                format!("Use . . . . . . . . . :  {}", row.state()),
+                format!("Use . . . . . . . . . :  {}", row.state(true)),
                 String::new(),
             ];
             if d.releasable.is_empty() {
@@ -300,7 +310,7 @@ fn whole(row: &Row) -> Vec<String> {
                 "Cartridge . . . . . . :  {}",
                 if d.loaded { "loaded" } else { "none" }
             ),
-            format!("Use . . . . . . . . . :  {}", row.state()),
+            format!("Use . . . . . . . . . :  {}", row.state(true)),
             String::new(),
             "A partition's tape device names it as @ and its location code.".into(),
         ],
