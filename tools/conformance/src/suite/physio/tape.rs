@@ -797,23 +797,28 @@ pub fn volumes(run: &Run<'_>) -> Result<String, String> {
         "PROT1 protected: DSPTAP {}",
         dsptap(g, first, "PRT001")
     );
-    // Unlabelled, then initialised by something else.
+    // Unlabelled, then initialised by something else; the ANSI volume
+    // last, since QS/400's check of it ended the system once
+    // (`docs/QS400_GUEST.md`, finding T4). A failure says what came
+    // before it.
     for (name, identifier) in [
         ("BLANK1", "BLK001"),
-        ("ANSI1", "ANS001"),
         ("RAW1", "RAW001"),
+        ("ANSI1", "ANS001"),
     ] {
-        unmount(g, first)?;
-        mount(g, first, name)?;
+        let so_far = |e: String, notes: &str| format!("{e}\nbefore it: {}", notes.trim_end());
+        unmount(g, first).map_err(|e| so_far(e, &notes))?;
+        mount(g, first, name).map_err(|e| so_far(e, &notes))?;
         let _ = writeln!(notes, "{name}: DSPTAP {}", dsptap(g, first, identifier));
-        let o = outcome(g, first, &save, &saved)?;
+        let o = outcome(g, first, &save, &saved).map_err(|e| so_far(e, &notes))?;
         let _ = writeln!(notes, "{name}: SAVLIB {o}");
         let o = outcome(
             g,
             first,
             &format!("INZTAP DEV({DEVICE}) NEWVOL({identifier}) CHECK(*YES)"),
             &["is initialized", "initialized on device", "has not expired"],
-        )?;
+        )
+        .map_err(|e| so_far(e, &notes))?;
         let _ = writeln!(notes, "{name}: INZTAP CHECK(*YES) {o}");
     }
     Ok(notes.trim_end().replace('\n', " | "))
