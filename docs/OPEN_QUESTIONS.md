@@ -82,18 +82,6 @@ Since Step 0 of Phase 9 the host says the answer itself: a processor
 without them posts `A2010010` at the IPL, the server stays down without
 touching the cryptography, and Service Tools option 4 says why.
 
-### 44. A partition's creation time across a capture (open)
-
-Phase 9's capture and put back (`docs/PHASE9.md`, Section 5) read
-every definition and profile back the same but one field: `created`,
-the time the host made the partition, which QSI's `Change` does not
-set and the host sets when a partition is made. A partition put back
-on a host installed again is a new partition there, made then.
-Recommended: keep it so; a console that keeps its own record of when a
-partition was first made keeps it beside the capture. The other way is
-a `created` that `Change` may set, which is QS/400's protocol to
-change.
-
 ## Decided, waiting on QS/400
 
 ### 36. Tape from QS/400 (answered by the Phase 6 handoff)
@@ -352,3 +340,8 @@ handoff took it as recommended.
     and on taking up a source pushes what changed while it was away
     (`docs/QSISERVER.md`). A console that resumes after a restart of
     the server misses nothing.
+44. **A partition's creation time across a capture.** Closed by the
+    Phase 10 handoff, kept as recommended: a partition put back on a
+    host installed again is a new partition there, made then, and its
+    `created` is that time. A console that keeps its own record of when
+    a partition was first made keeps it beside the capture.

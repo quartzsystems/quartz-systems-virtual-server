@@ -131,8 +131,10 @@ floating over the cores of a shared pool, with an entitlement in
 processing units, 1.00 a core; a capped partition cannot use more
 than its units, an uncapped one takes spare time by its weight. The
 default pool has every core that is not dedicated, reserved for the
-host or in a named pool. Resources are resolved at activation and do
-not change on a running partition.
+host or in a named pool. Resources are resolved at activation; on a
+running partition only a shared partition's entitlement changes (its
+units, capping and weight, within its profile and its pool), by the
+kernel's controls alone (`docs/RESOURCES.md`).
 
 **Memory.** A partition's memory is 2 MB huge pages. PID 1 reserves
 the configurable memory, the installed memory less the host's reserve,
@@ -165,6 +167,20 @@ fail their writes. The media library of optical images and AWSTAPE
 tape volumes is in the pool the operator designates. The pool service
 is a service of its own, apart from the load source's
 (`docs/STORAGE.md`, `docs/POOLD.md`).
+
+**Physical I/O.** A partition can be given a whole PCI device of the
+host with the rest of its IOMMU group, released at the host's Service
+Tools and named in a profile. Never the load source's or a pool's
+controllers, the management interface, an uplink or the console's
+display. The rules no setting relaxes: the IOMMU and interrupt
+remapping on, a group to one partition whole, every function resettable
+alone, message interrupts only. A released device is the pass-through
+driver's from the IPL, is reset before and after each partition, is
+fenced with a problem until the host restarts when a reset fails, and
+moves only at activation and at the partition's end. A physical tape
+drive can be passed through command by command instead, through an
+allow-list, its controller kept by the host; no media changer
+(`docs/PHYSICALIO.md`, `docs/STORAGE.md`).
 
 **Virtual Ethernet.** A virtual switch is a VLAN-aware kernel bridge
 with spanning tree off, kept by a service of its own (`vswitchd`).
