@@ -215,6 +215,60 @@ pub enum Ask {
         /// The switch; every one when left out.
         switch: Option<String>,
     },
+    /// The host's devices for physical I/O: released, held, or why not.
+    Io,
+    /// The host's physical tape drives.
+    Tape,
+    /// A running partition's processors.
+    Partition {
+        /// What to do.
+        #[command(subcommand)]
+        what: PartitionAsk,
+    },
+}
+
+/// What is asked of a running partition.
+#[derive(Subcommand, Debug)]
+pub enum PartitionAsk {
+    /// Change a running shared partition's entitlement: its units, its
+    /// capping, its weight. What is left out stays.
+    Entitlement {
+        /// The partition.
+        id: u32,
+        /// Processing units, as `0.50`.
+        #[arg(long, value_parser = units)]
+        units: Option<u32>,
+        /// Capped.
+        #[arg(long, conflicts_with = "uncapped")]
+        capped: bool,
+        /// Uncapped.
+        #[arg(long)]
+        uncapped: bool,
+        /// The uncapped weight, 0 to 255.
+        #[arg(long)]
+        weight: Option<u32>,
+    },
+}
+
+/// Processing units as hundredths: `1`, `0.5`, `0.50`.
+fn units(text: &str) -> Result<u32, String> {
+    let (whole, part) = text.split_once('.').unwrap_or((text, ""));
+    let whole: u32 = whole
+        .parse()
+        .map_err(|_| format!("{text} is not a number of units"))?;
+    let part = match part.len() {
+        0 => 0,
+        1 => part
+            .parse::<u32>()
+            .map(|p| p * 10)
+            .map_err(|e| e.to_string())?,
+        2 => part.parse::<u32>().map_err(|e| e.to_string())?,
+        _ => return Err(format!("{text}: hundredths at most")),
+    };
+    whole
+        .checked_mul(100)
+        .and_then(|w| w.checked_add(part))
+        .ok_or_else(|| format!("{text} is too many units"))
 }
 
 fn source(s: Source) -> IplSource {
@@ -254,6 +308,29 @@ pub fn request(a: Ask) -> AnyRequest {
         Ask::Resources => R::Host(host::Request::Host(Empty)),
         Ask::Settings => R::Host(host::Request::Settings(Empty)),
         Ask::Hardware => R::Host(host::Request::Hardware(Empty)),
+        Ask::Io => R::Host(host::Request::Devices(Empty)),
+        Ask::Tape => R::Vres(vres::Request::TapeDrives(Empty)),
+        Ask::Partition {
+            what:
+                PartitionAsk::Entitlement {
+                    id,
+                    units,
+                    capped,
+                    uncapped,
+                    weight,
+                },
+        } => R::Partition(partition::Request::Entitlement(partition::Entitlement {
+            id,
+            units,
+            sharing: if capped {
+                Some(qsi::host::model::Sharing::Capped)
+            } else if uncapped {
+                Some(qsi::host::model::Sharing::Uncapped)
+            } else {
+                None
+            },
+            weight,
+        })),
         Ask::List => R::Partitions(partitions::Request::List(Empty)),
         Ask::Get { id } => R::Partitions(partitions::Request::Get(partitions::Get { id })),
         Ask::Adapters { id } => {
@@ -370,4 +447,18 @@ pub fn run(link: &mut Link, a: Ask) -> Result<(), String> {
 
 fn print(r: &AnyReply) {
     println!("{r:#?}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::units;
+
+    #[test]
+    fn units_are_read_as_hundredths() {
+        assert_eq!(units("1"), Ok(100));
+        assert_eq!(units("0.5"), Ok(50));
+        assert_eq!(units("1.25"), Ok(125));
+        assert!(units("1.255").is_err());
+        assert!(units("x").is_err());
+    }
 }
