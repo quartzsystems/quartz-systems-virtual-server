@@ -19,6 +19,7 @@ netd = { path = "../../base/netd", version = "0.1.0" }
 users = { path = "../../base/users", version = "0.1.0" }
 panels = { path = "../../base/panels", version = "0.1.0" }
 partd = { path = "../../part/partd", version = "0.1.0" }
+pio = { path = "../../part/pio", version = "0.1.0" }
 poold = { path = "../../stg/poold", version = "0.1.0" }
 pool = { path = "../../stg/pool", version = "0.1.0" }
 vswitch = { path = "../../net/vswitch", version = "0.1.0" }

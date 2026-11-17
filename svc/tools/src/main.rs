@@ -20,6 +20,7 @@ mod keep;
 mod menu;
 mod network;
 mod partitions;
+mod physio;
 mod pools;
 mod service;
 

@@ -50,6 +50,7 @@ impl Panel<Env, Outcome> for MainMenu {
                 (7, "Display logs"),
                 (8, "Service functions"),
                 (9, "Power off or restart"),
+                (10, "Work with I/O for partitions"),
             ],
             "F1=Help   F3=Sign off   F12=Sign off",
         )
@@ -100,6 +101,7 @@ impl Panel<Env, Outcome> for MainMenu {
                 },
             })),
             Some(8) => Flow::Push(Box::new(crate::service::ServiceMenu)),
+            Some(10) => Flow::Push(Box::new(crate::physio::Io)),
             Some(_) => Flow::Error("Selection not valid.".into()),
             None => Flow::Error("Type the number of an option.".into()),
         }
@@ -124,7 +126,8 @@ impl Panel<Env, Outcome> for MainMenu {
                 "with the users of this console. 6 sets the display zone, the",
                 "time servers and the clock. 7 shows the logs and the",
                 "problem log. 8 works with problems, dumps and code update.",
-                "9 powers the host off or restarts it.",
+                "9 powers the host off or restarts it. 10 releases the host's",
+                "devices for partitions and takes them back.",
                 "",
                 "Partitions are made and run from the management console,",
                 "QS/MC.",
