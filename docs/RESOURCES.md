@@ -267,7 +267,7 @@ there since Phase 0: `CPUSETS`, `CGROUP_SCHED`, `FAIR_GROUP_SCHED`,
 
 ## Not here yet
 
-- `BLOCKED(phase9)`: cores are given without regard to sockets or to memory's place: a partition's cores and its huge pages may be on different NUMA nodes.
-- `BLOCKED(phase9)`: only 2 MB pages; 1 GiB pages are not used.
+- `BLOCKED(phase10)`: cores are given without regard to sockets or to memory's place: a partition's cores and its huge pages may be on different NUMA nodes.
+- `BLOCKED(phase10)`: only 2 MB pages; 1 GiB pages are not used.
 - Any change to a running partition's virtual processors, dedicated
   processors or memory: not in V1. Its entitlement can change (above).

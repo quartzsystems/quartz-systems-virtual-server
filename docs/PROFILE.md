@@ -290,4 +290,4 @@ profile changed while its partition runs is the next activation's.
 
 ## Not here yet
 
-- `BLOCKED(phase9)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
+- `BLOCKED(phase10)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
