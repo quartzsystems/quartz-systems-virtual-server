@@ -13,6 +13,9 @@
 //! - [`console`]: a viewer of a partition's console, and a dump's read.
 //! - [`hostile`]: a test image as a partition that floods its service
 //!   port, when a suite marks one of its disks.
+//! - [`pci`]: a test image as a partition that writes everything at the
+//!   configuration space of the functions it was given whole, when a
+//!   suite marks one of its disks with [`PCI_MARKER`].
 //! - [`probe`]: requests no guest kernel sends, made of a real host
 //!   device through the virtio-scsi device itself.
 
@@ -21,9 +24,15 @@ pub mod console;
 #[cfg(target_os = "linux")]
 pub mod hostile;
 #[cfg(target_os = "linux")]
+pub mod pci;
+#[cfg(target_os = "linux")]
 pub mod probe;
 #[cfg(target_os = "linux")]
 pub mod relay;
+
+/// What a disk begins with to make a partition hostile to the PCI
+/// functions it was given.
+pub const PCI_MARKER: &[u8] = b"QSVS-HOSTILE-PCI\n";
 
 /// What comes between the partition's name and a line of its serial
 /// output on the host's serial port.

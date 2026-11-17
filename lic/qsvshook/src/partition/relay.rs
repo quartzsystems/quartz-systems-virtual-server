@@ -121,6 +121,7 @@ pub fn run() -> io::Result<Infallible> {
     supervise::ready::signal()?;
     // A test image as a partition a suite made hostile.
     super::hostile::spawn_if_marked();
+    super::pci::spawn_if_marked();
     let mut client = client();
     // The VMMs being relayed, by partition and process, each with the
     // flag that says it has ended.

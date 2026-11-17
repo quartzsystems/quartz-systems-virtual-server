@@ -31,6 +31,11 @@ fn say(line: &str) {
 
 /// Whether a SCSI disk of the partition begins with the marker.
 fn marked() -> bool {
+    marked_with(MARKER)
+}
+
+/// Whether a SCSI disk of the partition begins with `marker`.
+pub fn marked_with(marker: &[u8]) -> bool {
     fs::read_dir("/dev")
         .into_iter()
         .flatten()
@@ -44,7 +49,7 @@ fn marked() -> bool {
                 && File::open(e.path())
                     .and_then(|mut f| f.read_exact(&mut head))
                     .is_ok()
-                && head.starts_with(MARKER)
+                && head.starts_with(marker)
         })
 }
 

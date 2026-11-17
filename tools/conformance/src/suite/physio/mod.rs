@@ -11,10 +11,12 @@
 //! - [`tools`]: a release at Service Tools option 10.
 //! - [`drive`]: tape pass-through against the double.
 //! - [`isolation`]: the IOMMU's mappings of a device given away.
+//! - [`hostile`]: a guest that writes everything at its device.
 
 pub mod devices;
 mod drive;
 mod host;
+mod hostile;
 mod isolation;
 mod tape;
 mod tools;
@@ -36,5 +38,6 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("pio-reset", host::reset),
     ("pio-restart", host::restart),
     ("pio-isolation", isolation::isolation),
+    ("pio-hostile", hostile::hostile),
     ("pio-tape-double", drive::double),
 ];
