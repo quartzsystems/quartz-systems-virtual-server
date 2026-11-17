@@ -183,7 +183,7 @@ impl Suite {
                 uplinks: Vec::new(),
                 qsi: None,
                 cpu: None,
-                iommu: false,
+                iommu: qemu::iommu_wanted(),
                 passed: Vec::new(),
             },
             timeout: Duration::from_secs(timeout),

@@ -176,6 +176,7 @@ cargo run -p build -- notices --check
 | `QSVS_OVMF_CODE`, `QSVS_OVMF_VARS` | the firmware, when not in a distribution path |
 | `QSVS_QEMU` | the QEMU binary |
 | `QSVS_NO_KVM` | run QEMU without KVM |
+| `QSVS_NO_IOMMU` | give the hosts no emulated IOMMU, but in a suite that asks for one (since Phase 10 every host has it) |
 | `QSVS_BOOT_TIMEOUT` | seconds a boot may take (60) |
 | `QSVS_ALLOW_NO_KVM` | `1` accepts `KVM not available` in `test` and makes the KVM rows of `doctor` warnings |
 

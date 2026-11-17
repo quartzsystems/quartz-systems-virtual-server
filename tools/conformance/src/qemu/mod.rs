@@ -228,6 +228,16 @@ pub fn kvm_wanted() -> bool {
     env::var_os(NO_KVM_ENV).is_none() && kvm_usable()
 }
 
+/// Turns the emulated IOMMU off for every host but a suite's own.
+pub const NO_IOMMU_ENV: &str = "QSVS_NO_IOMMU";
+
+/// Every host has the emulated IOMMU with interrupt remapping, as a
+/// machine that gives devices to partitions has (Phase 10), unless
+/// `QSVS_NO_IOMMU` is set: then only a suite that asks for it.
+pub fn iommu_wanted() -> bool {
+    env::var_os(NO_IOMMU_ENV).is_none()
+}
+
 fn join(prefix: &str, path: &Path, suffix: &str) -> OsString {
     let mut s = OsString::from(prefix);
     s.push(path);
@@ -262,7 +272,7 @@ fn drive(
 #[allow(clippy::too_many_lines)] // one switch after another
 pub fn args(l: &Launch) -> Vec<OsString> {
     // Interrupt remapping wants the I/O APIC in QEMU, not in KVM.
-    let machine = if l.iommu {
+    let machine = if l.iommu && l.kvm {
         "q35,kernel-irqchip=split"
     } else {
         "q35"

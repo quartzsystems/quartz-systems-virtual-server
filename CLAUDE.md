@@ -449,7 +449,7 @@ logs are always under `target/logs/`.
 
 Environment: `QSVS_TARGET_DIR`, `QSVS_JOBS`, `QSVS_SIGNING_KEY`,
 `QSVS_TRUSTED_KEYS`, `QSVS_BUILD_ID`, `QSVS_RELEASE`, `QSVS_OVMF_CODE`,
-`QSVS_OVMF_VARS`, `QSVS_QEMU`, `QSVS_NO_KVM`, `QSVS_BOOT_TIMEOUT`,
+`QSVS_OVMF_VARS`, `QSVS_QEMU`, `QSVS_NO_KVM`, `QSVS_NO_IOMMU`, `QSVS_BOOT_TIMEOUT`,
 `QSVS_ALLOW_NO_KVM` (`docs/PHASE0.md` says what each does), and
 `QSVS_QS400_IMAGE`, the QS/400 disk image the partition suites IPL
 (`docs/PHASE4.md` says how to make it), and `QSVS_QS400_ISO`, QS/400's
