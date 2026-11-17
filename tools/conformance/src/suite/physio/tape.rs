@@ -566,7 +566,7 @@ fn over_two(
     mount(guest, id, "SPAN2")?;
     let (which, s) =
         until(guest, id, &m, &done, hour).map_err(|s| format!("`{cmd}`:\n{s}\n{notes}"))?;
-    if which != 0 {
+    if which >= success.split(" | ").count() {
         return Err(format!("`{cmd}` over two volumes:\n{s}\n{notes}"));
     }
     Ok(s)
