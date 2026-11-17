@@ -118,6 +118,10 @@ pub fn qsvs(image: Image) -> Result<Product> {
         Image::Release => (release::NAME, RELEASE_PACKAGES, initramfs::entries),
         Image::Test => (TEST_NAME, TEST_PACKAGES, initramfs::test_entries),
     };
+    let fragments: &'static [&'static str] = match image {
+        Image::Release => &[kernel::FRAGMENT],
+        Image::Test => &[kernel::FRAGMENT, kernel::TEST_FRAGMENT],
+    };
     let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
@@ -132,7 +136,7 @@ pub fn qsvs(image: Image) -> Result<Product> {
         repo,
         release: release::RELEASE.to_string(),
         build_id: release::BUILD_ID.to_string(),
-        fragments: &[kernel::FRAGMENT],
+        fragments,
         required_y: kernel::REQUIRED_Y,
         required_n: kernel::REQUIRED_N,
         cmdline: kernel::CMDLINE,
@@ -218,6 +222,17 @@ mod tests {
         assert_eq!(&spec.label, b"QSVS ESP   ");
         assert_eq!(spec.volume_id, 0x5153_5653);
         assert!(p.repo.join("VERSION").is_file());
+    }
+
+    #[test]
+    fn only_a_test_image_has_the_tape_double_in_its_kernel() {
+        assert_eq!(qsvs(Image::Release).unwrap().fragments, [kernel::FRAGMENT]);
+        assert_eq!(
+            qsvs(Image::Test).unwrap().fragments,
+            [kernel::FRAGMENT, kernel::TEST_FRAGMENT]
+        );
+        let release = include_str!("../../../../kernel/config/qsvs.config");
+        assert!(!release.contains("SCSI_DEBUG"));
     }
 
     #[test]

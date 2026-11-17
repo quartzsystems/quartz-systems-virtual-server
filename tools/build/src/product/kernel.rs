@@ -9,6 +9,8 @@
 
 /// The kernel configuration fragment in `kernel/config/`.
 pub const FRAGMENT: &str = "qsvs.config";
+/// The test image's fragment, after [`FRAGMENT`]: its tape double.
+pub const TEST_FRAGMENT: &str = "qsvs-test.config";
 
 /// The baked command line, before each UKI's own word.
 pub const CMDLINE: &str = "console=ttyS0,115200 console=tty0 panic=-1 quiet";
@@ -98,12 +100,18 @@ pub const REQUIRED_Y: &[&str] = &[
     "BNXT",
     "MLX5_CORE",
     "MLX5_CORE_EN",
-    // Pass-through.
+    // Pass-through, the IOMMU on at every IPL.
     "VFIO",
+    "VFIO_CONTAINER",
+    "VFIO_IOMMU_TYPE1",
     "VFIO_PCI",
+    "KVM_VFIO",
     "INTEL_IOMMU",
+    "INTEL_IOMMU_DEFAULT_ON",
     "AMD_IOMMU",
     "IRQ_REMAP",
+    "X86_X2APIC",
+    "IOMMU_DEFAULT_DMA_LAZY",
     // Under QEMU.
     "VIRTIO_PCI",
     "VIRTIO_BLK",
@@ -325,7 +333,7 @@ mod tests {
             "/../../kernel/config/qsvs.config"
         );
         let text = std::fs::read_to_string(path).unwrap();
-        let selected = ["IRQ_BYPASS_MANAGER"];
+        let selected = ["IRQ_BYPASS_MANAGER", "VFIO_IOMMU_TYPE1", "KVM_VFIO"];
         for sym in REQUIRED_Y {
             let set = text.lines().any(|l| l == format!("CONFIG_{sym}=y"));
             assert!(set || selected.contains(sym), "{sym} is not in {FRAGMENT}");
