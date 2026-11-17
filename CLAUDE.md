@@ -34,12 +34,12 @@ partition manager alone speaks.
 | 6 | Virtual Ethernet: virtual switches and their uplinks, the switch service, partitions' adapters and ports, virtio-net over vhost-net | `docs/PHASE6.md` |
 | 7 | Partition service interface: virtio-console with the service and console ports, the service channel in `partd`, the system's codes and states, the shut down kinds, the panel functions, holding and dumps, the console as a full screen | `docs/PHASE7.md` |
 | 8 | QSI host server: the one listener, pairing at Service Tools option 4, the host's families translated to the services, events on disk, `qsictl` | `docs/PHASE8.md` |
-| **9 (current)** | Service, dumps and code update: problems from posted codes, the host's dump, the update image installed into the other slot with its rollback, Service Tools option 8 | `docs/PHASE9.md` |
-| 10 | Physical I/O and tape pass-through | |
+| 9 | Service, dumps and code update: problems from posted codes, the host's dump, the update image installed into the other slot with its rollback, Service Tools option 8 | `docs/PHASE9.md` |
+| **10 (current)** | Physical I/O and tape pass-through: whole PCI devices with their IOMMU groups, released at Service Tools option 10 and named in profiles; a physical tape drive passed through command by command; a running shared partition's entitlement | `docs/PHASE10.md` |
 | 11 | Release engineering and hardening | |
 
 Work that is not done is listed in the current phase's record,
-`docs/PHASE9.md`. Code and documents mark it `BLOCKED(phase9): reason`
+`docs/PHASE10.md`. Code and documents mark it `BLOCKED(phase10): reason`
 (one line) or `NEEDS-CODY` (Cody's hardware or sign-off). No other
 marker form. The records of earlier phases keep the markers they were
 written with.
@@ -167,7 +167,24 @@ written with.
   writes the A/B record and the firmware's variables. A pending slot's
   first IPL keeps a copy of state; a slot that does not confirm is
   followed by the old one, which puts it back.
-- Anything not done is listed in `docs/PHASE9.md`.
+- Physical I/O (`part/pio`, `docs/PHYSICALIO.md`): a device is given
+  whole with its IOMMU group, only when the IOMMU and interrupt
+  remapping are on, every function resets alone and signals message
+  interrupts; no setting relaxes any of it. The load source's and the
+  pools' controllers, the management interface, every uplink and the
+  console's display are never released. Only Service Tools option 10
+  releases or takes back; a console names released devices in
+  profiles. A device moves only at activation and at the partition's
+  end, is reset before and after, and is fenced with its problem until
+  the host restarts when a reset fails. `qsvmm` gets VFIO's descriptors
+  from `partd` and maps the partition's memory, all of it and nothing
+  else, for the device's DMA.
+- A physical tape drive is passed through by `partd`'s relay
+  (`SG_IO`, as root), never by `qsvmm`, which holds one end of a
+  socket; every command is checked against the allow-list
+  (`stg/tape/src/passthrough.rs`) in both. One holder at a time; no
+  media changer.
+- Anything not done is listed in `docs/PHASE10.md`.
 
 ## Locked decisions
 
@@ -203,7 +220,15 @@ See `docs/ARCHITECTURE.md`. Short form:
 - **Memory.** 2 MB huge pages, reserved by PID 1 at the IPL: no
   overcommit, no ballooning. The host reserves memory for itself (the
   larger of 2 GiB and 5%).
-- **Changing resources.** At activation only.
+- **Changing resources.** At activation only, but a running shared
+  partition's entitlement (units, capping, weight) within its profile
+  and its pool, by the kernel's controls (`docs/RESOURCES.md`).
+- **Physical I/O.** A whole PCI device with its IOMMU group, released
+  at Service Tools, named in a profile, given at activation; the
+  IOMMU, interrupt remapping, resets and message interrupts required;
+  reset before and after, fenced on a failed reset. A tape drive passed
+  through command by command through an allow-list
+  (`docs/PHYSICALIO.md`, `docs/STORAGE.md`).
 - **Partition identity.** A serial number made once, from the host's
   and the partition's ID, in the definition; SMBIOS tables carry it.
   The keylock is the host's, written at every activation.
@@ -302,7 +327,7 @@ tools/          host tools
     src/host/       doctor rows, the license header check, the neutrality check of base/, `test`, `fuzz`
   conformance/    the QEMU harness
     src/qemu/       launch, OVMF, serial capture, the serial port as a 24x80 grid, typed keys, golden files, firmware variables, image copies, the test hooks' channel
-    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3 and the sixteen of Phase 4, with the partition manager's client over the hooks' channel; storage/ Phase 5's, with the pool service's client; network/ Phase 6's; service/ Phase 7's; qsi/ Phase 8's, a console over the management network; servicing/ Phase 9's
+    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3 and the sixteen of Phase 4, with the partition manager's client over the hooks' channel; storage/ Phase 5's, with the pool service's client; network/ Phase 6's; service/ Phase 7's; qsi/ Phase 8's, a console over the management network; servicing/ Phase 9's; physio/ Phase 10's
     golden/         every installer and Service Tools screen, as text
   fuzz/           qsvsfuzz, the Rust fuzzer: LLVM's coverage counters, the mutator, the loop, a target for every reader of guest bytes
 base/           what every Quartz appliance needs; product-neutral
@@ -347,7 +372,7 @@ lic/            PID 1, release, installer, base services
 vmm/            the VMM: one process for one partition
   arch/           x86_64 boot state: the memory map, page tables and GDT, registers, the zero page, the reset vector, the SMBIOS tables; CPUID and MSR policy with a core's sibling threads, the local APIC
   acpi/           the tables in place of firmware: RSDP, XSDT, FADT, MADT, MCFG, the DSDT
-  devices/        the I/O port bus; the 16550, the CMOS clock, the reset line, the power-off register; the PCI bus, configuration space, MSI-X; virtio-pci, virtio-scsi, virtio-net, virtio-console, virtio-rng
+  devices/        the I/O port bus; the 16550, the CMOS clock, the reset line, the power-off register; the PCI bus, configuration space, MSI-X; virtio-pci, virtio-scsi, virtio-net, virtio-console, virtio-rng; a host's function passed through (pci/passthrough) over VFIO (sys/vfio)
     src/virtio/scsi/  the command decoder, a disk LUN and its hold for space, the optical drive, the tape drive, the backing stores
     src/virtio/console/  the control queue's messages, a port's link to the host, the device
   ipl/            the IPL loader: bounded GPT, FAT and ISO 9660 readers, the LIC record through licpart, the bzImage into guest memory, IPL source D
@@ -357,15 +382,16 @@ part/           the partition manager
   resource/       cores and memory: installed, configurable, available; what an activation gets; pools; the cgroup tree as a plan; partitions.toml
   svcchan/        one partition's service channel on the host's side: qsipart's frames read as hostile, the hello, requests and their answers, pings
   console/        a partition's console port: the whole frame kept, one viewer at a time (crate console-port)
+  pio/            physical I/O: what the host uses, each device as seen, physio.toml, what an activation is given, the kernel's PCI files
   dump/           a partition's dump: the ELF core with its notes and header record, written sparsely; the limits of the dumps kept
   partd/          the service: the socket's protocol, the partitions in state, the manager, and the machine behind it; the fuzz target of what a system sends
-    src/manager/    the partitions as they are: the requests, activation and the ends of a VMM, the configuration a VMM is given, the service channel, the console, the panel, dumps
-    src/serve/      the service on Linux: control groups, starting qsvmm, watching it, auto start, taking up what runs, the channel's connections, a console's viewer, histories and dumps on disk
+    src/manager/    the partitions as they are: the requests, activation and the ends of a VMM, the configuration a VMM is given, the service channel, the console, the panel, dumps, physical I/O and drives, entitlement
+    src/serve/      the service on Linux: control groups, starting qsvmm, watching it, auto start, taking up what runs, the channel's connections, a console's viewer, histories and dumps on disk, VFIO and binding, the tape relay over SG_IO
 stg/            storage
   pool/           a pool's member label, a pool disk's layout, a pool to be made and its limits, what each disk is
   vdisk/          virtual disks: raw files in a pool, thin or thick
   media/          the media library: optical images, tape volumes, imports
-  tape/           a tape volume: the AWSTAPE image, a drive's view of it
+  tape/           a tape volume: the AWSTAPE image, a drive's view of it; pass-through's allow-list and relay frames
   poold/          the pool service: pools assembled from their labels, served through ublk, rebuilt; virtual disks, the library, what partitions hold; its socket
 net/            virtual Ethernet
   nl/             what QS/400's netlink lacks: VLAN-filtering bridges, port rules and VLANs, the forwarding table, a port's tc filter, taps
@@ -375,11 +401,11 @@ qsi/            the QSI host server
   server/         qsiserver: the pins and pairing, each family translated to the services, the events and their log on disk, a console's connection; on Linux the listener, the streams' far ends, the pumps, the local socket; the fuzz target of what a console sends
   local/          qsilocal: the server's local socket, for Service Tools option 4
 svc/            Service Tools
-  tools/          qsvstools: QS/VS's menu, system status, the partition list, disk units, disk configuration, storage pools, the network's switches and management console pairing over base/panels; option 8's service functions and the problem log; the two sessions; the one panel PID 1 runs it for
+  tools/          qsvstools: QS/VS's menu, system status, the partition list, disk units, disk configuration, storage pools, the network's switches and management console pairing over base/panels; option 8's service functions and the problem log; option 10, I/O for partitions; the two sessions; the one panel PID 1 runs it for
   problem/        the problem service: problems, their log, the history read from where it got to; its socket
   hostdump/       the host's dump: the ZIP writer, what is taken and left out, the dumps kept
   update/         code update: the update image and its manifest, verification, installing into the other slot; its socket
-docs/           ARCHITECTURE, PHASE0 to PHASE9, PROBLEMS, UPDATE, QS400_GUEST, VMM, PARTD, SERVICE, PANEL, DUMPS, POOLD, VSWITCHD, NETWORK, STORAGE, RESOURCES, PROFILE, QSISERVER, QSICTL, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
+docs/           ARCHITECTURE, PHASE0 to PHASE10, PHYSICALIO, PROBLEMS, UPDATE, QS400_GUEST, VMM, PARTD, SERVICE, PANEL, DUMPS, POOLD, VSWITCHD, NETWORK, STORAGE, RESOURCES, PROFILE, QSISERVER, QSICTL, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
 ```
 
 Category folders are created as phases need them. The full set: `tools/`
@@ -388,7 +414,8 @@ installer, base services), `vmm/`, `stg/`, `net/`, `qsi/`, `svc/`
 (Service Tools). Phase 2 has `tools/`, `base/`, `lic/` and `svc/`;
 Phase 3 adds `vmm/`, Phase 4 `part/` (the partition manager), Phase 5
 `stg/` (storage), Phase 6 `net/` (virtual Ethernet); Phase 7's crates
-are in `part/`; Phase 8 adds `qsi/`; Phase 9's are in `svc/`.
+are in `part/`; Phase 8 adds `qsi/`; Phase 9's are in `svc/`; Phase
+10's are in `part/`, `vmm/` and `stg/`.
 
 ## Commands
 
@@ -399,7 +426,7 @@ with `QSVS_TARGET_DIR`.
 cargo run -p build -- doctor          host prerequisites, the license headers, base/ neutral
 cargo run -p build -- all             fetch, kernel, userland, initramfs, uki, disk, iso, manifest
 cargo run -p build -- all --test-image   the same with the test hooks, under <target>/test-image/
-cargo run -p build -- test            Phase 0's suite on the release image; the ten base suites, the fifteen of Phase 2, the ten of Phase 3, the sixteen of Phase 4, Phase 5's, Phase 6's, Phase 7's, Phase 8's and Phase 9's on the test image; then the fuzz targets, 60 s each
+cargo run -p build -- test            Phase 0's suite on the release image; the ten base suites, the fifteen of Phase 2, the ten of Phase 3, the sixteen of Phase 4, Phase 5's, Phase 6's, Phase 7's, Phase 8's, Phase 9's and Phase 10's on the test image; then the fuzz targets, 60 s each
 cargo run -p build -- test --suite dhcp  one suite alone (--suite list names them)
 cargo run -p build -- test --media iso   boot the installation ISO to the installer's first screen
 QSVS_GOLDEN=update cargo run -p build -- test --suite install-serial   write the golden screens instead of comparing
@@ -468,6 +495,12 @@ a test image and off for a release image, whatever the caller has.
 - `docs/PHASE9.md`: service, dumps and code update: what exists, how
   to run it, the pin, hashes, the acceptance table, what remains for a
   real machine.
+- `docs/PHASE10.md`: physical I/O and tape pass-through: what exists,
+  how to run it, the pin and what it broke, kernel additions, the
+  IOMMU's cost, hashes, the acceptance table, what remains for a real
+  machine.
+- `docs/PHYSICALIO.md`: what can be given, the rules, release and
+  assignment, reset and fencing, what the guest sees.
 - `docs/PROBLEMS.md`: problems: what opens, counts, clears and closes
   one, the table of codes.
 - `docs/UPDATE.md`: code update: the image, verification, install,
