@@ -14,6 +14,7 @@ pub mod base;
 pub mod install;
 pub mod network;
 pub mod partition;
+pub mod physio;
 pub mod qsi;
 pub mod service;
 pub mod servicing;
@@ -137,6 +138,7 @@ pub fn names() -> Vec<&'static str> {
     names.extend(service::SUITES.iter().map(|s| s.0));
     names.extend(qsi::SUITES.iter().map(|s| s.0));
     names.extend(servicing::SUITES.iter().map(|s| s.0));
+    names.extend(physio::SUITES.iter().map(|s| s.0));
     names
 }
 
@@ -231,7 +233,8 @@ impl Suite {
             .chain(network::SUITES)
             .chain(service::SUITES)
             .chain(qsi::SUITES)
-            .chain(servicing::SUITES);
+            .chain(servicing::SUITES)
+            .chain(physio::SUITES);
         for (name, suite) in suites {
             if wanted(name) {
                 done(vec![self.base_suite(name, *suite)?]);
@@ -474,6 +477,7 @@ mod tests {
                 + service::SUITES.len()
                 + qsi::SUITES.len()
                 + servicing::SUITES.len()
+                + physio::SUITES.len()
         );
         assert_eq!(qsi::SUITES.len(), 13);
         assert_eq!(service::SUITES.len(), 17);

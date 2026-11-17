@@ -13,6 +13,8 @@ loadsource = { path = "../../base/loadsource", version = "0.1.0" }
 qsvshook = { path = "../../lic/qsvshook", version = "0.1.0" }
 ipl = { path = "../../vmm/ipl", version = "0.1.0" }
 poold = { path = "../../stg/poold", version = "0.1.0" }
+# Phase 10's tape suites: foreign volumes made as AWSTAPE images.
+tape = { path = "../../stg/tape", version = "0.1.0" }
 qsvmm = { path = "../../vmm/qsvmm", version = "0.1.0" }
 partd = { path = "../../part/partd", version = "0.1.0" }
 # The service channel's console frames, and the form of a dump.
