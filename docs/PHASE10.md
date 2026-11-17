@@ -173,3 +173,92 @@ device of the host does DMA for them. The uplink here is a virtio
 device, which QEMU does not put behind its IOMMU. A real host's uplink
 NIC is translated, lazily (`IOMMU_DEFAULT_DMA_LAZY`); what that costs a
 physical adapter is the Dell's to measure (`NEEDS-CODY` below).
+
+## Section 1: QS/400 on the virtual tape drive
+
+Done first, and reported in `docs/QS400_GUEST.md` ("Saving and
+restoring on tape"). `INZTAP`, `SAVLIB`, `DSPTAP` and `RSTLIB` work
+against the drive from one partition to another; a save and a restore
+span two volumes past the early warning, the system unloading the first
+and the host mounting the second; a protected volume and one with no
+labels are refused as they should be. The drive needed no change.
+
+Four findings are QS/400's (T1 to T4 there, and items 9 to 12 of its
+list for a QS/400 handoff): `INZTAP CHECK(*YES)` of a volume labelled
+in ASCII ends the system (T4, `NEEDS-CODY`); a blank volume is a device
+error (T2); a save to another system's volume saves nothing without
+saying why (T3); the messages sent are not the catalogue's (T1).
+`pio-tape-volumes` is blocked by T4; question 36 waits on QS/400 for
+them (`docs/OPEN_QUESTIONS.md`).
+
+## Conformance
+
+| # | Suite | What it shows |
+|---|---|---|
+| 1 | every earlier suite | Step 0, and in the acceptance run with every host's IOMMU on (below) |
+| 2 | `pio-tape-save`, `pio-tape-span`, `pio-tape-volumes` | Section 1 (above): the first two pass; the third records every outcome and is blocked by QS/400's T4 |
+| 3 | `pio-tools` | option 10's screens against `tools-io`, `tools-io-display`, `tools-io-release`, `tools-io-released`; the adapter released with its location typed is no interface of the host nor in its inventory; a partition whose profile names it took `10.0.2.15` through it |
+| 4 | `pio-nvme` | the NVMe controller given to FIRST, whose system found the disk blank, wrote and read back; reset and given back (`C2013035`); SECOND found FIRST's marker and wrote its own |
+| 5 | `pio-refused` | the load source's controller, a pool member's, the management interface's and an uplink's, each refused with `QVS2406` and its use; the function beside the pool member's in its group with `QVS2407` naming it |
+| 6 | `pio-group` | releasing one function of the shared group released both; a profile of one alone refused with `QVS2404` naming the other; both given whole |
+| 7 | `pio-iommu-off` | `A2013010` and its problem; a release refused with `QVS2410`; a partition with no physical I/O ran |
+| 8 | `pio-held` | required and held: `QVS2403` naming FIRST; not required: SECOND activated without it, FIRST still holding it |
+| 9 | `pio-reset` | a killed `qsvmm`: the controller reset, given back and given again; a reset made to fail: `A2013050`, its problem, the device fenced even without the hook, bound and given after a restart |
+| 10 | `pio-restart` | the released controller bound to `vfio-pci` at the IPL before the services started; the released adapter taken out of the machine: `A2013030` and its problem, and a partition that did not require it ran |
+| 11 | `pio-isolation` | the Intel IOMMU's debugfs record of the controller's page tables: `0x0+0x20000000`, the partition's 512 MiB at guest address 0, and nothing else; nothing after the partition ended |
+| 12 | `pio-hostile`, `fuzz --target passthrough` | a guest's 9,210 configuration space writes (42 by name, 9,168 at random, every width): the other partition ran on in its VMM, the manager answered within 20 ms, every service ready; the controller reset and used by the next partition; the fuzz target 119,962 runs in 60 s, no finding |
+| 13 | `pio-tape-double`, `fuzz --target passed-tape` | `scsi_debug` as a tape drive released and given: INQUIRY and data through `st` as the drive gave them; WRITE BUFFER refused in front of the drive (`5/20`) and never reached it (no microcode-changed attention after); a second holder refused (`QVS2403`); the drive deleted: `A2013080`, its problem, the partition's next command a transport failure; the fuzz target 122,305 runs in 60 s, no finding |
+| 14 | `pio-entitlement` | capped at 0.50 units the partition used 0.500 of a core; raised to 1.00 with the same VMM, 1.000; 1.20 refused (`QVS2503`), 0.80 beside another's 0.30 in a pool of one core (`QVS2505`), a dedicated partition (`QVS2502`); the next activation's `cpu.max` the profile's |
+| 15 | `pio-qsi` | over QSI: the devices as the host has them, before and after a release; a partition made, given the controller and the drive and activated; a second refused `QSI1303`; units changed, 1.20 refused `QSI1403`; device, drive and entitlement events; `qsictl io`, `tape` and `partition entitlement` |
+| 16 | every earlier suite, `pio-iommu-off` | in the acceptance run with the IOMMU on; a partition with no physical I/O as before |
+
+What the runs found and what was done, beside Section 1's:
+
+| Found | Done |
+|---|---|
+| `partd`'s `SG_IO` request was typed for glibc and did not build for musl | `libc::Ioctl` (`f02d595`) |
+| emulated Intel functions never share an IOMMU group: Linux takes an Intel root-complex endpoint for isolated (`pci_quirk_rciep_acs`) | the harness's shared groups are QEMU's NVMe (`13f84e2`) |
+| `scsi_debug`, built in, made a disk at every IPL of the test image | the test image's command line has `scsi_debug.add_host=0` (`9d99d6a`) |
+| option 10's list cut its descriptions and uses mid-word, and showed 15 rows of a host's dozens | a page of 14 with F7 and F8, kinds and short uses (`d3bee17`, `fd3f6f9`) |
+| a released adapter stayed in the inventory until the next IPL, and after it | PID 1 writes the inventory again when a release is posted and after binding at the IPL (`3664f31`) |
+| `qsictl` did not offer `PHYSICAL_IO` and `PARTITION_V2`, so its new commands were refused | it offers both (`20e50fd`) |
+| the relay logged a refused command in its own words | `QVS3302` (`ef64449`) |
+| the harness's own mistakes: the problem book's path, a code posted during the IPL looked for after it, two partitions on one unit, the guest probe writing to the display's console, a QSH line whose digits named a descriptor | each in its suite |
+
+## For a real machine (NEEDS-CODY)
+
+- `NEEDS-CODY`: the QLE2562 given whole to a partition on the Dell, and
+  QS/400 saving to the VTL through it (`SAVLIB`, `RSTLIB`, a save across
+  two cartridges), the HBA reset between partitions.
+- `NEEDS-CODY`: the same VTL drive passed through from a controller the
+  host keeps (`@` and its location in a tape device), the allow-list's
+  log read for anything QS/400's driver sends that it refuses.
+- `NEEDS-CODY`: a network adapter of the Dell given to a partition,
+  which takes an address through it; the IOMMU's cost on the Dell's
+  uplink throughput.
+- `NEEDS-CODY`: the Dell's isolation groups as they are
+  (`/sys/kernel/iommu_groups`), with Service Tools option 10's list and
+  Display of each, and which devices come out never releasable.
+- `NEEDS-CODY`: the seconds a released device's built-in host driver has
+  it at each IPL before PID 1 binds it to `vfio-pci`
+  (`docs/PHYSICALIO.md`, "At the IPL"); whether the QLE2562's driver
+  logging in to the fabric for them matters.
+- `NEEDS-CODY`: QS/400's tape findings T1 to T4 (`docs/QS400_GUEST.md`),
+  T4 first.
+- Carried from Phase 9: an update, a pool disk pulled by hand, a host
+  dump copied out, pairing at the Dell and QS/400 IPLed many times over
+  (`docs/PHASE9.md`); the joint gate with QS/MC is open
+  (`docs/OPEN_QUESTIONS.md` item 40).
+
+## Not done
+
+- `BLOCKED(phase10)`: `pio-tape-volumes` fails at its last step by
+  QS/400's T4 (`docs/QS400_GUEST.md`).
+- `BLOCKED(phase10)`, carried: a VMM found running by a partition
+  manager started again is watched by looking at its control group every
+  25 ms (`docs/PARTD.md`); an adapter's unit numbers have no gaps
+  (`docs/PROFILE.md`); cores are given without regard to sockets or
+  memory's place, and only 2 MB pages are used (`docs/RESOURCES.md`).
+- Not in Phase 10, and not started: adding or taking away a device, a
+  processor or memory on a running partition; virtual functions; media
+  changers; a display adapter for a partition; release engineering.
