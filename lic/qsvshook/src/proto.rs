@@ -99,6 +99,12 @@ pub mod command {
     pub const MOUNT: &str = "mount";
     /// `umount <directory>`: unmount it.
     pub const UNMOUNT: &str = "umount";
+    /// `write <path> <text>`: write the text to a file as it is, not
+    /// atomically: a kernel control (`scsi_debug`'s, a SCSI device's
+    /// `delete`).
+    pub const WRITE: &str = "write";
+    /// `debugfs`: mount debugfs at `/sys/kernel/debug`, when it is not.
+    pub const DEBUGFS: &str = "debugfs";
     /// `copy <from> <skip> <to> <seek> <bytes>`: copy bytes from one
     /// file or device to another, each from an offset. Into a file,
     /// what is zero is left a hole.

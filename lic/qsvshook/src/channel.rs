@@ -383,6 +383,24 @@ fn partition(rest: &str) -> Vec<String> {
 
 /// Mount the xfs file system on a device read-only: a guest's, to see
 /// from the host what the guest wrote.
+/// Write `text` to the file at `path` as it is.
+fn write_file(rest: &str) -> Vec<String> {
+    let Some((path, text)) = rest.split_once(' ') else {
+        return error("write <path> <text>");
+    };
+    done(fs::write(path, text))
+}
+
+/// debugfs at `/sys/kernel/debug`.
+fn debugfs() -> Vec<String> {
+    use rustix::mount::{MountFlags, mount};
+    let at = "/sys/kernel/debug";
+    if Path::new(at).join("iommu").exists() {
+        return done(Ok::<(), std::io::Error>(()));
+    }
+    done(mount("debugfs", at, "debugfs", MountFlags::empty(), None))
+}
+
 fn mount_ro(rest: &str) -> Vec<String> {
     use rustix::mount::{MountFlags, mount};
     let Some((device, directory)) = rest.split_once(' ') else {
@@ -674,6 +692,8 @@ fn answer(line: &str) -> Vec<String> {
         command::AS => as_user(rest),
         command::PARTITION => partition(rest),
         command::MOUNT => mount_ro(rest),
+        command::WRITE => write_file(rest),
+        command::DEBUGFS => debugfs(),
         command::UNMOUNT => done(rustix::mount::unmount(
             rest,
             rustix::mount::UnmountFlags::empty(),

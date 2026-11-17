@@ -35,6 +35,8 @@ diskimg.workspace = true
 # PID 1 is a Linux program; other hosts build a stub so the workspace checks.
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix.workspace = true
+# The test hooks' probe of a passed tape drive (SG_IO).
+libc.workspace = true
 kvm-ioctls = "0.25.1"
 kvm-bindings = "0.14.2"
 

@@ -21,7 +21,7 @@ use std::thread;
 use tape::passthrough::{self as pt, Answer, Command, Drive, Gone};
 
 /// `SG_IO`.
-const SG_IO: libc::c_ulong = 0x2285;
+const SG_IO: libc::Ioctl = 0x2285;
 /// No data.
 const SG_DXFER_NONE: i32 = -1;
 /// Data to the drive.

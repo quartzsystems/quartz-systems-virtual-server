@@ -1713,6 +1713,7 @@ dependencies = [
  "identity",
  "kvm-bindings",
  "kvm-ioctls",
+ "libc",
  "loadsource",
  "logd",
  "partd",
