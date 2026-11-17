@@ -98,6 +98,17 @@ of Phase 10, beside the pass-through to a real one; what QS/400's tape
 code needs to change for it is QS/400's, found then. The Phase 6
 handoff took it as recommended.
 
+Run in Phase 10's Section 1 (`docs/QS400_GUEST.md`, "Saving and
+restoring on tape"): `INZTAP`, `SAVLIB`, `DSPTAP` and `RSTLIB` work
+against the drive, from one partition to another and across two
+volumes past the early warning, and a protected or unlabelled volume
+is refused as it should be. The drive needed no change. **Waiting on
+QS/400** for its findings T1 to T4 there: `INZTAP CHECK(*YES)` of a
+volume labelled in ASCII ends the system (T4, `NEEDS-CODY`); a blank
+volume is a device error (T2); a save to another system's volume saves
+nothing without saying why (T3); the messages sent are not the
+catalogue's (T1). `pio-tape-volumes` is blocked by T4 until then.
+
 ## Closed
 
 1. **The host reference code range.** Confirmed: families `C2`, `A2`,

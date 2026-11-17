@@ -513,6 +513,83 @@ What QS/400 would have to change, found so far:
    the first as a guest fault (`A2005170`), as designed. Not known to
    be QS/400's.
 
+## Saving and restoring on tape (Phase 10, at `2e950f9`)
+
+Section 1 of Phase 10: QS/400 against the virtual tape drive of Phase 5
+(`docs/VMM.md`, "The tape device"), every command typed at the system's
+Command Entry and every volume mounted and unmounted from the host, as
+an operator would (`pio-tape-save`, `pio-tape-span`, `pio-tape-volumes`
+in `tools/conformance/src/suite/physio/tape.rs`). Two installed QS/400
+partitions from QS/400's ISO at the pin, the volumes in the media
+repository's pool, three levels deep (WSL, QEMU, the partitions), on
+2026-11-17.
+
+**What works.**
+
+- `INZTAP`, `SAVLIB` of a library of six object types (`*DTAARA`,
+  `*DTAQ`, `*JOBD`, `*MSGQ`, `*FILE`, `*SAVF`), `DSPTAP`; the volume
+  unmounted by the host, mounted on the second partition's drive, and
+  `RSTLIB` there: `CPC3722 6 objects saved from library TAPLIB`,
+  `CPC3703 6 objects restored to TAPLIB, 0 not restored`, every object
+  and the data area's value the same.
+- A save past the end of a 16 MiB volume: QS/400 takes the early
+  warning, ends the volume, unloads it (17 s into the save) and asks
+  for the next (`CPA4075`, answered from the reply list); the host
+  mounts the second volume and the save ends with `CPC3722`. `RSTLIB`
+  with both volumes named reads across them the same way and ends with
+  `CPC3703`.
+- A write-protected volume: `SAVLIB` and `INZTAP` are refused with
+  `CPF6768`; `DSPTAP` reads its labels.
+- A volume with data and no labels: `DSPTAP` says `*NL`, `SAVLIB` is
+  refused with `CPF6772`, `INZTAP CHECK(*YES)` initializes it.
+- A volume labelled in ASCII by another system: `DSPTAP` reads its
+  labels (`*SL`, `*ASCII`, its volume ID).
+
+Nothing of the virtual drive needed changing for any of it.
+
+**Findings** (T1 to T4, for a QS/400 handoff; each also in "What QS/400
+would have to change" below):
+
+- **T1. The messages sent are not the catalogue's.** `INZTAP` sends
+  `CPC6773 Volume PRT001 initialized on device TAP01.`; the catalogue
+  (`runtime/msgf/msgs/qcpfmsg.toml`) has `Volume &1 is initialized on
+  device &2.`. `RSTLIB` sends `CPC3703 6 objects restored to TAPLIB, 0
+  not restored`; the catalogue has `&1 objects restored to library
+  &2.`. A protected volume gives `CPF6768 the volume is write
+  protected`; the catalogue has its own words. `CRTLIB` answers with an
+  object line, `QSYS/TAPLIB *LIB created as 0001-0001-…`, not `CPC2102
+  Library &1 created.`. A program that monitors for the message's text
+  or its data sees something other than the catalogue promises. The
+  suites accept both.
+- **T2. A blank volume is a device error.** On a volume never written,
+  `DSPTAP`, `SAVLIB` and `INZTAP CHECK(*YES)` all end with `CPF6708
+  device error: I/O error (os error 5)`. The drive answers the first
+  read as SSC has it for a medium with no data, CHECK CONDITION, BLANK
+  CHECK, end of data (`00/05`), which Linux's `st` gives as `EIO`; a
+  real drive with a new cartridge answers the same way. `INZTAP
+  CHECK(*NO)` initializes such a volume, so new cartridges can be used,
+  but `CHECK(*YES)` is the default and the operator's first command.
+  Expected: a blank volume is one with no labels (`*NL` at `DSPTAP`,
+  `CPF6772` at a save, and `INZTAP CHECK(*YES)` initializes it).
+- **T3. A save to a volume of another system's labels saves nothing.**
+  `SAVLIB` to the ASCII-labelled volume ends with `CPF3770 0 objects
+  saved from library SMALL`, not a refusal that names the volume's
+  labels.
+- **T4. `INZTAP CHECK(*YES)` of a volume labelled in ASCII ends the
+  system.** QS/400's storage service is lost (`qsjob: storage service
+  lost` from every job), its IFS's xfs on `ublkb0` shuts down, `init`
+  exits and the kernel panics; the partition ends for a restart (exit
+  10) and QS/400 IPLs again. After that IPL it said `0 media device(s)
+  configured`, where it had 1 before, though the partition was the same
+  machine with the volume still loaded in its tape device. Twice in two
+  runs. `NEEDS-CODY`: QS/400's to find (its `tape::volume::inz`
+  `identify` and `scan_files` on a volume whose labels are ASCII); a
+  foreign volume should be refused, never end the system.
+
+`pio-tape-volumes` checks the ASCII volume last, so every other
+outcome is recorded first, and fails there by T4; `pio-tape-save` and
+`pio-tape-span` pass.
+
 ## What QS/400 would have to change
 
 For a QS/400 handoff, in the order of how much a partition needs each.
@@ -571,3 +648,19 @@ bytes at the reset vector are kept (`docs/OPEN_QUESTIONS.md` item 29).
 A guest agent for the service channel and a partition's reference
 codes sent to the host came with QS/400's handoff 17 (above, "The
 service channel"), which Phase 7 pinned.
+
+
+For a QS/400 handoff after handoff 20, from Phase 10's Section 1
+(above, "Saving and restoring on tape"):
+
+9. **T4 first: a foreign volume must not end the system.** `INZTAP
+   CHECK(*YES)` of a volume with ASCII labels loses the storage service
+   and restarts the system. `NEEDS-CODY`.
+10. **T2: a blank volume is a volume with no labels**, not a device
+    error: `EIO` from `st` on the first read at the beginning of the
+    volume, after `MTREW`, with the drive's sense BLANK CHECK, is the
+    end of data.
+11. **T3: a save to another system's labelled volume is refused** by a
+    message that names the labels, before anything is written.
+12. **T1: each message sent is its catalogue entry**, text and data:
+    `CPC6773`, `CPC3703`, `CPF6768`, and `CRTLIB`'s `CPC2102`.
