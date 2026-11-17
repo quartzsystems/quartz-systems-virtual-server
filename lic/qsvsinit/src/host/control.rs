@@ -76,6 +76,11 @@ impl Control for Host {
     }
 
     fn post_about(&mut self, code: String, text: String, about: Vec<supervise::control::About>) {
+        // A device released or taken back takes an interface from the
+        // host or gives one back: the inventory says so at once.
+        if code == refcode::DEVICE_RELEASED.code || code == refcode::DEVICE_TAKEN_BACK.code {
+            self.refresh_inventory();
+        }
         match refcode::post::posting_of_about(&code, &text, &about) {
             Some(posted) => self.take(posted),
             None => self.say(

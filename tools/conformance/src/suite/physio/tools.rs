@@ -133,8 +133,18 @@ pub fn service_tools(run: &Run<'_>) -> Result<String, String> {
             "{NIC_MAC} is still a network interface of the host"
         ));
     }
-    let inventory = channel(g)?.text("/data/state/inventory.toml")?;
-    let kept = inventory.to_ascii_lowercase().contains(NIC_MAC);
+    // PID 1 writes the inventory again when the release is posted.
+    let until = Instant::now() + Duration::from_secs(30);
+    loop {
+        let inventory = channel(g)?.text("/data/state/inventory.toml")?;
+        if !inventory.to_ascii_lowercase().contains(NIC_MAC) {
+            break;
+        }
+        if Instant::now() >= until {
+            return Err(format!("the inventory still names {NIC_MAC}"));
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
     let id = manager::partition(g, "NET")?;
     activate(g, id, profile("NET", &[(&nic, true)]))?;
     let address = guest_address(g, "NET", deadline + Duration::from_mins(3))?;
@@ -143,11 +153,6 @@ pub fn service_tools(run: &Run<'_>) -> Result<String, String> {
     Ok(format!(
         "option 10, 5 and 2 by {nic}, its location typed; golden files tools-io, \
          tools-io-display, tools-io-release, tools-io-released; {NIC_MAC} no longer among \
-         the host's interfaces{}; partition NET took {address} through it",
-        if kept {
-            " (the inventory still names it)"
-        } else {
-            " nor in its inventory"
-        }
+         the host's interfaces nor in its inventory; partition NET took {address} through it"
     ))
 }

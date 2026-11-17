@@ -328,6 +328,16 @@ mod on_host {
                 ),
             }
         }
+        // The inventory was read before: a released adapter was still
+        // the host's network interface then.
+        if bound > 0
+            && let Ok(Some(mut inventory)) = store.load::<state::Inventory>()
+        {
+            inventory.interfaces = hostinv::interfaces(&roots);
+            if let Err(e) = store.save(&inventory) {
+                host.line(&format!("the inventory was not written again: {e}"));
+            }
+        }
         host.post(
             &refcode::PHYSIO_CHECKED,
             &format!("{bound} released device(s) bound"),
