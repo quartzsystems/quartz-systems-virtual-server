@@ -34,7 +34,7 @@ const MEASURE: Duration = Duration::from_secs(20);
 /// How far a measured share may be from what was asked, where the
 /// host is itself a virtual machine: the handoff allows 10% there and
 /// 5% on a machine that is none.
-const TOLERANCE: f64 = 0.10;
+pub(crate) const TOLERANCE: f64 = 0.10;
 
 /// The device of the `i`th further disk of the host, from 0.
 pub fn device(i: usize) -> String {
@@ -167,7 +167,7 @@ fn usage(guest: &mut Session, group: &str) -> Result<(u64, f64, u64), String> {
 
 /// The processor time each of `groups` used over [`MEASURE`], as a
 /// number of threads kept busy, and the forced idle time each had.
-fn measure(guest: &mut Session, groups: &[String]) -> Result<Vec<(f64, u64)>, String> {
+pub(crate) fn measure(guest: &mut Session, groups: &[String]) -> Result<Vec<(f64, u64)>, String> {
     let mut before = Vec::new();
     for group in groups {
         before.push(usage(guest, group)?);

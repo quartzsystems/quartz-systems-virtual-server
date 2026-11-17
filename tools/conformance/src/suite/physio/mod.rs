@@ -12,9 +12,11 @@
 //! - [`drive`]: tape pass-through against the double.
 //! - [`isolation`]: the IOMMU's mappings of a device given away.
 //! - [`hostile`]: a guest that writes everything at its device.
+//! - [`entitle`]: a running shared partition's entitlement changed.
 
 pub mod devices;
 mod drive;
+mod entitle;
 mod host;
 mod hostile;
 mod isolation;
@@ -40,4 +42,5 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("pio-isolation", isolation::isolation),
     ("pio-hostile", hostile::hostile),
     ("pio-tape-double", drive::double),
+    ("pio-entitlement", entitle::entitlement),
 ];

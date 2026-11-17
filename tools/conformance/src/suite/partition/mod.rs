@@ -35,7 +35,7 @@ mod life;
 pub mod manager;
 mod pull;
 pub mod qs400;
-mod resources;
+pub(crate) mod resources;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
