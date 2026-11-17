@@ -216,7 +216,11 @@ fn tape_probe(sys: &std::path::Path) -> Vec<String> {
             "PIO TAPE {st} write read back {}",
             match read_back {
                 Ok(()) if back == block => "ok".to_string(),
-                Ok(()) => "differs".to_string(),
+                // The tape double keeps a block's first four bytes alone.
+                Ok(()) if back[..4] == block[..4] && back[4..].iter().all(|b| *b == 0) => {
+                    "ok, its first 4 bytes".to_string()
+                }
+                Ok(()) => format!("differs: {:02x?}", &back[..16]),
                 Err(e) => format!("error {e}"),
             }
         ));

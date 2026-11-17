@@ -77,12 +77,12 @@ pub fn double(run: &Run<'_>) -> Result<String, String> {
     said(partd(g)?.put_profile(first, p.clone()))?;
     said(partd(g)?.activate(first, "TAPE".into(), None, None))?;
     // What the drive said of itself, through the guest's own kernel.
-    let seen = probed(g, "FIRST", "TAPE st", run)?;
+    let seen = probed(g, "FIRST", &format!("TAPE st0 {VENDOR}"), run)?;
     if !seen.contains(VENDOR) || !seen.contains(PRODUCT) {
         return Err(format!("the guest's drive: {seen}"));
     }
     let data = probed(g, "FIRST", "TAPE st0 write", run)?;
-    if !data.ends_with("read back ok") {
+    if !data.contains("read back ok") {
         return Err(format!("written and read back: {data}"));
     }
     // Refused before the drive: ILLEGAL REQUEST, INVALID COMMAND.

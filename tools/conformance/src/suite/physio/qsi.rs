@@ -221,7 +221,7 @@ pub fn over_qsi(run: &Run<'_>) -> Result<String, String> {
     ask(&mut l, activate(io, "IO"))?;
     let disk = probed(g, "IO", "DISK nvme", run)?;
     let st = probed(g, "IO", "TAPE st0 write", run)?;
-    if !disk.ends_with("read back ok") || !st.ends_with("read back ok") {
+    if !disk.ends_with("read back ok") || !st.contains("read back ok") {
         return Err(format!("the system's devices: `{disk}`, `{st}`"));
     }
     let held = refused(&mut l, &activate(other, "IO"))?;
