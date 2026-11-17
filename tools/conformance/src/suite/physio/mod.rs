@@ -13,6 +13,7 @@
 //! - [`isolation`]: the IOMMU's mappings of a device given away.
 //! - [`hostile`]: a guest that writes everything at its device.
 //! - [`entitle`]: a running shared partition's entitlement changed.
+//! - [`qsi`]: all of it over QSI and from `qsictl`.
 
 pub mod devices;
 mod drive;
@@ -20,6 +21,7 @@ mod entitle;
 mod host;
 mod hostile;
 mod isolation;
+mod qsi;
 mod tape;
 mod tools;
 
@@ -43,4 +45,5 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("pio-hostile", hostile::hostile),
     ("pio-tape-double", drive::double),
     ("pio-entitlement", entitle::entitlement),
+    ("pio-qsi", qsi::over_qsi),
 ];
