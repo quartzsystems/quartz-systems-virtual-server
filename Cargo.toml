@@ -58,6 +58,7 @@ members = [
     # The partition manager: the model, the resources, the service.
     "part/model",
     "part/resource",
+    "part/pio",
     "part/partd",
     # The service channel, the console and dumps (Phase 7).
     "part/dump",

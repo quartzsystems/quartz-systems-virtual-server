@@ -1,0 +1,17 @@
+[package]
+name = "pio"
+description = "Physical I/O: the host's PCI devices as partitions can have them: what the host uses, isolation groups, what can be released and why not, the released devices' state file, what an activation is given"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ipc.workspace = true
+model = { path = "../model", version = "0.1.0" }
+qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+serde.workspace = true
+state = { path = "../../base/state", version = "0.1.0" }
+
+[lints]
+workspace = true
