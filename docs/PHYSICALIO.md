@@ -136,8 +136,9 @@ restart of the host clears it.
 
 ## What the partition sees
 
-`qsvmm` puts each function on the partition's PCI bus after the virtio
-devices, from slot 32 (`docs/VMM.md`). It presents the function's
+`qsvmm` puts each function on the partition's PCI bus at the device
+numbers after the virtio devices', in the profile's order
+(`docs/VMM.md`). It presents the function's
 configuration space; the device's own is behind it:
 
 | Bytes | The guest reads | A guest write |

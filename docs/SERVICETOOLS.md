@@ -127,6 +127,7 @@ everything in Service Tools; there is one kind of user in this release.
       7. Display logs
       8. Service functions
       9. Power off or restart
+     10. Work with I/O for partitions
 ```
 
 ### 1. Work with system status
@@ -437,6 +438,43 @@ The shutdown is the orderly one of `docs/PHASE1.md`: the services end
 in reverse order, `/data` is unmounted, the storage service marks its
 set clean, and the machine stops.
 
+### 10. Work with I/O for partitions
+
+Every PCI device and physical tape drive of the host, by location code,
+14 to a page (F7 and F8), with what the host uses each for, whether it
+is released for partitions and which partition holds it
+(`docs/PHYSICALIO.md`):
+
+```
+                          Work with I/O for Partitions
+ 2=Release   4=Take back   5=Display
+
+ Opt Location                  Description              Use
+  _  P0000-B00-D02-F0          NVMe controller          host: load-source di
+  _  P0000-B00-D1A-F0          Ethernet controller      released
+  _  P0000-B00-D1B-F0          NVMe controller          held by IO
+  _  NOPCI-ST0                 tape drive Linux scsi_de not released
+```
+
+- **2, Release.** `Confirm Release for Partitions` lists every device of
+  the isolation group that goes with it and asks for the device's
+  location code typed in full; Enter releases the group, F12 goes back
+  with nothing released. A device the host uses, or whose group holds
+  one, cannot be released; the message says why.
+- **4, Take back.** `Confirm Take Back`: Enter gives the group back to
+  the host's drivers, while no partition holds it and no profile names
+  it.
+- **5, Display.** `Display I/O for Partitions`: the device whole, its
+  PCI address, isolation group, the devices that go with it, how it
+  resets, its interrupts and its use, and every reason it cannot be
+  released. For a drive, its serial number and whether a cartridge is
+  loaded.
+
+A management console sees the same list over QSI and names released
+devices in profiles; only this option releases one. The golden screens
+are `tools-io`, `tools-io-display`, `tools-io-release` and
+`tools-io-released`.
+
 ## Who changes what
 
 The console edits no state file itself.
@@ -457,6 +495,7 @@ The console edits no state file itself.
 | a partition's dump deleted or copied | the partition manager | `docs/DUMPS.md` |
 | an update staged, installed, activated | the update service | `docs/UPDATE.md` |
 | every partition shut down | the partition manager | its `EndAll` |
+| a device or drive released or taken back | the partition manager | binds it to `vfio-pci` or back, keeps `physio.toml` (`docs/PHYSICALIO.md`) |
 
 The users have no other owner: nothing but the local console signs
 anyone on. The logs are read, never written. The partitions are read

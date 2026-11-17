@@ -82,10 +82,12 @@ socket = "/proc/self/fd/8"
 | `keylock`, `ipl_type`, `console` | written to the LIC record before the IPL; each may be left out, and is then left as the record has it. A load source with no LIC partition has nowhere to keep them: it loads when the side is named, with `C2005037`, and they are not written |
 | `[[adapter]]` | a virtual SCSI adapter: its `slot`, and its units, each with its `lun`, `backing` and `serial` |
 | `[[optical]]` | a virtual optical device: its `slot`, `serial`, and the image loaded at the start (`media`, with its library `name`) or none. Four at most |
-| `[[tape]]` | a virtual tape device: its `slot`, `serial`, and the volume mounted at the start (`volume`, `name`, `capacity_mib`, `protected`) or none. Four at most |
+| `[[tape]]` | a virtual tape device: its `slot`, `serial`, and the volume mounted at the start (`volume`, `name`, `capacity_mib`, `protected`) or none; or a physical drive's relay (`drive`, a socket's descriptor, and its `location`). Four at most |
 | `[[net]]` | a virtual Ethernet adapter: its `slot`, its `mac`, its port's `tap` or none (no link), and the switch's `mtu`, 68 to 9000. Eight at most |
 | `[[port]]` | a port of the virtio-console: its `name`, 1 to 64 printable characters, as the guest finds it, and its `socket`, a listening Unix socket the partition manager made. Four at most; none, and the partition has no virtio-console. The partition manager gives the service channel's two, named as QS/400's protocol crate names them (`docs/SERVICE.md`): `qsvmm` spells no name of its own |
 | `console` | `serial`, `local` or `partition`, the console mode for the LIC record: `partition` is the console port |
+| `vfio` | the VFIO container the partition manager opened, as a descriptor; only with devices |
+| `[[device]]` | a host's PCI function given whole (`docs/PHYSICALIO.md`): its `location`, its host `address`, and its `group`, the descriptor of its isolation group, which every function of the group names |
 
 A backing store, an image or a volume the partition manager holds is
 given to `qsvmm` as one of its open descriptors and named by its
@@ -256,7 +258,8 @@ No firmware, no VGA, no keyboard, no floppy, no IDE.
 | virtio-scsi | PCI `00:01.0` and on, `1af4:1048` | one function a device, in slot order: a SCSI adapter's disks at its LUNs, an optical drive or a tape drive at LUN 0 of a function of its own |
 | virtio-net | among them by slot, `1af4:1041` | a virtual Ethernet adapter, its frames served by vhost-net from its port's tap |
 | virtio-console | after them, `1af4:1043` | the service channel's two named ports, each joined to a socket of the partition manager's (below) |
-| virtio-rng | last, `1af4:1044` | the host's `/dev/urandom`, a page at most a buffer |
+| virtio-rng | after them, `1af4:1044` | the host's `/dev/urandom`, a page at most a buffer |
+| a host's function | last, at the next device numbers | a PCI function of the host given whole (below) |
 
 ### virtio over PCI
 
@@ -386,6 +389,36 @@ field the residue:
 A write reaches the page cache; WRITE FILEMARKS (of none as well, the
 guest's flush) makes everything durable, and so does an unload and the
 partition's end.
+
+A physical drive's tape device (`drive` in its `[[tape]]`) answers
+nothing itself: each command the guest sends is checked against the
+allow-list (`docs/STORAGE.md`, "Tape pass-through"), refused with
+ILLEGAL REQUEST, INVALID COMMAND OPERATION CODE when it is not on it,
+and otherwise sent over the relay's socket as a bounded frame, its
+status, sense and data given back to the guest as the drive gave them.
+A relay that fails ends the command with a transport failure.
+
+### A host's function
+
+A function given whole is reached through VFIO. The partition manager
+opens the container, each group and each device as root and hands
+them over; `qsvmm` checks the device's regions and interrupts, then:
+
+- maps the partition's memory into the container at its guest
+  addresses, all of it and nothing else, before the guest runs (the
+  memory is huge pages, pinned already);
+- adds the container's groups to KVM's VFIO device, so the guest's
+  cache-coherency matches the device's;
+- places each memory BAR in the PCI memory window from the top down,
+  aligned to its size, and maps it into the guest from KVM memory slot
+  32 on, but for the pages of the MSI-X table and pending bits, which
+  it answers itself;
+- presents the configuration space as `docs/PHYSICALIO.md` has it;
+- gives each MSI or MSI-X vector the guest enables an interrupt number
+  of its own and an eventfd that VFIO signals and KVM delivers;
+- keeps bus mastering off at the device until the memory is mapped.
+
+I/O BARs, the expansion ROM and line interrupts are never given.
 
 ### virtio-net
 
@@ -585,7 +618,9 @@ on the VMM first, and through it on the host and on other partitions.
 **What the guest controls.** Every register access to a port or a
 memory address outside its RAM (the serial port, the clock, the reset
 and power registers, PCI configuration space, the virtio BARs and
-MSI-X tables); all of its own memory, and so every byte of every
+MSI-X tables, a passed function's configuration space and its MSI-X
+table); a passed function's own registers and its DMA, within what the
+IOMMU lets it reach; every command to a passed tape drive; all of its own memory, and so every byte of every
 virtqueue (descriptor tables, rings, the buffers they name); every
 SCSI command and its data; every byte of its disks, which the IPL
 loader reads at the next activation: the partition table, the ESP's
@@ -633,6 +668,16 @@ or reach a file descriptor or a byte of a disk that is not its own.
   have, is passed over; what waits for the guest is one message of a
   kind a port. A port's buffers are read to 64 KiB and taken only while
   the host has room.
+- A passed function's configuration space is the VMM's copy: a write
+  of any width at any offset reaches the device only through the bits
+  the table in `docs/PHYSICALIO.md` names, and its capability list is
+  followed a bounded number of times inside the header's 256 bytes.
+  Its DMA reaches the partition's memory and nothing else (the IOMMU),
+  and its interrupts are remapped. The fuzz target `passthrough` and
+  the suite `pio-hostile` hold this.
+- A command to a passed tape drive is checked twice, in the VMM and in
+  the partition manager's relay, against the allow-list; a frame is
+  bounded before it is read.
 - A dump is written to the file the partition manager hands over, from
   the guest's memory through `vm-memory`'s bounds; nothing of the
   guest's memory is interpreted.

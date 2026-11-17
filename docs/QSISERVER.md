@@ -95,16 +95,20 @@ Each code goes through PID 1 into the host's history, so each is a base
 The host's hello names it a host, with its name, release and serial
 number and `caps::HOST_V1` (base, pair, and the nine host families) with
 `caps::SERVICING`: `service`, its problems; `update`, its code update;
-and base's system dumps, its own dumps. A request is checked by QSI's own bounds
+and base's system dumps, its own dumps; `caps::PHYSICAL_IO`: the host
+family's `Devices` and its device events, vres's `TapeDrives` and its
+event, a profile's physical I/O and a tape device's physical drive; and
+`caps::PARTITION_V2`: the partition family's `Entitlement` and its
+event. A request is checked by QSI's own bounds
 (`QSI0002`), then translated (`qsi/server/src/families`, following
 `docs/QSI.md` section 8):
 
 | Family | To |
 |---|---|
 | base | PID 1 (state, power, a host dump taken), the log service's history file (`/data/log/refcodes.ndjson`, read only), the state files (host name, zone, inventory, read only), the host's dumps' directory (listed, read, deleted; `docs/DUMPS.md`) |
-| host | the partition manager (resources, settings), the inventory with the pool service's disks and the switch service's interfaces for each item's owner |
-| partitions, partition, profiles, refcodes, panel, dumps, console | the partition manager |
-| vres | the pool service (pools, virtual disks, images, volumes), the partition manager (drives, processor pools, where a disk is named, read from its profiles), the switch service (switches, ports, forwarding, VLANs, limits) |
+| host | the partition manager (resources, settings, devices), the inventory with the pool service's disks and the switch service's interfaces for each item's owner |
+| partitions, partition, profiles, refcodes, panel, dumps, console | the partition manager; the partition family's `Entitlement` as the request's user |
+| vres | the pool service (pools, virtual disks, images, volumes), the partition manager (drives, a partition's physical drive as `PhysicalTape`, physical tape drives, processor pools, where a disk is named, read from its profiles), the switch service (switches, ports, forwarding, VLANs, limits) |
 | service | the problem service (`docs/PROBLEMS.md`): `List`, `Get`, and `Close` as the request's user; a service resource is QSI's `System` named `service <name>` |
 | update | the update service (`docs/UPDATE.md`): `Status`, `Stage` as a stream, `Discard`, `Install`, `Activate` as the request's user, `Cancel` |
 
@@ -116,7 +120,13 @@ save of a partition not activated `QSI0403` then `QVS2015`; a problem
 not there `QSI1002` then `QVS5001`, closed already `QSI1003` then
 `QVS5002`, a close while its condition holds `QSI1001` then
 `QVS5003`; an update service's refusal QSI names, `QSI11nn` then
-`QVS53nn` (01 to 14). A value of
+`QVS53nn` (01 to 14); a device refusal QSI names, `QSI13nn` then
+`QVS24nn` (`QSI1301` no such device, `1302` not released, `1303`
+held, `1304` part of a group, `1305` not assignable now, `1306` no
+such drive, `1307` a physical drive's slot loaded as a volume's), and an entitlement refusal `QSI14nn` then
+`QVS25nn` (not running, dedicated, outside the profile, over the
+virtual processors, short in the pool). A device is never released
+over QSI: only at Service Tools option 10. A value of
 an open enumeration the host does not have is `QSI0361`. A service that
 does not answer (its socket missing, no answer in time) is `QSI0301`,
 naming it; the session goes on and the other families answer.
@@ -152,7 +162,7 @@ One log for every session (`qsisess::EventLog`), fed by:
 
 | Source | How |
 |---|---|
-| the partition manager | its subscription; a `Resources` event also brings the host family's `Resources` |
+| the partition manager | its subscription; a `Resources` event also brings the host family's `Resources`; a device's change is the host family's `Released`, `TakenBack`, `Assigned`, `Returned` or `ResetFailed`, a drive's vres `TapeDrive`, an entitlement's the partition family's `Entitlement` |
 | the switch service | its subscription |
 | the pool service | it has none: the server looks every 2 seconds and says what changed (pools, virtual disks, images, volumes) |
 | the problem service | its subscription: each problem opened, seen again, cleared or closed |

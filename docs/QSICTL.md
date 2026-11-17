@@ -43,6 +43,9 @@ Each prints the reply whole, or every message of the refusal.
 | `dumps ID`, `take-dump ID` | dumps |
 | `screen ID` | console `Screen` |
 | `pools`, `vdisks [POOL]`, `images`, `volumes`, `drives ID`, `switches`, `ports [SWITCH]` | vres |
+| `io` | host `Devices`: every device for physical I/O, released or not, held or not, or why it cannot be |
+| `tape` | vres `TapeDrives`: the host's physical tape drives |
+| `partition entitlement ID [--units 0.50] [--capped\|--uncapped] [--weight N]` | partition `Entitlement`: a running shared partition's processors; what is left out stays |
 
 ## Streams and events
 

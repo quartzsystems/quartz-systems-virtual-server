@@ -220,6 +220,37 @@ pool one weight, or cap the ones that should not take more.
 **Weight 0** means capped at entitlement: the partition's quota is its
 units, and it competes as a capped partition does.
 
+## A running partition's entitlement
+
+A running shared partition's processing units, its capping and its
+weight can change without an IPL (Phase 10). Nothing else of a running
+partition can: its virtual processors, dedicated processors and memory
+are its activation's.
+
+- **Within its profile.** The units stay between the profile's least
+  and most (`QVS2503`) and at most one core for each virtual processor
+  (`QVS2504`); the weight is 0 to 255 (`QVS2506`).
+- **Within its pool.** More units must be free in the partition's pool,
+  counting what the partition holds now as its own (`QVS2505`).
+- **Shared and running only.** A dedicated partition is refused
+  (`QVS2502`), as is one that is not running (`QVS2501`).
+- **The kernel's controls only.** The partition manager writes the
+  partition's group's `cpu.max` and `cpu.weight` (the table above); the
+  VMM and its processors run on. A control the kernel refuses leaves
+  the partition as it was (`QVS2507`).
+- **For this activation.** The profile is not changed. The next
+  activation is the profile's again, and the partition manager's
+  record of what the partition holds (`partitions.toml`) says the new
+  units until then, so a restart of the partition manager keeps them.
+
+Each change posts `C2013040` and is an event with what the partition
+held before and after and who asked (`docs/PARTD.md`); over QSI it is
+the `partition` family's `Entitlement` (version 2) and its event
+(`docs/QSISERVER.md`), and from `qsictl`, `partition entitlement`.
+
+The suite `pio-entitlement` measures it: a capped partition at 0.50
+units used 0.500 of a core; raised to 1.00 with the same VMM, 1.000.
+
 ## Limits on a VMM
 
 A `qsvmm` that misbehaves cannot starve the host: its group has the
@@ -238,4 +269,5 @@ there since Phase 0: `CPUSETS`, `CGROUP_SCHED`, `FAIR_GROUP_SCHED`,
 
 - `BLOCKED(phase9)`: cores are given without regard to sockets or to memory's place: a partition's cores and its huge pages may be on different NUMA nodes.
 - `BLOCKED(phase9)`: only 2 MB pages; 1 GiB pages are not used.
-- Any change to a running partition's resources: not in this phase.
+- Any change to a running partition's virtual processors, dedicated
+  processors or memory: not in V1. Its entitlement can change (above).

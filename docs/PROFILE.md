@@ -208,12 +208,25 @@ own (`docs/VMM.md`). Four of each at most.
 | Key | Value | Left out |
 |---|---|---|
 | `slot` | 2 to 255 | required |
-| `media` | the medium loaded at activation: an optical image's name, or a tape volume's, in the media library (1 to 32 letters, digits, `-` and `_`, a letter first) | an empty device |
+| `media` | the medium loaded at activation: an optical image's name, or a tape volume's, in the media library (1 to 32 letters, digits, `-` and `_`, a letter first); for a tape device, or `@` and a physical tape drive's location code | an empty device |
 
 The unit's serial number is the partition's, the slot and 0. A medium
 is loaded and unloaded while the partition runs by the partition
 manager's requests (`docs/PARTD.md`); a guest's restart loads what was
 loaded when it restarted, not what the profile says.
+
+A tape device whose medium is `@` and a location code is the host's
+physical drive there, passed through command by command
+(`docs/STORAGE.md`, "Tape pass-through"): the drive must be released at
+the host, and one partition holds it at a time. Its cartridge is the
+drive's: nothing is loaded or unloaded through the partition manager
+(`QVS2421`).
+
+```toml
+[[tape]]
+slot = 4
+media = "@P0000-B00-D08-F0-T0.0.3.0"
+```
 
 ### `[[ethernet]]`: virtual Ethernet adapters
 
@@ -236,15 +249,29 @@ too: a switch that is not there (`QVS1223`), a VLAN it does not carry
 the switch service does not answer, those are checked at activation.
 An adapter's settings apply at the next activation.
 
-### The sections later phases bring
+### `[[physical_io]]`: devices of the host given whole
 
-They are in the schema now and are checked for shape. A profile that
-uses one is kept, and is refused at activation with `QVS2106`, which
-names the phase that brings it.
+A PCI device of the host, given to the partition whole with the rest of
+its isolation group (`docs/PHYSICALIO.md`).
 
-| Section | Keys | Phase |
+| Key | Value | Left out |
 |---|---|---|
-| `[[physical_io]]` | `location`, a location code (`docs/LOCATION.md`); `required`, optional | 10 |
+| `location` | the device's location code (`docs/LOCATION.md`), as Service Tools option 10 shows it | required |
+| `required` | `true`: an activation fails, naming the device, when it cannot be given; `false`: the partition activates without it | `false` |
+
+A put is refused when a location is no device of the host
+(`QVS2401`), a location is named twice, or a group is named in part
+(`QVS2404`). Whether a device is released, free, present and not
+fenced is the activation's.
+
+```toml
+[[physical_io]]
+location = "P0000-B00-D06-F0"
+required = true
+
+[[physical_io]]
+location = "P0000-B00-D07-F0"
+```
 
 An adapter of any kind has a slot of its own: a slot is used once in a
 profile, whatever uses it.
@@ -256,12 +283,11 @@ In short: the profile is checked again; the desired processors and
 memory are given when they are available, else the most there is that
 is not below the minimum, else the activation fails with the message
 that names the resource, what was asked and what is available; and what
-was given is the partition's current resources until it ends. Nothing
-changes on a running partition in this phase: a profile changed while
-its partition runs is the next activation's.
+was given is the partition's current resources until it ends. A
+running shared partition's entitlement can change without an IPL
+(`docs/RESOURCES.md`); nothing else of a running partition does, and a
+profile changed while its partition runs is the next activation's.
 
 ## Not here yet
 
 - `BLOCKED(phase9)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
-- Physical I/O, a whole physical disk or tape drive given to a
-  partition: Phase 10.

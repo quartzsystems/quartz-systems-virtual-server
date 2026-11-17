@@ -37,6 +37,14 @@ next dump of the partition.
 
 One dump of a partition at a time (`QVS2313`).
 
+A partition with a host's device given whole (`docs/PHYSICALIO.md`)
+keeps the device while its processors are stopped and while it is
+held: the device may go on writing the partition's memory by DMA, only
+there, so a dump can show what it wrote after the stop. The dump holds
+the partition's memory and processors only; no device's registers or
+BARs are read into it, since reading a device's registers can change
+it. The device is reset when the partition ends.
+
 ## Where they are
 
 ```

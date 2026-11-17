@@ -123,6 +123,11 @@ and `Settings` (`part/resource`, `docs/RESOURCES.md`), `Status`,
 | 36 | create with | a name, the first profile | the definition, the profile its default | as create and as put profile; when the profile is refused nothing is kept |
 | 37 | change at | the definition, the revision it was read at | its new revision | as change; not at that revision (`QVS2014`) |
 | 38 | profile entries | ID | each profile's name and revision, and whether it is the default | no such partition |
+| 39 | devices | | every PCI device for physical I/O: its location, address, IDs, class and description, what the host uses it for, its group and what goes with it, how it resets, its interrupts, released, present, fenced, its holder, and every reason it cannot be released (`docs/PHYSICALIO.md`) | |
+| 40 | release | a location, the location typed to confirm | the locations released: a device's whole group, or a tape drive | the typed location is not it (`QVS2419`); the host's (`QVS2406`, `QVS2407`); no IOMMU or remapping (`QVS2410`, `QVS2411`); no reset or message interrupts (`QVS2408`, `QVS2409`); released already (`QVS2416`); no such device or drive (`QVS2401`, `QVS2420`) |
+| 41 | take back | a location | the locations taken back | held (`QVS2403`); named by a profile (`QVS2415`); not released (`QVS2402`) |
+| 42 | entitlement | ID, the units, capping and weight to change (each optional), who asks | what the partition holds now | `docs/RESOURCES.md`: `QVS2501` to `QVS2507` |
+| 43 | tape drives | | the host's physical tape drives: location, vendor, product, serial number, released, present, loaded, the holder and its slot | |
 
 **Revisions.** Every definition and profile has a revision, one more
 at every write the partition manager makes of it, 0 in a file older
@@ -185,6 +190,9 @@ the subscribers on the socket and written to the host's log.
 | channel | the ID and name, and the service channel as the list has it: up, none, responding, held, the system's name, release, fix level and addresses, the version and capabilities: when it comes up or goes, stops or starts answering, or the system reports a change |
 | dump | the ID and name, a dump's name, and why it was not written when it was not |
 | profile | the ID and name, a profile's name, its revision now (none when it was deleted), and whether it is the default: a profile was put or deleted, or the default moved to or from it |
+| device | a device's location, what changed (released, taken back, given, given back, fenced), the partition and profile when one is concerned, the device as listed, a note (why one was left out), the time |
+| tape drive | a drive's location, the drive as listed or none when it is gone, the time |
+| entitlement | the ID and name, what it held before and after, who asked, the time |
 
 The list (request 0) has the same of the channel in each partition's
 `service`.
@@ -206,6 +214,12 @@ dropped.
    hands each tap over open. A required adapter whose port is refused
    fails the activation, and what was held is given back; one that is
    not required comes up without link.
+4b. The profile's physical I/O is checked against the host's devices
+   (`docs/PHYSICALIO.md`): a required device that cannot be given fails
+   the activation by name, one that is not is left out with its group.
+   Each function given is reset, and its container, groups and devices
+   are opened through VFIO; each physical tape drive's generic device
+   is opened and its relay started (`docs/STORAGE.md`).
 5. `qsvmm` is started in that group, in a session of its own, with its
    standard error appended to `/run/partd/<ID>.report`, and the held
    files as its descriptors 3 and on, in order, the taps after the pool
