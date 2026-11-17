@@ -11,7 +11,7 @@ It contains the work of others, listed here with their licenses:
 3. The Rust standard library (core, alloc, std and their dependencies),
    under MIT OR Apache-2.0, taken under MIT; LLVM's libunwind and
    compiler-rt builtins, under Apache-2.0 WITH LLVM-exception.
-4. The 258 Rust crates below, each under the license named. The
+4. The 259 Rust crates below, each under the license named. The
    crates of QS/400 (Quartz Systems, MIT) are among them: QS/VS takes
    its build pipeline and disk formats from QS/400 as libraries.
 
@@ -649,6 +649,9 @@ valuable 0.1.1
 version_check 0.9.5
     MIT/Apache-2.0
     taken under: MIT
+vfio-bindings 0.7.0
+    Apache-2.0 OR BSD-3-Clause
+    taken under: Apache-2.0
 virtio-bindings 0.2.7
     BSD-3-Clause OR Apache-2.0
     taken under: Apache-2.0
@@ -1705,7 +1708,7 @@ authorization of the copyright holder.
 Notices and license files shipped by the crates
 ========================================================================
 
----- acpi_tables 0.2.1 (LICENSE-APACHE), kvm-bindings 0.14.2 (LICENSE), virtio-bindings 0.2.7 (LICENSE-APACHE), virtio-queue 0.18.0 (LICENSE-APACHE), vm-memory 0.18.0 (LICENSE-APACHE), vm-superio 0.8.2 (LICENSE-APACHE) ----
+---- acpi_tables 0.2.1 (LICENSE-APACHE), kvm-bindings 0.14.2 (LICENSE), vfio-bindings 0.7.0 (LICENSE-APACHE), virtio-bindings 0.2.7 (LICENSE-APACHE), virtio-queue 0.18.0 (LICENSE-APACHE), vm-memory 0.18.0 (LICENSE-APACHE), vm-superio 0.8.2 (LICENSE-APACHE) ----
 
                                  Apache License
                            Version 2.0, January 2004
