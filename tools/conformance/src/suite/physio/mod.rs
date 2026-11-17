@@ -10,10 +10,12 @@
 //! - [`devices`]: a host's devices given to partitions.
 //! - [`tools`]: a release at Service Tools option 10.
 //! - [`drive`]: tape pass-through against the double.
+//! - [`isolation`]: the IOMMU's mappings of a device given away.
 
 pub mod devices;
 mod drive;
 mod host;
+mod isolation;
 mod tape;
 mod tools;
 
@@ -33,5 +35,6 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("pio-held", host::held),
     ("pio-reset", host::reset),
     ("pio-restart", host::restart),
+    ("pio-isolation", isolation::isolation),
     ("pio-tape-double", drive::double),
 ];
