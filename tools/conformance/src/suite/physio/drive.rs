@@ -15,7 +15,7 @@ use qsvshook::proto::command;
 
 use super::devices::{end, probed, profile};
 use crate::qemu::session::Session;
-use crate::suite::base::{Guest, Run, channel};
+use crate::suite::base::{Guest, Run, channel, posted};
 use crate::suite::partition::manager::{self, partd, said};
 use crate::suite::partition::{fresh_host, host, launch, unit};
 
@@ -116,10 +116,9 @@ pub fn double(run: &Run<'_>) -> Result<String, String> {
         "{} /sys/class/scsi_tape/{host_st}/device/delete 1",
         command::WRITE
     ))?;
-    let gone = g.line_with(refcode::DRIVE_GONE.code, run.deadline())?;
-    if !gone.contains(&location) {
-        return Err(format!("the drive gone: {gone}"));
-    }
+    // Whole, even with a kernel message written into its line.
+    let gone = posted(&refcode::DRIVE_GONE, &location);
+    g.seen(&gone, run.deadline())?;
     // The probe says a TEST UNIT READY's answer only when it changes.
     let deadline = run.deadline();
     let after = loop {
