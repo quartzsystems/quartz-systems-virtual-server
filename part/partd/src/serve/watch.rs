@@ -4,9 +4,10 @@
 
 //! Watching a VMM: its report is followed a line at a time, and its
 //! end is taken. A VMM this manager started is waited for as its
-//! child; one found running is another process's child by now, so its
-//! control group is watched for the moment it empties, and how it
-//! ended is the last line of its report.
+//! child; one found running is another process's child by now, so the
+//! kernel's event that its control group emptied is waited for (a change
+//! of `cgroup.events`, which `poll` reports), and how it ended is the
+//! last line of its report.
 
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
@@ -47,6 +48,34 @@ pub fn end_of(report: &str) -> Ended {
 pub fn populated(group: &Path) -> bool {
     fs::read_to_string(group.join("cgroup.events"))
         .is_ok_and(|events| events.lines().any(|line| line.trim() == "populated 1"))
+}
+
+/// Wait until the control group `group` has no process that has not
+/// ended: woken by the kernel's event when `cgroup.events` changes. The
+/// wait is bounded too, so an event that is never sent costs a second,
+/// not the end.
+pub fn wait_emptied(group: &Path) {
+    use rustix::event::{PollFd, PollFlags, poll};
+    use rustix::time::Timespec;
+
+    let Ok(mut events) = File::open(group.join("cgroup.events")) else {
+        return;
+    };
+    let once = Timespec {
+        tv_sec: 1,
+        tv_nsec: 0,
+    };
+    loop {
+        let mut text = String::new();
+        if events.seek(SeekFrom::Start(0)).is_err() || events.read_to_string(&mut text).is_err() {
+            return;
+        }
+        if !text.lines().any(|line| line.trim() == "populated 1") {
+            return;
+        }
+        let mut fds = [PollFd::new(&events, PollFlags::PRI | PollFlags::ERR)];
+        let _ = poll(&mut fds, Some(&once));
+    }
 }
 
 /// The lines of the report at `path`, bounded: a few hundred.
@@ -151,9 +180,7 @@ pub fn watch(shared: &Shared, watch: Watch) {
             Ok((None, None)) | Err(_) => Ended::Unknown,
         }
     } else {
-        while populated(&group) {
-            thread::sleep(PAUSE);
-        }
+        wait_emptied(&group);
         Ended::Unknown
     };
     done.store(true, Ordering::Release);
@@ -204,5 +231,17 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         assert!(Tail::open(&path, 0).lines().is_empty());
         assert!(!populated(&path));
+    }
+
+    #[test]
+    fn a_group_that_has_emptied_or_is_gone_is_not_waited_for() {
+        let dir = std::env::temp_dir().join(format!("partd-group-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        wait_emptied(&dir);
+        std::fs::write(dir.join("cgroup.events"), "populated 0\nfrozen 0\n").unwrap();
+        let begun = std::time::Instant::now();
+        wait_emptied(&dir);
+        assert!(begun.elapsed() < Duration::from_millis(500));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

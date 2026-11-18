@@ -319,4 +319,4 @@ the host.
 ## Not here yet
 
 - Any change to a running partition's resources.
-- `BLOCKED(phase10)`: a VMM found running by a partition manager started again is watched by looking at its control group every 25 ms, not by an event.
+- Done in Phase 11: a VMM found running by a partition manager started again is waited for by the kernel's event that its control group emptied (`cgroup.events` reported by `poll`), not by looking every 25 ms.
