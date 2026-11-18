@@ -26,7 +26,8 @@ closed 38 with QS/400's handoff 18, and the Phase 8 handoff closed 39
 as recommended and left 6, 36 and 37 as they were. Phase 8 raised 40
 to 43. Step 0 of Phase 9 closed 41 and 42; Phase 9 left 6, 36, 37, 40
 and 43 as they were (43 is now answered by the host itself at its
-IPL), and raised 44.
+IPL), and raised 44. Phase 10 left them as they were. Phase 11 closed 7
+(Secure Boot, below) and added the nightly run to 6.
 
 ## Open
 
@@ -42,7 +43,11 @@ response file. The partition suites run a partition three levels deep;
 should the hosted runners not nest that far, the `vmm`, `qs400`,
 `partd`, `pools` and `media` shards move to a self-hosted runner on
 the Dell machine and the rest stay hosted. Nothing more can be seen
-before the first push, which is Cody's.
+before the first push, which is Cody's. Since Phase 11 the same job is
+called by `.github/workflows/nightly.yml`, which adds the release built
+twice, the stream, the update suites, the fuzz targets and an hour's
+soak; its runner is the `QSVS_NIGHTLY_RUNS_ON` variable, one line to
+move it to a self-hosted runner (the workflow's header says how).
 
 ### 37. Management on a VLAN of a switch (answered for V1; NEEDS-CODY after)
 
@@ -119,9 +124,12 @@ the messages sent are not the catalogue's (T1). None blocks a suite.
 4. **Kernel symbols beyond the Phase 0 list.** Accepted as listed.
    Phase 1's additions are in `docs/PHASE1.md`.
 5. **The ISO's file name.** Accepted as `buildkit` names it.
-7. **Secure Boot.** Stays deferred to release engineering (Phase 11).
-   The UKIs are not signed and the manifest records no Secure Boot
-   certificate. Nothing in Phases 1 to 3 depends on the answer.
+7. **Secure Boot.** Deferred to release engineering, and answered
+   there: a release's UKIs are signed with a Secure Boot db key of
+   QS/VS's own, its certificate on the media for an operator to enrol
+   (`docs/INSTALL.md`); the host runs with Secure Boot on or off and
+   says which. A development build's UKIs are not signed
+   (`docs/RELEASING.md`).
 8. **The location code format.** Accepted as `docs/LOCATION.md` has it:
    `S<slot designation>` where the firmware's SMBIOS slot records cover
    the device, `P<segment>-B<bus>-D<device>-F<function>` otherwise, a
