@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quartz.catalogue/1",
+  "title": "A Quartz appliance's catalogue: its reference codes and messages",
+  "type": "object",
+  "required": ["schema", "product", "release", "build", "codes", "messages"],
+  "properties": {
+    "schema": { "const": "quartz.catalogue/1" },
+    "product": { "type": "string" },
+    "release": { "type": "string", "pattern": "^V[0-9]+R[0-9]+M[0-9]+$" },
+    "build": { "type": "string" },
+    "codes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "family", "meaning", "cause", "recovery"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[ABCD]2[0-9A-F]{6}$" },
+          "family": { "enum": ["progress", "attention", "fatal", "power-down"] },
+          "meaning": { "type": "string", "minLength": 1 },
+          "cause": { "type": "string", "minLength": 1 },
+          "recovery": {
+            "type": "object",
+            "required": ["problem", "action"],
+            "properties": {
+              "problem": { "type": "boolean" },
+              "message": { "type": "string", "pattern": "^QVS[0-9]{4}$" },
+              "description": { "type": "string" },
+              "action": { "type": "string", "minLength": 1 },
+              "resources": { "type": "array", "items": { "type": "string" } },
+              "cleared_by": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "help"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^QVS[0-9]{4}$" },
+          "text": { "type": "string", "minLength": 1 },
+          "help": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
