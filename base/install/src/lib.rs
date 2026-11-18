@@ -104,4 +104,9 @@ pub trait Target {
     fn failed(&self) -> &'static str;
     /// Say something for the installer's log; never a password.
     fn log(&mut self, line: &str);
+    /// Whether the firmware booted with Secure Boot on; `None` when it
+    /// does not say.
+    fn secure_boot(&self) -> Option<bool> {
+        None
+    }
 }

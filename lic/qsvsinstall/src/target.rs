@@ -321,6 +321,10 @@ impl Target for QsVs {
         release::NAME
     }
 
+    fn secure_boot(&self) -> Option<bool> {
+        loadsource::boot::secure_boot(std::path::Path::new(loadsource::boot::EFIVARS))
+    }
+
     fn banner(&self) -> String {
         format!("{} ({})", release::banner(), release::PRODUCT)
     }

@@ -224,8 +224,22 @@ pub fn status_lines(
         ),
         row(
             "Slot",
-            &format!("{} ({})", of(fact::SLOT), of(fact::RECORD)),
-        ),
+            &kit::fit(
+                &format!(
+                    "{} ({}), Secure Boot {}",
+                    of(fact::SLOT),
+                    of(fact::RECORD),
+                    match of(fact::SECURE_BOOT).as_str() {
+                        "on" => "on",
+                        "off" => "off",
+                        _ => "not known",
+                    }
+                ),
+                56,
+            ),
+        )
+        .trim_end()
+        .to_string(),
         row("Reference code", &kit::fit(&of(fact::REFERENCE), 56)),
         row("Management", &kit::fit(&of(fact::MANAGEMENT), 56)),
         row("Data", &of(fact::DATA)),
@@ -370,6 +384,7 @@ mod tests {
                 f(fact::DATA, "/dev/ublkb0"),
                 f(fact::READY, "yes"),
                 f(fact::KVM, "KVM usable: VMX, API version 12"),
+                f(fact::SECURE_BOOT, "off"),
             ],
             services: ["stgd", "logd", "netd"]
                 .iter()
@@ -396,7 +411,7 @@ mod tests {
         );
         assert_eq!(
             lines[2],
-            "Slot . . . . . . . : A (default A, nothing pending)"
+            "Slot . . . . . . . : A (default A, nothing pending), Secure Boot off"
         );
         assert_eq!(lines[7], "Uptime . . . . . . : 0 days 00:03:12");
         assert_eq!(lines[8], "Partitions . . . . : none defined");

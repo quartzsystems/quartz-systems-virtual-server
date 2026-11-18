@@ -397,35 +397,47 @@ impl Host {
             .as_ref()
             .map_or_else(|| "no A/B record".to_string(), Slots::summary);
         let image = if cfg!(test_hooks) { "test" } else { "release" };
-        let facts = [
-            (fact::PRODUCT, release::NAME.to_string()),
-            (fact::RELEASE, release::RELEASE.to_string()),
-            (fact::BUILD, release::BUILD_ID.to_string()),
-            (fact::IMAGE, image.to_string()),
-            (
-                fact::KEY,
-                if release::DEVELOPMENT_KEY {
-                    "development"
-                } else {
-                    "release"
-                }
-                .to_string(),
-            ),
-            (fact::SLOT, self.facts.slot.clone()),
-            (fact::RECORD, record),
-            (fact::HOST, self.facts.host.clone()),
-            (fact::SERIAL, self.facts.serial.clone()),
-            (fact::MANAGEMENT, self.facts.management.clone()),
-            (fact::TIME, now.to_string()),
-            (fact::DATE, self.facts.zone.display(now)),
-            (fact::REFERENCE, self.reference.clone()),
-            (fact::DATA, self.facts.data.clone()),
-            (
-                fact::READY,
-                if self.ready { "yes" } else { "no" }.to_string(),
-            ),
-            (fact::KVM, self.facts.kvm.clone()),
-        ];
+        let facts =
+            [
+                (fact::PRODUCT, release::NAME.to_string()),
+                (fact::RELEASE, release::RELEASE.to_string()),
+                (fact::BUILD, release::BUILD_ID.to_string()),
+                (fact::IMAGE, image.to_string()),
+                (
+                    fact::SECURE_BOOT,
+                    match loadsource::boot::secure_boot(std::path::Path::new(
+                        loadsource::boot::EFIVARS,
+                    )) {
+                        Some(true) => "on",
+                        Some(false) => "off",
+                        None => "unknown",
+                    }
+                    .to_string(),
+                ),
+                (
+                    fact::KEY,
+                    if release::DEVELOPMENT_KEY {
+                        "development"
+                    } else {
+                        "release"
+                    }
+                    .to_string(),
+                ),
+                (fact::SLOT, self.facts.slot.clone()),
+                (fact::RECORD, record),
+                (fact::HOST, self.facts.host.clone()),
+                (fact::SERIAL, self.facts.serial.clone()),
+                (fact::MANAGEMENT, self.facts.management.clone()),
+                (fact::TIME, now.to_string()),
+                (fact::DATE, self.facts.zone.display(now)),
+                (fact::REFERENCE, self.reference.clone()),
+                (fact::DATA, self.facts.data.clone()),
+                (
+                    fact::READY,
+                    if self.ready { "yes" } else { "no" }.to_string(),
+                ),
+                (fact::KVM, self.facts.kvm.clone()),
+            ];
         supervise::control::HostStatus {
             facts: facts.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             services: self

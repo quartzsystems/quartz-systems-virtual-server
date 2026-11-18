@@ -21,6 +21,23 @@ use crate::record::{letter, other};
 /// Where efivarfs is mounted.
 pub const EFIVARS: &str = "/sys/firmware/efi/efivars";
 
+/// Whether the firmware booted with Secure Boot on: its `SecureBoot`
+/// variable under `efivars` (four bytes of attributes, then 1 or 0).
+/// `None` when the firmware has no such variable.
+pub fn secure_boot(efivars: &std::path::Path) -> Option<bool> {
+    let bytes = std::fs::read(efivars.join(format!("SecureBoot-{}", efi::GLOBAL))).ok()?;
+    bytes.get(4).map(|b| *b == 1)
+}
+
+/// Secure Boot's state in words, for a screen.
+pub fn secure_boot_words(on: Option<bool>) -> &'static str {
+    match on {
+        Some(true) => "On",
+        Some(false) => "Off",
+        None => "Not known: the firmware does not say",
+    }
+}
+
 /// A slot's UKI on the ESP.
 fn uki(names: &LoadSourceNames, slot: Slot) -> &'static str {
     match slot {
@@ -202,6 +219,20 @@ pub fn make_default(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn secure_boot_is_read_from_its_variable() {
+        let dir = std::env::temp_dir().join(format!("sb-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(super::secure_boot(&dir), None);
+        let var = dir.join(format!("SecureBoot-{}", diskimg::efi::GLOBAL));
+        std::fs::write(&var, [6, 0, 0, 0, 1]).unwrap();
+        assert_eq!(super::secure_boot(&dir), Some(true));
+        std::fs::write(&var, [6, 0, 0, 0, 0]).unwrap();
+        assert_eq!(super::secure_boot(&dir), Some(false));
+        assert_eq!(super::secure_boot_words(Some(false)), "Off");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     use super::*;
     use uuid::Uuid;
 

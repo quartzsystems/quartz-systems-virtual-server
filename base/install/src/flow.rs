@@ -653,6 +653,15 @@ impl<'a> Panel<Env<'a>, Outcome> for Summary {
 
     fn render(&self, env: &mut Env<'a>) -> Screen {
         let mut lines = summary(&env.answers());
+        lines.push(format!(
+            "{} {}",
+            kit::dotted("Secure Boot", 23),
+            match env.target.secure_boot() {
+                Some(true) => "On",
+                Some(false) => "Off",
+                None => "Not known: the firmware does not say",
+            }
+        ));
         lines.push(String::new());
         lines.push("F10 erases the disks named and installs. F12 goes back.".into());
         kit::page(

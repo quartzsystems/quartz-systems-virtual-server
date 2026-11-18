@@ -177,6 +177,8 @@ pub mod fact {
     pub const IMAGE: &str = "image";
     /// `release` or `development`: the kind of key that signed the image.
     pub const KEY: &str = "key";
+    /// `on`, `off` or `unknown`: Secure Boot, as the firmware says.
+    pub const SECURE_BOOT: &str = "secure_boot";
     /// The slot this IPL came from: `A`, `B`, `media` or `unknown`.
     pub const SLOT: &str = "slot";
     /// The A/B record, or why there is none.
