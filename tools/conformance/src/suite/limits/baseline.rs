@@ -208,15 +208,42 @@ pub fn baselines(run: &Run<'_>) -> Result<String, String> {
     said(partd(g)?.shut_down_as(id, partd::proto::Shutdown::Immediate, 0, false))?;
     manager::ended(g, id, Instant::now() + Duration::from_mins(2))?;
 
-    report.push(qs400(g, &format!("/dev/{}", names[4]), run)?);
-    report.extend(pools(g, &names[5..], run)?);
-
-    // Idle partitions, each on a copy of the halting guest in NONE.
-    let image_bytes = std::fs::metadata(&rig.disks[0])
+    // Each part on its own: one that fails is said, the rest still run.
+    let mut failed = false;
+    let mut part = |what: &str, result: Result<Vec<String>, String>| match result {
+        Ok(lines) => report.extend(lines),
+        Err(e) => {
+            failed = true;
+            report.push(format!("{what}: FAILED: {e}"));
+        }
+    };
+    part(
+        "QS/400",
+        qs400(g, &format!("/dev/{}", names[4]), run).map(|l| vec![l]),
+    );
+    part("pools", pools(g, &names[5..], run));
+    let halter_bytes = std::fs::metadata(&rig.disks[0])
         .map_err(|e| e.to_string())?
         .len();
+    part("idle partitions", idle(g, &names[3], halter_bytes, run));
+    let mut text = String::new();
+    for line in &report {
+        let _ = writeln!(text, "{line}");
+    }
+    let text = text.trim_end().replace('\n', "; ");
+    if failed { Err(text) } else { Ok(text) }
+}
+
+/// What the host uses with 0, 1, 8 and 32 idle partitions, each on a
+/// copy of the halting guest (on the host's disk `halter`) in NONE.
+fn idle(
+    g: &mut Session,
+    halter: &str,
+    halter_bytes: u64,
+    run: &Run<'_>,
+) -> Result<Vec<String>, String> {
     let mount = said_pool_mount(g)?;
-    report.push(host_use(g, 0)?);
+    let mut lines = vec![host_use(g, 0)?];
     let mut ids = Vec::new();
     for n in [1usize, 8, 32] {
         while ids.len() < n {
@@ -229,9 +256,7 @@ pub fn baselines(run: &Run<'_>) -> Result<String, String> {
                 false,
             ))?;
             channel(g)?.ask(&format!(
-                "copy /dev/{} 0 {}/{}/{name}{} 0 {image_bytes}",
-                names[3],
-                mount,
+                "copy /dev/{halter} 0 {mount}/{}/{name}{} 0 {halter_bytes}",
                 vdisk::DIR,
                 vdisk::SUFFIX
             ))?;
@@ -245,13 +270,9 @@ pub fn baselines(run: &Run<'_>) -> Result<String, String> {
         for id in &ids {
             manager::until(g, *id, State::Running, run.deadline())?;
         }
-        report.push(host_use(g, n)?);
+        lines.push(host_use(g, n)?);
     }
-    let mut text = String::new();
-    for line in &report {
-        let _ = writeln!(text, "{line}");
-    }
-    Ok(text.trim_end().replace('\n', "; "))
+    Ok(lines)
 }
 
 /// Where the pool NONE is mounted.
