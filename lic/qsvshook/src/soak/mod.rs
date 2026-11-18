@@ -18,6 +18,10 @@
 //!
 //! Every 30 seconds a line `SOAK ok ...` says what was done; a check
 //! that fails says `SOAK BAD ...` with the place and the bytes.
+//!
+//! A marker of `QSVS-SOAK fill` asks for no load but [`fill`]: most of
+//! the memory filled with [`RESIDUE`] and held, for the suite that shows
+//! the next partition given the same pages finds none of it.
 
 pub mod disk;
 pub mod memory;
@@ -31,6 +35,24 @@ use std::time::{Duration, Instant};
 
 /// What the marked disk's first sector starts with.
 pub const MARKER: &[u8] = b"QSVS-SOAK";
+/// What [`fill`] writes through memory: 32 bytes.
+pub const RESIDUE: &[u8; 32] = b"QSVS-RESIDUE-OF-A-PARTITION-ENDS";
+
+/// Fill most of the memory with [`RESIDUE`] and hold it for ever.
+pub fn fill() {
+    let mib = available_mib().saturating_sub(96).max(16);
+    let bytes = usize::try_from(mib).unwrap_or(16) << 20;
+    let mut held: Vec<u8> = Vec::with_capacity(bytes);
+    while held.len() + RESIDUE.len() <= bytes {
+        held.extend_from_slice(RESIDUE);
+    }
+    say(&format!("SOAK filled {mib} MiB"));
+    loop {
+        std::thread::sleep(Duration::from_secs(60));
+        // Kept, so the memory is not given back.
+        std::hint::black_box(&held);
+    }
+}
 
 /// The counts every part keeps.
 #[derive(Default)]
@@ -90,8 +112,16 @@ fn available_mib() -> u64 {
         .map_or(64, |kib| kib / 1024)
 }
 
-/// Run the load on `disk` until the system ends.
+/// Run the load on `disk` until the system ends, or [`fill`] when its
+/// marker asks for it.
 pub fn run(disk: &str) {
+    let mut first = [0u8; 32];
+    let asked_fill = std::fs::File::open(disk)
+        .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut first))
+        .is_ok_and(|()| first.starts_with(b"QSVS-SOAK fill"));
+    if asked_fill {
+        return fill();
+    }
     let counts = Arc::new(Counts::default());
     let cpus = processors();
     // Half of what is free, shared by the processors' threads; the
