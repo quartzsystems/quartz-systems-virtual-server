@@ -347,7 +347,7 @@ are not read. Saving to and restoring from optical are its virtual
 (image catalog) devices', not a drive's.
 
 **Tape.** QS/400 drives a tape through Linux's `st` driver alone, on
-`/dev/nstN`: variable blocks (`MTSETBLK 0`), 80-byte IBM standard
+`/dev/nstN`: variable blocks (`MTSETBLK 0`), 80-byte standard
 labels in EBCDIC, 64 KiB save blocks, a 256 KiB read buffer; it spaces
 by filemarks and blocks, rewinds, writes filemarks, erases, unloads.
 It takes the early warning as `ENOSPC` with `GMT_EOT` set, writes the

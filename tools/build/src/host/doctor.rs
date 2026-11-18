@@ -160,6 +160,31 @@ fn catalogue() -> Row {
     }
 }
 
+fn wording(ctx: &Ctx) -> Row {
+    let name = "no other vendor's names";
+    match super::wording::names(&ctx.paths.repo) {
+        Ok((files, found)) if found.is_empty() => {
+            row(name, true, format!("{files} tracked files"), true)
+        }
+        Ok((_, found)) => row(name, false, found.join("; "), true),
+        Err(e) => row(name, false, format!("{e:#}"), true),
+    }
+}
+
+fn help(ctx: &Ctx) -> Row {
+    let name = "help on every panel";
+    match super::wording::help(&ctx.paths.repo) {
+        Ok((panels, empty)) if empty.is_empty() => row(
+            name,
+            true,
+            format!("{panels} panels, none with empty help"),
+            true,
+        ),
+        Ok((_, empty)) => row(name, false, empty.join("; "), true),
+        Err(e) => row(name, false, format!("{e:#}"), true),
+    }
+}
+
 /// QS/VS's rows. KVM and nested virtualization are required unless
 /// `QSVS_ALLOW_NO_KVM=1` says the host has neither.
 pub fn rows(ctx: &Ctx) -> Vec<Row> {
@@ -173,6 +198,8 @@ pub fn rows(ctx: &Ctx) -> Vec<Row> {
         headers(ctx),
         neutral(ctx),
         catalogue(),
+        wording(ctx),
+        help(ctx),
     ]
 }
 
