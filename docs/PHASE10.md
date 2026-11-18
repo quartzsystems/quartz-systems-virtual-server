@@ -196,15 +196,16 @@ span two volumes past the early warning, the system unloading the first
 and the host mounting the second; a protected volume and one with no
 labels are refused as they should be. The drive needed no change.
 
-Three findings are QS/400's (T1 to T3 there, items 10 to 12 of its
-list for a QS/400 handoff): a blank volume is a device error (T2); a
-save to another system's volume saves nothing without saying why (T3);
-the messages sent are not the catalogue's (T1). The fourth, T4, is not
-yet anyone's: during `INZTAP CHECK(*YES)` of a volume labelled in ASCII
-the partition's kernel failed, twice, and whether the guest kernel's
-tape path, the drive's answers or the nesting caused it is
-`NEEDS-CODY`. `pio-tape-volumes` is blocked by T4; question 36 waits on
-QS/400 for T1 to T3 and on T4 being placed (`docs/OPEN_QUESTIONS.md`).
+Three findings are QS/400's (T1, T2 and T5 there, items 9 to 11 of
+its list for a QS/400 handoff): a slow request ends the storage service
+and the system (T5, seen in the acceptance run); a blank volume is a
+device error (T2); the messages sent are not the catalogue's (T1). Two
+entries made on the way were withdrawn there: a save that saved nothing
+was of an empty library, and a fault of the partition's kernel during
+the check of a volume with ASCII labels, seen twice with Phase 8's
+media, did not happen with the pin's and is one of the faults below.
+All three tape suites pass. Question 36 waits on QS/400 for T1, T2 and
+T5 (`docs/OPEN_QUESTIONS.md`).
 
 ### Faults of a partition's kernel
 
@@ -214,8 +215,8 @@ then since Phase 4, in unrelated places each time: `msi_domain_get_virq`
 (Phase 4), `redirected_tty_write`, `clear_page_erms` (Phase 6),
 `rb_erase` (Phase 7), `native_flush_tlb_one_user` (Phase 8), and in
 Phase 10's runs `__rmqueue_pcplist`, `qdisc_alloc` and
-`update_entity_lag` while QS/400 brought its network links up, and the
-`rb_erase` of T4. Each was a suite that passed when run again. Faults in
+`update_entity_lag` while QS/400 brought its network links up, and an
+`rb_erase` during a tape check. Each was a suite that passed when run again. Faults in
 memory-management and scheduler structures at random places are what
 memory or TLB corruption looks like, and nothing of Phase 10 runs in a
 partition without physical I/O. The suspects are nested virtualization
@@ -228,7 +229,7 @@ Phase 9).
 | # | Suite | What it shows |
 |---|---|---|
 | 1 | every earlier suite | Step 0, and in the acceptance run with every host's IOMMU on (below) |
-| 2 | `pio-tape-save`, `pio-tape-span`, `pio-tape-volumes` | Section 1 (above): the first two pass; the third records every outcome and is blocked by QS/400's T4 |
+| 2 | `pio-tape-save`, `pio-tape-span`, `pio-tape-volumes` | Section 1 (above): each passes, recording what QS/400 answered |
 | 3 | `pio-tools` | option 10's screens against `tools-io`, `tools-io-display`, `tools-io-release`, `tools-io-released`; the adapter released with its location typed is no interface of the host nor in its inventory; a partition whose profile names it took `10.0.2.15` through it |
 | 4 | `pio-nvme` | the NVMe controller given to FIRST, whose system found the disk blank, wrote and read back; reset and given back (`C2013035`); SECOND found FIRST's marker and wrote its own |
 | 5 | `pio-refused` | the load source's controller, a pool member's, the management interface's and an uplink's, each refused with `QVS2406` and its use; the function beside the pool member's in its group with `QVS2407` naming it |
@@ -275,9 +276,9 @@ What the runs found and what was done, beside Section 1's:
   it at each IPL before PID 1 binds it to `vfio-pci`
   (`docs/PHYSICALIO.md`, "At the IPL"); whether the QLE2562's driver
   logging in to the fabric for them matters.
-- `NEEDS-CODY`: T4 (`docs/QS400_GUEST.md`) run two levels deep on the
-  Dell and against a real drive passed through, to place it; QS/400's
-  findings T1 to T3 for its handoff.
+- `NEEDS-CODY`: QS/400's findings T1, T2 and T5 for its handoff
+  (`docs/QS400_GUEST.md`); whether the Dell, two levels deep, ever sees
+  T5.
 - `NEEDS-CODY`: the intermittent faults of a partition's kernel three
   levels deep (above, "Faults of a partition's kernel") looked for on
   the Dell, two levels deep.
@@ -288,8 +289,6 @@ What the runs found and what was done, beside Section 1's:
 
 ## Not done
 
-- `BLOCKED(phase10)`: `pio-tape-volumes` fails at its last step by T4
-  (`docs/QS400_GUEST.md`), not yet placed.
 - `BLOCKED(phase10)`, carried: a VMM found running by a partition
   manager started again is watched by looking at its control group every
   25 ms (`docs/PARTD.md`); an adapter's unit numbers have no gaps

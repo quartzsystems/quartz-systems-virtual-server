@@ -805,8 +805,8 @@ pub fn volumes(run: &Run<'_>) -> Result<String, String> {
         dsptap(g, first, "PRT001")
     );
     // Unlabelled, then initialised by something else; the ANSI volume
-    // last, since the partition's kernel failed during its check
-    // (`docs/QS400_GUEST.md`, finding T4). A failure says what came
+    // last, its check the heaviest step (a partition's kernel failed there
+    // twice, `docs/PHASE10.md`). A failure says what came
     // before it.
     for (name, identifier) in [
         ("BLANK1", "BLK001"),
@@ -823,7 +823,12 @@ pub fn volumes(run: &Run<'_>) -> Result<String, String> {
             g,
             first,
             &format!("INZTAP DEV({DEVICE}) NEWVOL({identifier}) CHECK(*YES)"),
-            &["is initialized", "initialized on device", "has not expired"],
+            &[
+                "is initialized",
+                "initialized on device",
+                "has not expired",
+                "CPA4036",
+            ],
         )
         .map_err(|e| so_far(e, &notes))?;
         let _ = writeln!(notes, "{name}: INZTAP CHECK(*YES) {o}");

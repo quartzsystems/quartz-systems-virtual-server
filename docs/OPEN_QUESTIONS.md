@@ -103,13 +103,9 @@ restoring on tape"): `INZTAP`, `SAVLIB`, `DSPTAP` and `RSTLIB` work
 against the drive, from one partition to another and across two
 volumes past the early warning, and a protected or unlabelled volume
 is refused as it should be. The drive needed no change. **Waiting on
-QS/400** for its findings T1 to T3 there: a blank volume is a device
-error (T2); a save to another system's volume saves nothing without
-saying why (T3); the messages sent are not the catalogue's (T1). T4,
-the partition's kernel failing twice during `INZTAP CHECK(*YES)` of a
-volume labelled in ASCII, is not yet known to be QS/400's or the
-drive's (`NEEDS-CODY`, on the Dell); `pio-tape-volumes` is blocked by
-it until then.
+QS/400** for its findings there: a slow request ends the storage
+service and the system (T5), a blank volume is a device error (T2), and
+the messages sent are not the catalogue's (T1). None blocks a suite.
 
 ## Closed
 

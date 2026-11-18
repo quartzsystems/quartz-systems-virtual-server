@@ -546,12 +546,15 @@ system's tape or save code has. The acceptance run used media built at
 - A volume with data and no labels: `DSPTAP` says `*NL`, `SAVLIB` is
   refused with `CPF6772`, `INZTAP CHECK(*YES)` initializes it.
 - A volume labelled in ASCII by another system: `DSPTAP` reads its
-  labels (`*SL`, `*ASCII`, its volume ID).
+  labels (`*SL`, `*ASCII`, its volume ID); `SAVLIB` of an empty library
+  appends it as file 2 (`CPF3770 0 objects saved`, `Saved as file
+  SMALL sequence 2 on volume(s) ANS001`); `INZTAP CHECK(*YES)` then
+  stops at that file, which never expires (`CPA4036`).
 
 Nothing of the virtual drive needed changing for any of it.
 
-**Findings** (T1 to T3 for a QS/400 handoff, each also in "What QS/400
-would have to change" below; T4 not yet anyone's):
+**Findings** (for a QS/400 handoff, each also in "What QS/400 would
+have to change" below):
 
 - **T1. The messages sent are not the catalogue's.** `INZTAP` sends
   `CPC6773 Volume PRT001 initialized on device TAP01.`; the catalogue
@@ -559,7 +562,10 @@ would have to change" below; T4 not yet anyone's):
   device &2.`. `RSTLIB` sends `CPC3703 6 objects restored to TAPLIB, 0
   not restored`; the catalogue has `&1 objects restored to library
   &2.`. A protected volume gives `CPF6768 the volume is write
-  protected`; the catalogue has its own words. `CRTLIB` answers with an
+  protected`; the catalogue has its own words; so does `CPA4036` (`file
+  2 (SMALL) on volume ANS001 is protected until *PERM`, the catalogue's
+  `A file on the volume on &1 has not expired. Overwrite it (C I)?`).
+  `CRTLIB` answers with an
   object line, `QSYS/TAPLIB *LIB created as 0001-0001-…`, not `CPC2102
   Library &1 created.`. A program that monitors for the message's text
   or its data sees something other than the catalogue promises. The
@@ -574,35 +580,27 @@ would have to change" below; T4 not yet anyone's):
   but `CHECK(*YES)` is the default and the operator's first command.
   Expected: a blank volume is one with no labels (`*NL` at `DSPTAP`,
   `CPF6772` at a save, and `INZTAP CHECK(*YES)` initializes it).
-- **T3. A save to a volume of another system's labels saves nothing.**
-  `SAVLIB` to the ASCII-labelled volume ends with `CPF3770 0 objects
-  saved from library SMALL`, not a refusal that names the volume's
-  labels.
-- **T4. During `INZTAP CHECK(*YES)` of a volume labelled in ASCII
-  the partition's kernel failed, twice in two runs.** The first time
-  QS/400's storage service was lost (`qsjob: storage service lost` from
-  every job), its IFS's xfs on `ublkb0` shut down, `init` exited and the
-  kernel panicked, already tainted by a warning; the second time the
-  kernel took a fault in `rb_erase` and panicked. Each time the
-  partition ended for a restart (exit 10) and QS/400 IPLed again, the
-  first time saying `0 media device(s) configured` where it had said 1.
-  A program cannot make the kernel fault, so this is not QS/400's tape
-  code alone. What is not known is which of three it is: the guest
-  kernel's tape path (`st`, the SCSI midlayer) on the drive's answers
-  to a volume of ASCII labels; something in those answers (the drive
-  writes only into the guest's own buffers of each request, by the
-  descriptor chain's bounds, but what it says could still lead the
-  guest astray); or the intermittent faults of a partition's kernel
-  three levels deep, seen in a few runs of every phase since Phase 4 in
-  unrelated places (`docs/PHASE10.md`, "Faults of a partition's
-  kernel"), which happening twice at the same step makes unlikely.
-  `NEEDS-CODY`: run it two levels deep on the Dell, and against a real
-  drive passed through; whichever it is, a foreign volume should be
-  refused, never end the system.
+- **T5. The storage service ends when a request is slow.** In a
+  partition slowed by the test host's load, QS/400's storage service
+  logged a request taking 5 s, then `slow request RunCmdCalling: 10332
+  ms`, and within moments every job had lost it (`descriptor relay:
+  EINVAL`, `storage service lost`), its IFS's xfs shut down on a log
+  I/O error and the system stopped with `B1001060 Storage management
+  service ended`. Seen in several suites of Phase 10's acceptance run
+  (`docs/PHASE10.md`), most often in the minutes after an
+  installation's first IPL; each passed when run again. A slow request
+  on a busy machine should be waited for, never end the system.
 
-`pio-tape-volumes` checks the ASCII volume last, so every other
-outcome is recorded first, and fails there by T4; `pio-tape-save` and
-`pio-tape-span` pass.
+Two earlier entries were withdrawn. A save of a library to another
+system's volume saving nothing was a library with nothing in it. And
+the partition's kernel failing during `INZTAP CHECK(*YES)` of the ASCII
+volume, twice with Phase 8's media, did not happen with the pin's: it
+was one of the faults of a partition's kernel three levels deep that
+every phase has seen now and then (`docs/PHASE10.md`, "Faults of a
+partition's kernel"), at a step heavy in I/O.
+
+`pio-tape-save`, `pio-tape-span` and `pio-tape-volumes` pass, each
+recording what QS/400 answered.
 
 ## What QS/400 would have to change
 
@@ -667,14 +665,13 @@ service channel"), which Phase 7 pinned.
 For a QS/400 handoff after handoff 20, from Phase 10's Section 1
 (above, "Saving and restoring on tape"):
 
-9. **T4, once it is known to be QS/400's** (above): `INZTAP
-   CHECK(*YES)` of a volume with ASCII labels ended the system twice.
-   `NEEDS-CODY`.
+9. **T5 first: a slow request does not end the storage service**
+   (above). `NEEDS-CODY`: whether the Dell, two levels deep, ever sees
+   it.
 10. **T2: a blank volume is a volume with no labels**, not a device
     error: `EIO` from `st` on the first read at the beginning of the
     volume, after `MTREW`, with the drive's sense BLANK CHECK, is the
     end of data.
-11. **T3: a save to another system's labelled volume is refused** by a
-    message that names the labels, before anything is written.
-12. **T1: each message sent is its catalogue entry**, text and data:
-    `CPC6773`, `CPC3703`, `CPF6768`, and `CRTLIB`'s `CPC2102`.
+11. **T1: each message sent is its catalogue entry**, text and data:
+    `CPC6773`, `CPC3703`, `CPF6768`, `CPA4036`, and `CRTLIB`'s
+    `CPC2102`.
