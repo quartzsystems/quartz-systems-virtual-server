@@ -14,6 +14,7 @@
 //! - [`serial`]: where the 16550's output goes and its input comes
 //!   from: the log and the console socket.
 //! - [`run`]: the order of it all.
+//! - [`hooks`]: a test image's hold of a guest that restarts.
 //!
 //! The process starts as root, opens what it needs, and from then on
 //! is the partition's own unprivileged user with no capability and no
@@ -26,6 +27,7 @@
 
 pub mod config;
 pub mod end;
+pub mod hooks;
 pub mod media;
 pub mod net;
 

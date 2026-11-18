@@ -4,7 +4,7 @@
 
 //! The test hooks' binary: `qsvshook channel`, `qsvshook flaky` and
 //! `qsvshook partition`, the services a test image's PID 1 has in its
-//! table.
+//! table, and `qsvshook soak`, which PID 1 starts in a soak's partition.
 
 #[cfg(target_os = "linux")]
 fn main() {
@@ -26,7 +26,17 @@ fn main() {
             let Err(e) = qsvshook::partition::relay::run();
             eprintln!("the partition hook did not start: {e}");
         }
-        other => eprintln!("qsvshook channel | flaky | partition, not {other:?}"),
+        Some("soak") => {
+            qsvshook::soak::run(&std::env::args().nth(2).unwrap_or_default());
+        }
+        Some("soak-child") => {
+            let mib = std::env::args()
+                .nth(2)
+                .and_then(|m| m.parse().ok())
+                .unwrap_or(1);
+            std::process::exit(qsvshook::soak::child(mib));
+        }
+        other => eprintln!("qsvshook channel | flaky | partition | soak, not {other:?}"),
     }
     std::process::exit(1);
 }

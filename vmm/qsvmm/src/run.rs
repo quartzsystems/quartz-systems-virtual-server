@@ -309,8 +309,9 @@ fn load_memory(
     let config = &partition.config;
     // Huge pages that are not there are not a fault of the machine:
     // the partition was promised memory the host does not have.
-    let memory = machine::memory(&hypervisor.vm, ram, config.huge_pages).map_err(|e| Stop {
-        code: if config.huge_pages {
+    let huge = config.huge_pages && !crate::hooks::small_pages();
+    let memory = machine::memory(&hypervisor.vm, ram, huge).map_err(|e| Stop {
+        code: if huge {
             &refcode::PARTITION_NO_MEMORY
         } else {
             &refcode::PARTITION_NOT_BUILT
@@ -340,7 +341,7 @@ fn machine_built(partition: &Partition) -> Result<(), Stop> {
             config.vcpus / config.threads_per_core,
             config.threads_per_core,
             config.memory_mib,
-            if config.huge_pages {
+            if config.huge_pages && !crate::hooks::small_pages() {
                 " in huge pages"
             } else {
                 ""
@@ -358,10 +359,14 @@ fn machine_built(partition: &Partition) -> Result<(), Stop> {
 
 /// What the guest asks of the platform ends the partition: a power off
 /// or a restart.
-fn guest_requests(ends: Sender<(End, String)>) -> Requests {
+fn guest_requests(ends: Sender<(End, String)>, pause: Arc<machine::pause::Pause>) -> Requests {
     Box::new(move |request| {
         let end = match request {
             Request::PowerOff => End::PoweredOff,
+            Request::Restart if crate::hooks::hold_restart() => {
+                vcpu::hold_restart(&pause);
+                return;
+            }
             Request::Restart => End::Restart,
         };
         let _ = ends.send((end, "the guest asked".into()));
@@ -428,6 +433,7 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         code: &refcode::PARTITION_PROFILE_INVALID,
         detail: e.to_string(),
     })?;
+    crate::hooks::read();
     let hypervisor = Hypervisor::open().map_err(not_built("KVM"))?;
     if config.vcpus as usize > hypervisor.max_vcpus() {
         return stop(
@@ -462,14 +468,19 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
             load_blocks
         ),
     );
-    let entropy = File::open("/dev/urandom").map_err(not_built("/dev/urandom"))?;
+    let entropy = if crate::hooks::no_rng() {
+        None
+    } else {
+        Some(File::open("/dev/urandom").map_err(not_built("/dev/urandom"))?)
+    };
     let (memory, loaded) = load_memory(partition, &hypervisor, &ram)?;
     let passed = map_devices(physio, &memory)?;
     let (ends, ended) = mpsc::channel::<(End, String)>();
     let (tap, queue) = serial::queue();
-    let requests = guest_requests(ends.clone());
+    let requests = guest_requests(ends.clone(), pause.clone());
     let console = ports
         .as_ref()
+        .filter(|_| !crate::hooks::no_console())
         .map(|p| devices::virtio::console::Console::new(p.ports.clone()));
     let built = machine::devices(
         &hypervisor.vm,

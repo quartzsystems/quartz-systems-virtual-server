@@ -32,6 +32,8 @@ loadsource = { path = "../../base/loadsource", version = "0.1.0" }
 rustix = { workspace = true, features = ["termios", "mount"] }
 virtio-queue.workspace = true
 vm-memory.workspace = true
+# The soak's links brought up.
+netlink.workspace = true
 
 [lints]
 workspace = true

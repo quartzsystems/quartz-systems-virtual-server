@@ -50,12 +50,25 @@ fn main() {
         host_paths: cfg!(test_hooks),
         // So is a device made to fail its reset (the test hooks write
         // the file).
-        no_reset: cfg!(test_hooks).then(|| PathBuf::from("/run/qsvshook.noreset")),
+        no_reset: no_reset(),
     };
     // It returns only when it could not start.
     let e = run(&service);
     eprintln!("the partition manager did not start: {e}");
     std::process::exit(1);
+}
+
+/// A test image's file of addresses whose reset fails; nothing in any
+/// other build.
+#[cfg(all(target_os = "linux", test_hooks))]
+#[allow(clippy::unnecessary_wraps)] // the release build's gives none
+fn no_reset() -> Option<std::path::PathBuf> {
+    Some(std::path::PathBuf::from("/run/qsvshook.noreset"))
+}
+
+#[cfg(all(target_os = "linux", not(test_hooks)))]
+fn no_reset() -> Option<std::path::PathBuf> {
+    None
 }
 
 #[cfg(not(target_os = "linux"))]

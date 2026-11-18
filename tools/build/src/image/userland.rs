@@ -4,10 +4,11 @@
 
 //! `build userland`: every binary of the image, built for the musl
 //! target and proved static and stripped, as `buildkit`'s step does,
-//! with one thing more. The test hooks of PID 1 are compiled in by an
+//! with one thing more. The test hooks are compiled in by an
 //! environment variable; this step sets it itself, on for a test image
 //! and off for a release image whatever the caller's environment says,
-//! and then looks in PID 1 for the hooks' marker.
+//! and then looks in PID 1 for the hooks' marker, and in a release
+//! image's every binary for the files the hooks read.
 
 use std::env;
 use std::fs;
@@ -59,8 +60,13 @@ fn holds(bytes: &[u8], marker: &str) -> bool {
     bytes.windows(marker.len()).any(|w| w == marker.as_bytes())
 }
 
+/// What every file a hook reads is named with (`/run/qsvshook.*`):
+/// no release binary may hold it.
+const HOOK_FILES: &str = "/run/qsvshook.";
+
 /// The hooks are in a test image's PID 1 and in no release image's:
-/// neither the marker in PID 1, nor the hooks' package in the list.
+/// neither the marker in PID 1, nor the hooks' package in the list, nor
+/// a hook's file in any binary.
 pub fn check_hooks(ctx: &Ctx, image: Image) -> Result<()> {
     let init = fs::read(ctx.paths.bin(INIT))?;
     let marked = holds(&init, HOOKS_MARKER);
@@ -69,7 +75,18 @@ pub fn check_hooks(ctx: &Ctx, image: Image) -> Result<()> {
         Image::Release => {
             ensure!(!marked, "the release image's {INIT} has the test hooks");
             ensure!(!packaged, "the release image lists {HOOK}");
-            info!("userland: release image: no test hooks in {INIT}, no {HOOK}");
+            for package in ctx.product.packages {
+                let bytes = fs::read(ctx.paths.bin(package.name))?;
+                ensure!(
+                    !holds(&bytes, HOOK_FILES),
+                    "the release image's {} reads a test hook's file",
+                    package.name
+                );
+            }
+            info!(
+                "userland: release image: no test hooks in {INIT}, no {HOOK}, no hook's file in \
+                 any binary"
+            );
         }
         Image::Test => {
             ensure!(marked, "the test image's {INIT} lacks the test hooks");

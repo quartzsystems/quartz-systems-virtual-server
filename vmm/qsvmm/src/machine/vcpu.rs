@@ -270,6 +270,18 @@ fn keep(index: u32, wiring: &Wiring, why: &str) {
     wiring.pause.hold_from_processor(Reason::Kept);
 }
 
+/// Hold the partition when its guest restarts, as after a fault: a
+/// test image's hook alone (`crate::hooks`).
+pub fn hold_restart(pause: &super::pause::Pause) {
+    if !pause.kept() {
+        crate::post(
+            &refcode::PARTITION_FAULT_HELD,
+            "the guest restarted, held by a test hook",
+        );
+    }
+    pause.hold_from_processor(Reason::Kept);
+}
+
 fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
     let end = |end: End, why: String| {
         let _ = wiring.ends.send((end, format!("processor {index}: {why}")));
@@ -312,7 +324,11 @@ fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
                 return end(End::PoweredOff, "system event".into());
             }
             Ok(VcpuExit::SystemEvent(KVM_SYSTEM_EVENT_RESET, _)) => {
-                return end(End::Restart, "system event".into());
+                if crate::hooks::hold_restart() {
+                    hold_restart(&wiring.pause);
+                } else {
+                    return end(End::Restart, "system event".into());
+                }
             }
             Ok(VcpuExit::SystemEvent(KVM_SYSTEM_EVENT_CRASH, _)) => {
                 keep(index, wiring, "the guest reported a crash");

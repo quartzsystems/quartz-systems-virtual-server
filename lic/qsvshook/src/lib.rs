@@ -14,6 +14,8 @@
 //! - [`channel`], [`flaky`]: two of the services (Linux).
 //! - [`partition`]: the third: the harness's requests to the partition
 //!   manager, and what the partitions say relayed to the serial port.
+//! - [`soak`]: the load a test image runs as a partition's system for
+//!   the soak (Linux).
 //!
 //! A hook is switched on for one IPL by an SMBIOS OEM string the
 //! harness gives QEMU, [`oem_string`].
@@ -27,6 +29,8 @@ pub mod churn;
 pub mod flaky;
 pub mod partition;
 pub mod proto;
+#[cfg(target_os = "linux")]
+pub mod soak;
 
 /// The first argument of the binary when the channel has it try
 /// something as another user.

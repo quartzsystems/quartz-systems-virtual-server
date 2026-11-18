@@ -426,6 +426,8 @@ mod on_host {
         // A test image IPLed as a partition says what it was given.
         #[cfg(test_hooks)]
         crate::hooks::guest_probe(&mut host);
+        #[cfg(test_hooks)]
+        crate::hooks::guest_soak(&mut host);
         identity(&mut host);
         services(&mut host);
         host.run()

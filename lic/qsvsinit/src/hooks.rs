@@ -172,6 +172,47 @@ pub fn guest_probe(host: &mut crate::host::Host) {
     host.line("PIO DONE");
 }
 
+/// The test image as a soak's partition (`docs/PHASE11.md`, Section 1):
+/// when a disk it was given starts with the soak's marker, the load
+/// runs on it until the system ends.
+pub fn guest_soak(host: &mut crate::host::Host) {
+    use std::fs;
+    use std::io::Read;
+    use std::path::Path;
+
+    let sys = Path::new("/sys");
+    let product = fs::read_to_string(sys.join("class/dmi/id/product_name")).unwrap_or_default();
+    if product.trim() != PARTITION_PRODUCT {
+        return;
+    }
+    let mut names: Vec<String> = fs::read_dir(sys.join("block"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("sd") || n.starts_with("vd"))
+        .collect();
+    names.sort();
+    for name in names {
+        let path = format!("/dev/{name}");
+        let mut first = [0u8; 16];
+        let marked = fs::File::open(&path)
+            .and_then(|mut f| f.read_exact(&mut first))
+            .is_ok_and(|()| first.starts_with(b"QSVS-SOAK"));
+        if !marked {
+            continue;
+        }
+        match std::process::Command::new(BINARY)
+            .args(["soak", &path])
+            .spawn()
+        {
+            Ok(_) => host.line(&format!("SOAK started on {path}")),
+            Err(e) => host.line(&format!("SOAK BAD not started: {e}")),
+        }
+        return;
+    }
+}
+
 /// A passed tape drive as the guest sees it: what its INQUIRY said, a
 /// block written and read back through `st`, a WRITE BUFFER the host
 /// must refuse; then, on a thread, TEST UNIT READY every two seconds for

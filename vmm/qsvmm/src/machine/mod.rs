@@ -204,7 +204,7 @@ pub enum Function {
 /// the reset line and the power-off register telling `requests`, and
 /// on the PCI bus a function for each of `adapters`, a virtio-scsi one
 /// with its units or a virtio-net one, then the virtio-console when
-/// there is one, virtio-rng reading `entropy`, and last each of the
+/// there is one, virtio-rng reading `entropy` when there is one, and last each of the
 /// host's functions `passed`, by location code, its BARs mapped into
 /// the guest. The partition's memory is already mapped for their DMA.
 #[allow(clippy::too_many_arguments)] // each is a kind of device
@@ -215,7 +215,7 @@ pub fn devices(
     requests: Requests,
     adapters: Vec<Function>,
     console: Option<devices::virtio::console::Console>,
-    entropy: File,
+    entropy: Option<File>,
     passed: Vec<(String, devices::vfio::Device)>,
 ) -> io::Result<Devices> {
     let platform: Arc<dyn Platform> = Arc::new(KvmPlatform::new(vm.clone()));
@@ -256,7 +256,9 @@ pub fn devices(
     if let Some(console) = console {
         functions.push(Box::new(console));
     }
-    functions.push(Box::new(Rng::new(entropy)));
+    if let Some(entropy) = entropy {
+        functions.push(Box::new(Rng::new(entropy)));
+    }
     let mut pci = PciBus::new();
     #[allow(clippy::cast_possible_truncation)] // 3 GiB
     let mut base = PCI_MEM_START as u32;

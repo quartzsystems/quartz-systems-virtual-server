@@ -54,6 +54,8 @@ hostdump = { path = "../../svc/hostdump", version = "0.1.0" }
 identity = { path = "../../base/identity", version = "0.1.0" }
 ed25519-dalek = "3.0.0"
 toml.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
