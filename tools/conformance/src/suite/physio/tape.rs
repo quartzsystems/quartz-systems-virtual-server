@@ -155,25 +155,26 @@ fn mark(guest: &mut Session, id: u32) -> Result<String, String> {
     let m = format!("QM{:04}", NEXT.fetch_add(1, Ordering::Relaxed));
     let command = format!("CRTDTAARA DTAARA(QTEMP/{m}) TYPE(*CHAR) LEN(1)");
     enter(guest, id, &command)?;
-    // The command's echo has the name too; the message is a second line.
-    // Keys typed while the screen was still being drawn can be lost: the
-    // name nowhere after 20 s, it is typed again, twice at most.
+    // Done when its completion message names it. Keys typed while the
+    // screen was still being drawn can be lost: when no whole echo of the
+    // command shows after 15 s, it is typed again, twice at most.
+    let done = format!("Data area {m} created");
+    let echo = format!("DTAARA(QTEMP/{m})");
     let deadline = Instant::now() + Duration::from_mins(1);
-    let mut again = Instant::now() + Duration::from_secs(20);
+    let mut again = Instant::now() + Duration::from_secs(15);
     let mut tries = 1;
     loop {
-        let shown = screen(guest, id)?.text.matches(&m).count();
-        if shown >= 2 {
+        let text = screen(guest, id)?.text;
+        if text.contains(&done) {
             return Ok(m);
         }
-        if shown == 0 && tries < 3 && Instant::now() >= again {
+        if !text.contains(&echo) && tries < 3 && Instant::now() >= again {
             enter(guest, id, &command)?;
             tries += 1;
-            again = Instant::now() + Duration::from_secs(20);
+            again = Instant::now() + Duration::from_secs(15);
         }
         if Instant::now() >= deadline {
-            let s = screen(guest, id)?.text;
-            return Err(format!("CRTDTAARA did not show `{m}`:\n{s}"));
+            return Err(format!("CRTDTAARA did not show `{m}`:\n{text}"));
         }
         std::thread::sleep(Duration::from_millis(300));
     }
