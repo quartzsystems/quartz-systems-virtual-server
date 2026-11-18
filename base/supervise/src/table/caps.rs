@@ -57,6 +57,8 @@ pub const NET_RAW: u8 = 13;
 pub const IPC_LOCK: u8 = 14;
 /// Raw I/O: SCSI pass-through of any command.
 pub const SYS_RAWIO: u8 = 17;
+/// Change the root directory.
+pub const SYS_CHROOT: u8 = 18;
 /// Mounts, namespaces, block devices' controls.
 pub const SYS_ADMIN: u8 = 21;
 /// Priorities and processors of other processes.

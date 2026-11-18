@@ -125,6 +125,7 @@ pub const PARTD: Service = Service {
         SETPCAP,
         IPC_LOCK,
         SYS_RAWIO,
+        SYS_CHROOT,
         SYS_ADMIN,
         SYS_NICE,
         SYS_RESOURCE,
