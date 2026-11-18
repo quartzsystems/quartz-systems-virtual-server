@@ -8,9 +8,10 @@ option 4 pairs.
 
 The panels every Quartz appliance has are `base/panels` (shared with
 QS/MC); QS/VS's menu, its system status and its disk units are
-`svc/tools`, the service `tools` of PID 1's table. Option 8 of the
-menu comes with Phase 9, service and code update. Every panel's screen
-is a golden file under `tools/conformance/golden/`.
+`svc/tools`, the service `tools` of PID 1's table. Every panel's
+screen is a golden file under `tools/conformance/golden/`; `build
+doctor` checks that every panel has help, and the wording of every
+panel and message (`docs/PHASE11.md`).
 
 ## The two sessions
 
@@ -134,8 +135,11 @@ everything in Service Tools; there is one kind of user in this release.
 
 The host as it is now; the display follows it. The host's state (every
 service has been ready, or the IPL is in progress); the release, the
-build and whether the image is a release or a test image; the slot
-this IPL came from, with the A/B record; the reference code posted
+build and whether the image is a release or a test image, and
+`development key` when a development key signed it (`A2001002`,
+`docs/RELEASING.md`); the slot this IPL came from, with the A/B record,
+and whether Secure Boot is on, off or not known (from the firmware's
+`SecureBoot` variable; `docs/INSTALL.md`); the reference code posted
 last; the management line; what `/data` is mounted from; what the KVM
 probe found; the uptime; the partitions, counted: how many are defined
 and how many are running, starting, shutting down or in error; and
