@@ -299,6 +299,7 @@ wording.
 | `QVS5152` | Released device &1 was not given to the pass-through driver: its isolation group changed. | A firmware update or a card moved can change a group. Take the device back and release it again at Service Tools option 10, where the new group is shown. |
 | `QVS5153` | Device &1 did not reset and is fenced. | It is not given to any partition until the host is restarted. If it fails to reset again, service the device or take it back. |
 | `QVS5154` | Physical tape drive &1 went away. | Check its cable and power. The partition that held it gets an error for each command until it comes back. |
+| `QVS5155` | The VMM of partition &1 was ended by its confinement: &2. | It made a system call a VMM never needs, which is what a system that took over its VMM would do; nothing outside the partition was reached. Keep the partition's dump and a host dump for the release's supplier before activating it again. |
 | `QVS5201` | There is no host dump &1. | A host dump's name is HOSTDUMP- and the time it was taken. The list shows the dumps kept: at most 8, the oldest put out first. |
 | `QVS5202` | A host dump is being taken: &1. | One host dump is taken at a time. Wait for it to be written, then ask again. |
 | `QVS5301` | Update image &1 is not signed by a key this host trusts. | An image is installed only if its manifest is signed by a key the running release trusts, and nothing turns that off. Get the image from the release's supplier again. |

@@ -498,11 +498,7 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
 
     // From here on nothing needs root, and no thread exists yet.
     sys::block_termination().map_err(not_built("signals"))?;
-    if root {
-        sys::drop_privileges(partition.user()).map_err(not_built("dropping privileges"))?;
-    } else {
-        eprintln!("qsvmm: not started as root: running as the user it was started by");
-    }
+    confine(options, partition, root, log.dir_fd())?;
 
     let clients = Clients::default();
     serial::spawn(queue, log, clients.clone()).map_err(not_built("threads"))?;
@@ -520,6 +516,7 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         .map_err(not_built("threads"))?;
     spawn_signal_watch(ends.clone(), processors).map_err(not_built("threads"))?;
     post(&refcode::PARTITION_STARTED, &loaded.loaded.words());
+    crate::confine::enter(crate::confine::Kind::Main).map_err(not_built("the confinement"))?;
     // The VM and the memory live as long as the process does.
     std::mem::forget(hypervisor);
     std::mem::forget(memory);
@@ -530,6 +527,26 @@ fn activate(options: &Options, partition: &Partition) -> Result<Running, Stop> {
         drives,
         managed: built.managed,
     })
+}
+
+/// The confinement (`crate::confine`): as root, namespaces of the
+/// process's own and an empty root, then the drop; with every
+/// descriptor in hand, the filter of every thread's calls, which each
+/// thread narrows to its own as it starts.
+fn confine(options: &Options, partition: &Partition, root: bool, log_dir: i32) -> Result<(), Stop> {
+    crate::confine::log_dir(log_dir);
+    if root {
+        let empty = options.socket_dir(partition.config.id).join("root");
+        fs::create_dir_all(&empty)
+            .and_then(|()| fs::set_permissions(&empty, fs::Permissions::from_mode(0o555)))
+            .and_then(|()| sys::isolate(&empty))
+            .map_err(not_built("the confinement's namespaces"))?;
+        sys::drop_privileges(partition.user()).map_err(not_built("dropping privileges"))?;
+    } else {
+        eprintln!("qsvmm: not started as root: running as the user it was started by");
+    }
+    devices::on_thread_start(|| crate::confine::enter_or_end(crate::confine::Kind::Worker));
+    crate::confine::enter(crate::confine::Kind::Process).map_err(not_built("the confinement"))
 }
 
 /// The threads that serve the host: the drives' watch, the control
@@ -613,6 +630,7 @@ fn spawn_signal_watch(ends: Sender<(End, String)>, processors: Vec<Processor>) -
     thread::Builder::new()
         .name("signals".into())
         .spawn(move || {
+            crate::confine::enter_or_end(crate::confine::Kind::Signals);
             let why = loop {
                 match sys::wait_for_termination() {
                     Ok(sys::REPORT) => report_processors(&processors),

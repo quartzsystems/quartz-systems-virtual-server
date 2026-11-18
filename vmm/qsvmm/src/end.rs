@@ -14,7 +14,8 @@
 //! | 30 | the partition did not IPL | `A2005100` |
 //! | 40 | the VMM failed | `A2005130` |
 //! | 50 | the VMM was asked to end (`SIGTERM`) | `A2005140` |
-//! | a signal | the VMM was killed | `A2005150` |
+//! | `SIGSYS` | the VMM made a call its confinement forbids | `A2005190` |
+//! | another signal | the VMM was killed | `A2005150` |
 //!
 //! A guest restart ends the process: it is not restarted in place.
 
@@ -38,6 +39,8 @@ pub enum End {
     Ended,
     /// The VMM was killed by a signal.
     Killed,
+    /// The VMM made a call its confinement forbids (`SIGSYS`).
+    Forbidden,
 }
 
 impl End {
@@ -50,7 +53,17 @@ impl End {
             End::NotIpled => Some(30),
             End::VmmError => Some(40),
             End::Ended => Some(50),
-            End::Killed => None,
+            End::Killed | End::Forbidden => None,
+        }
+    }
+
+    /// The end of a VMM killed by `signal`.
+    pub fn from_signal(signal: i32) -> Self {
+        // SIGSYS: the kernel ends a process its filter refused a call.
+        if signal == 31 {
+            End::Forbidden
+        } else {
+            End::Killed
         }
     }
 
@@ -78,6 +91,7 @@ impl End {
             End::VmmError => &refcode::PARTITION_VMM_ERROR,
             End::Ended => &refcode::PARTITION_ENDED,
             End::Killed => &refcode::PARTITION_KILLED,
+            End::Forbidden => &refcode::PARTITION_FORBIDDEN,
         }
     }
 }
@@ -100,6 +114,9 @@ mod tests {
         for end in all {
             assert_eq!(End::from_exit(end.exit_code().map(i32::from)), end);
         }
+        assert_eq!(End::from_signal(31), End::Forbidden);
+        assert_eq!(End::from_signal(9), End::Killed);
+        assert_ne!(End::Forbidden.code().code, End::Killed.code().code);
         let mut codes: Vec<&str> = all.iter().map(|e| e.code().code).collect();
         codes.sort_unstable();
         codes.dedup();

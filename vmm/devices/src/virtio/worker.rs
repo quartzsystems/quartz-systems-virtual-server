@@ -46,6 +46,7 @@ impl Worker {
         let thread = thread::Builder::new()
             .name(name.to_string())
             .spawn(move || {
+                crate::thread_started();
                 let mut events = vec![EpollEvent::default(); notifies.len() + 1];
                 loop {
                     let ready = match epoll.wait(-1, &mut events) {

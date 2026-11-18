@@ -294,9 +294,17 @@ fn run(mut vcpu: VcpuFd, index: u32, wiring: &Wiring) {
             format!("not pinned to host thread {cpu}: {e}"),
         );
     }
+    crate::confine::enter_or_end(crate::confine::Kind::Processor);
     loop {
         if wiring.pause.paused() {
             wiring.pause.park(&vcpu, index);
+        }
+        #[cfg(test_hooks)]
+        if let Some(call) = crate::hooks::pending() {
+            eprintln!(
+                "qsvmm: processor {index}: {}",
+                crate::hooks::forbidden(call)
+            );
         }
         match vcpu.run() {
             Ok(VcpuExit::IoIn(port, data)) => {

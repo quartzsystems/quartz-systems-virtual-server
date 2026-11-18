@@ -1062,6 +1062,10 @@ catalogue! {
     PRB_DRIVE_GONE = "QVS5154",
         "Physical tape drive &1 went away.",
         "Check its cable and power. The partition that held it gets an error for each command until it comes back.";
+    /// A2005190.
+    PRB_VMM_FORBIDDEN = "QVS5155",
+        "The VMM of partition &1 was ended by its confinement: &2.",
+        "It made a system call a VMM never needs, which is what a system that took over its VMM would do; nothing outside the partition was reached. Keep the partition's dump and a host dump for the release's supplier before activating it again.";
     /// No host dump of that name.
     HOST_DUMP_MISSING = "QVS5201",
         "There is no host dump &1.",

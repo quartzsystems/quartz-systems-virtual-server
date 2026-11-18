@@ -315,6 +315,7 @@ unit kept, and the other is written again from it (`C2003020`,
 | `A2005160` | Partition held for storage pool space | a write to a thin virtual disk found its pool full: the partition's processors are stopped, it stays Running, nothing reaches the guest as an error, and it goes on by itself (`C2005160`) when the pool has room |
 | `A2005170` | Partition held after a guest fault | a triple fault, a halt with nothing to wake it, an entry KVM refused or an exit the VMM does not handle: the processors are stopped and the memory kept, the partition is in Error until it is dumped, shut down or restarted |
 | `A2005180` | Partition dump not written | a dump could not be written whole, with why: nothing of it is kept |
+| `A2005190` | Partition VMM ended by its confinement | `qsvmm` made a system call its seccomp filter does not allow and the kernel ended it (`SIGSYS`); the partition is in Error, holding nothing (`docs/SECURITY.md`) |
 | `A2006010` | Partition not activated | an activation failed before `qsvmm` ran, with the partition's name and the message |
 | `A2006020` | Partition not started automatically | a partition flagged to start with the host could not be activated, with its name and the message; the others are still tried |
 | `A2006030` | Partition state not valid | a definition, a profile or `partitions.toml` was refused, with the file and the reason |

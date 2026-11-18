@@ -233,6 +233,7 @@ pub fn spawn(drives: Drives) -> io::Result<()> {
     thread::Builder::new()
         .name("drives".into())
         .spawn(move || {
+            crate::confine::enter_or_end(crate::confine::Kind::Drives);
             loop {
                 drives.look();
                 thread::sleep(LOOK);

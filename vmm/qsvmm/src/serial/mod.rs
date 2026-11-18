@@ -101,6 +101,7 @@ pub fn spawn(
     thread::Builder::new()
         .name("serial-out".into())
         .spawn(move || {
+            crate::confine::enter_or_end(crate::confine::Kind::Serial);
             let mut batch = Vec::with_capacity(BATCH_BYTES);
             while let Ok(first) = queue.recv() {
                 let mut next = Some(first);

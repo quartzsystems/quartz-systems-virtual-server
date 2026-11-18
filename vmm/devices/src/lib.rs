@@ -36,5 +36,21 @@ pub mod virtio;
 #[cfg(target_os = "linux")]
 pub use sys::vfio;
 
+/// What a device's thread does first, before it serves: the VMM
+/// confines it there (`qsvmm`'s `confine`). Nothing until one is set.
+static THREAD_START: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
+/// Have every device thread started from now on call `start` first.
+pub fn on_thread_start(start: fn()) {
+    let _ = THREAD_START.set(start);
+}
+
+/// Called by each device thread as it starts.
+pub(crate) fn thread_started() {
+    if let Some(start) = THREAD_START.get() {
+        start();
+    }
+}
+
 /// The guest's memory.
 pub type Memory = vm_memory::GuestMemoryMmap<()>;

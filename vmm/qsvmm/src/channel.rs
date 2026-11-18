@@ -66,6 +66,7 @@ fn serve(link: &Arc<Link>, stream: &UnixStream) {
         thread::Builder::new()
             .name("channel-out".into())
             .spawn(move || {
+                crate::confine::enter_or_end(crate::confine::Kind::Channel);
                 let Ok(mut stream) = stream else {
                     return;
                 };
@@ -102,6 +103,7 @@ pub fn spawn(ports: Ports) -> io::Result<()> {
         thread::Builder::new()
             .name("channel".into())
             .spawn(move || {
+                crate::confine::enter_or_end(crate::confine::Kind::Channel);
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => serve(&port.link, &stream),

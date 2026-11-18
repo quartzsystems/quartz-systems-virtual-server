@@ -7,10 +7,17 @@
 //! file would grow past its limit it becomes `.1`, the others move up
 //! and the oldest goes. A guest that never stops talking so fills a
 //! bounded space.
+//!
+//! The directory is held open and every generation is opened and moved
+//! relative to it: the confined VMM sees no file system
+//! (`crate::confine`).
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::os::fd::OwnedFd;
+use std::path::Path;
+
+use rustix::fs::{Mode, OFlags, open, openat, renameat};
 
 /// The log's file name.
 pub const FILE: &str = "serial.log";
@@ -21,7 +28,7 @@ pub const LIMIT_BYTES: u64 = 4 << 20;
 
 /// The log.
 pub struct Log {
-    dir: PathBuf,
+    dir: OwnedFd,
     file: Option<File>,
     written: u64,
     limit: u64,
@@ -32,17 +39,35 @@ impl Log {
     /// end of what is there.
     pub fn open(dir: &Path, limit: u64) -> io::Result<Self> {
         fs::create_dir_all(dir)?;
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(dir.join(FILE))?;
+        let dir = open(
+            dir,
+            OFlags::DIRECTORY | OFlags::RDONLY | OFlags::CLOEXEC,
+            Mode::empty(),
+        )?;
+        let file = Self::open_at(&dir, 0)?;
         let written = file.metadata()?.len();
         Ok(Self {
-            dir: dir.to_path_buf(),
+            dir,
             file: Some(file),
             written,
             limit: limit.max(1),
         })
+    }
+
+    fn open_at(dir: &OwnedFd, n: u32) -> io::Result<File> {
+        let fd = openat(
+            dir,
+            Self::generation(n),
+            OFlags::WRONLY | OFlags::CREATE | OFlags::APPEND | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o644),
+        )?;
+        Ok(File::from(fd))
+    }
+
+    /// The directory's descriptor: the only one a generation is opened
+    /// in (`crate::confine`).
+    pub fn dir_fd(&self) -> i32 {
+        std::os::fd::AsRawFd::as_raw_fd(&self.dir)
     }
 
     /// The open file, for the caller to hand to another owner.
@@ -50,10 +75,10 @@ impl Log {
         self.file.as_ref()
     }
 
-    fn generation(&self, n: u32) -> PathBuf {
+    fn generation(n: u32) -> String {
         match n {
-            0 => self.dir.join(FILE),
-            n => self.dir.join(format!("{FILE}.{n}")),
+            0 => FILE.to_string(),
+            n => format!("{FILE}.{n}"),
         }
     }
 
@@ -61,13 +86,14 @@ impl Log {
         self.file = None;
         for n in (0..GENERATIONS).rev() {
             // The oldest is written over; one that is missing is not an error.
-            let _ = fs::rename(self.generation(n), self.generation(n + 1));
+            let _ = renameat(
+                &self.dir,
+                Self::generation(n),
+                &self.dir,
+                Self::generation(n + 1),
+            );
         }
-        self.file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.generation(0))
-            .ok();
+        self.file = Self::open_at(&self.dir, 0).ok();
         self.written = 0;
     }
 

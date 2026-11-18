@@ -15,6 +15,8 @@
 //!   from: the log and the console socket.
 //! - [`run`]: the order of it all.
 //! - [`hooks`]: a test image's hold of a guest that restarts.
+//! - [`confine`]: namespaces, an empty root and a seccomp filter for
+//!   each kind of thread.
 //!
 //! The process starts as root, opens what it needs, and from then on
 //! is the partition's own unprivileged user with no capability and no
@@ -33,6 +35,8 @@ pub mod net;
 
 #[cfg(target_os = "linux")]
 pub mod channel;
+#[cfg(target_os = "linux")]
+pub mod confine;
 #[cfg(target_os = "linux")]
 pub mod control;
 #[cfg(target_os = "linux")]

@@ -73,6 +73,7 @@ pub fn spawn(
     thread::Builder::new()
         .name("console".into())
         .spawn(move || {
+            crate::confine::enter_or_end(crate::confine::Kind::Console);
             for client in listener.incoming().flatten() {
                 let Ok(output) = client.try_clone() else {
                     continue;
@@ -91,7 +92,10 @@ pub fn spawn(
                 let serial = serial.clone();
                 let _ = thread::Builder::new()
                     .name("console-in".into())
-                    .spawn(move || pump(client, &serial));
+                    .spawn(move || {
+                        crate::confine::enter_or_end(crate::confine::Kind::ConsoleIn);
+                        pump(client, &serial);
+                    });
             }
         })?;
     Ok(())

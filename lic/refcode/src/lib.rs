@@ -381,6 +381,11 @@ pub const PARTITION_FAULT_HELD: RefCode =
     attention("A2005170", "Partition held after a guest fault");
 /// A dump could not be written whole, with why; nothing of it is kept.
 pub const PARTITION_DUMP_FAILED: RefCode = attention("A2005180", "Partition dump not written");
+/// The VMM made a system call its confinement does not allow and was
+/// ended by the kernel (`SIGSYS`): what a guest that took over its VMM
+/// would do.
+pub const PARTITION_FORBIDDEN: RefCode =
+    attention("A2005190", "Partition VMM ended by its confinement");
 /// A write found the partition's pool full: its processors are
 /// stopped until there is room, and it stays Running.
 pub const PARTITION_HELD: RefCode = attention("A2005160", "Partition held for storage pool space");
@@ -740,6 +745,7 @@ pub const ALL: &[&RefCode] = &[
     &PARTITION_KILLED,
     &PARTITION_FAULT_HELD,
     &PARTITION_DUMP_FAILED,
+    &PARTITION_FORBIDDEN,
     &PARTITION_HELD,
     &PARTITION_NOT_ACTIVATED,
     &AUTO_START_FAILED,

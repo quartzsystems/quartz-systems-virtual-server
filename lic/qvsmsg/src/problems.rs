@@ -174,6 +174,7 @@ pub const CONDITIONS: &[Condition] = &[
     opens("A2005160", &PRB_HELD_FOR_SPACE, &[PARTITION], &["C2005160"]),
     opens("A2005170", &PRB_HELD_FAULT, &[PARTITION], &[]),
     opens("A2005180", &PRB_DUMP_NOT_WRITTEN, &[PARTITION], &[]),
+    opens("A2005190", &PRB_VMM_FORBIDDEN, &[PARTITION], &[]),
     none("A2006010", ACTIVATION),
     opens("A2006020", &PRB_AUTO_START, &[PARTITION], &[]),
     opens("A2006030", &PRB_PARTITION_STATE, &[], &[]),

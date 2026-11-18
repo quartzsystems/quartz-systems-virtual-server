@@ -160,7 +160,8 @@ is root's.
 | 30 | the partition did not IPL: the profile, a disk unit, or what is on the load source. The `A2005` code before it says which | `A2005100` |
 | 40 | the VMM failed: a KVM error, a thread that could not be started | `A2005130` |
 | 50 | the VMM was sent `SIGTERM`, `SIGINT` or `SIGHUP` | `A2005140` |
-| a signal | the VMM was killed | `A2005150` |
+| `SIGSYS` | the VMM made a system call its confinement forbids | `A2005190` |
+| another signal | the VMM was killed | `A2005150` |
 | 2 | the command line was not one | |
 
 Any other code (a panic's 101) is read as a VMM error.

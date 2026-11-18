@@ -88,6 +88,7 @@ posted with.
 | `A2005160` | yes | Partition &1 is held: a storage pool its virtual disks are in is full. | `QVS5122` | partition | `C2005160` |
 | `A2005170` | yes | Partition &1 is held after a guest fault: &2. | `QVS5123` | partition | a person only |
 | `A2005180` | yes | A dump of partition &1 could not be written: &2. | `QVS5124` | partition | a person only |
+| `A2005190` | yes | The VMM of partition &1 was ended by its confinement: &2. | `QVS5155` | partition | a person only |
 | `A2006010` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
 | `A2006020` | yes | Partition &1 was not started automatically: &2. | `QVS5125` | partition | a person only |
 | `A2006030` | yes | A partition's definition or profile was not valid: &1. | `QVS5126` | the host | a person only |

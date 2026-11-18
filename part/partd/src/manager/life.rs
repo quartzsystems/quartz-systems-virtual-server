@@ -705,7 +705,8 @@ impl<S: System> Manager<S> {
         };
         let end = match how {
             Ended::Exit(code) => End::from_exit(Some(code)),
-            Ended::Signal(_) | Ended::Unknown => End::Killed,
+            Ended::Signal(signal) => End::from_signal(signal),
+            Ended::Unknown => End::Killed,
         };
         let code = end.code();
         self.code(
@@ -749,7 +750,7 @@ impl<S: System> Manager<S> {
                     self.set_state(id, State::NotActivated);
                     false
                 }
-                End::GuestFault | End::VmmError | End::Killed => {
+                End::GuestFault | End::VmmError | End::Killed | End::Forbidden => {
                     let message = qvsmsg::VMM_FAILED.with(&[&name, code.code, &how.how()]);
                     if let Some(partition) = self.partitions.get_mut(&id) {
                         partition.message = Some(message);

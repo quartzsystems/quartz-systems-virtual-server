@@ -56,6 +56,8 @@ impl Control {
                 }
             }
             "kept" => format!("ok {}", self.dumper.pause.kept()),
+            #[cfg(test_hooks)]
+            "try" => crate::hooks::try_request(rest),
             "dump" => {
                 let mut words = rest.splitn(4, ' ');
                 let (Some(time), Some(code), Some(reason)) = (
@@ -94,6 +96,7 @@ pub fn spawn(listener: UnixListener, control: Control) -> io::Result<()> {
     thread::Builder::new()
         .name("control".into())
         .spawn(move || {
+            crate::confine::enter_or_end(crate::confine::Kind::Control);
             for stream in listener.incoming().flatten() {
                 if let Err(e) = control.answer(&stream) {
                     eprintln!("qsvmm: control: {e}");
