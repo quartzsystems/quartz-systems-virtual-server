@@ -34,6 +34,32 @@ A media and an installer of different releases refuse each other.
 The manifest on the media is not the build's artifact manifest
 (`manifest.json`): that one lists the ISO, so it cannot be on it.
 
+## Secure Boot
+
+A release's UKIs, the media's and both slots', are signed for Secure
+Boot with the release's db key; its certificate is at the media's root
+as `qsvs-db.cer` and in the release as the same file
+(`docs/RELEASING.md`). A host starts with Secure Boot on or off. The
+installer's summary and Service Tools' status screen (the Slot line)
+say which, from the firmware's `SecureBoot` variable.
+
+To install and run with Secure Boot on:
+
+1. In the firmware's setup, under Secure Boot (on the Dell PowerEdge:
+   System BIOS, System Security, Secure Boot), choose custom mode and
+   add `qsvs-db.cer` to the authorized signature database (db), from
+   the media or a USB stick. Keep the firmware maker's own keys: the
+   machine's option ROMs are signed by them.
+2. Turn Secure Boot on and save.
+3. Start the installation media. A firmware that refuses it says so
+   before anything of QS/VS runs (on most, "Security violation" or
+   "Access denied"): the certificate is not in db, or the media is not
+   a release's (a development build's UKIs are not signed).
+
+A later release signed with a new db key (`docs/RELEASING.md`, when a
+key is rotated or leaks) needs its certificate enrolled before it is
+installed or updated to; its release notes say so.
+
 ## What the installer has
 
 The machine's display and its first serial port (115200 8N1), both at

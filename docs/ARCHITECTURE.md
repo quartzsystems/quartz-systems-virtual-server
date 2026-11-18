@@ -28,6 +28,9 @@ a side effect of other work.
 | Disk layout | A load-source disk is GPT: ESP (slot A and B UKIs), a record partition, `QSVSDATA`. One disk, or two mirrored: each then has its own ESP and record, and `QSVSDATA` is one xfs on a protected set over the two. Two units that each ran without the other are not reconciled by the host: the operator chooses. Storage pools on other disks |
 | Local console | Service Tools on the display and the serial port, each its own session; the installer on both at once. QS/400's `console` and screen kit |
 | Identity | Release `V1R0M0` from `VERSION` (`1.0.0`). Fixes `QVnnnnn`. Message prefix `QVS`. Environment prefix `QSVS_`. Kernel command-line keys `qsvs.` |
+| Confinement | Each `qsvmm` in namespaces of its own with an empty read-only root, then its own user with no capability, then a seccomp filter of its threads' calls, each kind of thread narrowing it; any other call ends it (`A2005190`). Every service but PID 1 keeps only the capabilities it needs and gains none. The root is read-only once the services start; nothing on a writable file system is executed (`docs/SECURITY.md`) |
+| Outbound | The host fetches nothing and makes no outbound connection but DHCP, DNS and NTP. A console downloads a release from the stream and brings it over QSI, or an operator brings it on a removable volume |
+| Signing | A release is signed with a release signing key (ed25519: manifests, the media's payload, the update image, the checksums, the stream's index) and its UKIs with a Secure Boot db key; `build release` refuses a development key, and an image signed with one says so. An image trusts its signer and the keys `QSVS_TRUSTED_KEYS` names, which is how a key is rotated (`docs/RELEASING.md`) |
 
 ## Each in a sentence or two
 
@@ -422,6 +425,35 @@ ELF core in the media repository's pool (`docs/DUMPS.md`). The control
 panel functions are the host's but 21 (`docs/PANEL.md`). The host's
 own shut down ends each partition through its system, in reverse start
 order, with a timeout each. One viewer of a console at a time.
+
+**Confinement.** A partition's VMM is the process that reads what a
+guest controls, so it is given as little as a VMM can run with. As root,
+with every descriptor it needs already open, it takes a mount, network,
+IPC and UTS namespace of its own and an empty, read-only root (moved over
+`/` and entered as `switch_root` leaves an initramfs); then it drops to
+its partition's user with no capability and no new privileges; then a
+seccomp filter of every call its threads make is installed before any
+thread starts, and each thread narrows it to its own kind's. Any other
+call ends the process; the partition manager posts `A2005190`. The
+services are root, but each keeps only the capabilities it needs and
+gains none, and the root file system is read-only once they start
+(`docs/SECURITY.md`).
+
+**Outbound.** The host makes no connection out but DHCP, DNS and NTP.
+It never fetches an update: a console reads the stream's signed index,
+downloads the update image and stages it over QSI, or an operator
+brings it on a removable volume; the host verifies it against its own
+trusted keys either way.
+
+**Signing.** Two keys sign a release: the release signing key (ed25519)
+signs the manifests, the media's payload, the update image, the
+checksums and the stream's index; the Secure Boot db key signs the UKIs,
+and its certificate is on the media for an operator to enrol. Booting
+does not need Secure Boot. A build without the release key signs with a
+development key it makes, and its image says so at every IPL; `build
+release` refuses one. An image trusts its signer and the keys
+`QSVS_TRUSTED_KEYS` names, so a release can trust the next key before it
+is used (`docs/RELEASING.md`).
 
 **Identity.** The release is `V1R0M0`, from `VERSION` (`1.0.0`), through
 QS/400's `vrm`. Fixes are numbered `QVnnnnn`, messages are prefixed
