@@ -173,7 +173,7 @@ pub fn install(run: &Run<'_>) -> Result<String, String> {
         manager::ended(&mut guest, id, run.deadline())?;
         return Ok(format!(
             "an IPL from source D with QS/400's ISO in the optical device: QS/400's installer \
-             had no console mode and drew on serial (A6005008, BLOCKED(phase7) in \
+             had no console mode and drew on serial (A6005008, see \
              docs/PHASE7.md), its codes through the channel ({} of the system's), then the \
              installed system on the console port as QS/400's golden signon/{golden}; the \
              partition {} with code {}",

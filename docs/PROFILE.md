@@ -288,6 +288,9 @@ running shared partition's entitlement can change without an IPL
 (`docs/RESOURCES.md`); nothing else of a running partition does, and a
 profile changed while its partition runs is the next activation's.
 
-## Not here yet
+## Not in V1
 
-- `BLOCKED(phase10)`: an adapter's unit numbers have no gaps: the virtio-scsi device numbers its units by their place (`docs/VMM.md`).
+- An adapter's unit numbers have no gaps: the virtio-scsi device numbers
+  its units by their place (`docs/VMM.md`), and a guest finds a unit by
+  it. Decided in Phase 11 to stay the rule: a gap would let a guest see
+  its units move when one is taken away.
