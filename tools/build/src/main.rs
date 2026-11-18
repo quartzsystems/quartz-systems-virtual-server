@@ -37,6 +37,23 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+enum StreamAction {
+    /// Copy a release's files into the stream's directory and join its
+    /// entry to the index there.
+    Add {
+        /// `target/release/<VRM>`.
+        release: std::path::PathBuf,
+        /// The stream's directory.
+        stream: std::path::PathBuf,
+    },
+    /// Verify the index and every file it names.
+    Verify {
+        /// The stream's directory.
+        stream: std::path::PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
 enum Command {
     /// Download, verify and extract the pinned kernel tarball.
     Fetch,
@@ -96,6 +113,27 @@ enum Command {
         /// Targets run at a time.
         #[arg(long, default_value_t = 4)]
         jobs: usize,
+    },
+    /// A release from a clean tree, signed with the release keys and
+    /// never a development key, built twice and compared
+    /// (`docs/RELEASING.md`).
+    Release {
+        /// The version, as `VERSION` has it: `1.0.0`.
+        version: String,
+        /// Build it once, without the second build compared.
+        #[arg(long)]
+        no_compare: bool,
+    },
+    /// Make a release signing key and a Secure Boot db pair in a
+    /// directory, once (`docs/RELEASING.md`, "The keys").
+    Keys {
+        /// Where they go: outside the checkout.
+        dir: std::path::PathBuf,
+    },
+    /// The published stream: add a release to it, or verify it.
+    Stream {
+        #[command(subcommand)]
+        action: StreamAction,
     },
     /// Check host prerequisites, the license headers and that `base/`
     /// is product-neutral.
@@ -210,6 +248,21 @@ fn main() -> Result<()> {
         } => {
             host::fuzz::fuzz(&ctx, target.as_deref(), secs, jobs, save_corpus)?;
         }
+        Command::Release {
+            version,
+            no_compare,
+        } => {
+            image::release::release(&ctx, &version, !no_compare)?;
+        }
+        Command::Keys { dir } => image::release::keys(&dir)?,
+        Command::Stream { action } => match action {
+            StreamAction::Add { release, stream } => {
+                image::release::stream_add(&ctx, &release, &stream)?;
+            }
+            StreamAction::Verify { stream } => {
+                image::release::stream_verify(&ctx, &stream)?;
+            }
+        },
         Command::Doctor => buildkit::host::doctor::doctor(&ctx)?,
         Command::Deny => buildkit::host::deny::deny(&ctx)?,
         Command::Notices { check } => {

@@ -25,6 +25,12 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 ed25519-dalek = "3.0.0"
 update = { path = "../../svc/update", version = "0.1.0" }
+stream = { path = "../../base/stream", version = "0.1.0" }
+refcode = { path = "../../lic/refcode", version = "0.1.0" }
+qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
+pesign.workspace = true
+certs.workspace = true
+vrm.workspace = true
 
 [lints]
 workspace = true

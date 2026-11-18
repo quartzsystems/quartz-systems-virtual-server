@@ -5,6 +5,7 @@
 //! Host-side steps that are QS/VS's own: the doctor rows, the license
 //! header check, the neutrality check of `base/` and the QEMU suites.
 
+pub mod catalogue;
 pub mod doctor;
 pub mod fuzz;
 pub mod header;

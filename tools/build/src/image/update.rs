@@ -26,6 +26,11 @@ pub const POINTER: &str = "update.path";
 const FIXES: &str = "QSVS_FIXES";
 
 /// The fixes named in `text`, each `QVnnnnn`, in order and once.
+/// The fixes `QSVS_FIXES` names, checked.
+pub fn named_fixes() -> Result<Vec<String>> {
+    fixes(&std::env::var(FIXES).unwrap_or_default())
+}
+
 fn fixes(text: &str) -> Result<Vec<String>> {
     let mut out: Vec<String> = Vec::new();
     for f in text.split(',').map(str::trim).filter(|f| !f.is_empty()) {

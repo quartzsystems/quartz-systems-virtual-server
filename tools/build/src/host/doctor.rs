@@ -152,6 +152,14 @@ fn neutral(ctx: &Ctx) -> Row {
     }
 }
 
+fn catalogue() -> Row {
+    let name = "codes and messages whole";
+    match super::catalogue::summary() {
+        Ok(detail) => row(name, true, detail, true),
+        Err(missing) => row(name, false, missing, true),
+    }
+}
+
 /// QS/VS's rows. KVM and nested virtualization are required unless
 /// `QSVS_ALLOW_NO_KVM=1` says the host has neither.
 pub fn rows(ctx: &Ctx) -> Vec<Row> {
@@ -164,6 +172,7 @@ pub fn rows(ctx: &Ctx) -> Vec<Row> {
         install_iso(),
         headers(ctx),
         neutral(ctx),
+        catalogue(),
     ]
 }
 

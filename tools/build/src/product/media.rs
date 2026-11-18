@@ -56,15 +56,29 @@ pub fn media(ctx: &Ctx, _uki: &[u8]) -> Result<Media> {
     let file = |name: &str, bytes: Vec<u8>| {
         Item::File(format!("{}/{name}", payload::dir(&LOAD_SOURCE)), bytes)
     };
+    let mut tree = vec![
+        Item::Boot,
+        file(payload::MANIFEST, text.into_bytes()),
+        file(payload::SIGNATURE, format!("{signature}\n").into_bytes()),
+        file(payload::SLOT_A, slot_a),
+        file(payload::SLOT_B, slot_b),
+    ];
+    // A release's: the db certificate, the notices, the release notes.
+    let root = ctx.paths.images().join("media-root");
+    if root.is_dir() {
+        let mut names: Vec<_> = fs::read_dir(&root)?.flatten().map(|e| e.path()).collect();
+        names.sort();
+        for p in names {
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            tree.push(Item::File(name, fs::read(&p)?));
+        }
+    }
     Ok(Media {
         volume_id: payload::volume_id(ctx.product.vendor, &ctx.product.release),
-        tree: vec![
-            Item::Boot,
-            file(payload::MANIFEST, text.into_bytes()),
-            file(payload::SIGNATURE, format!("{signature}\n").into_bytes()),
-            file(payload::SLOT_A, slot_a),
-            file(payload::SLOT_B, slot_b),
-        ],
+        tree,
         boot_files: Vec::new(),
         uki_copies: Vec::new(),
     })

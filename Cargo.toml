@@ -49,6 +49,7 @@ members = [
     "base/loadsource",
     "base/stgd",
     "base/fdpass",
+    "base/stream",
     # The VMM: one process for one partition.
     "vmm/arch",
     "vmm/acpi",
@@ -112,6 +113,10 @@ qsipart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "
 qsi = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "423c65dea0b8c9fab3d2c3efaba6e9f27e679c99" }
 qsisess = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "423c65dea0b8c9fab3d2c3efaba6e9f27e679c99" }
 qsitrust = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "423c65dea0b8c9fab3d2c3efaba6e9f27e679c99" }
+# Secure Boot: the UKIs signed (Authenticode) by `build release` with the
+# db key, and the pair made by `build keys`; the build tool alone.
+pesign = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "423c65dea0b8c9fab3d2c3efaba6e9f27e679c99" }
+certs = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "423c65dea0b8c9fab3d2c3efaba6e9f27e679c99" }
 
 # The rust-vmm crates the VMM is built on (docs/PHASE3.md says why each
 # passes deny).

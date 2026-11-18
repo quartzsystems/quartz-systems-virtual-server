@@ -6,5 +6,6 @@
 
 pub mod disk;
 pub mod manifest;
+pub mod release;
 pub mod update;
 pub mod userland;
