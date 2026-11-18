@@ -35,11 +35,11 @@ partition manager alone speaks.
 | 7 | Partition service interface: virtio-console with the service and console ports, the service channel in `partd`, the system's codes and states, the shut down kinds, the panel functions, holding and dumps, the console as a full screen | `docs/PHASE7.md` |
 | 8 | QSI host server: the one listener, pairing at Service Tools option 4, the host's families translated to the services, events on disk, `qsictl` | `docs/PHASE8.md` |
 | 9 | Service, dumps and code update: problems from posted codes, the host's dump, the update image installed into the other slot with its rollback, Service Tools option 8 | `docs/PHASE9.md` |
-| **10 (current)** | Physical I/O and tape pass-through: whole PCI devices with their IOMMU groups, released at Service Tools option 10 and named in profiles; a physical tape drive passed through command by command; a running shared partition's entitlement | `docs/PHASE10.md` |
-| 11 | Release engineering and hardening | |
+| 10 | Physical I/O and tape pass-through: whole PCI devices with their IOMMU groups, released at Service Tools option 10 and named in profiles; a physical tape drive passed through command by command; a running shared partition's entitlement | `docs/PHASE10.md` |
+| **11 (current)** | Release engineering and hardening: the pin at QS/400's main, the partition kernel's faults explained, the VMM confined by namespaces and seccomp, the services' capabilities, kernel and file system hardening, release signing and Secure Boot, `build release` and the stream's index, long fuzzing, soaks, limits and baselines, the documents an operator reads | `docs/PHASE11.md` |
 
 Work that is not done is listed in the current phase's record,
-`docs/PHASE10.md`. Code and documents mark it `BLOCKED(phase10): reason`
+`docs/PHASE11.md`. Code and documents mark it `BLOCKED(phase11): reason`
 (one line) or `NEEDS-CODY` (Cody's hardware or sign-off). No other
 marker form. The records of earlier phases keep the markers they were
 written with.
@@ -184,7 +184,21 @@ written with.
   socket; every command is checked against the allow-list
   (`stg/tape/src/passthrough.rs`) in both. One holder at a time; no
   media changer.
-- Anything not done is listed in `docs/PHASE10.md`.
+- `qsvmm` is confined before it reads a guest byte (`docs/SECURITY.md`):
+  namespaces of its own and an empty read-only root, its partition's
+  user with no capability, then a seccomp filter its every thread
+  narrows to its kind's (`vmm/qsvmm/src/confine`). A call outside it
+  ends the VMM (`A2005190`). A new system call in `qsvmm` is added to
+  its kind's list with a reason, and `vmm-confined` shows it.
+- Every service keeps only the capabilities its row of the table names
+  and gains none; the root is read-only once the services start, and
+  nothing on a writable file system is executed.
+- A release is signed with the release key and the Secure Boot db key
+  (`docs/RELEASING.md`); `build release` refuses a development key,
+  and an image signed with one says so. The keys are Cody's: none is in
+  the repository.
+- The host fetches nothing: no outbound connection but DHCP, DNS and NTP.
+- Anything not done is listed in `docs/PHASE11.md`.
 
 ## Locked decisions
 
@@ -313,6 +327,16 @@ See `docs/ARCHITECTURE.md`. Short form:
   `qsvs.install=1` instead of a slot.
 - **Reproducible.** Fixed `SOURCE_DATE_EPOCH` and `KBUILD_BUILD_*`,
   deterministic cpio, GPT, FAT and xfs, signed content-hash manifest.
+  `build release` builds twice and compares.
+- **Confinement.** Each `qsvmm` in namespaces of its own with an empty
+  read-only root, its own user with no capability, and a seccomp
+  filter of each thread kind's calls; any other call ends it.
+- **Signing.** A release signing key (ed25519) for manifests, the
+  media, the update image, checksums and the stream's index; a Secure
+  Boot db key for the UKIs, its certificate on the media. Trusted keys
+  are the signer's and `QSVS_TRUSTED_KEYS`, which is how a key rotates.
+- **Outbound.** None but DHCP, DNS and NTP. A console fetches a release
+  from the stream's signed index and stages it over QSI.
 
 ## Layout
 
@@ -327,7 +351,7 @@ tools/          host tools
     src/host/       doctor rows, the license header check, the neutrality check of base/, `test`, `fuzz`
   conformance/    the QEMU harness
     src/qemu/       launch, OVMF, serial capture, the serial port as a 24x80 grid, typed keys, golden files, firmware variables, image copies, the test hooks' channel
-    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3 and the sixteen of Phase 4, with the partition manager's client over the hooks' channel; storage/ Phase 5's, with the pool service's client; network/ Phase 6's; service/ Phase 7's; qsi/ Phase 8's, a console over the management network; servicing/ Phase 9's; physio/ Phase 10's
+    src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3 and the sixteen of Phase 4, with the partition manager's client over the hooks' channel; storage/ Phase 5's, with the pool service's client; network/ Phase 6's, with the switch service's client; service/ Phase 7's; qsi/ Phase 8's, a console over the management network; servicing/ Phase 9's and the update suites of Phase 11; physio/ Phase 10's; security/ Phase 11's of the host's boundaries; soak/ the fault soak and the day's (named only); limits/ the limits, the writers' power pulls and the baselines (named only)
     golden/         every installer and Service Tools screen, as text
   fuzz/           qsvsfuzz, the Rust fuzzer: LLVM's coverage counters, the mutator, the loop, a target for every reader of guest bytes
 base/           what every Quartz appliance needs; product-neutral
@@ -344,6 +368,7 @@ base/           what every Quartz appliance needs; product-neutral
   loadsource/     the load-source disks: which disks are the host's own, the GPT layout, the A/B record and the set's label on every disk, units that ran apart, the boot entries, the media's payload
   stgd/           the storage service: the mirrored load source assembled, served through ublk, resynchronized by its write-intent map, rebuilt; its socket
   fdpass/         open files handed between processes over a Unix socket
+  stream/         the release stream's index: entries, signed and verified, never older than one seen
 lic/            PID 1, release, installer, base services
   qsvsinit/       PID 1
     src/ipl/        the IPL in order: mounts and the host's control group, the command line, the storage step and the unit to keep, the clock, the state step, the partitions' memory; the hand-off to the installer
@@ -376,7 +401,7 @@ vmm/            the VMM: one process for one partition
     src/virtio/scsi/  the command decoder, a disk LUN and its hold for space, the optical drive, the tape drive, the backing stores
     src/virtio/console/  the control queue's messages, a port's link to the host, the device
   ipl/            the IPL loader: bounded GPT, FAT and ISO 9660 readers, the LIC record through licpart, the bzImage into guest memory, IPL source D
-  qsvmm/          the binary: the configuration it is given, the exit codes, the machine on KVM with huge-page memory, the processors' loop, their pinning and their pause, a partition kept after a fault, the serial log and console socket, the control socket (media, hold, dump), the service channel's ports on their sockets, the dump writer, the privilege drop
+  qsvmm/          the binary: the configuration it is given, the exit codes, the machine on KVM with huge-page memory, the processors' loop, their pinning and their pause, a partition kept after a fault, the serial log and console socket, the control socket (media, hold, dump), the service channel's ports on their sockets, the dump writer, the privilege drop; confine/ the namespaces and the seccomp filters, a kind of thread each
 part/           the partition manager
   model/          a partition's definition and its profiles, as state files and on the wire; validation with every error
   resource/       cores and memory: installed, configurable, available; what an activation gets; pools; the cgroup tree as a plan; partitions.toml
@@ -405,7 +430,7 @@ svc/            Service Tools
   problem/        the problem service: problems, their log, the history read from where it got to; its socket
   hostdump/       the host's dump: the ZIP writer, what is taken and left out, the dumps kept
   update/         code update: the update image and its manifest, verification, installing into the other slot; its socket
-docs/           ARCHITECTURE, PHASE0 to PHASE10, PHYSICALIO, PROBLEMS, UPDATE, QS400_GUEST, VMM, PARTD, SERVICE, PANEL, DUMPS, POOLD, VSWITCHD, NETWORK, STORAGE, RESOURCES, PROFILE, QSISERVER, QSICTL, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
+docs/           ARCHITECTURE, PHASE0 to PHASE11, SECURITY, RELEASING, RELEASE_NOTES_V1R0M0, OPERATIONS, QUALIFICATION, catalogue.schema.json, PHYSICALIO, PROBLEMS, UPDATE, QS400_GUEST, VMM, PARTD, SERVICE, PANEL, DUMPS, POOLD, VSWITCHD, NETWORK, STORAGE, RESOURCES, PROFILE, QSISERVER, QSICTL, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
 ```
 
 Category folders are created as phases need them. The full set: `tools/`
@@ -426,12 +451,16 @@ with `QSVS_TARGET_DIR`.
 cargo run -p build -- doctor          host prerequisites, the license headers, base/ neutral
 cargo run -p build -- all             fetch, kernel, userland, initramfs, uki, disk, iso, manifest
 cargo run -p build -- all --test-image   the same with the test hooks, under <target>/test-image/
-cargo run -p build -- test            Phase 0's suite on the release image; the ten base suites, the fifteen of Phase 2, the ten of Phase 3, the sixteen of Phase 4, Phase 5's, Phase 6's, Phase 7's, Phase 8's, Phase 9's and Phase 10's on the test image; then the fuzz targets, 60 s each
+cargo run -p build -- test            Phase 0's suite on the release image; the ten base suites, the fifteen of Phase 2, the ten of Phase 3, the sixteen of Phase 4, and every later phase's on the test image; then the fuzz targets, 60 s each
+cargo run -p build -- test --suite soak-faults   a long run, named only: also soak-day, baselines, secure-boot (on a release)
 cargo run -p build -- test --suite dhcp  one suite alone (--suite list names them)
 cargo run -p build -- test --media iso   boot the installation ISO to the installer's first screen
 QSVS_GOLDEN=update cargo run -p build -- test --suite install-serial   write the golden screens instead of comparing
-cargo run -p build -- fuzz            build the fuzzer with coverage counters and run every target (--target NAME, --secs N, --jobs N)
+cargo run -p build -- fuzz            build the fuzzer with coverage counters and run every target (--target NAME, --secs N, --jobs N, --all for four hours each, --save-corpus)
 cargo run -p build -- update          the update image of the release just built (--test-image)
+cargo run -p build -- release         a release: built twice from empty and compared, signed with the release keys (docs/RELEASING.md)
+cargo run -p build -- keys DIR        make a set of release keys (for a test; the real ones are Cody's)
+cargo run -p build -- stream add|verify   the stream's signed index
 cargo run -p build -- deny            cargo-deny and the C-linkage check
 cargo run -p build -- notices         rewrite lic/release/NOTICES.txt (--check in CI)
 cargo fmt --all
@@ -457,7 +486,11 @@ installation ISO with a response file, which `pool-install` uploads and
 installs from (`docs/PHASE5.md`), and `QSVS_FIXES`, the fixes an
 update image names, and `QSVS_UPDATE_IMAGE`, the update image of
 another release signed by the same key, which the update suites install
-(`docs/PHASE9.md`).
+(`docs/PHASE9.md`), and Phase 11's: `QSVS_SB_KEY` and `QSVS_SB_CERT`,
+the Secure Boot db key `build release` signs the UKIs with
+(`docs/RELEASING.md`); `QSVS_UPDATE_SCHEMA_IMAGE`, `QSVS_UPDATE_KEY2`
+and `QSVS_UPDATE_KEY3`, what the migration and key rotation suites
+install; and the soaks' `QSVS_SOAK_*` (`docs/PHASE11.md`).
 `QSVS_TEST_HOOKS` is the build's own: the userland step sets it, on for
 a test image and off for a release image, whatever the caller has.
 
@@ -499,6 +532,19 @@ a test image and off for a release image, whatever the caller has.
   how to run it, the pin and what it broke, kernel additions, the
   IOMMU's cost, hashes, the acceptance table, what remains for a real
   machine.
+- `docs/PHASE11.md`: release engineering and hardening: the pin, the
+  faults explained, confinement, hardening, signing, the release
+  build, fuzzing, soaks, limits and baselines, every BLOCKED line,
+  the acceptance table.
+- `docs/SECURITY.md`: what is trusted, the boundaries, the VMM's
+  confinement, each service's rights, the kernel's hardening, and the
+  suite that shows each.
+- `docs/RELEASING.md`: the keys, their rotation, `build release`, the
+  stream, what is checked before a tag.
+- `docs/RELEASE_NOTES_V1R0M0.md`: the release notes.
+- `docs/OPERATIONS.md`: the operator's guide, from the day a host is
+  installed.
+- `docs/QUALIFICATION.md`: what a real machine must show before the tag.
 - `docs/PHYSICALIO.md`: what can be given, the rules, release and
   assignment, reset and fencing, what the guest sees.
 - `docs/PROBLEMS.md`: problems: what opens, counts, clears and closes
