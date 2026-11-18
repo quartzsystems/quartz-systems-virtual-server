@@ -258,6 +258,80 @@ What the runs found and what was done, beside Section 1's:
 | the relay logged a refused command in its own words | `QVS3302` (`ef64449`) |
 | the harness's own mistakes: the problem book's path, a code posted during the IPL looked for after it, two partitions on one unit, the guest probe writing to the display's console, a QSH line whose digits named a descriptor | each in its suite |
 
+## Hashes
+
+The acceptance run's builds at `4e234ac`, `QSVS_BUILD_ID=phase10`, the
+signing key of the reproducibility runs; both clean builds gave every
+one of these, and the 22 files with them, byte for byte:
+
+| File | SHA-256 |
+|---|---|
+| release slot A UKI `qsvs-V1R0M0-a-4bd26f32586e.efi` | `4bd26f32586ed58b63fa46b0c53958b47d60bf4358bcf9860bf1bf4ac8d2b83e` |
+| release slot B UKI `qsvs-V1R0M0-b-ad92ba6a8e61.efi` | `ad92ba6a8e613d200ccac38318f62b25ba673982d9905a7d879df3429b03c6b6` |
+| release media UKI `qsvs-V1R0M0-d-3bf4f462c99d.efi` | `3bf4f462c99d0d6fb78e4ac2b7d9d5c2a5ea7903597a4627fe333e1bef3f9b33` |
+| release disk image `qsvs-V1R0M0-4bd26f32586e.img` | `64ed8414bef57b2ed82c404aab9f195db0701c776a057ba91eae31d8189db3a9` |
+| release ISO `QSVS-V1R0M0-3bf4f462c99d.iso` | `0bee6d8fc29b7aa3ded451e3095b5abbb716125469637d3a6be7d641e3302198` |
+| release update image `QSVS-V1R0M0-update-cb51c507f72b.upd` | `cb51c507f72b1db5261646b06c2f82c92e32fb835e8df7399a36ad7b8da98ead` |
+| release `manifest.json` | `89c9770a4b1cc1107234d34113c4c4e7faff4efdfc08a1763e39660321b5caff` |
+| test image's slot A UKI `qsvs-V1R0M0-a-26ebe8c6c0c3.efi` | `26ebe8c6c0c3730208cc3f1f9240a341834eda7772dbf64b4e1b5db8c19747ae` |
+| test image's disk image `qsvs-V1R0M0-26ebe8c6c0c3.img` | `1b33ef3799240e17f6bd471cd310931516786fd4cf0061f82819a2a8141dedd4` |
+| test image's ISO `QSVS-V1R0M0-27d963f433fc.iso` | `5f00c8c67068e919d3a1f6746b5102002706ea27d8eeb09e0ca3114c8a672822` |
+| test image's update image `QSVS-V1R0M0-update-01796115bc0f.upd` | `01796115bc0fc8d34c4de139e6df089785a2cc3bdb33d9bf67b6527b80e16869` |
+
+The two builds must be made at one target path: the kernel's
+configuration, which the manifest hashes, names its initramfs by its
+path in the target (`CONFIG_INITRAMFS_SOURCE`). Built in two targets of
+different names, every image was the same and the manifests differed in
+that line alone.
+
+## Acceptance
+
+The acceptance run, in a fresh clone at `4e234ac` on ext4 in WSL (rustc
+1.98.0, clang 21.1.8, QEMU 10.2.1, cargo-deny 0.20.2, WSL's
+6.18.33.2 kernel, 12 processors), with QS/400's guest image and
+installation ISO built at the pin (`2e950f9`), a `V1R0M1` test image's
+update signed by the same key, and every host's emulated IOMMU on:
+
+| Step | Result |
+|---|---|
+| two clean builds, each with both update images | 1041 s and 1267 s; byte-identical, 22 files |
+| `doctor`, `deny`, `notices --check` | pass |
+| `cargo fmt`, both clippy runs | clean |
+| unit tests | 732 passed, none failed |
+| `qsictl` | built; in neither image |
+| the suites of Phases 0 to 10 | 145: 129 passed in the first pass; the 16 that did not, and the 8 that install an update image, alone again: 140 of 145 after that, 143 after a third run of the 5 left, all 145 after a fourth of the 2 left |
+| `test --media iso` | the installer's welcome in 2.6 s |
+| the fuzz targets, 60 s each | 20 targets, from 37,271 to 127,535 runs each, no finding |
+
+Every failure of the suites in the acceptance run was a time out or a
+partition's own system failing, never a refusal or a wrong answer of
+the host's, and each passed when run alone:
+
+| Why | Suites |
+|---|---|
+| QS/400's storage service ended after a slow request (QS/400's T5) or its object store was unusable at the IPL | `partition-attributes`, `service-states`, `service-manager-restart`, `pio-tape-save`, `pio-tape-volumes` |
+| a fault of the partition's kernel, three levels deep ("Faults of a partition's kernel") | `partition-ipl-a`, `service-hostile`, `service-auto-wait`, `service-system` |
+| a host or a system later than a suite's time out, while another session's QEMU and benchmarks ran on the same machine | `pio-refused`, `pool-pulled-mirrored`, `qsi-end-to-end`, `svc-update-back`, `svc-update-power` |
+| the harness: keys typed into QS/400's Command Entry lost while it drew, a line cut by a kernel message | `pio-tape-span`, `pio-tape-double` (both fixed in the harness, `085591b`, `01873f2`, `6c634bc`) |
+| the acceptance script: the update image of `V1R0M0` taken for `V1R0M1`'s | `svc-tools` and the update suites, run again with `V1R0M1`'s |
+
+The reruns were made with the clone taken to `4e234ac`'s successors
+`23e8351` and `01873f2`, which changed nothing but the harness and the documents
+since `4e234ac`; the images were not built again. Before the pin's
+QS/400 media were built, the same run with Phase 8's media had passed
+86 suites before those media were taken away by another session
+mid-run; its results were set aside, not counted.
+
+| # | Check | Evidence |
+|---|---|---|
+| 1 | Step 0 is committed on its own and every Phase 0 to 9 suite passes on the new pin with the IOMMU on | `5734221` alone; at it, all 130 (123, then 7 alone; no host IOMMU in the harness then); at `4e234ac` with every host's IOMMU on, every Phase 0 to 9 suite in the acceptance run (above) |
+| 2 | Suites 3 to 16 pass | the conformance table above; in the acceptance run every Phase 10 suite, `pio-refused` and `pio-tape-double` on a second run, the tape suites as below |
+| 3 | Suite 2 passes, or each part is blocked by a named QS/400 finding | `pio-tape-save`, `pio-tape-span`, `pio-tape-volumes` pass, each recording what QS/400 answered; QS/400's findings T1, T2 and T5 are recorded and block nothing (`docs/QS400_GUEST.md`) |
+| 4 | Open questions 36 and 44 are closed or moved to "waiting on QS/400" with what is waited for | 44 closed; 36 under "Decided, waiting on QS/400", waiting for T1, T2 and T5 (`docs/OPEN_QUESTIONS.md`) |
+| 5 | Two clean builds are byte-identical; `build deny` and `build doctor` pass | "Hashes" above; `deny` and `doctor` pass |
+| 6 | Every QS/400 crate is pinned at the one new commit; no QSI message is restated | every `rev =` is `2e950f9`; the server's devices, drives and entitlement are `qsi`'s types filled from the partition manager's (`qsi/server/src/families/convert.rs`) |
+| 7 | No setting relaxes a safety rule of the decisions table | the rules are checked in `pio::device::assess` and at assignment with no switch, profile field, request or variable over them; the one test hook (`/run/qsvshook.noreset`, a test image's alone) makes a reset fail, which only fences more |
+
 ## For a real machine (NEEDS-CODY)
 
 - `NEEDS-CODY`: the QLE2562 given whole to a partition on the Dell, and
