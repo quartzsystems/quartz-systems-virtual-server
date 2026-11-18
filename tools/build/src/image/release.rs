@@ -279,6 +279,10 @@ fn build_once(ctx: &Ctx, vrm: &str, key: &SigningKey, db: &pesign::DbKey) -> Res
         out.join("catalogue.json"),
         crate::host::catalogue::json(&ctx.product.release, &ctx.product.build_id),
     )?;
+    fs::copy(
+        ctx.paths.repo.join("docs").join("catalogue.schema.json"),
+        out.join("catalogue.schema.json"),
+    )?;
     for f in [
         "MANIFEST.json".to_string(),
         "MANIFEST.sig".into(),
@@ -286,6 +290,7 @@ fn build_once(ctx: &Ctx, vrm: &str, key: &SigningKey, db: &pesign::DbKey) -> Res
         format!("RELEASE_NOTES_{vrm}.md"),
         CERT_NAME.into(),
         "catalogue.json".into(),
+        "catalogue.schema.json".into(),
     ] {
         files.push(f);
     }
