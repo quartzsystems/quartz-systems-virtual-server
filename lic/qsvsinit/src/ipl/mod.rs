@@ -419,6 +419,15 @@ mod on_host {
         host.facts.kvm = kvm::probe::probe().to_string();
         let kvm = host.facts.kvm.clone();
         host.line(&kvm);
+        let secure = loadsource::boot::secure_boot(Path::new(loadsource::boot::EFIVARS));
+        host.line(&format!(
+            "Secure Boot {}",
+            match secure {
+                Some(true) => "on",
+                Some(false) => "off",
+                None => "not known",
+            }
+        ));
         // What the service interface's cryptography needs.
         let lacking = qsilocal::processor::lacking();
         if !lacking.is_empty() {

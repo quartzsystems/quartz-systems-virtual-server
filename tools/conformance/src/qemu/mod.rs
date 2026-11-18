@@ -135,6 +135,9 @@ pub struct Launch {
     /// Emulated PCI devices for the host to give partitions, at fixed
     /// places.
     pub passed: Vec<Passed>,
+    /// OVMF's Secure Boot build: the machine has SMM and the firmware's
+    /// flash is the secure kind (`firmware` and `vars` say which).
+    pub secure_boot: bool,
 }
 
 /// A device for the host to give to a partition.
@@ -272,12 +275,16 @@ fn drive(
 #[allow(clippy::too_many_lines)] // one switch after another
 pub fn args(l: &Launch) -> Vec<OsString> {
     // Interrupt remapping wants the I/O APIC in QEMU, not in KVM.
-    let machine = if l.iommu && l.kvm {
-        "q35,kernel-irqchip=split"
-    } else {
-        "q35"
+    let machine = match (l.iommu && l.kvm, l.secure_boot) {
+        (true, true) => "q35,kernel-irqchip=split,smm=on",
+        (true, false) => "q35,kernel-irqchip=split",
+        (false, true) => "q35,smm=on",
+        (false, false) => "q35",
     };
     let mut a: Vec<OsString> = ["-machine", machine].map(OsString::from).to_vec();
+    if l.secure_boot {
+        a.extend(["-global", "driver=cfi.pflash01,property=secure,value=on"].map(OsString::from));
+    }
     if l.iommu {
         a.extend(["-device", "intel-iommu,intremap=on,caching-mode=on"].map(OsString::from));
     }
@@ -524,6 +531,7 @@ mod tests {
             cpu: None,
             iommu: false,
             passed: Vec::new(),
+            secure_boot: false,
         }
     }
 

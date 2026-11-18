@@ -56,6 +56,9 @@ ed25519-dalek = "3.0.0"
 toml.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# The release's UKIs verified, the db certificate enrolled in OVMF's
+# variables, for the Secure Boot suite.
+pesign.workspace = true
 
 [lints]
 workspace = true

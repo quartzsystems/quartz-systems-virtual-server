@@ -8,8 +8,11 @@
 //!   that one which tries a forbidden call ends alone.
 //! - [`panic`]: a host whose kernel panics: restarted, the panic kept,
 //!   posted and in the next host dump.
+//! - [`secureboot`]: a release's signed UKIs under Secure Boot, and an
+//!   image that is not signed for it refused.
 
 pub mod panic;
+pub mod secureboot;
 pub mod vmm;
 
 use super::base::SuiteFn;
@@ -18,4 +21,5 @@ use super::base::SuiteFn;
 pub const SUITES: &[(&str, SuiteFn)] = &[
     ("vmm-confined", vmm::confined),
     ("host-panic", panic::panicked),
+    ("secure-boot", secureboot::secure_boot),
 ];

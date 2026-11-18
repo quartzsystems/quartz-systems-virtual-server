@@ -188,6 +188,7 @@ impl Suite {
                 cpu: None,
                 iommu: qemu::iommu_wanted(),
                 passed: Vec::new(),
+                secure_boot: false,
             },
             timeout: Duration::from_secs(timeout),
             allow_no_kvm: allow_no_kvm(),
