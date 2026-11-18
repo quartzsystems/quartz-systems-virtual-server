@@ -60,7 +60,10 @@ pub const PARTITION: Service = Service {
     order: 95,
     needs: &[],
     ready_within: Duration::from_secs(10),
-    caps: supervise::table::Caps::Only(&[]),
+    // It connects to each VMM's console socket, which is its partition's
+    // user's: as root it needs to pass the file's permissions. A test
+    // image's alone, like the channel.
+    caps: supervise::table::Caps::All,
 };
 
 /// Whether the hook `name` is on for this IPL.
