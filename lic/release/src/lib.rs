@@ -19,6 +19,21 @@ pub const RELEASE: Release = vrm::release_from_env!("QSVS_");
 /// The build ID: `git describe`, or `QSVS_BUILD_ID`.
 pub const BUILD_ID: &str = env!("QSVS_BUILD_ID");
 
+/// Whether the image was signed with a development key: one the build
+/// made because none was given (`docs/RELEASING.md`). Such an image
+/// says so at its IPL, on the status screen and in `identify`.
+pub const DEVELOPMENT_KEY: bool = matches!(env!("QSVS_KEY_KIND").as_bytes(), b"development");
+
+/// The build as an operator and a console are shown it: the build ID,
+/// and that a development key signed it when one did.
+pub fn build_shown() -> String {
+    if DEVELOPMENT_KEY {
+        format!("{BUILD_ID} (development key)")
+    } else {
+        BUILD_ID.to_string()
+    }
+}
+
 /// The product's short name.
 pub const NAME: &str = "QS/VS";
 
@@ -160,6 +175,8 @@ pub mod fact {
     pub const BUILD: &str = "build";
     /// `release` or `test`: whether the test hooks are in the image.
     pub const IMAGE: &str = "image";
+    /// `release` or `development`: the kind of key that signed the image.
+    pub const KEY: &str = "key";
     /// The slot this IPL came from: `A`, `B`, `media` or `unknown`.
     pub const SLOT: &str = "slot";
     /// The A/B record, or why there is none.

@@ -211,10 +211,15 @@ pub fn status_lines(
         row(
             "Release",
             &format!(
-                "{} build {} ({} image)",
+                "{} build {} ({} image{})",
                 of(fact::RELEASE),
                 of(fact::BUILD),
-                of(fact::IMAGE)
+                of(fact::IMAGE),
+                if of(fact::KEY) == "development" {
+                    ", development key"
+                } else {
+                    ""
+                }
             ),
         ),
         row(

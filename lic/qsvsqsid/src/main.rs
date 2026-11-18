@@ -89,7 +89,7 @@ fn main() {
         updd: update::proto::socket(release::RUN_DIR),
         port: release::QSI_PORT,
         release: release::RELEASE.to_string(),
-        build: release::BUILD_ID.to_string(),
+        build: release::build_shown(),
         limits: qsisess::Limits::default(),
         pairing_secs: pairing_secs(),
     };

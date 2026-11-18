@@ -453,6 +453,12 @@ mod on_host {
         #[cfg(test_hooks)]
         crate::hooks::guest_soak(&mut host);
         identity(&mut host);
+        if release::DEVELOPMENT_KEY {
+            host.post(
+                &refcode::DEVELOPMENT_KEY,
+                "not a release: an update or installation signed by a release key is refused",
+            );
+        }
         if let Err(e) = mounts::root_read_only(&[release::POOLS_DIR]) {
             host.line(&format!("the root stays writable: {e}"));
         }

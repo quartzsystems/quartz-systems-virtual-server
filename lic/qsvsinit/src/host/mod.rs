@@ -402,6 +402,15 @@ impl Host {
             (fact::RELEASE, release::RELEASE.to_string()),
             (fact::BUILD, release::BUILD_ID.to_string()),
             (fact::IMAGE, image.to_string()),
+            (
+                fact::KEY,
+                if release::DEVELOPMENT_KEY {
+                    "development"
+                } else {
+                    "release"
+                }
+                .to_string(),
+            ),
             (fact::SLOT, self.facts.slot.clone()),
             (fact::RECORD, record),
             (fact::HOST, self.facts.host.clone()),

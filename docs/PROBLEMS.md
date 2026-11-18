@@ -43,6 +43,7 @@ posted with.
 <!-- problems -->
 | Code | Opens | Description | Message | Resources | Cleared by |
 |---|---|---|---|---|---|
+| `A2001002` | no | Not a fault: an image a development build made, which no release is. It is said at every IPL. | | | |
 | `A2001005` | yes | The host restarted after its kernel panicked: &1. | `QVS5156` | the host | a person only |
 | `A2001030` | yes | The A/B record of the load source was not valid: &1. | `QVS5101` | the host | a person only |
 | `A2001035` | yes | Code slot &1 did not confirm, and the host went back to the other slot: &2. | `QVS5102` | code-slot | a person only |

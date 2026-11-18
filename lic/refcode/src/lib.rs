@@ -171,6 +171,9 @@ pub const IDENTITY_GENERATED: RefCode = progress("C2001075", "Host identity gene
 
 /// The A/B record had no valid copy; a new one was written.
 pub const RECORD_INVALID: RefCode = attention("A2001030", "A/B record not valid");
+/// The image was signed with a development key, not a release's: posted
+/// at every IPL of such an image (`docs/RELEASING.md`).
+pub const DEVELOPMENT_KEY: RefCode = attention("A2001002", "Image signed with a development key");
 /// The host restarted after its kernel panicked; its last messages were
 /// kept and are in `/data/log/panics`, with why.
 pub const HOST_PANICKED: RefCode = attention("A2001005", "Host restarted after a kernel panic");
@@ -704,6 +707,7 @@ pub const ALL: &[&RefCode] = &[
     &SWITCH_CHANGED,
     &SWITCH_DELETED,
     &UPLINK_RETURNED,
+    &DEVELOPMENT_KEY,
     &HOST_PANICKED,
     &RECORD_INVALID,
     &SLOT_FELL_BACK,
