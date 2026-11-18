@@ -121,6 +121,10 @@ pub fn userland(ctx: &Ctx, image: Image) -> Result<Vec<PathBuf>> {
         .env(HOOKS_ENV, hooks)
         .env("QSVS_KEY_KIND", key_kind)
         .args(["build", "--release", "--locked"]);
+    // A schema of the update suites' test release is never a release's.
+    if image == Image::Release {
+        cmd.env("QSVS_TEST_SCHEMA", "0");
+    }
     for name in &names {
         cmd.args(["-p", name]);
     }

@@ -176,8 +176,17 @@ ipc::wire_struct!(Definition {
 
 impl Document for Definition {
     const FILE: &'static str = "definition.toml";
+    #[cfg(not(test_schema))]
     const VERSION: u32 = 1;
+    #[cfg(not(test_schema))]
     const MIGRATIONS: &'static [Migration] = &[];
+    // A test release's (`build.rs`): version 2 is version 1 renumbered,
+    // so an update changes a state file's schema and a rollback or a
+    // return to the older release has it to deal with.
+    #[cfg(test_schema)]
+    const VERSION: u32 = 2;
+    #[cfg(test_schema)]
+    const MIGRATIONS: &'static [Migration] = &[|_| Ok(())];
 
     /// What a definition may hold is [`crate::validate`]'s.
     fn validate(&self) -> Result<(), String> {
