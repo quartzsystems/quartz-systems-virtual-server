@@ -268,6 +268,34 @@ pub fn set_switches(guest: &mut Session, switches: &[Switch]) -> Result<(), Stri
     Ok(())
 }
 
+/// The switch service behind a channel.
+pub struct Vswitchd<'a> {
+    channel: &'a mut crate::qemu::channel::Channel,
+}
+
+impl vswitchd::proto::Calls for Vswitchd<'_> {
+    fn call(&mut self, req: &vswitchd::proto::Request) -> Result<Vec<u8>, ipc::WireError> {
+        let line = format!("{} {}", command::VSWITCHD, hex::encode(ipc::encode(req)));
+        let lines = self
+            .channel
+            .ask_within(&line, Duration::from_secs(60))
+            .map_err(std::io::Error::other)?;
+        let answer = lines
+            .first()
+            .and_then(|l| l.strip_prefix(qsvshook::proto::word::HEX))
+            .ok_or_else(|| std::io::Error::other(format!("`{}` answered {lines:?}", req.name())))?;
+        Ok(hex::decode(answer.trim()).map_err(std::io::Error::other)?)
+    }
+}
+
+/// The switch service of the host `guest` is.
+pub fn vswitchd(guest: &mut Session) -> Result<Vswitchd<'_>, String> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    Ok(Vswitchd {
+        channel: guest.channel(deadline)?,
+    })
+}
+
 /// Kill the switch service and wait until PID 1 has it ready again.
 pub fn restart_service(guest: &mut Session) -> Result<u32, String> {
     let before = service_pid(guest)?;

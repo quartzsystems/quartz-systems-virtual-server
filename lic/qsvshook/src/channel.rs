@@ -221,6 +221,63 @@ fn sum(path: &str) -> Vec<String> {
     }
 }
 
+/// Write and read back a file with direct I/O: its rates in MB/s.
+fn bench(rest: &str) -> Vec<String> {
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    let (Some(path), Some(mib)) = (
+        words.first(),
+        words.get(1).and_then(|m| m.parse::<u32>().ok()),
+    ) else {
+        return error("bench <path> <mib>");
+    };
+    let measured = (|| -> io::Result<(f64, f64)> {
+        const PIECE: usize = 1 << 20;
+        // Direct I/O wants the buffer on a page: a piece of a larger one.
+        let mut buffer = vec![0u8; PIECE + 4096];
+        let at = buffer.as_ptr().align_offset(4096);
+        let piece = &mut buffer[at..at + PIECE];
+        for (i, b) in piece.iter_mut().enumerate() {
+            *b = u8::try_from(i % 251).unwrap_or(0);
+        }
+        let rate = |secs: f64| f64::from(mib) * 1.048_576 / secs.max(1e-9);
+        {
+            let started = std::time::Instant::now();
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .custom_flags(libc_direct())
+                .open(path)?;
+            for _ in 0..mib {
+                file.write_all(piece)?;
+            }
+            file.sync_all()?;
+            let wrote = rate(started.elapsed().as_secs_f64());
+            drop(file);
+            let started = std::time::Instant::now();
+            let mut file = OpenOptions::new()
+                .read(true)
+                .custom_flags(libc_direct())
+                .open(path)?;
+            for _ in 0..mib {
+                file.read_exact(piece)?;
+            }
+            let read = rate(started.elapsed().as_secs_f64());
+            fs::remove_file(path)?;
+            Ok((wrote, read))
+        }
+    })();
+    match measured {
+        Ok((wrote, read)) => vec![format!("{} {wrote:.1} {read:.1}", word::OK)],
+        Err(e) => error(format!("{path}: {e}")),
+    }
+}
+
+/// `O_DIRECT`, as the open flags take it.
+fn libc_direct() -> i32 {
+    i32::try_from(OFlags::DIRECT.bits()).unwrap_or(0)
+}
+
 /// One request to the partition manager, as the harness encoded it.
 fn partd_request(rest: &str) -> Vec<String> {
     let Ok(request) = hex::decode(rest.trim()) else {
@@ -239,6 +296,18 @@ fn poold_request(rest: &str) -> Vec<String> {
         return error("poold <hex>");
     };
     poold::proto::Client::new(poold::proto::socket(release::RUN_DIR))
+        .exchange(&request)
+        .map_or_else(error, |answer| {
+            vec![format!("{} {}", word::HEX, hex::encode(answer))]
+        })
+}
+
+/// One request to the switch service, as the harness encoded it.
+fn vswitchd_request(rest: &str) -> Vec<String> {
+    let Ok(request) = hex::decode(rest.trim()) else {
+        return error("vswitchd <hex>");
+    };
+    vswitchd::proto::Client::new(vswitchd::proto::socket(release::RUN_DIR))
         .exchange(&request)
         .map_or_else(error, |answer| {
             vec![format!("{} {}", word::HEX, hex::encode(answer))]
@@ -694,8 +763,10 @@ fn answer(line: &str) -> Vec<String> {
         command::STORAGE => storage(),
         command::LOAD => load(rest),
         command::SUM => sum(rest),
+        command::BENCH => bench(rest),
         command::PARTD => partd_request(rest),
         command::POOLD => poold_request(rest),
+        command::VSWITCHD => vswitchd_request(rest),
         command::UPLOAD => upload(rest),
         command::PUNCH => punch(rest),
         command::RM => match std::fs::remove_file(rest.trim()) {

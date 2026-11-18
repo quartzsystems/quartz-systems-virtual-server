@@ -36,6 +36,8 @@ struct Seen {
     frames: u32,
     updates: u32,
     ended: String,
+    /// When each frame or update came.
+    came: Vec<Instant>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -88,11 +90,13 @@ pub fn console(rest: &str) -> Vec<String> {
                         let mut s = lock(&seen);
                         let _ = s.grid.apply(&FromSystem::Frame(frame));
                         s.frames += 1;
+                        s.came.push(Instant::now());
                     }
                     Ok(ConsoleOut::Update { update }) => {
                         let mut s = lock(&seen);
                         let _ = s.grid.apply(&FromSystem::Update(update));
                         s.updates += 1;
+                        s.came.push(Instant::now());
                     }
                     Ok(ConsoleOut::Serial { bytes }) => lock(&seen).serial.extend(bytes),
                     Ok(ConsoleOut::Ended { why }) => {
@@ -104,7 +108,9 @@ pub fn console(rest: &str) -> Vec<String> {
             }
         })
     };
+    let mut sent = Vec::new();
     for input in &inputs {
+        sent.push(Instant::now());
         if session.send(input).is_err() {
             break;
         }
@@ -124,6 +130,17 @@ pub fn console(rest: &str) -> Vec<String> {
     lines.push(format!("fact frames={}", s.frames));
     lines.push(format!("fact updates={}", s.updates));
     lines.push(format!("fact ended={}", s.ended));
+    // How long after each input the screen next changed.
+    let after: Vec<String> = sent
+        .iter()
+        .map(|t| {
+            s.came.iter().find(|c| *c >= t).map_or_else(
+                || "none".into(),
+                |c| c.duration_since(*t).as_millis().to_string(),
+            )
+        })
+        .collect();
+    lines.push(format!("fact latency_ms={}", after.join(",")));
     if serial {
         for line in String::from_utf8_lossy(&s.serial).lines() {
             lines.push(format!("line {line}"));

@@ -152,6 +152,14 @@ pub fn spinner() -> Vec<u8> {
     build_with(&[0xEB, 0xFE])
 }
 
+/// A guest that does nothing at all: its boot processor halts with
+/// interrupts off, for ever. What a host pays for a partition that
+/// is idle is measured with it.
+pub fn halter() -> Vec<u8> {
+    // `cli`, then `hlt` and a jump back to it.
+    build_with(&[0xFA, 0xF4, 0xEB, 0xFD])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

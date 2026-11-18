@@ -443,6 +443,7 @@ dependencies = [
  "update",
  "users",
  "uuid",
+ "vdisk",
  "vswitch",
  "vswitchd",
 ]
@@ -1890,6 +1891,7 @@ dependencies = [
  "supervise",
  "virtio-queue",
  "vm-memory",
+ "vswitchd",
 ]
 
 [[package]]

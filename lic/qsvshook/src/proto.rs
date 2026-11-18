@@ -58,6 +58,10 @@ pub mod command {
     /// `sum <path>`: a file's length and the sum of its bytes, which
     /// is enough to tell a file the load wrote from one that is torn.
     pub const SUM: &str = "sum";
+    /// `bench <path> <mib>`: write a new file of that many MiB at
+    /// `path` a MiB at a time with direct I/O, read it back the same way
+    /// and remove it; `ok <write MB/s> <read MB/s>`.
+    pub const BENCH: &str = "bench";
     /// `partd <hex>`: one request to the partition manager's socket,
     /// encoded as its client encodes it; the answer comes back as
     /// `hex`. The harness decodes it.
@@ -65,6 +69,9 @@ pub mod command {
     /// `poold <hex>`: one request to the pool service's socket, as its
     /// client encodes it; the answer comes back as `hex`.
     pub const POOLD: &str = "poold";
+    /// `vswitchd <hex>`: one request to the switch service's socket, as
+    /// its client encodes it; the answer comes back as `hex`.
+    pub const VSWITCHD: &str = "vswitchd";
     /// `upload <name> <device>`: upload the whole of a block device of
     /// the host (a further disk QEMU gives it, holding an image) to the
     /// pool service as the image `name`, through its streamed upload.

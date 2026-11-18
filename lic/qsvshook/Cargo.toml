@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 poold = { path = "../../stg/poold", version = "0.1.0" }
+vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
 stgd = { path = "../../base/stgd", version = "0.1.0" }
 release = { path = "../release", version = "0.1.0" }
 hostinv = { path = "../hostinv", version = "0.1.0" }

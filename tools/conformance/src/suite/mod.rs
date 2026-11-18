@@ -12,6 +12,7 @@
 
 pub mod base;
 pub mod install;
+pub mod limits;
 pub mod network;
 pub mod partition;
 pub mod physio;
@@ -142,6 +143,7 @@ pub fn names() -> Vec<&'static str> {
     names.extend(servicing::SUITES.iter().map(|s| s.0));
     names.extend(physio::SUITES.iter().map(|s| s.0));
     names.extend(security::SUITES.iter().map(|s| s.0));
+    names.extend(limits::SUITES.iter().map(|s| s.0));
     names
 }
 
@@ -222,6 +224,7 @@ impl Suite {
         if let Some(name) = only
             && !names().contains(&name)
             && !soak::SUITES.iter().any(|s| s.0 == name)
+            && !limits::NAMED.iter().any(|s| s.0 == name)
             && !security::RELEASE_SUITES.iter().any(|s| s.0 == name)
         {
             return Err(HarnessError::Setup {
@@ -244,8 +247,10 @@ impl Suite {
             .chain(servicing::SUITES)
             .chain(physio::SUITES)
             .chain(security::SUITES)
+            .chain(limits::SUITES)
             // The long runs only when named.
             .chain(soak::SUITES.iter().filter(|s| only == Some(s.0)))
+            .chain(limits::NAMED.iter().filter(|s| only == Some(s.0)))
             .chain(
                 security::RELEASE_SUITES
                     .iter()
@@ -496,6 +501,7 @@ mod tests {
                 + servicing::SUITES.len()
                 + physio::SUITES.len()
                 + security::SUITES.len()
+                + limits::SUITES.len()
         );
         assert!(soak::SUITES.iter().all(|s| !names().contains(&s.0)));
         assert_eq!(qsi::SUITES.len(), 13);
