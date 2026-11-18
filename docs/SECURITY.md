@@ -146,6 +146,7 @@ the configuration's.
 | `LEGACY_TIOCSTI`, `LDISC_AUTOLOAD` off | no typing into another's terminal, no line discipline loaded on demand |
 | `BINFMT_MISC`, `KPROBES`, `UPROBES`, `UPROBE_EVENTS`, `EFI_CUSTOM_SSDT_OVERLAYS`, `MAGIC_SYSRQ`, `DEBUG_FS` off | nothing a hypervisor host uses (a test image's kernel has debugfs) |
 | `USER_NS`, `BPF_SYSCALL`, `USERFAULTFD`, `SECURITY_SELINUX` off | no user namespaces, no BPF programs from user space, no userfaultfd; no policy |
+| `IPV6_SIT` off | no fallback tunnel device in every new network namespace: a VMM's has its loopback alone (found by `vmm-confined`) |
 
 `MODIFY_LDT_SYSCALL` cannot be left out without `EXPERT`; no VMM's
 filter allows it, and the services are trusted code. The command-line

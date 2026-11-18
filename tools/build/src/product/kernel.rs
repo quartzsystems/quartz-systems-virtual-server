@@ -219,6 +219,7 @@ pub const REQUIRED_N: &[&str] = &[
     "USER_NS",
     "BPF_SYSCALL",
     "USERFAULTFD",
+    "IPV6_SIT",
 ];
 
 #[cfg(test)]
