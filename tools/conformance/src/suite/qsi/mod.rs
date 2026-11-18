@@ -223,6 +223,33 @@ pub fn link(q: &Qsi<'_>, id: &Identity, host: Fingerprint) -> Result<Link, Strin
     Link::connect(&q.address, id, Some(host))
 }
 
+/// Remove the paired console `name` at Service Tools option 4, as an
+/// operator does: its row's option 4, then its name typed to confirm.
+pub fn remove_console(q: &mut Qsi<'_>, name: &str, deadline: Instant) -> Result<(), String> {
+    use crate::qemu::term::key;
+    use crate::suite::install::{fill, option, titled};
+    let list = option(&mut q.guest, 1, "Work with Paired Consoles", deadline)?;
+    let rows: Vec<&str> = list
+        .lines()
+        .filter(|l| l.contains("MC-") || l.contains(name))
+        .collect();
+    let row = rows
+        .iter()
+        .position(|l| l.contains(name))
+        .ok_or_else(|| format!("{name} is not listed:\n{list}"))?;
+    let mut values: Vec<Option<&str>> = vec![None; rows.len()];
+    values[row] = Some("4");
+    q.guest.type_keys(&format!(
+        "{}{}",
+        fill(&values, &vec![1; rows.len()]),
+        key::ENTER
+    ))?;
+    titled(&mut q.guest, "Confirm Remove of Console", deadline)?;
+    q.guest.type_keys(&format!("{name}{}", key::ENTER))?;
+    posted_after(q, &refcode::QSI_REMOVED, 0, Duration::from_secs(10))?;
+    crate::suite::servicing::sign_off(&mut q.guest)
+}
+
 /// Pair a console named `name` from Service Tools' password: its
 /// identity, the host's certificate, and a link with a session.
 pub fn paired(

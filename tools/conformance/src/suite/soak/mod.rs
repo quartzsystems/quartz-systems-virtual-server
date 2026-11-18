@@ -8,10 +8,13 @@
 //! - [`faults`]: Section 1's soak. Partitions started over and over under
 //!   load, their kernels' faults counted per thousand IPLs and per
 //!   hour, each faulted partition held, dumped and its dump read.
+//! - [`day`]: Section 8's: a day of a host worked by a script under
+//!   load, and nothing left behind.
 //! - [`report`]: what a soak found, as text and as JSON lines.
 //! - [`core`]: a dump's printable records found, for a first reading.
 
 pub mod core;
+pub mod day;
 pub mod faults;
 pub mod report;
 
@@ -20,7 +23,7 @@ use std::time::Duration;
 use super::base::SuiteFn;
 
 /// The long suites.
-pub const SUITES: &[(&str, SuiteFn)] = &[("soak-faults", faults::faults)];
+pub const SUITES: &[(&str, SuiteFn)] = &[("soak-faults", faults::faults), ("soak-day", day::day)];
 
 /// A number from the environment, or `default`.
 pub fn knob(name: &str, default: u64) -> u64 {
