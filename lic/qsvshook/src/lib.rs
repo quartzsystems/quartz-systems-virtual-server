@@ -31,6 +31,8 @@ pub mod partition;
 pub mod proto;
 #[cfg(target_os = "linux")]
 pub mod soak;
+#[cfg(target_os = "linux")]
+pub mod writers;
 
 /// The first argument of the binary when the channel has it try
 /// something as another user.
@@ -41,6 +43,8 @@ pub const REFUSE_CONFIRM: &str = "refuse-confirm";
 pub const FLAKY_FAILS: &str = "flaky-fails";
 /// The hook that churns the state files from the start of the IPL.
 pub const CHURN: &str = "churn";
+/// The hook that keeps the services' writers of `/data` busy.
+pub const WRITERS: &str = "writers";
 
 /// The SMBIOS OEM string that switches the hook `name` on:
 /// `qsvs.hook=<name>`.

@@ -835,6 +835,9 @@ pub fn run() -> io::Result<Infallible> {
             crate::churn::run(&Store::at(appliance.state_dir()))
         });
     }
+    if crate::on(crate::WRITERS) {
+        crate::writers::start();
+    }
     supervise::ready::signal()?;
     let mut reader = BufReader::new(port.try_clone()?);
     let mut port = port;
