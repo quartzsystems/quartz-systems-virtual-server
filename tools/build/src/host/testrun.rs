@@ -37,7 +37,7 @@ pub fn test(
     // The fuzz targets are a suite the build tool runs itself: they
     // are compiled with coverage counters.
     if only == Some(FUZZ) {
-        return super::fuzz::fuzz(release, None, FUZZ_SECS, FUZZ_JOBS);
+        return super::fuzz::fuzz(release, None, FUZZ_SECS, FUZZ_JOBS, false);
     }
     let images = Images {
         release_disk: paths::read_pointer(&release.paths.disk_pointer()).ok(),
@@ -80,7 +80,7 @@ pub fn test(
         Ok(reports) => {
             info!("test: PASS, {} step(s), media {media}", reports.len());
             if media == conformance::Media::Disk && only.is_none() {
-                super::fuzz::fuzz(release, None, FUZZ_SECS, FUZZ_JOBS)?;
+                super::fuzz::fuzz(release, None, FUZZ_SECS, FUZZ_JOBS, false)?;
             }
             Ok(())
         }

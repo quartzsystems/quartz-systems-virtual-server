@@ -3,9 +3,10 @@
 // root directory of this project.
 
 //! `build fuzz`: the fuzzer (`tools/fuzz`) built with LLVM's coverage
-//! counters, and every target run for a time. A target that finds
-//! something fails the step; its input is under
-//! `<target>/fuzz/crashes/`.
+//! counters, and every target run for a time, each from the corpus kept
+//! in the repository (`tools/fuzz/corpus`), which `--save-corpus`
+//! writes back. A target that finds something fails the step; its
+//! input is under `<target>/fuzz/crashes/`.
 
 use std::env;
 use std::path::PathBuf;
@@ -67,9 +68,15 @@ fn targets(binary: &PathBuf) -> Result<Vec<String>> {
         .collect())
 }
 
+/// The corpus kept in the repository.
+fn corpus(ctx: &Ctx) -> PathBuf {
+    ctx.paths.repo.join("tools").join("fuzz").join("corpus")
+}
+
 /// `build fuzz`: every target, or the one named, for `secs` seconds
-/// each, `jobs` at a time.
-pub fn fuzz(ctx: &Ctx, only: Option<&str>, secs: u64, jobs: usize) -> Result<()> {
+/// each, `jobs` at a time; with `save`, what each kept is written back
+/// to the corpus.
+pub fn fuzz(ctx: &Ctx, only: Option<&str>, secs: u64, jobs: usize, save: bool) -> Result<()> {
     let binary = build(ctx)?;
     let mut names = targets(&binary)?;
     if let Some(only) = only {
@@ -91,9 +98,16 @@ pub fn fuzz(ctx: &Ctx, only: Option<&str>, secs: u64, jobs: usize) -> Result<()>
         let running: Vec<(&String, Child)> = batch
             .iter()
             .map(|name| {
-                Command::new(&binary)
+                let mut command = Command::new(&binary);
+                command
                     .args(["run", name, "--secs", &secs.to_string(), "--crashes"])
                     .arg(&crashes)
+                    .arg("--corpus")
+                    .arg(corpus(ctx));
+                if save {
+                    command.arg("--save");
+                }
+                command
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .spawn()

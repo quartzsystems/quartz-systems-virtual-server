@@ -81,8 +81,15 @@ enum Command {
     /// every reader of bytes a guest controls.
     Fuzz {
         /// Run one target alone.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "all")]
         target: Option<String>,
+        /// Run every target (the default when no target is named).
+        #[arg(long)]
+        all: bool,
+        /// Write back what each run kept into the corpus, within its
+        /// bounds (`tools/fuzz/corpus` in the repository).
+        #[arg(long)]
+        save_corpus: bool,
         /// Seconds for each target.
         #[arg(long, default_value_t = 60)]
         secs: u64,
@@ -194,8 +201,14 @@ fn main() -> Result<()> {
             let test = context(Image::Test, cli.verbose)?;
             host::testrun::test(&release, &test, media, suite.as_deref())?;
         }
-        Command::Fuzz { target, secs, jobs } => {
-            host::fuzz::fuzz(&ctx, target.as_deref(), secs, jobs)?;
+        Command::Fuzz {
+            target,
+            all: _,
+            save_corpus,
+            secs,
+            jobs,
+        } => {
+            host::fuzz::fuzz(&ctx, target.as_deref(), secs, jobs, save_corpus)?;
         }
         Command::Doctor => buildkit::host::doctor::doctor(&ctx)?,
         Command::Deny => buildkit::host::deny::deny(&ctx)?,

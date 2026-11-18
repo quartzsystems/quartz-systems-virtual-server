@@ -1291,6 +1291,30 @@ pub const TARGETS: &[Target] = &[
         run: qsiserver::fuzzing::session,
     },
     Target {
+        name: "qsi-pairing",
+        about: "what a peer that is not pinned sends while a pairing password is out, before it is authenticated",
+        seeds: qsiserver::fuzzing::seeds,
+        run: qsiserver::fuzzing::pairing,
+    },
+    Target {
+        name: "seed",
+        about: "a seed volume's seed.toml and its unattended answers, held against a machine",
+        seeds: crate::outside::seed_seeds,
+        run: crate::outside::seed,
+    },
+    Target {
+        name: "pool-label",
+        about: "a disk's first bytes and a pool member's labels, as the pool service reads every disk",
+        seeds: crate::outside::pool_label_seeds,
+        run: crate::outside::pool_label,
+    },
+    Target {
+        name: "ls-label",
+        about: "a load source's A/B record and set label, as the host reads every disk at its IPL",
+        seeds: crate::outside::load_source_label_seeds,
+        run: crate::outside::load_source_label,
+    },
+    Target {
         name: "update-image",
         about: "an update image a console uploads: its container, its manifest and its verification",
         seeds: update_image_seeds,

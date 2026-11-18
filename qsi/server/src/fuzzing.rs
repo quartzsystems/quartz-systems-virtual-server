@@ -2,8 +2,10 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The fuzz target of what a console sends after its handshake: a
-//! pinned session's bytes, in pieces of any size, through the session,
+//! The fuzz targets of what a console sends after its handshake: a
+//! pinned session's bytes ([`session`]), and an unknown peer's while a
+//! pairing password is out, before it is authenticated ([`pairing`]),
+//! in pieces of any size, through the session, the pairing exchange,
 //! the requests' checks and their translation, with every service
 //! answering that it is not there. Nothing may panic, and the server
 //! answers or closes.
@@ -113,13 +115,17 @@ fn hello(kind: PeerKind) -> Hello {
 }
 
 fn conn() -> Conn {
+    conn_as(true)
+}
+
+fn conn_as(pinned: bool) -> Conn {
     let config = Config {
         hello: hello(PeerKind::Host),
         address: "192.0.2.1:1".into(),
         peer: qsitrust::Peer {
             cert: Vec::new(),
             fingerprint: qsitrust::Fingerprint([9; 32]),
-            pinned: true,
+            pinned,
         },
         binding: None,
         limits: Limits::default(),
@@ -134,17 +140,29 @@ fn conn() -> Conn {
     };
     let hub = Arc::new(Mutex::new(Hub::memory(&Limits::default())));
     let trust = Trust::with(Consoles::default(), None, Arc::new(|| 0));
+    if !pinned {
+        // An unknown peer may only pair, and only while a password is out.
+        let _ = trust.start_pairing();
+    }
     // Its own hello is in bounds: this cannot fail.
     Conn::new(config, services, Box::new(Nothing), hub, trust, 0).expect("a connection")
 }
 
 /// One input: the first byte chooses the piece size.
 pub fn session(data: &[u8]) {
+    feed(conn(), data);
+}
+
+/// The same from a peer that is not pinned, before it has paired.
+pub fn pairing(data: &[u8]) {
+    feed(conn_as(false), data);
+}
+
+fn feed(mut c: Conn, data: &[u8]) {
     let Some((&size, rest)) = data.split_first() else {
         return;
     };
     let size = usize::from(size).max(1);
-    let mut c = conn();
     let mut now = 0;
     for piece in rest.chunks(size) {
         now += 7;

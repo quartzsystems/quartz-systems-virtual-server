@@ -53,6 +53,8 @@ pub struct Report {
     pub edges: usize,
     /// The first finding, which ends the loop.
     pub finding: Option<Finding>,
+    /// The inputs kept, for the corpus.
+    pub corpus: Vec<Vec<u8>>,
 }
 
 /// What the last panic said, for the finding.
@@ -133,9 +135,16 @@ fn execute(target: &Target, input: &[u8], since: Instant) -> Option<String> {
     }
 }
 
-/// Fuzz `target` for `limit` from `seed`. `since` is the instant the
+/// Fuzz `target` for `limit` from `seed`, starting with its seeds and
+/// `kept`, a corpus of earlier runs. `since` is the instant the
 /// watchdog counts from.
-pub fn fuzz(target: &Target, seed: u64, limit: Duration, since: Instant) -> Report {
+pub fn fuzz(
+    target: &Target,
+    seed: u64,
+    limit: Duration,
+    since: Instant,
+    kept: Vec<Vec<u8>>,
+) -> Report {
     let mut rng = Rng::new(seed);
     let mut reached = Vec::new();
     let mut corpus: Vec<Vec<u8>> = Vec::new();
@@ -144,9 +153,11 @@ pub fn fuzz(target: &Target, seed: u64, limit: Duration, since: Instant) -> Repo
         kept: 0,
         edges: 0,
         finding: None,
+        corpus: Vec::new(),
     };
     let begun = Instant::now();
-    let mut pending = (target.seeds)();
+    let mut pending = kept;
+    pending.extend((target.seeds)());
     pending.push(Vec::new());
     loop {
         let input = match pending.pop() {
@@ -175,6 +186,7 @@ pub fn fuzz(target: &Target, seed: u64, limit: Duration, since: Instant) -> Repo
     }
     report.kept = corpus.len();
     report.edges = reached.iter().filter(|s| **s != 0).count();
+    report.corpus = corpus;
     report
 }
 
@@ -196,7 +208,13 @@ mod tests {
                 let _ = input.len();
             },
         };
-        let report = fuzz(&target, 1, Duration::from_millis(50), Instant::now());
+        let report = fuzz(
+            &target,
+            1,
+            Duration::from_millis(50),
+            Instant::now(),
+            Vec::new(),
+        );
         assert!(report.finding.is_none());
         assert!(report.runs > 100);
         assert!(report.kept >= 2);
@@ -211,7 +229,13 @@ mod tests {
             seeds,
             run: |input| assert!(!input.contains(&0xFF), "found the byte"),
         };
-        let report = fuzz(&target, 2, Duration::from_secs(20), Instant::now());
+        let report = fuzz(
+            &target,
+            2,
+            Duration::from_secs(20),
+            Instant::now(),
+            vec![b"kept".to_vec()],
+        );
         let finding = report.finding.expect("the byte is found within the time");
         assert!(finding.input.contains(&0xFF));
         assert!(finding.what.contains("found the byte"));

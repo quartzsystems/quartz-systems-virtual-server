@@ -3,9 +3,11 @@
 // root directory of this project.
 
 //! `qsvsfuzz list`, and `qsvsfuzz run <target> [--secs N] [--seed N]
-//! [--crashes DIR]`: fuzz one target and exit 0 when nothing was
-//! found, 1 with the input written under the crashes directory when
-//! something was. `cargo run -p build -- fuzz` runs them all.
+//! [--crashes DIR] [--corpus DIR] [--save]`: fuzz one target and exit 0
+//! when nothing was found, 1 with the input written under the crashes
+//! directory when something was. A run starts from the corpus kept under
+//! `--corpus`, and with `--save` writes back what it kept, within the
+//! corpus's bounds. `cargo run -p build -- fuzz` runs them all.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -29,7 +31,13 @@ fn save(crashes: &Path, target: &str, finding: &Finding) -> PathBuf {
     path
 }
 
-fn run(target: &'static Target, secs: u64, seed: u64, crashes: &Path) -> ExitCode {
+fn run(
+    target: &'static Target,
+    secs: u64,
+    seed: u64,
+    crashes: &Path,
+    corpus: Option<(&Path, bool)>,
+) -> ExitCode {
     let since = Instant::now();
     engine::quiet_panics();
     // The watchdog: an input that never returns cannot be caught by
@@ -49,7 +57,19 @@ fn run(target: &'static Target, secs: u64, seed: u64, crashes: &Path) -> ExitCod
             }
         }
     });
-    let report = engine::fuzz(target, seed, Duration::from_secs(secs), since);
+    let kept = corpus.map_or_else(Vec::new, |(dir, _)| fuzz::corpus::load(dir, target.name));
+    let from = kept.len();
+    let report = engine::fuzz(target, seed, Duration::from_secs(secs), since, kept);
+    let saved = match corpus {
+        Some((dir, true)) if report.finding.is_none() => {
+            match fuzz::corpus::save(dir, target.name, &report.corpus) {
+                Ok(n) => format!(", corpus {from} in, {n} kept"),
+                Err(e) => format!(", corpus not kept: {e}"),
+            }
+        }
+        Some(_) => format!(", corpus {from} in"),
+        None => String::new(),
+    };
     let guide = if cov::is_empty() {
         "no coverage counters".to_string()
     } else {
@@ -58,7 +78,7 @@ fn run(target: &'static Target, secs: u64, seed: u64, crashes: &Path) -> ExitCod
     match report.finding {
         None => {
             println!(
-                "fuzz {}: {} runs in {secs} s, {} kept, {guide}, no finding",
+                "fuzz {}: {} runs in {secs} s, {} kept, {guide}{saved}, no finding",
                 target.name, report.runs, report.kept
             );
             ExitCode::SUCCESS
@@ -81,7 +101,10 @@ fn run(target: &'static Target, secs: u64, seed: u64, crashes: &Path) -> ExitCod
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let usage = || {
-        eprintln!("usage: qsvsfuzz list | run <target> [--secs N] [--seed N] [--crashes DIR]");
+        eprintln!(
+            "usage: qsvsfuzz list | run <target> [--secs N] [--seed N] [--crashes DIR] \
+             [--corpus DIR] [--save]"
+        );
         eprintln!("a run longer than {SLOW:?} is a finding");
         ExitCode::from(2)
     };
@@ -97,17 +120,29 @@ fn main() -> ExitCode {
                 return usage();
             };
             let (mut secs, mut seed, mut crashes) = (60, 1, PathBuf::from("crashes"));
+            let (mut corpus, mut save) = (None, false);
             let mut rest = args[2..].iter();
             while let Some(flag) = rest.next() {
+                if flag == "--save" {
+                    save = true;
+                    continue;
+                }
                 let value = rest.next();
                 match (flag.as_str(), value) {
                     ("--secs", Some(v)) => secs = v.parse().unwrap_or(secs),
                     ("--seed", Some(v)) => seed = v.parse().unwrap_or(seed),
                     ("--crashes", Some(v)) => crashes = PathBuf::from(v),
+                    ("--corpus", Some(v)) => corpus = Some(PathBuf::from(v)),
                     _ => return usage(),
                 }
             }
-            run(target, secs, seed, &crashes)
+            run(
+                target,
+                secs,
+                seed,
+                &crashes,
+                corpus.as_deref().map(|dir| (dir, save)),
+            )
         }
         _ => usage(),
     }

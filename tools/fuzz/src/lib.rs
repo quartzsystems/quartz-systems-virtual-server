@@ -9,7 +9,9 @@
 //! - [`mutate`]: the next input from one that was kept.
 //! - [`engine`]: the loop: run, catch a panic, keep what reached new
 //!   code.
-//! - [`targets`]: every reader of bytes a guest controls.
+//! - [`targets`]: every reader of bytes a guest controls, and of bytes
+//!   from outside it that are no more to be trusted ([`outside`]).
+//! - [`corpus`]: the inputs kept between runs.
 //!
 //! `cargo run -p build -- fuzz` builds this with the counters and runs
 //! every target. A finding is a panic or an input that runs too long;
@@ -19,7 +21,9 @@
 
 #![deny(unsafe_code)]
 
+pub mod corpus;
 pub mod cov;
 pub mod engine;
 pub mod mutate;
+pub mod outside;
 pub mod targets;
