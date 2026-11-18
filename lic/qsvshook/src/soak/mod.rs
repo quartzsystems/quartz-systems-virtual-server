@@ -49,10 +49,15 @@ pub struct Counts {
     pub bad: AtomicU64,
 }
 
-/// One line on the console, whole: the host relays it.
+/// One line on the serial port, whole: the host relays it. Not
+/// `/dev/console`, which is the last console the command line names: the
+/// display.
 pub fn say(line: &str) {
-    if let Ok(mut console) = OpenOptions::new().write(true).open("/dev/console") {
-        let _ = console.write_all(format!("{line}\n").as_bytes());
+    for port in ["/dev/ttyS0", "/dev/console"] {
+        if let Ok(mut console) = OpenOptions::new().write(true).open(port) {
+            let _ = console.write_all(format!("{line}\r\n").as_bytes());
+            return;
+        }
     }
 }
 

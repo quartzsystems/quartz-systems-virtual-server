@@ -164,7 +164,7 @@ pub const QSID: Service = Service {
     order: 35,
     needs: &[],
     ready_within: READY_WITHIN,
-    caps: Caps::Only(&[SETUID, SETGID, SETPCAP, CHOWN, FOWNER]),
+    caps: Caps::Only(&[SETUID, SETGID, SETPCAP, CHOWN, FOWNER, DAC_OVERRIDE]),
 };
 
 /// The base services.
