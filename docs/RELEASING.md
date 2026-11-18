@@ -22,7 +22,8 @@ checkout (an encrypted volume):
 cargo run -p build -- keys /media/keys
 ```
 
-It writes `qsvs-release.ed25519` (mode 0600), `qsvs-db.key` (0600),
+It writes `qsvs-release.ed25519` (mode 0600) and its public half
+`qsvs-release.pub` (what `QSVS_TRUSTED_KEYS` lists), `qsvs-db.key` (0600),
 `qsvs-db.cer` and `qsvs-db.esl` (the certificate as an EFI signature
 list), prints the release key's public half and the certificate's
 SHA-256, and never writes over a key that is there. Keep two offline

@@ -65,6 +65,11 @@ pub fn keys(dir: &Path) -> Result<()> {
     getrandom(&mut seed)?;
     write_private(&signing, &format!("{}\n", hex::encode(seed)))?;
     let public = SigningKey::from_bytes(&seed).verifying_key().to_bytes();
+    // What a release that is to trust it names in QSVS_TRUSTED_KEYS.
+    fs::write(
+        dir.join("qsvs-release.pub"),
+        format!("{}\n", hex::encode(public)),
+    )?;
     let pair = pesign::keys::generate::new_pair(&pesign::keys::generate::Spec {
         subject: SB_SUBJECT,
         not_before: NOT_BEFORE,

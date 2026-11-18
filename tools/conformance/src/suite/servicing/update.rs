@@ -779,3 +779,150 @@ pub fn qsictl(run: &Run<'_>) -> Result<String, String> {
         closed.trim()
     ))
 }
+
+/// The update image of a test release whose partition definitions are
+/// of schema 2 (`QSVS_TEST_SCHEMA=1`, `docs/PHASE11.md`), signed by the
+/// test image's key.
+pub const SCHEMA_ENV: &str = "QSVS_UPDATE_SCHEMA_IMAGE";
+/// Keys a test image may trust beside its own (`QSVS_TRUSTED_KEYS`):
+/// the second, which it trusts, and a third, which it does not.
+pub const KEY2_ENV: &str = "QSVS_UPDATE_KEY2";
+/// See [`KEY2_ENV`].
+pub const KEY3_ENV: &str = "QSVS_UPDATE_KEY3";
+
+fn env_file(name: &str) -> Result<PathBuf, String> {
+    std::env::var_os(name)
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+        .ok_or_else(|| format!("{name} names no file (docs/PHASE11.md, Section 6)"))
+}
+
+fn key_file(name: &str) -> Result<ed25519_dalek::SigningKey, String> {
+    let path = env_file(name)?;
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let seed: [u8; 32] = hex::decode(text.trim())
+        .map_err(|e| e.to_string())?
+        .try_into()
+        .map_err(|_| format!("{name}: a key of 32 bytes"))?;
+    Ok(ed25519_dalek::SigningKey::from_bytes(&seed))
+}
+
+/// The schema version the file at `path` on the host is written in.
+fn schema_of(rig: &mut Rig<'_>, path: &str) -> Result<u32, String> {
+    let text = channel(&mut rig.q.guest)?.text(path)?;
+    text.lines()
+        .find_map(|l| l.trim().strip_prefix("schema_version = ")?.parse().ok())
+        .ok_or_else(|| format!("{path} names no schema version"))
+}
+
+/// Section 6's migration: a release that changes the partition
+/// definition's schema. A trial that never confirms leaves the old form;
+/// confirmed, the definition is written in the new form when it next
+/// changes; then the older release, which cannot read that form, is
+/// refused even with leave to go back.
+pub fn migrate(run: &Run<'_>) -> Result<String, String> {
+    let newer = env_file(SCHEMA_ENV)?;
+    let older = this_release(run)?;
+    let mut rig = host(
+        run,
+        &Opts {
+            hooks: vec!["fail-trial", "short-trial"],
+            ..Opts::default()
+        },
+    )?;
+    let mut c = console(&mut rig.q, "MC1", run.deadline())?;
+    let id = make_partition(&mut c.link, "KEEP")?;
+    let path = format!("/data/state/partitions/{id}/definition.toml");
+    let first = schema_of(&mut rig, &path)?;
+
+    // A trial that never confirms: rolled back, the old form kept.
+    stage(&mut c, &newer, false)?;
+    install(&mut c)?;
+    activate_update(&mut c, false)?;
+    c.link.close();
+    rig.q.guest.wait_exit(Instant::now() + ACTIVATION)?;
+    let launch = rig.q.launch.clone();
+    let mut trial = run.boot(&launch)?;
+    trial.seen(
+        "TEST HOOK: the trial's services are taken as never ready",
+        Instant::now() + ACTIVATION,
+    )?;
+    trial.wait_exit(Instant::now() + Duration::from_mins(5))?;
+    drop(trial);
+    rig.again(run)?;
+    if super::super::qsi::posted(&mut rig.q, &refcode::UPDATE_ROLLED_BACK) == 0 {
+        return Err("the trial was not rolled back".into());
+    }
+    let rolled = schema_of(&mut rig, &path)?;
+
+    // Without the hooks: confirmed, and the changed definition written
+    // in the new form.
+    rig.q.guest.kill();
+    rig.q.launch.oem.clear();
+    rig.again(run)?;
+    c.again(&rig.q, Duration::from_mins(2))?;
+    let confirmed = update_to(run, &mut rig, &mut c, &newer, false, false)?;
+    let unchanged = schema_of(&mut rig, &path)?;
+    {
+        use qsi::host::{partition, partitions};
+        let AnyReply::Partitions(partitions::Reply::Get(p)) = c.ask(AnyRequest::Partitions(
+            partitions::Request::Get(partitions::Get { id }),
+        ))?
+        else {
+            return Err("the definition was not read".into());
+        };
+        let mut changed = p.definition.clone();
+        changed.name = "KEPT".into();
+        c.ask(AnyRequest::Partition(partition::Request::Change(
+            partition::Change {
+                definition: changed,
+            },
+        )))?;
+    }
+    let written = schema_of(&mut rig, &path)?;
+
+    // The older release cannot read it: refused, leave or not.
+    let back = match stage(&mut c, &older, true) {
+        Ok(()) => return Err("the older release was staged over the newer form".into()),
+        Err(e) => e,
+    };
+    if !back.starts_with(q::msgid::NO_STATE) {
+        return Err(format!("going back: {back}, not {}", q::msgid::NO_STATE));
+    }
+    if (first, rolled, unchanged, written) != (1, 1, 1, 2) {
+        return Err(format!(
+            "the definition's schema: {first} before, {rolled} after the rollback, {unchanged} \
+             once confirmed, {written} once changed"
+        ));
+    }
+    Ok(format!(
+        "definition.toml: schema 1; a trial of the release that reads 2, never confirmed, rolled \
+         back with the file still 1; {confirmed} confirmed, the file 1 until the definition \
+         changed, then 2; the older release refused even with leave: `{back}`"
+    ))
+}
+
+/// Section 6's keys: a host that trusts a second key beside its own
+/// takes a release signed by it, whole, and refuses one signed by a key
+/// it does not trust.
+pub fn keys(run: &Run<'_>) -> Result<String, String> {
+    let image = other_release()?;
+    let second = key_file(KEY2_ENV)?;
+    let third = key_file(KEY3_ENV)?;
+    let mut rig = host(run, &Opts::default())?;
+    let mut c = console(&mut rig.q, "MC1", run.deadline())?;
+    let by_third = crafted(&image, &third, |_| {})?;
+    let refused = refused_stage(run, &mut c, "by-third.upd", &by_third, false)?;
+    if !refused.starts_with(q::msgid::BAD_SIGNATURE) {
+        return Err(format!("signed by a key not trusted: {refused}"));
+    }
+    let by_second = run.file("by-second.upd");
+    std::fs::write(&by_second, crafted(&image, &second, |_| {})?).map_err(|e| e.to_string())?;
+    let confirmed = update_to(run, &mut rig, &mut c, &by_second, false, false)?;
+    Ok(format!(
+        "signed by the second key ({}), which the host trusts beside its own: staged, installed, \
+         {confirmed} confirmed; signed by a third ({}): `{refused}`",
+        hex::encode(second.verifying_key().to_bytes()),
+        hex::encode(third.verifying_key().to_bytes())
+    ))
+}

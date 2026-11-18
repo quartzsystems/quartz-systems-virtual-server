@@ -51,6 +51,8 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("svc-update-power", update::power),
     ("svc-update-mirror", update::mirror),
     ("svc-update-back", update::back),
+    ("svc-update-migrate", update::migrate),
+    ("svc-update-keys", update::keys),
     ("svc-tools", tools::tools),
     ("svc-capture", capture::capture),
     ("svc-processor", processor::processor),
