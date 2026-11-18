@@ -513,16 +513,19 @@ What QS/400 would have to change, found so far:
    the first as a guest fault (`A2005170`), as designed. Not known to
    be QS/400's.
 
-## Saving and restoring on tape (Phase 10, at `2e950f9`)
+## Saving and restoring on tape (Phase 10)
 
 Section 1 of Phase 10: QS/400 against the virtual tape drive of Phase 5
 (`docs/VMM.md`, "The tape device"), every command typed at the system's
 Command Entry and every volume mounted and unmounted from the host, as
 an operator would (`pio-tape-save`, `pio-tape-span`, `pio-tape-volumes`
 in `tools/conformance/src/suite/physio/tape.rs`). Two installed QS/400
-partitions from QS/400's ISO at the pin, the volumes in the media
-repository's pool, three levels deep (WSL, QEMU, the partitions), on
-2026-11-17.
+partitions, the volumes in the media repository's pool, three levels
+deep (WSL, QEMU, the partitions), on 2026-11-17. The runs below used
+QS/400's guest media built at `30e18c2` (Phase 8's pin); the eleven
+commits from there to `2e950f9` are QSI's protocol alone, nothing the
+system's tape or save code has. The acceptance run used media built at
+`2e950f9` (`docs/PHASE10.md`).
 
 **What works.**
 
@@ -547,8 +550,8 @@ repository's pool, three levels deep (WSL, QEMU, the partitions), on
 
 Nothing of the virtual drive needed changing for any of it.
 
-**Findings** (T1 to T4, for a QS/400 handoff; each also in "What QS/400
-would have to change" below):
+**Findings** (T1 to T3 for a QS/400 handoff, each also in "What QS/400
+would have to change" below; T4 not yet anyone's):
 
 - **T1. The messages sent are not the catalogue's.** `INZTAP` sends
   `CPC6773 Volume PRT001 initialized on device TAP01.`; the catalogue
@@ -575,16 +578,27 @@ would have to change" below):
   `SAVLIB` to the ASCII-labelled volume ends with `CPF3770 0 objects
   saved from library SMALL`, not a refusal that names the volume's
   labels.
-- **T4. `INZTAP CHECK(*YES)` of a volume labelled in ASCII ends the
-  system.** QS/400's storage service is lost (`qsjob: storage service
-  lost` from every job), its IFS's xfs on `ublkb0` shuts down, `init`
-  exits and the kernel panics; the partition ends for a restart (exit
-  10) and QS/400 IPLs again. After that IPL it said `0 media device(s)
-  configured`, where it had 1 before, though the partition was the same
-  machine with the volume still loaded in its tape device. Twice in two
-  runs. `NEEDS-CODY`: QS/400's to find (its `tape::volume::inz`
-  `identify` and `scan_files` on a volume whose labels are ASCII); a
-  foreign volume should be refused, never end the system.
+- **T4. During `INZTAP CHECK(*YES)` of a volume labelled in ASCII
+  the partition's kernel failed, twice in two runs.** The first time
+  QS/400's storage service was lost (`qsjob: storage service lost` from
+  every job), its IFS's xfs on `ublkb0` shut down, `init` exited and the
+  kernel panicked, already tainted by a warning; the second time the
+  kernel took a fault in `rb_erase` and panicked. Each time the
+  partition ended for a restart (exit 10) and QS/400 IPLed again, the
+  first time saying `0 media device(s) configured` where it had said 1.
+  A program cannot make the kernel fault, so this is not QS/400's tape
+  code alone. What is not known is which of three it is: the guest
+  kernel's tape path (`st`, the SCSI midlayer) on the drive's answers
+  to a volume of ASCII labels; something in those answers (the drive
+  writes only into the guest's own buffers of each request, by the
+  descriptor chain's bounds, but what it says could still lead the
+  guest astray); or the intermittent faults of a partition's kernel
+  three levels deep, seen in a few runs of every phase since Phase 4 in
+  unrelated places (`docs/PHASE10.md`, "Faults of a partition's
+  kernel"), which happening twice at the same step makes unlikely.
+  `NEEDS-CODY`: run it two levels deep on the Dell, and against a real
+  drive passed through; whichever it is, a foreign volume should be
+  refused, never end the system.
 
 `pio-tape-volumes` checks the ASCII volume last, so every other
 outcome is recorded first, and fails there by T4; `pio-tape-save` and
@@ -653,9 +667,9 @@ service channel"), which Phase 7 pinned.
 For a QS/400 handoff after handoff 20, from Phase 10's Section 1
 (above, "Saving and restoring on tape"):
 
-9. **T4 first: a foreign volume must not end the system.** `INZTAP
-   CHECK(*YES)` of a volume with ASCII labels loses the storage service
-   and restarts the system. `NEEDS-CODY`.
+9. **T4, once it is known to be QS/400's** (above): `INZTAP
+   CHECK(*YES)` of a volume with ASCII labels ended the system twice.
+   `NEEDS-CODY`.
 10. **T2: a blank volume is a volume with no labels**, not a device
     error: `EIO` from `st` on the first read at the beginning of the
     volume, after `MTREW`, with the drive's sense BLANK CHECK, is the

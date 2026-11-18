@@ -805,7 +805,7 @@ pub fn volumes(run: &Run<'_>) -> Result<String, String> {
         dsptap(g, first, "PRT001")
     );
     // Unlabelled, then initialised by something else; the ANSI volume
-    // last, since QS/400's check of it ended the system once
+    // last, since the partition's kernel failed during its check
     // (`docs/QS400_GUEST.md`, finding T4). A failure says what came
     // before it.
     for (name, identifier) in [

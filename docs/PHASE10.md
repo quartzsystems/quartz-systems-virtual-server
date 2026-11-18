@@ -196,13 +196,32 @@ span two volumes past the early warning, the system unloading the first
 and the host mounting the second; a protected volume and one with no
 labels are refused as they should be. The drive needed no change.
 
-Four findings are QS/400's (T1 to T4 there, and items 9 to 12 of its
-list for a QS/400 handoff): `INZTAP CHECK(*YES)` of a volume labelled
-in ASCII ends the system (T4, `NEEDS-CODY`); a blank volume is a device
-error (T2); a save to another system's volume saves nothing without
-saying why (T3); the messages sent are not the catalogue's (T1).
-`pio-tape-volumes` is blocked by T4; question 36 waits on QS/400 for
-them (`docs/OPEN_QUESTIONS.md`).
+Three findings are QS/400's (T1 to T3 there, items 10 to 12 of its
+list for a QS/400 handoff): a blank volume is a device error (T2); a
+save to another system's volume saves nothing without saying why (T3);
+the messages sent are not the catalogue's (T1). The fourth, T4, is not
+yet anyone's: during `INZTAP CHECK(*YES)` of a volume labelled in ASCII
+the partition's kernel failed, twice, and whether the guest kernel's
+tape path, the drive's answers or the nesting caused it is
+`NEEDS-CODY`. `pio-tape-volumes` is blocked by T4; question 36 waits on
+QS/400 for T1 to T3 and on T4 being placed (`docs/OPEN_QUESTIONS.md`).
+
+### Faults of a partition's kernel
+
+A partition three levels deep (WSL's kernel, QEMU with KVM, the
+partition with KVM in the test host) has had its kernel fault now and
+then since Phase 4, in unrelated places each time: `msi_domain_get_virq`
+(Phase 4), `redirected_tty_write`, `clear_page_erms` (Phase 6),
+`rb_erase` (Phase 7), `native_flush_tlb_one_user` (Phase 8), and in
+Phase 10's runs `__rmqueue_pcplist`, `qdisc_alloc` and
+`update_entity_lag` while QS/400 brought its network links up, and the
+`rb_erase` of T4. Each was a suite that passed when run again. Faults in
+memory-management and scheduler structures at random places are what
+memory or TLB corruption looks like, and nothing of Phase 10 runs in a
+partition without physical I/O. The suspects are nested virtualization
+on WSL's Hyper-V and the VMM. `NEEDS-CODY`: QS/400 partitions IPLed
+many times over on the Dell, two levels deep, show which (carried from
+Phase 9).
 
 ## Conformance
 
@@ -256,8 +275,12 @@ What the runs found and what was done, beside Section 1's:
   it at each IPL before PID 1 binds it to `vfio-pci`
   (`docs/PHYSICALIO.md`, "At the IPL"); whether the QLE2562's driver
   logging in to the fabric for them matters.
-- `NEEDS-CODY`: QS/400's tape findings T1 to T4 (`docs/QS400_GUEST.md`),
-  T4 first.
+- `NEEDS-CODY`: T4 (`docs/QS400_GUEST.md`) run two levels deep on the
+  Dell and against a real drive passed through, to place it; QS/400's
+  findings T1 to T3 for its handoff.
+- `NEEDS-CODY`: the intermittent faults of a partition's kernel three
+  levels deep (above, "Faults of a partition's kernel") looked for on
+  the Dell, two levels deep.
 - Carried from Phase 9: an update, a pool disk pulled by hand, a host
   dump copied out, pairing at the Dell and QS/400 IPLed many times over
   (`docs/PHASE9.md`); the joint gate with QS/MC is open
@@ -265,8 +288,8 @@ What the runs found and what was done, beside Section 1's:
 
 ## Not done
 
-- `BLOCKED(phase10)`: `pio-tape-volumes` fails at its last step by
-  QS/400's T4 (`docs/QS400_GUEST.md`).
+- `BLOCKED(phase10)`: `pio-tape-volumes` fails at its last step by T4
+  (`docs/QS400_GUEST.md`), not yet placed.
 - `BLOCKED(phase10)`, carried: a VMM found running by a partition
   manager started again is watched by looking at its control group every
   25 ms (`docs/PARTD.md`); an adapter's unit numbers have no gaps
