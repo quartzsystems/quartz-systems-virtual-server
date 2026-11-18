@@ -270,6 +270,7 @@ unit kept, and the other is written again from it (`C2003020`,
 | `C2008015` | Virtual switch changed | its VLANs, MTU, name or uplink, with what changed; nothing that runs on it is stopped |
 | `C2008016` | Virtual switch deleted | with its name; no profile named it |
 | `C2008020` | Uplink interface has carrier again | with the switch and the interface's location code; outside traffic resumes |
+| `A2001005` | Host restarted after a kernel panic | the kernel panicked (an oops is a panic); its last messages, kept in the firmware's variables, were moved to `/data/log/panics` at this IPL and are in the next host dump, with why it panicked (`docs/SECURITY.md`) |
 | `A2001030` | A/B record not valid | no copy of the record is valid; a new one is written for the slot booted |
 | `A2001035` | Pending slot not confirmed | the pending slot did not confirm on its IPL; this IPL is on the default and the pending field is cleared |
 | `A2001040` | Data file system not mounted | `/data` could not be mounted, with the reason; state is in memory only. Nothing is reformatted |

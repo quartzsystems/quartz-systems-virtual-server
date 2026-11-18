@@ -29,7 +29,7 @@ fn nodev() -> MountFlags {
 
 use loadsource::boot::EFIVARS;
 
-fn kernel_table() -> [Mount; 5] {
+fn kernel_table() -> [Mount; 6] {
     [
         Mount {
             source: "proc",
@@ -58,6 +58,14 @@ fn kernel_table() -> [Mount; 5] {
             fs: "tmpfs",
             flags: nodev(),
             data: Some(c"mode=0755"),
+        },
+        // What the kernel kept of a panic, in the firmware's variables.
+        Mount {
+            source: "pstore",
+            at: "/sys/fs/pstore",
+            fs: "pstore",
+            flags: nodev(),
+            data: None,
         },
         // The firmware boot entries the slot is chosen by.
         Mount {
@@ -105,6 +113,29 @@ pub fn host_group() -> Result<(), String> {
     let dir = Path::new("/sys/fs/cgroup").join(resource::cgroup::HOST);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     std::fs::write(dir.join("cgroup.procs"), "1").map_err(|e| format!("{}: {e}", dir.display()))
+}
+
+/// The root, where every program is, read-only from here on: every file
+/// system that can be written is mounted `noexec`, so nothing written is
+/// ever run. Each of `mount_points`, a directory services make mount
+/// points in, is first given a small `tmpfs` of its own. Called once
+/// every other mount point exists, before any service.
+pub fn root_read_only(mount_points: &[&'static str]) -> Result<(), String> {
+    let table: Vec<Mount> = mount_points
+        .iter()
+        .map(|at| Mount {
+            source: "tmpfs",
+            at,
+            fs: "tmpfs",
+            flags: nodev(),
+            data: Some(c"mode=0755,size=64k"),
+        })
+        .collect();
+    if let Some((at, e)) = mount_all(&table).into_iter().next() {
+        return Err(format!("{at}: {e}"));
+    }
+    mount_remount("/", MountFlags::RDONLY.union(MountFlags::NODEV), c"")
+        .map_err(|e| format!("/: {e}"))
 }
 
 /// Mount the xfs on `device` at `at`.

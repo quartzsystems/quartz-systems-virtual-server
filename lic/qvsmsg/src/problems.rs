@@ -100,6 +100,7 @@ const INSTALLER: &str =
 
 /// Every attention and fatal code of the host, in order.
 pub const CONDITIONS: &[Condition] = &[
+    opens("A2001005", &PRB_HOST_PANICKED, &[], &[]),
     opens("A2001030", &PRB_RECORD, &[], &[]),
     opens("A2001035", &PRB_SLOT_FELL_BACK, &[CODE_SLOT], &[]),
     opens("A2001040", &PRB_DATA_NOT_MOUNTED, &[], &["C2001040"]),

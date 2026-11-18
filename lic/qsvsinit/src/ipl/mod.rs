@@ -20,6 +20,7 @@ mod install;
 pub mod memory;
 #[cfg(target_os = "linux")]
 pub mod mounts;
+pub mod panics;
 #[cfg(target_os = "linux")]
 mod state;
 pub mod update;
@@ -185,6 +186,28 @@ mod on_host {
         match clock::set_from_rtc() {
             Ok(secs) => host.post(&refcode::CLOCK_SET, &Zone::UTC.display(secs)),
             Err(e) => host.post(&refcode::CLOCK_NOT_SET, &e),
+        }
+    }
+
+    /// A panic before this IPL: what the kernel kept of it moved to
+    /// `/data/log/panics` and posted.
+    fn panics(host: &mut Host) {
+        if !host.data_mounted {
+            return;
+        }
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let dir = Path::new(release::DATA_DIR).join("log").join("panics");
+        if let Some((why, files)) = crate::ipl::panics::take(
+            Path::new(crate::ipl::panics::PSTORE),
+            &dir,
+            &format!("{secs:011}"),
+        ) {
+            host.post(
+                &refcode::HOST_PANICKED,
+                &format!("{why}; {files} record(s) in {}", dir.display()),
+            );
         }
     }
 
@@ -417,6 +440,7 @@ mod on_host {
         storage(&mut host);
         data(&mut host, &sources);
         clock(&mut host);
+        panics(&mut host);
         update_state(&mut host);
         let store = Store::at(APPLIANCE.state_dir());
         seed(&mut host, &store);
@@ -429,6 +453,9 @@ mod on_host {
         #[cfg(test_hooks)]
         crate::hooks::guest_soak(&mut host);
         identity(&mut host);
+        if let Err(e) = mounts::root_read_only(&[release::POOLS_DIR]) {
+            host.line(&format!("the root stays writable: {e}"));
+        }
         services(&mut host);
         host.run()
     }

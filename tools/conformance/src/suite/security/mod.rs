@@ -6,10 +6,16 @@
 //!
 //! - [`vmm`]: a VMM confined: what a running one can see and call, and
 //!   that one which tries a forbidden call ends alone.
+//! - [`panic`]: a host whose kernel panics: restarted, the panic kept,
+//!   posted and in the next host dump.
 
+pub mod panic;
 pub mod vmm;
 
 use super::base::SuiteFn;
 
 /// The suites.
-pub const SUITES: &[(&str, SuiteFn)] = &[("vmm-confined", vmm::confined)];
+pub const SUITES: &[(&str, SuiteFn)] = &[
+    ("vmm-confined", vmm::confined),
+    ("host-panic", panic::panicked),
+];

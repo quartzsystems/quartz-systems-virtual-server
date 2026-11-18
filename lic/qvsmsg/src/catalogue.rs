@@ -1066,6 +1066,10 @@ catalogue! {
     PRB_VMM_FORBIDDEN = "QVS5155",
         "The VMM of partition &1 was ended by its confinement: &2.",
         "It made a system call a VMM never needs, which is what a system that took over its VMM would do; nothing outside the partition was reached. Keep the partition's dump and a host dump for the release's supplier before activating it again.";
+    /// A2001005.
+    PRB_HOST_PANICKED = "QVS5156",
+        "The host restarted after its kernel panicked: &1.",
+        "The kernel's last messages were kept in the firmware and moved to the data file system; the next host dump holds them. Take a host dump to the release's supplier.";
     /// No host dump of that name.
     HOST_DUMP_MISSING = "QVS5201",
         "There is no host dump &1.",

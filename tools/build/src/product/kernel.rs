@@ -151,6 +151,30 @@ pub const REQUIRED_Y: &[&str] = &[
     "BLK_DEV_SR",
     "USB_STORAGE",
     "USB_UAS",
+    // Hardening (Phase 11, docs/SECURITY.md).
+    "SECURITY_DMESG_RESTRICT",
+    "HARDENED_USERCOPY",
+    "FORTIFY_SOURCE",
+    "SLAB_FREELIST_RANDOM",
+    "SLAB_FREELIST_HARDENED",
+    "RANDOM_KMALLOC_CACHES",
+    "LIST_HARDENED",
+    "BUG_ON_DATA_CORRUPTION",
+    "SCHED_STACK_END_CHECK",
+    "INIT_ON_ALLOC_DEFAULT_ON",
+    "RANDOMIZE_KSTACK_OFFSET_DEFAULT",
+    "ZERO_CALL_USED_REGS",
+    "PANIC_ON_OOPS",
+    "PSTORE",
+    "EFI_VARS_PSTORE",
+    "SECURITY_YAMA",
+    "LEGACY_VSYSCALL_NONE",
+    "STRICT_KERNEL_RWX",
+    "STACKPROTECTOR_STRONG",
+    "VMAP_STACK",
+    "RANDOMIZE_BASE",
+    "RANDOMIZE_MEMORY",
+    "CPU_MITIGATIONS",
 ];
 
 /// Symbols QS/VS must not have `=y`, past the baseline.
@@ -171,6 +195,30 @@ pub const REQUIRED_N: &[&str] = &[
     "MEDIA_SUPPORT",
     // PID 1 sets the clock from the RTC; the kernel does not.
     "RTC_HCTOSYS",
+    // Hardening: what a hypervisor host never uses (docs/SECURITY.md).
+    // No modules exist and none is added.
+    "MODULES",
+    "SLAB_MERGE_DEFAULT",
+    "KEXEC",
+    "CRASH_DUMP",
+    "HIBERNATION",
+    "DEVMEM",
+    "DEVPORT",
+    "PROC_KCORE",
+    "X86_IOPL_IOPERM",
+    "MODIFY_LDT_SYSCALL",
+    "IA32_EMULATION",
+    "LEGACY_TIOCSTI",
+    "LDISC_AUTOLOAD",
+    "BINFMT_MISC",
+    "KPROBES",
+    "UPROBES",
+    "EFI_CUSTOM_SSDT_OVERLAYS",
+    "MAGIC_SYSRQ",
+    "SECURITY_SELINUX",
+    "USER_NS",
+    "BPF_SYSCALL",
+    "USERFAULTFD",
 ];
 
 #[cfg(test)]
@@ -283,6 +331,23 @@ mod tests {
         "NET_CLS_FLOWER",
         "NET_ACT_GACT",
     ];
+
+    #[test]
+    fn the_host_is_hardened_and_its_log_is_root_s() {
+        for sym in [
+            "SECURITY_DMESG_RESTRICT",
+            "PANIC_ON_OOPS",
+            "EFI_VARS_PSTORE",
+            "INIT_ON_ALLOC_DEFAULT_ON",
+        ] {
+            assert!(REQUIRED_Y.contains(&sym), "{sym}");
+        }
+        for sym in ["MODULES", "DEVMEM", "KEXEC", "IA32_EMULATION", "USER_NS"] {
+            assert!(REQUIRED_N.contains(&sym), "{sym}");
+        }
+        // The command line is the locked one (CLAUDE.md).
+        assert_eq!(CMDLINE, "console=ttyS0,115200 console=tty0 panic=-1 quiet");
+    }
 
     #[test]
     fn the_fragment_has_512_processors() {

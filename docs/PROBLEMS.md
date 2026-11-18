@@ -43,6 +43,7 @@ posted with.
 <!-- problems -->
 | Code | Opens | Description | Message | Resources | Cleared by |
 |---|---|---|---|---|---|
+| `A2001005` | yes | The host restarted after its kernel panicked: &1. | `QVS5156` | the host | a person only |
 | `A2001030` | yes | The A/B record of the load source was not valid: &1. | `QVS5101` | the host | a person only |
 | `A2001035` | yes | Code slot &1 did not confirm, and the host went back to the other slot: &2. | `QVS5102` | code-slot | a person only |
 | `A2001040` | yes | The data file system was not mounted: &1. | `QVS5103` | the host | `C2001040` |
