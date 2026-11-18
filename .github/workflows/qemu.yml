@@ -19,6 +19,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The nightly runs the whole suite through this workflow.
+  workflow_call:
   workflow_dispatch:
     inputs:
       suites:
@@ -106,8 +108,36 @@ jobs:
           rm -rf "$RUNNER_TEMP/qs400" "$RUNNER_TEMP/qs400-target"
 
       - run: cargo run -q -p build -- all
+      # Release-style keys for the update suites (docs/PHASE11.md,
+      # Section 6): the test image trusts the second beside its own;
+      # the third it does not.
+      - name: Test keys
+        run: |
+          cargo run -q -p build -- keys "$RUNNER_TEMP/keys/k2"
+          cargo run -q -p build -- keys "$RUNNER_TEMP/keys/k3"
       - run: cargo run -q -p build -- all --test-image
+        env:
+          QSVS_TRUSTED_KEYS: ${{ runner.temp }}/keys/k2/qsvs-release.pub
       - run: cargo run -q -p build -- test --media iso
+      # The other release the update suites install, and the one whose
+      # partition definitions are of schema 2: V1R0M1, signed by the
+      # test image's key, built in a target of their own.
+      - name: Update images of V1R0M1
+        env:
+          QSVS_TARGET_DIR: ${{ runner.temp }}/next
+          QSVS_RELEASE: V1R0M1
+          QSVS_FIXES: QV00001
+        run: |
+          export QSVS_SIGNING_KEY="$PWD/target/keys/dev.ed25519"
+          cargo run -q -p build -- all --test-image
+          cargo run -q -p build -- update --test-image
+          cp "$(ls -t "$QSVS_TARGET_DIR"/test-image/images/*-update-*.upd | head -1)" next.upd
+          rm -f "$QSVS_TARGET_DIR"/test-image/images/*-update-*.upd
+          QSVS_TEST_SCHEMA=1 cargo run -q -p build -- all --test-image
+          QSVS_TEST_SCHEMA=1 cargo run -q -p build -- update --test-image
+          cp "$(ls -t "$QSVS_TARGET_DIR"/test-image/images/*-update-*.upd | head -1)" schema.upd
+          cp -r "$RUNNER_TEMP/keys" keys
+          rm -rf "$QSVS_TARGET_DIR"
 
       # What the shards need: the images and the files that point at
       # them, at the paths they were built at, and the guest image.
@@ -119,8 +149,8 @@ jobs:
           done | sort -u)
           cp --sparse=always "$RUNNER_TEMP/qs400-guest.img" qs400-guest.img
           cp "$RUNNER_TEMP/qs400-install.iso" qs400-install.iso
-          tar --sparse -cf - $files qs400-guest.img qs400-install.iso | zstd -T0 -3 -o "$RUNNER_TEMP/images.tar.zst"
-          rm qs400-guest.img qs400-install.iso
+          tar --sparse -cf - $files qs400-guest.img qs400-install.iso next.upd schema.upd keys | zstd -T0 -3 -o "$RUNNER_TEMP/images.tar.zst"
+          rm -rf qs400-guest.img qs400-install.iso next.upd schema.upd keys
           ls -lh "$RUNNER_TEMP/images.tar.zst"
       - uses: actions/upload-artifact@v4
         with:
@@ -190,6 +220,13 @@ jobs:
           mv qs400-install.iso "$RUNNER_TEMP/qs400-install.iso"
           echo "QSVS_QS400_IMAGE=$RUNNER_TEMP/qs400-guest.img" >> "$GITHUB_ENV"
           echo "QSVS_QS400_ISO=$RUNNER_TEMP/qs400-install.iso" >> "$GITHUB_ENV"
+          mv next.upd schema.upd keys "$RUNNER_TEMP/"
+          {
+            echo "QSVS_UPDATE_IMAGE=$RUNNER_TEMP/next.upd"
+            echo "QSVS_UPDATE_SCHEMA_IMAGE=$RUNNER_TEMP/schema.upd"
+            echo "QSVS_UPDATE_KEY2=$RUNNER_TEMP/keys/k2/qsvs-release.ed25519"
+            echo "QSVS_UPDATE_KEY3=$RUNNER_TEMP/keys/k3/qsvs-release.ed25519"
+          } >> "$GITHUB_ENV"
           rm "$RUNNER_TEMP/images.tar.zst"
           df -h /
       - name: The suites

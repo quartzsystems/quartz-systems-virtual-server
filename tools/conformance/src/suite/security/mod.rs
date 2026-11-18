@@ -20,10 +20,13 @@ pub mod vmm;
 
 use super::base::SuiteFn;
 
+/// The suites that need a release built with Secure Boot keys
+/// (`build release`): run when named, never in `test`'s whole run.
+pub const RELEASE_SUITES: &[(&str, SuiteFn)] = &[("secure-boot", secureboot::secure_boot)];
+
 /// The suites.
 pub const SUITES: &[(&str, SuiteFn)] = &[
     ("vmm-confined", vmm::confined),
     ("host-panic", panic::panicked),
-    ("secure-boot", secureboot::secure_boot),
     ("memory-clean", memory::clean),
 ];

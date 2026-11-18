@@ -222,6 +222,7 @@ impl Suite {
         if let Some(name) = only
             && !names().contains(&name)
             && !soak::SUITES.iter().any(|s| s.0 == name)
+            && !security::RELEASE_SUITES.iter().any(|s| s.0 == name)
         {
             return Err(HarnessError::Setup {
                 step: "test",
@@ -244,7 +245,12 @@ impl Suite {
             .chain(physio::SUITES)
             .chain(security::SUITES)
             // The long runs only when named.
-            .chain(soak::SUITES.iter().filter(|s| only == Some(s.0)));
+            .chain(soak::SUITES.iter().filter(|s| only == Some(s.0)))
+            .chain(
+                security::RELEASE_SUITES
+                    .iter()
+                    .filter(|s| only == Some(s.0)),
+            );
         for (name, suite) in suites {
             if wanted(name) {
                 done(vec![self.base_suite(name, *suite)?]);

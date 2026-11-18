@@ -19,6 +19,8 @@ qsi: qsi-listen qsi-pairing qsi-trust qsi-families qsi-streams qsi-log qsi-two-c
 qsi-flows: qsi-end-to-end qsi-events qsi-power qsi-qsictl
 servicing: svc-problems svc-problem-kill svc-problem-pool svc-processor svc-hostdump svc-tools svc-qsictl svc-away svc-capture
 update: svc-update svc-update-back svc-update-mirror svc-update-power svc-update-refused svc-update-rollback
+update-keys: svc-update-migrate svc-update-keys
 physio: pio-nvme pio-refused pio-group pio-iommu-off pio-held pio-reset pio-restart pio-isolation pio-hostile pio-tape-double pio-entitlement
 physio-installed: pio-tools pio-qsi
 physio-tape: pio-tape-save pio-tape-volumes pio-tape-span
+security: vmm-confined host-panic memory-clean

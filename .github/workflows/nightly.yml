@@ -1,0 +1,175 @@
+# Copyright (C), 2026 Quartz Systems. Some rights reserved. This work is
+# licensed under the terms of the MIT license which can be found in the
+# root directory of this project.
+#
+# QS/VS nightly (docs/PHASE11.md, Section 12): the whole QEMU suite
+# (qemu.yml, shard by shard), the release built twice from clean and
+# compared with release-style keys made for the run, its stream index
+# verified and its UKIs started under Secure Boot, the update up and
+# down, a short run of every fuzz target, and an hour's soak.
+#
+# Whether GitHub's hosted runners nest deeply enough for the partition
+# suites is unseen (docs/OPEN_QUESTIONS.md item 6). The choice of runner
+# is one line: the repository variable QSVS_NIGHTLY_RUNS_ON, a JSON
+# value for `runs-on`. Unset, the hosted runner; for the Dell set up as
+# a self-hosted runner:
+#
+#   gh variable set QSVS_NIGHTLY_RUNS_ON --body '["self-hosted","linux","kvm"]'
+#
+# (qemu.yml's shards follow its own runs-on; on the self-hosted runner
+# run it with the same change there.)
+
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  suites:
+    name: every suite
+    uses: ./.github/workflows/qemu.yml
+
+  release:
+    name: release, twice, compared; stream; Secure Boot
+    runs-on: ${{ fromJSON(vars.QSVS_NIGHTLY_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/qsvs-host
+        with:
+          images: "true"
+      # Release-style keys made for this run: never the release's.
+      - name: Keys for the run
+        run: cargo run -q -p build -- keys "$RUNNER_TEMP/keys"
+      - name: Refused without release keys
+        run: |
+          if cargo run -q -p build -- release "$(cat VERSION)" --no-compare; then
+            echo "::error::build release signed without release keys"
+            exit 1
+          fi
+      - name: The release, twice from clean
+        env:
+          QSVS_SIGNING_KEY: ${{ runner.temp }}/keys/qsvs-release.ed25519
+          QSVS_SB_KEY: ${{ runner.temp }}/keys/qsvs-db.key
+          QSVS_SB_CERT: ${{ runner.temp }}/keys/qsvs-db.cer
+        run: cargo run -q -p build -- release "$(cat VERSION)"
+      - name: The stream
+        env:
+          QSVS_SIGNING_KEY: ${{ runner.temp }}/keys/qsvs-release.ed25519
+        run: |
+          vrm=$(ls target/release | head -1)
+          cargo run -q -p build -- stream add "target/release/$vrm" "$RUNNER_TEMP/stream"
+          cargo run -q -p build -- stream verify "$RUNNER_TEMP/stream"
+      - name: Secure Boot
+        env:
+          QSVS_SB_CERT: ${{ runner.temp }}/keys/qsvs-db.cer
+        run: |
+          cargo run -q -p build -- all --test-image
+          cargo run -q -p build -- test --suite secure-boot
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            target/release/
+            target/logs/
+          retention-days: 7
+
+  update:
+    name: update up and down
+    runs-on: ${{ fromJSON(vars.QSVS_NIGHTLY_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/qsvs-host
+        with:
+          images: "true"
+      - name: Keys
+        run: |
+          cargo run -q -p build -- keys "$RUNNER_TEMP/keys/k2"
+          cargo run -q -p build -- keys "$RUNNER_TEMP/keys/k3"
+      - run: cargo run -q -p build -- all --test-image
+        env:
+          QSVS_TRUSTED_KEYS: ${{ runner.temp }}/keys/k2/qsvs-release.pub
+      - run: cargo run -q -p build -- update --test-image
+      - name: V1R0M1, and V1R0M1 with the definition's schema 2
+        env:
+          QSVS_TARGET_DIR: ${{ runner.temp }}/next
+          QSVS_RELEASE: V1R0M1
+          QSVS_FIXES: QV00001
+        run: |
+          export QSVS_SIGNING_KEY="$PWD/target/keys/dev.ed25519"
+          cargo run -q -p build -- all --test-image
+          cargo run -q -p build -- update --test-image
+          cp "$(ls -t "$QSVS_TARGET_DIR"/test-image/images/*-update-*.upd | head -1)" "$RUNNER_TEMP/next.upd"
+          rm -f "$QSVS_TARGET_DIR"/test-image/images/*-update-*.upd
+          QSVS_TEST_SCHEMA=1 cargo run -q -p build -- all --test-image
+          QSVS_TEST_SCHEMA=1 cargo run -q -p build -- update --test-image
+          cp "$(ls -t "$QSVS_TARGET_DIR"/test-image/images/*-update-*.upd | head -1)" "$RUNNER_TEMP/schema.upd"
+      - name: The update suites
+        env:
+          QSVS_UPDATE_IMAGE: ${{ runner.temp }}/next.upd
+          QSVS_UPDATE_SCHEMA_IMAGE: ${{ runner.temp }}/schema.upd
+          QSVS_UPDATE_KEY2: ${{ runner.temp }}/keys/k2/qsvs-release.ed25519
+          QSVS_UPDATE_KEY3: ${{ runner.temp }}/keys/k3/qsvs-release.ed25519
+        run: |
+          set -o pipefail
+          failed=()
+          for suite in svc-update svc-update-back svc-update-mirror svc-update-migrate svc-update-keys; do
+            cargo run -q -p build -- test --suite "$suite" || failed+=("$suite")
+          done
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "::error::failed: ${failed[*]}"
+            exit 1
+          fi
+
+  fuzz:
+    name: every fuzz target, five minutes
+    runs-on: ${{ fromJSON(vars.QSVS_NIGHTLY_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/qsvs-host
+      - run: cargo run -q -p build -- fuzz --all --secs 300 --jobs 4
+      - name: Findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-findings
+          path: target/fuzz/crashes/
+          if-no-files-found: ignore
+
+  soak:
+    name: an hour's soak
+    runs-on: ${{ fromJSON(vars.QSVS_NIGHTLY_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/qsvs-host
+        with:
+          images: "true"
+      - run: cargo run -q -p build -- all --test-image
+      - name: The soak
+        env:
+          QSVS_SOAK_MINUTES: "60"
+          QSVS_SOAK_QS400: "0"
+          QSVS_SOAK_OUT: ${{ runner.temp }}/soak
+        run: cargo run -q -p build -- test --suite soak-faults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soak
+          path: ${{ runner.temp }}/soak
+          if-no-files-found: ignore
