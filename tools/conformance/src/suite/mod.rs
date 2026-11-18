@@ -16,6 +16,7 @@ pub mod network;
 pub mod partition;
 pub mod physio;
 pub mod qsi;
+pub mod security;
 pub mod service;
 pub mod servicing;
 pub mod slotb;
@@ -140,6 +141,7 @@ pub fn names() -> Vec<&'static str> {
     names.extend(qsi::SUITES.iter().map(|s| s.0));
     names.extend(servicing::SUITES.iter().map(|s| s.0));
     names.extend(physio::SUITES.iter().map(|s| s.0));
+    names.extend(security::SUITES.iter().map(|s| s.0));
     names
 }
 
@@ -239,6 +241,7 @@ impl Suite {
             .chain(qsi::SUITES)
             .chain(servicing::SUITES)
             .chain(physio::SUITES)
+            .chain(security::SUITES)
             // The long runs only when named.
             .chain(soak::SUITES.iter().filter(|s| only == Some(s.0)));
         for (name, suite) in suites {
@@ -470,7 +473,8 @@ mod tests {
         // Phase 0's, Phase 1's ten, Phase 2's thirteen and the two
         // beside them, Phase 3's ten (its eleventh, the fuzz targets,
         // is the build tool's), Phase 4's sixteen, and Phase 5's (its
-        // fuzz targets and the earlier suites are the build tool's).
+        // fuzz targets and the earlier suites are the build tool's),
+        // and since, each phase's; Phase 11's long runs are named alone.
         assert_eq!(
             names().len(),
             1 + 10
@@ -484,7 +488,9 @@ mod tests {
                 + qsi::SUITES.len()
                 + servicing::SUITES.len()
                 + physio::SUITES.len()
+                + security::SUITES.len()
         );
+        assert!(soak::SUITES.iter().all(|s| !names().contains(&s.0)));
         assert_eq!(qsi::SUITES.len(), 13);
         assert_eq!(service::SUITES.len(), 17);
         assert_eq!(storage::SUITES.len(), 17);

@@ -8,6 +8,9 @@
 use std::time::Duration;
 
 use supervise::Service;
+use supervise::table::Caps;
+#[allow(clippy::wildcard_imports)]
+use supervise::table::caps::*;
 
 /// What a base service is given to say it is ready.
 const READY_WITHIN: Duration = Duration::from_secs(10);
@@ -21,6 +24,14 @@ pub const STGD: Service = Service {
     order: 5,
     needs: &[],
     ready_within: Duration::from_secs(30),
+    caps: Caps::Only(&[
+        SYS_ADMIN,
+        SYS_RAWIO,
+        IPC_LOCK,
+        SYS_RESOURCE,
+        DAC_OVERRIDE,
+        FOWNER,
+    ]),
 };
 
 /// The log service.
@@ -31,6 +42,7 @@ const LOGD: Service = Service {
     order: 10,
     needs: &[],
     ready_within: READY_WITHIN,
+    caps: Caps::Only(&[SYSLOG]),
 };
 
 /// The problem service: after the log service, whose history it
@@ -42,6 +54,7 @@ pub const PROBD: Service = Service {
     order: 12,
     needs: &[],
     ready_within: READY_WITHIN,
+    caps: Caps::Only(&[CHOWN]),
 };
 
 /// The management network and time.
@@ -52,6 +65,7 @@ const NETD: Service = Service {
     order: 20,
     needs: &[],
     ready_within: READY_WITHIN,
+    caps: Caps::Only(&[NET_ADMIN, NET_RAW, NET_BIND_SERVICE, SYS_TIME]),
 };
 
 /// The pool service: the storage pools, their virtual disks and the
@@ -66,6 +80,15 @@ pub const POOLD: Service = Service {
     needs: &[],
     // Assembling a pool reads its labels and may repair a parity set.
     ready_within: Duration::from_secs(120),
+    caps: Caps::Only(&[
+        SYS_ADMIN,
+        SYS_RAWIO,
+        IPC_LOCK,
+        SYS_RESOURCE,
+        DAC_OVERRIDE,
+        FOWNER,
+        CHOWN,
+    ]),
 };
 
 /// The switch service: the virtual switches and the partitions' ports.
@@ -80,6 +103,7 @@ pub const VSWITCHD: Service = Service {
     order: 23,
     needs: &[],
     ready_within: Duration::from_secs(30),
+    caps: Caps::Only(&[NET_ADMIN, NET_RAW, CHOWN]),
 };
 
 /// The partition manager: it owns every partition's VMM. Its
@@ -91,6 +115,20 @@ pub const PARTD: Service = Service {
     order: 25,
     needs: &[],
     ready_within: Duration::from_secs(30),
+    caps: Caps::Only(&[
+        CHOWN,
+        DAC_OVERRIDE,
+        FOWNER,
+        KILL,
+        SETGID,
+        SETUID,
+        SETPCAP,
+        IPC_LOCK,
+        SYS_RAWIO,
+        SYS_ADMIN,
+        SYS_NICE,
+        SYS_RESOURCE,
+    ]),
 };
 
 /// The Service Tools console, on the display and the serial port.
@@ -101,6 +139,7 @@ pub const TOOLS: Service = Service {
     order: 30,
     needs: &[],
     ready_within: READY_WITHIN,
+    caps: Caps::Only(&[SYS_TTY_CONFIG]),
 };
 
 /// The update service: staging, installing and activating code
@@ -113,6 +152,7 @@ pub const UPDD: Service = Service {
     order: 32,
     needs: &[],
     ready_within: READY_WITHIN,
+    caps: Caps::Only(&[CHOWN, SYS_ADMIN, SYS_RAWIO]),
 };
 
 /// The QSI host server: the one listener, last, so every service it
@@ -124,6 +164,7 @@ pub const QSID: Service = Service {
     order: 35,
     needs: &[],
     ready_within: READY_WITHIN,
+    caps: Caps::Only(&[SETUID, SETGID, SETPCAP, CHOWN, FOWNER]),
 };
 
 /// The base services.

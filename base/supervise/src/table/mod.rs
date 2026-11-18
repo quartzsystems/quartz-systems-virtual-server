@@ -4,10 +4,12 @@
 
 //! The service table: fixed, compiled into PID 1.
 
+pub mod caps;
 mod policy;
 
 use std::time::Duration;
 
+pub use caps::Caps;
 pub use policy::{Policy, Verdict};
 
 /// One service.
@@ -25,6 +27,8 @@ pub struct Service {
     pub needs: &'static [&'static str],
     /// How long it may take to say it is ready.
     pub ready_within: Duration,
+    /// The capabilities it keeps ([`caps`]).
+    pub caps: Caps,
 }
 
 /// Why a table is not one.
@@ -66,6 +70,7 @@ mod tests {
             order,
             needs,
             ready_within: Duration::from_secs(10),
+            caps: Caps::Only(&[]),
         }
     }
 

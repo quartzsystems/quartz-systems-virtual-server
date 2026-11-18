@@ -209,7 +209,9 @@ impl Supervisor {
                 .stderr(Stdio::from(entry.err.writer()?));
             // PID 1 blocks the signals it takes from a descriptor; a
             // service must not inherit that, or SIGTERM cannot end it.
-            let child = crate::signal::unblocked(&mut command).spawn()?;
+            crate::signal::unblocked(&mut command);
+            crate::signal::keeping(&mut command, service.caps);
+            let child = command.spawn()?;
             // PID 1 reaps every child itself; the handle is not waited on.
             Ok::<_, io::Error>((child.id(), ready_read))
         })();

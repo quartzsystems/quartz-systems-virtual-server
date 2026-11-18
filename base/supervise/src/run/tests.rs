@@ -26,6 +26,7 @@ const fn sh(
         order,
         needs,
         ready_within: Duration::from_secs(5),
+        caps: crate::table::Caps::All,
     }
 }
 
@@ -304,6 +305,7 @@ fn a_missing_binary_is_a_failure_not_a_panic() {
         order: 1,
         needs: &[],
         ready_within: Duration::from_secs(1),
+        caps: crate::table::Caps::All,
     }];
     let mut d = Driver::new(&TABLE);
     d.until("gave up", |s| {

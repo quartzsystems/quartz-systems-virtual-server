@@ -340,7 +340,7 @@ fn partition(rest: &str) -> Vec<String> {
     let (verb, id) = (words.next().unwrap_or(""), words.next().unwrap_or(""));
     let argument = words.next().unwrap_or("");
     let Ok(id) = id.parse::<u32>() else {
-        return error("partition pid|kill|send <id> ...");
+        return error("partition pid|kill|send|control <id> ...");
     };
     let pid = || -> Option<Pid> {
         let all = relay::client().list().ok()?;
@@ -377,7 +377,23 @@ fn partition(rest: &str) -> Vec<String> {
             std::os::unix::net::UnixStream::connect(relay::console_socket(id))
                 .and_then(|mut console| console.write_all(format!("{argument}\n").as_bytes())),
         ),
-        other => error(format!("partition pid|kill|send, not {other}")),
+        "control" => {
+            let path = relay::console_socket(id).with_file_name("control.sock");
+            let answer = std::os::unix::net::UnixStream::connect(path).and_then(|mut s| {
+                // The byte that carries no descriptor, then the line.
+                s.write_all(&[0])?;
+                s.write_all(format!("{argument}\n").as_bytes())?;
+                s.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
+                let mut out = String::new();
+                let _ = std::io::Read::read_to_string(&mut s, &mut out);
+                Ok(out)
+            });
+            match answer {
+                Ok(text) => vec![format!("{} {}", word::OK, text.trim())],
+                Err(e) => error(e),
+            }
+        }
+        other => error(format!("partition pid|kill|send|control, not {other}")),
     }
 }
 

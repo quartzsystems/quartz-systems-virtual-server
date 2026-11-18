@@ -38,6 +38,7 @@ pub const FLAKY: Service = Service {
     order: 80,
     needs: &[],
     ready_within: Duration::from_secs(10),
+    caps: supervise::table::Caps::Only(&[]),
 };
 
 /// The harness's way to the control socket: the second serial port.
@@ -48,6 +49,7 @@ pub const CHANNEL: Service = Service {
     order: 90,
     needs: &[],
     ready_within: Duration::from_secs(10),
+    caps: supervise::table::Caps::All,
 };
 
 /// What the partitions say, relayed to the serial port for the harness.
@@ -58,6 +60,7 @@ pub const PARTITION: Service = Service {
     order: 95,
     needs: &[],
     ready_within: Duration::from_secs(10),
+    caps: supervise::table::Caps::Only(&[]),
 };
 
 /// Whether the hook `name` is on for this IPL.

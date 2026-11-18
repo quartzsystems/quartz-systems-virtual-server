@@ -94,6 +94,38 @@ pub fn unblocked(command: &mut Command) -> &mut Command {
     }
 }
 
+/// Have `command`'s child keep only `caps`: every other capability is
+/// taken from its bounding set, and it is given no new privileges, so
+/// the program it becomes holds what it keeps and nothing more.
+pub fn keeping(command: &mut Command, caps: crate::table::Caps) -> &mut Command {
+    if caps == crate::table::Caps::All {
+        return command;
+    }
+    // SAFETY: the closure runs in the child between fork and exec and
+    // calls only prctl, which is async-signal-safe, with integers.
+    unsafe {
+        command.pre_exec(move || {
+            for cap in 0..64u8 {
+                if caps.keeps(cap) {
+                    continue;
+                }
+                if libc::prctl(libc::PR_CAPBSET_DROP, libc::c_ulong::from(cap), 0, 0, 0) != 0 {
+                    let error = io::Error::last_os_error();
+                    // Past the last capability the kernel has.
+                    if error.raw_os_error() == Some(libc::EINVAL) {
+                        break;
+                    }
+                    return Err(error);
+                }
+            }
+            if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::os::unix::process::ExitStatusExt;
