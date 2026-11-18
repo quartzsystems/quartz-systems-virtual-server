@@ -57,9 +57,35 @@ slot that does not confirm in 15 minutes rolls back
 connection but DHCP, DNS and NTP. A console reads the stream's signed
 index to offer an update (`docs/RELEASING.md`).
 
+## The kernel
+
+Linux 6.18.55, the same pin as QS/400's at the commit this release is
+built on, unchanged by release engineering; built for up to 512
+processors. Its hardening (`docs/SECURITY.md`) is new in this release.
+
 ## Known limits
 
-Filled in at the end of Phase 11 (`docs/PHASE11.md`).
+- **Hardware.** Everything has run under QEMU, nested; the first real
+  machine's qualification is `docs/QUALIFICATION.md`.
+- **Resources.** A partition's processors and memory change only at its
+  activation; a running shared partition's entitlement can change.
+  Cores are given without regard to sockets: on a machine of two
+  sockets a partition's cores and its memory may be on different NUMA
+  nodes. Memory is in 2 MB pages only.
+- **Devices.** No virtual functions, no media changer, no display
+  adapter given to a partition. A tape drive has one holder at a time.
+- **Network.** The management interface is never a switch's uplink:
+  a host with one network port has internal switches only.
+- **Management.** Two consoles paired at most. Time zones are fixed
+  offsets from UTC.
+- **QS/400.** Its installer, started from installation media (IPL
+  source D) onto a blank disk, has no console mode yet and draws on
+  the serial port alone (`A6005008`); the installed system has its
+  console. A QS/400 older than V1R1M0 has no service channel
+  (above).
+- **Limits.** 64 partitions; a profile's 8 SCSI adapters of 64 units
+  and 8 Ethernet adapters of 32 tagged VLANs; 16 switches of 256 VLANs
+  (`docs/OPERATIONS.md`).
 
 ## Reporting a problem
 
@@ -73,4 +99,15 @@ key, the users' password hashes or the consoles' pins
 
 ## What the tag waits on
 
-Filled in at the end of Phase 11 (`docs/PHASE11.md`, `docs/QUALIFICATION.md`).
+Each is Cody's:
+
+- The release keys made and kept offline, and this release built with
+  them (`docs/RELEASING.md`).
+- The real machine's qualification, every item (`docs/QUALIFICATION.md`),
+  the fortnight's soak among them.
+- The joint gate with QS/MC: QS/MC pairs with a host and runs a
+  partition's whole life through it (`docs/OPEN_QUESTIONS.md` item 40).
+- The CI's first push, and the nightly run green on it
+  (`docs/OPEN_QUESTIONS.md` item 6).
+- The names reviewed for trademarks: QS/VS, QS/MC, QS/400, Quartz
+  Systems, QSI (`docs/PHASE11.md`).
