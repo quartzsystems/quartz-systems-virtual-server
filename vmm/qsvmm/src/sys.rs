@@ -445,12 +445,21 @@ pub fn isolate(empty: &std::path::Path) -> io::Result<()> {
             (),
         )?;
         last_error(libc::chdir(at.as_ptr()), ())?;
-        // The empty file system becomes the root; the old root, stacked
-        // under it, is detached.
-        if libc::syscall(libc::SYS_pivot_root, here.as_ptr(), here.as_ptr()) != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        last_error(libc::umount2(here.as_ptr(), libc::MNT_DETACH), ())?;
+        // The empty file system becomes the root, as switch_root leaves
+        // an initramfs (which pivot_root refuses to leave): moved over
+        // `/` in this namespace, and entered. Nothing after the drop may
+        // mount or chroot again.
+        last_error(
+            libc::mount(
+                here.as_ptr(),
+                root.as_ptr(),
+                std::ptr::null(),
+                libc::MS_MOVE,
+                std::ptr::null(),
+            ),
+            (),
+        )?;
+        last_error(libc::chroot(here.as_ptr()), ())?;
         last_error(libc::chdir(root.as_ptr()), ())?;
         last_error(
             libc::mount(
