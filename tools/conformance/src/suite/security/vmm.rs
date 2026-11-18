@@ -93,16 +93,33 @@ fn seen_confined(guest: &mut Session, pid: u32, id: u32) -> Result<String, Strin
     }
     let mounts = c.text(&format!("/proc/{pid}/mounts"))?;
     let mounted: Vec<&str> = mounts.lines().collect();
-    if mounted.len() != 1 || !mounted[0].starts_with("none / tmpfs ro,") {
+    // The empty root, read-only, and its own log directory bound in it.
+    let log_bound = mounted.get(1).is_some_and(|m| {
+        m.split_whitespace().nth(1) == Some("/log")
+            && m.split_whitespace()
+                .nth(3)
+                .is_some_and(|o| ["nosuid", "nodev", "noexec"].iter().all(|f| o.contains(f)))
+    });
+    if mounted.len() != 2 || !mounted[0].starts_with("none / tmpfs ro,") || !log_bound {
         return Err(format!("the VMM's mounts are {mounted:?}"));
     }
     let root = c.ls(&format!("/proc/{pid}/root"))?;
-    if !root.is_empty() {
+    if root != ["log"] {
         return Err(format!("the VMM's root holds {root:?}"));
+    }
+    // A name resolved from its log directory stays in its root.
+    let above = c.ls(&format!("/proc/{pid}/root/log/.."))?;
+    if above != ["log"] {
+        return Err(format!("above the VMM's log directory is {above:?}"));
+    }
+    let log = c.ls(&format!("/proc/{pid}/root/log"))?;
+    if !log.iter().any(|f| f.starts_with("serial")) {
+        return Err(format!("the VMM's log directory holds {log:?}"));
     }
     Ok(format!(
         "seccomp 2 with {filters} filter(s), no new privileges, no capability, user {user}, \
-         network `lo` alone, one empty read-only tmpfs"
+         network `lo` alone, a read-only tmpfs root holding nothing but its own log \
+         directory, bound there with nosuid, nodev, noexec, above which is that root"
     ))
 }
 

@@ -539,7 +539,7 @@ fn confine(options: &Options, partition: &Partition, root: bool, log_dir: i32) -
         let empty = options.socket_dir(partition.config.id).join("root");
         fs::create_dir_all(&empty)
             .and_then(|()| fs::set_permissions(&empty, fs::Permissions::from_mode(0o555)))
-            .and_then(|()| sys::isolate(&empty))
+            .and_then(|()| sys::isolate(&empty, log_dir))
             .map_err(not_built("the confinement's namespaces"))?;
         sys::drop_privileges(partition.user()).map_err(not_built("dropping privileges"))?;
     } else {

@@ -27,9 +27,9 @@ Each partition's `qsvmm` (`vmm/qsvmm/src/confine`):
    network, IPC and UTS namespace of its own; its root an empty,
    read-only `tmpfs`, moved over `/` and entered with `chroot` as
    `switch_root` leaves an initramfs (no path names anything of the host's: no `/proc`,
-   `/dev`, `/data` or another partition's files; the serial log's
-   later generations are opened relative to the log directory's open
-   descriptor); a network with nothing but its own loopback.
+   `/dev`, `/data` or another partition's files; its own log directory
+   is bound at `/log` in it, below); a network with nothing but its own
+   loopback.
 2. The drop: the capability bounding set emptied, supplementary groups
    cleared, the partition's own user and group (23000 plus its ID), no
    new privileges; a return to root is checked to fail.
@@ -74,6 +74,27 @@ user, `lo` alone, one empty read-only `tmpfs` as root), and a VMM made to
 try each of twelve forbidden calls, from its control thread and from a
 processor, ended with `A2005190` each time while the other partition ran
 on in the VMM it had.
+
+What it keeps, and why it is accepted:
+
+- **Its log directory.** The serial log thread may `openat` and
+  `renameat` relative to the log directory's descriptor and nothing
+  else, to start the log's next generation. The directory
+  (`/data/log/partitions/<id>`, its own user's, mode 0700) is bound at
+  `/log` inside the empty root, with no set-user-ID, no device and
+  nothing executable, and the descriptor is opened again there before
+  the drop: a name resolved against it, `..` included, stays in the
+  empty root (`vmm-confined` lists what is above it). A VMM taken over
+  could create, rename over or fill files in its own log directory, and
+  nothing else; the filling is bounded by `/data`'s room like any log's.
+  It was found in Phase 11's review: until then the descriptor was the
+  host's own, opened before the `chroot`, and `..` from it led out to
+  whatever the partition's user could read.
+- **KVM's requests.** The whole surface of KVM's ioctls a VMM needs
+  stays. KVM is the host kernel's and is hardened there; what is shut is
+  every other way into the kernel.
+- **Its own memory and its devices' files.** By design: they are the
+  partition's.
 
 ## The services
 

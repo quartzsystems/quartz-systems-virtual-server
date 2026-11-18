@@ -396,6 +396,66 @@ pub fn report_refused_calls() -> io::Result<()> {
     }
 }
 
+/// Bind the directory at `source` (the log directory's path, read
+/// before the namespace was made: a mount of another namespace cannot
+/// be bound from its descriptor) at `log` in the current directory, the
+/// new root before it is moved: with no set-user-ID, no device and
+/// nothing to execute.
+fn bind_log(source: &std::ffi::CStr) -> io::Result<()> {
+    let log = c"log";
+    // SAFETY: NUL-terminated strings that live across each call, or null
+    // pointers where the kernel allows them.
+    unsafe {
+        last_error(libc::mkdir(log.as_ptr(), 0o555), ())?;
+        last_error(
+            libc::mount(
+                source.as_ptr(),
+                log.as_ptr(),
+                std::ptr::null(),
+                libc::MS_BIND,
+                std::ptr::null(),
+            ),
+            (),
+        )?;
+        last_error(
+            libc::mount(
+                std::ptr::null(),
+                log.as_ptr(),
+                std::ptr::null(),
+                libc::MS_BIND
+                    | libc::MS_REMOUNT
+                    | libc::MS_NOSUID
+                    | libc::MS_NODEV
+                    | libc::MS_NOEXEC,
+                std::ptr::null(),
+            ),
+            (),
+        )
+    }
+}
+
+/// Replace the descriptor `log_dir` by `/log` opened in the new root:
+/// the same number, which the serial log holds.
+fn reopen_log(log_dir: i32) -> io::Result<()> {
+    // SAFETY: a NUL-terminated path; descriptors this process owns.
+    unsafe {
+        let inside = libc::open(
+            c"/log".as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        );
+        if inside < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let moved = libc::dup3(inside, log_dir, libc::O_CLOEXEC);
+        let error = io::Error::last_os_error();
+        libc::close(inside);
+        if moved < 0 {
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
 /// Give the process namespaces of its own and an empty root, as root
 /// and before the drop: a mount namespace whose root is an empty,
 /// read-only `tmpfs` (no path names anything of the host's: no `/proc`,
@@ -403,11 +463,18 @@ pub fn report_refused_calls() -> io::Result<()> {
 /// nothing but its own loopback, and IPC and UTS of its own. `empty` is
 /// a directory the new root is mounted on; it is left empty on the
 /// host. Everything the VMM uses is already open.
-pub fn isolate(empty: &std::path::Path) -> io::Result<()> {
+///
+/// The serial log's directory `log_dir`, an open descriptor, is bound
+/// at `/log` in the new root and the descriptor replaced by one opened
+/// there, so that a name resolved against it (`..` too) stays in the
+/// empty root.
+pub fn isolate(empty: &std::path::Path, log_dir: i32) -> io::Result<()> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
     let at = CString::new(empty.as_os_str().as_bytes()).map_err(io::Error::other)?;
+    let log_path = std::fs::read_link(format!("/proc/self/fd/{log_dir}"))?;
+    let log_path = CString::new(log_path.as_os_str().as_bytes()).map_err(io::Error::other)?;
     let tmpfs = c"tmpfs";
     let none = c"none";
     let root = c"/";
@@ -445,6 +512,10 @@ pub fn isolate(empty: &std::path::Path) -> io::Result<()> {
             (),
         )?;
         last_error(libc::chdir(at.as_ptr()), ())?;
+    }
+    bind_log(&log_path)?;
+    // SAFETY: as above.
+    unsafe {
         // The empty file system becomes the root, as switch_root leaves
         // an initramfs (which pivot_root refuses to leave): moved over
         // `/` in this namespace, and entered. Nothing after the drop may
@@ -461,6 +532,10 @@ pub fn isolate(empty: &std::path::Path) -> io::Result<()> {
         )?;
         last_error(libc::chroot(here.as_ptr()), ())?;
         last_error(libc::chdir(root.as_ptr()), ())?;
+    }
+    reopen_log(log_dir)?;
+    // SAFETY: as above.
+    unsafe {
         last_error(
             libc::mount(
                 std::ptr::null(),
