@@ -29,7 +29,13 @@ it. The kernel pin is QS/400's at that commit, unchanged
 
 ### Every earlier suite on the new pin
 
-<!-- filled from ~/qsvs-logs/p11s0 at the end of the run -->
+In a clone at `1d4236c` with its own target, one suite at a time, 72
+suites passed and 6 failed (`mirror-power-pull`, `partition-ipl-b`,
+`partition-kill`, `partition-recorded`, `pool-power-pull`, `net-qs400`,
+the last by its hour's timeout) before the run was stopped, on Cody's
+word, so that the release could be cut; the other 69 were not run. Each
+of the six had failed while another suite's QEMU or a build ran beside
+it; none was run again alone.
 
 ## What exists
 
@@ -154,4 +160,47 @@ release built twice with test keys and a refusal, the stream, the
 update suites, every fuzz target and an hour's soak. Its runner is one
 repository variable (`QSVS_NIGHTLY_RUNS_ON`).
 
-<!-- The sections below are filled from the runs. -->
+## The release
+
+V1R0M0 was cut on 2026-11-18 from `00848cc`, in a clean clone, with
+the release keys Cody keeps (`docs/RELEASING.md`): the release signing
+key `a277697cd9a6bade91fd3c7905998a76cfcb42721b149ac12def24822c6ca671`
+and the Secure Boot db certificate of SHA-256
+`74:22:4E:A1:CD:81:BF:45:91:2A:F1:C0:BF:2E:0F:73:19:B3:87:D5:D4:C0:05:67:1A:B7:3A:37:26:98:CE:34`.
+`build release 1.0.0` built it twice from clean and found its 12 files
+the same byte for byte (1505 s for both); `SHA256SUMS` checks, and the
+stream's index verifies. Its ISO is `QSVS-V1R0M0-b7b2765f0e44.iso`, its
+update image `QSVS-V1R0M0-update-824eb048f9b4.upd`. A tag `v1.0.0`
+publishes it from `.github/workflows/release.yml` with the same keys as
+the `release` environment's secrets.
+
+Before it, with test keys at `82f1d19`: `build release` refused no
+keys, no Secure Boot key and another version; built twice the same;
+the stream refused an index signed by a key it did not trust and one
+with a digit of a sum changed.
+
+## Not done
+
+The release was cut before the phase's long runs ended, on Cody's word.
+What they would have shown is not shown:
+
+- `BLOCKED(phase11)`: Section 1 has no conclusion. One depth-2 soak
+  (`qsvmm` in WSL, ordinary pages, 69 IPLs) had one fault: three words
+  of two processes' memory, each at offset 0xf80 of its page with bit
+  20 set, as a write through a stale translation would leave; WSL had
+  migrated 65 million pages by then. The control with huge pages and
+  the depth-3 soak with its controls were stopped. QEMU at the same
+  depth was not run: no host here has QEMU in it.
+- `BLOCKED(phase11)`: the fuzz targets ran about 3.5 hours of 24 (four
+  at a time), with no finding; the corpus was not saved.
+- `BLOCKED(phase11)`: not run: `soak-day`, `power-writers`, `limits`,
+  `baselines` (and the cost of the hardening), `memory-clean`,
+  `svc-update-migrate`, `svc-update-keys`, the Secure Boot suite on the
+  release, and the acceptance run of every suite on HEAD from empty
+  targets. `vmm-confined` last failed on `sit0`, which `9f11fd5` leaves
+  out of the kernel; it has not run since.
+- `BLOCKED(phase11)`: the golden screens of the status panel and the
+  installer's summary were not written again for the Secure Boot row.
+- `NEEDS-CODY`: the Dell's qualification (`docs/QUALIFICATION.md`),
+  the fortnight's soak among it; the trademark review of the names; the
+  first push of CI; the joint gate with QS/MC.
