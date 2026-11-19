@@ -3,7 +3,7 @@
 
  Host state . . . . : Running; every service has been ready
  Release  . . . . . : V1R0M0 build <build> (test image)
- Slot . . . . . . . : A (default A, nothing pending)
+ Slot . . . . . . . : A (default A, nothing pending), Secure Boot not known
  Reference code . . : <not compared>
  Management . . . . : <not compared>
  Data . . . . . . . : /dev/vda3

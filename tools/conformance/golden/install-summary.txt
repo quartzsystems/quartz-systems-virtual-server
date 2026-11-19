@@ -9,9 +9,9 @@
  Time zone  . . . . . . : UTC
  Time servers . . . . . : none
  Service tools user . . : ADMIN
+ Secure Boot  . . . . . : Not known: the firmware does not say
 
  F10 erases the disks named and installs. F12 goes back.
-
 
 
 
