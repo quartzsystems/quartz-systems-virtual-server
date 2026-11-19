@@ -235,6 +235,16 @@ QS/400 pin.
   else changed, and a seed's `[network]` is read in either form. QS/VS
   names one role, `management`. A reload or a change on trial remakes
   only the interfaces that changed. Nothing new listens.
+- `base/netd` has a second way to apply a change, for a console
+  reached over the network it changes (QS/MC's item 24):
+  `apply_confirmed` keeps it only when `confirm` is called within its
+  window, and takes it back when the window ends whatever carrier and
+  address say. `apply`, which keeps a change once its interfaces have
+  carrier and an address, is unchanged, and is what QS/VS's local
+  console uses. A unit test drives a static change that works but is
+  never confirmed to its window's end, where it is taken back and
+  nothing is written, and one confirmed within it, which is written
+  (`manage/tests.rs`).
 - The neutrality check covers the new crates, and a `base/` crate may
   depend on no crate of this repository outside `base/` (it said
   `lic/` before). `build fixture` builds QSDEMO (`tools/fixture`), an
