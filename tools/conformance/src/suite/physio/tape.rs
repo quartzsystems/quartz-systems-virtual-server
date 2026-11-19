@@ -479,16 +479,23 @@ fn until_unloaded(
     }
 }
 
-/// The reply list's G to the next-volume inquiry, and this job taking
+/// The next-volume inquiries: QS/400's before its handoff 21, then the
+/// next volume and the volume named (`medio::msg`).
+const NEXT_VOLUME: &[&str] = &["CPA4075", "CPA4088", "CPA4089"];
+
+/// The reply list's G to each next-volume inquiry, and this job taking
 /// its replies from the list.
 fn reply_g(guest: &mut Session, id: u32) -> Result<(), String> {
-    command(
-        guest,
-        id,
-        "ADDRPYLE SEQNBR(9075) MSGID(CPA4075) RPY(G)",
-        &["added", "Added", "exists", "already", "reply"],
-        Duration::from_mins(2),
-    )?;
+    for msgid in NEXT_VOLUME {
+        let seq = 9000 + msgid[3..].parse::<u32>().unwrap_or(0) % 1000;
+        command(
+            guest,
+            id,
+            &format!("ADDRPYLE SEQNBR({seq}) MSGID({msgid}) RPY(G)"),
+            &["added", "Added", "exists", "already", "reply"],
+            Duration::from_mins(2),
+        )?;
+    }
     let m = mark(guest, id)?;
     enter(guest, id, "CHGJOB INQMSGRPY(*SYSRPYL)")?;
     // CHGJOB may answer nothing: its echo, then a moment.
