@@ -194,7 +194,7 @@ impl Screens {
             }
         });
         if displays.framebuffer {
-            console::keyboard::spawn_readers(&keys);
+            crate::keyboards::watch(&keys);
         }
         Self {
             show,

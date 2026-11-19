@@ -13,6 +13,8 @@
 //!   user: what was typed, its screen and its check.
 //! - [`screens`]: the console on the framebuffer and on a serial
 //!   terminal, and the loop that runs a stack of panels on it (Linux).
+//! - [`keyboards`]: the display's keyboards read as they come and go,
+//!   a USB one seconds after the console starts among them (Linux).
 //! - [`tools`]: the panels every service console has.
 //! - [`keep`]: the one panel shown before the data file system exists,
 //!   when the units of a mirrored load source ran apart.
@@ -21,6 +23,8 @@
 
 pub mod forms;
 pub mod keep;
+#[cfg(target_os = "linux")]
+pub mod keyboards;
 pub mod kit;
 pub mod panel;
 #[cfg(target_os = "linux")]
