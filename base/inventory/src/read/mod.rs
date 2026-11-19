@@ -4,20 +4,18 @@
 
 //! The readers, one per part of the inventory.
 //!
-//! - [`cpu`], [`memory`]: `/proc/cpuinfo`, `/proc/meminfo` and the huge
-//!   page sizes.
+//! - [`cpu`], [`memory`]: `/proc/cpuinfo` and `/proc/meminfo`.
 //! - [`disks`], [`net`], [`pci`]: the devices of sysfs.
 //! - [`threads`]: the processors' threads, each with its socket and core.
 //! - [`place`]: the slots and the PCI functions on the way to a device,
 //!   which a location code is made of.
 
 mod cpu;
-mod disks;
+pub mod disks;
 mod memory;
 mod net;
-pub(crate) mod pci;
-mod place;
-pub(crate) mod tapes;
+mod pci;
+pub mod place;
 pub(crate) mod threads;
 
 use state::Inventory;
@@ -25,33 +23,30 @@ use state::Inventory;
 use crate::sysfs::text;
 use crate::{Roots, smbios, system};
 
+/// The slots of the machine, from its SMBIOS table and sysfs.
+pub fn slots(roots: &Roots) -> Vec<crate::location::Slot> {
+    place::slots(&roots.sys, &smbios::table(&roots.sys))
+}
+
 /// The network interfaces alone, with their location codes: what a
 /// service that looks at them often reads.
 pub(crate) fn interfaces(roots: &Roots) -> Vec<state::doc::inventory::Interface> {
-    let sys = &roots.sys;
-    let table = smbios::table(sys);
-    let slots = place::slots(sys, &table);
-    net::read(sys, &slots)
+    net::read(&roots.sys, &slots(roots))
 }
 
-/// The IOMMU alone: what PID 1 checks at the IPL.
-pub(crate) fn iommu(roots: &Roots) -> state::doc::inventory::Iommu {
-    pci::iommu(&roots.sys, &roots.proc)
+/// The disks alone, with their location codes.
+pub(crate) fn disks(roots: &Roots) -> Vec<state::doc::inventory::Disk> {
+    disks::read(&roots.sys, &slots(roots))
 }
 
-/// The PCI devices alone, as they are now: what the partition manager
-/// reads when it releases, gives and takes back devices.
+/// The PCI devices alone, as they are now.
 pub(crate) fn pci(roots: &Roots) -> Vec<state::doc::inventory::Pci> {
-    let table = smbios::table(&roots.sys);
-    let slots = place::slots(&roots.sys, &table);
-    pci::read(&roots.sys, &slots)
+    pci::read(&roots.sys, &slots(roots))
 }
 
-/// The physical tape drives.
-pub(crate) fn tapes(roots: &Roots) -> Vec<tapes::TapeDrive> {
-    let table = smbios::table(&roots.sys);
-    let slots = place::slots(&roots.sys, &table);
-    tapes::read(&roots.sys, &slots)
+/// `MemTotal` in bytes.
+pub(crate) fn memory_bytes(roots: &Roots) -> u64 {
+    memory::total(&text(roots.proc.join("meminfo")).unwrap_or_default())
 }
 
 /// The whole inventory.
@@ -64,11 +59,11 @@ pub(crate) fn inventory(roots: &Roots, kept_serial: Option<&str>) -> Inventory {
     Inventory {
         system: system::read(roots, &table, kept_serial),
         processors: cpu::parse(&cpuinfo),
-        memory: memory::read(sys, &meminfo),
+        memory: memory::read(&meminfo),
         disks: disks::read(sys, &slots),
         interfaces: net::read(sys, &slots),
         pci: pci::read(sys, &slots),
-        iommu: pci::iommu(sys, &roots.proc),
+        iommu: state::doc::inventory::Iommu::default(),
     }
 }
 
@@ -77,18 +72,17 @@ mod tests {
     use super::*;
     use crate::fixture::{Tree, slot, structure};
 
-    /// A small host: one socket, a slotted network card behind a root
+    /// A small machine: one socket, a slotted network card behind a root
     /// port, and a virtio disk.
-    fn host(tree: &Tree) {
+    pub(crate) fn machine(tree: &Tree) {
         tree.file(
             "proc/cpuinfo",
             "processor\t: 0\nmodel name\t: Example CPU\nphysical id\t: 0\ncore id\t: 0\nflags\t\t: fpu vmx\n",
         );
         tree.file("proc/meminfo", "MemTotal:        2097152 kB\n");
-        tree.dir("sys/kernel/mm/hugepages/hugepages-2048kB");
         let mut table = structure(1, &[1, 2, 0, 3], &["Quartz", "Model 9", "SN12345"]);
         table.extend(slot("PCIe Slot 3", 0, 0, 0x1c, 0));
-        table.extend(structure(11, &[1], &["qsvs:test"]));
+        table.extend(structure(11, &[1], &["appliance:test"]));
         tree.file("sys/firmware/dmi/tables/DMI", &table);
         let port = "sys/devices/pci0000:00/0000:00:1c.0";
         let card = format!("{port}/0000:03:00.0");
@@ -122,8 +116,8 @@ mod tests {
 
     #[test]
     fn a_whole_host_reads_into_one_inventory() {
-        let tree = Tree::new("read-host");
-        host(&tree);
+        let tree = Tree::new("read-machine");
+        machine(&tree);
         let inv = inventory(&tree.roots(), None);
         assert_eq!(inv.system.manufacturer, "Quartz");
         assert_eq!(inv.system.serial, "SN12345");
@@ -131,7 +125,13 @@ mod tests {
         assert_eq!(inv.processors.threads, 1);
         assert_eq!(inv.processors.virtualization, "VMX");
         assert_eq!(inv.memory.total_bytes, 2 << 30);
-        assert!(inv.memory.huge_2m && !inv.memory.huge_1g);
+        // A product's own fields are left to it.
+        assert!(!inv.memory.huge_2m && !inv.memory.huge_1g);
+        assert!(
+            inv.pci
+                .iter()
+                .all(|p| p.group.is_none() && p.reset.is_empty())
+        );
         assert_eq!(inv.disks.len(), 1);
         assert_eq!(inv.disks[0].location, "P0000-B00-D04-F0");
         assert_eq!(inv.interfaces.len(), 1);
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn two_reads_of_unchanged_hardware_give_the_same_inventory() {
         let tree = Tree::new("read-stable");
-        host(&tree);
+        machine(&tree);
         let first = inventory(&tree.roots(), None);
         assert_eq!(inventory(&tree.roots(), None), first);
     }
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn the_inventory_renders_as_a_state_document() {
         let tree = Tree::new("read-render");
-        host(&tree);
+        machine(&tree);
         let inv = inventory(&tree.roots(), None);
         let text = state::store::render(&inv).unwrap();
         assert_eq!(state::store::parse::<Inventory>(&text).unwrap(), inv);

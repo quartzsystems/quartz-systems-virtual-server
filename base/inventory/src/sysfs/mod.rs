@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 /// The text of a node, trimmed.
-pub(crate) fn text(path: impl AsRef<Path>) -> Option<String> {
+pub fn text(path: impl AsRef<Path>) -> Option<String> {
     let bytes = fs::read(path).ok()?;
     let text = String::from_utf8_lossy(&bytes);
     let trimmed = text.trim_matches(|c: char| c.is_whitespace() || c == '\0');
@@ -17,13 +17,13 @@ pub(crate) fn text(path: impl AsRef<Path>) -> Option<String> {
 }
 
 /// The number in a node.
-pub(crate) fn number<T: FromStr>(path: impl AsRef<Path>) -> Option<T> {
+pub fn number<T: FromStr>(path: impl AsRef<Path>) -> Option<T> {
     text(path)?.parse().ok()
 }
 
 /// A hex node such as `0x8086`: no prefix, lower case, `digits` wide.
 /// Empty when the node is unreadable.
-pub(crate) fn hex(path: impl AsRef<Path>, digits: usize) -> String {
+pub fn hex(path: impl AsRef<Path>, digits: usize) -> String {
     let Some(text) = text(path) else {
         return String::new();
     };
@@ -34,13 +34,13 @@ pub(crate) fn hex(path: impl AsRef<Path>, digits: usize) -> String {
 
 /// The file name of a symbolic link's target: the driver of a `driver`
 /// link.
-pub(crate) fn link_name(path: impl AsRef<Path>) -> Option<String> {
+pub fn link_name(path: impl AsRef<Path>) -> Option<String> {
     let target = fs::read_link(path).ok()?;
     Some(target.file_name()?.to_string_lossy().into_owned())
 }
 
 /// The entries of a directory, sorted.
-pub(crate) fn names(dir: impl AsRef<Path>) -> Vec<String> {
+pub fn names(dir: impl AsRef<Path>) -> Vec<String> {
     let mut names: Vec<String> = fs::read_dir(dir)
         .into_iter()
         .flatten()
@@ -52,7 +52,7 @@ pub(crate) fn names(dir: impl AsRef<Path>) -> Vec<String> {
 }
 
 /// The number of a name that is `prefix` and then digits only.
-pub(crate) fn numbered(name: &str, prefix: &str) -> Option<u32> {
+pub fn numbered(name: &str, prefix: &str) -> Option<u32> {
     let digits = name.strip_prefix(prefix)?;
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
@@ -61,18 +61,18 @@ pub(crate) fn numbered(name: &str, prefix: &str) -> Option<u32> {
 }
 
 /// A node with its links resolved.
-pub(crate) struct Node {
+pub struct Node {
     /// The canonical path.
-    pub(crate) path: PathBuf,
+    pub path: PathBuf,
     /// The canonical sysfs root.
-    pub(crate) sys: PathBuf,
+    pub sys: PathBuf,
     /// The path's components below the sysfs root; empty when the path
     /// does not resolve or is not below it.
-    pub(crate) parts: Vec<String>,
+    pub parts: Vec<String>,
 }
 
 /// Resolve `path`, an entry of a class directory, into `/sys/devices`.
-pub(crate) fn resolve(sys: &Path, path: &Path) -> Node {
+pub fn resolve(sys: &Path, path: &Path) -> Node {
     let canonical = fs::canonicalize(path).ok();
     let root = fs::canonicalize(sys).ok();
     let parts = match (&canonical, &root) {

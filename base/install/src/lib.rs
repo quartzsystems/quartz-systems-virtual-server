@@ -36,6 +36,19 @@ pub struct DiskChoice {
     pub bytes: u64,
 }
 
+impl From<state::doc::inventory::Disk> for DiskChoice {
+    /// A disk as `base/inventory` reads it.
+    fn from(d: state::doc::inventory::Disk) -> Self {
+        DiskChoice {
+            name: d.name,
+            location: d.location,
+            model: d.model,
+            serial: d.serial,
+            bytes: d.bytes,
+        }
+    }
+}
+
 /// Everything an installation needs to be told.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Answers {

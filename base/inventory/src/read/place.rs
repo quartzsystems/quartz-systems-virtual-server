@@ -18,7 +18,7 @@ const BRIDGE_CLASS: &str = "0604";
 /// with a designation that normalises to nothing is left out, and so
 /// are slots that share a designation: their code would not be one
 /// place.
-pub(crate) fn slots(sys: &Path, table: &[u8]) -> Vec<Slot> {
+pub fn slots(sys: &Path, table: &[u8]) -> Vec<Slot> {
     let found: Vec<Slot> = smbios::slots(table)
         .into_iter()
         .filter_map(|record| {
@@ -51,7 +51,7 @@ pub(crate) fn slots(sys: &Path, table: &[u8]) -> Vec<Slot> {
 }
 
 /// The PCI functions among the components of a sysfs path, in order.
-pub(crate) fn chain(parts: &[String]) -> Vec<PciAddress> {
+pub fn chain(parts: &[String]) -> Vec<PciAddress> {
     parts
         .iter()
         .filter_map(|part| PciAddress::parse(part))

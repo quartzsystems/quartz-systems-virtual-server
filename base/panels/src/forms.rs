@@ -30,6 +30,18 @@ pub struct LinkChoice {
     pub carrier: bool,
 }
 
+impl From<state::doc::inventory::Interface> for LinkChoice {
+    /// A link as `base/inventory` reads it.
+    fn from(i: state::doc::inventory::Interface) -> Self {
+        LinkChoice {
+            name: i.name,
+            mac: i.mac,
+            location: i.location,
+            carrier: i.carrier,
+        }
+    }
+}
+
 /// The host name and the management network, as typed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NetworkEntry {

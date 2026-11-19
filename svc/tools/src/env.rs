@@ -316,12 +316,7 @@ impl Host for Env {
         inventory()
             .interfaces
             .into_iter()
-            .map(|i| LinkChoice {
-                name: i.name,
-                mac: i.mac,
-                location: i.location,
-                carrier: i.carrier,
-            })
+            .map(LinkChoice::from)
             .collect()
     }
 

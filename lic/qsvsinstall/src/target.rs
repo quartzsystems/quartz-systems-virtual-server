@@ -340,17 +340,10 @@ impl Target for QsVs {
     }
 
     fn disks(&mut self) -> Vec<DiskChoice> {
-        hostinv::read(&hostinv::Roots::default(), None)
-            .disks
+        hostinv::disks(&hostinv::Roots::default())
             .into_iter()
             .filter(|d| !self.skip.contains(&d.name) && !d.name.starts_with("sr"))
-            .map(|d| DiskChoice {
-                name: d.name,
-                location: d.location,
-                model: d.model,
-                serial: d.serial,
-                bytes: d.bytes,
-            })
+            .map(DiskChoice::from)
             .collect()
     }
 
@@ -359,15 +352,9 @@ impl Target for QsVs {
     }
 
     fn links(&mut self) -> Vec<LinkChoice> {
-        hostinv::read(&hostinv::Roots::default(), None)
-            .interfaces
+        hostinv::interfaces(&hostinv::Roots::default())
             .into_iter()
-            .map(|i| LinkChoice {
-                name: i.name,
-                mac: i.mac,
-                location: i.location,
-                carrier: i.carrier,
-            })
+            .map(LinkChoice::from)
             .collect()
     }
 

@@ -2,185 +2,130 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The host inventory, read at every IPL from sysfs, procfs and DMI:
+//! The host inventory, read at every IPL: `base/inventory` (the system,
 //! processors, memory, disks, network interfaces and PCI devices, each
-//! device with a location code (`docs/LOCATION.md`).
+//! with a location code, `docs/LOCATION.md`) with a hypervisor's own
+//! fields on top: the PCI devices' isolation groups, resets and
+//! interrupts, the IOMMU, the huge page sizes, and the tape drives a
+//! partition can be given.
 //!
 //! - [`read`]: the whole inventory, for `inventory.toml`.
-//! - [`dmi_serial`], [`derived_serial`]: the system serial number.
-//! - [`oem_strings`]: the SMBIOS OEM strings.
-//! - [`threads`], [`memory_mib`]: what partitions are given resources by.
-//! - [`location`]: the location code format.
-//! - [`smbios`]: the SMBIOS structure table.
+//! - [`pci`], [`iommu`], [`tapes`]: what physical I/O reads.
+//! - The rest is `base/inventory`'s, named here as it was.
 //!
 //! Nothing here fails: a node that is missing reads as empty or zero.
 
 #![forbid(unsafe_code)]
 
-pub mod location;
-pub mod smbios;
+mod huge;
+mod pci;
+mod tapes;
 
-mod read;
-mod sysfs;
-mod system;
-
-#[cfg(test)]
-mod fixture;
-
-use std::path::PathBuf;
-
-/// Where the kernel's file systems are; `Roots::default()` is `/sys`
-/// and `/proc`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Roots {
-    /// sysfs.
-    pub sys: PathBuf,
-    /// procfs.
-    pub proc: PathBuf,
-}
-
-impl Default for Roots {
-    fn default() -> Self {
-        Roots {
-            sys: PathBuf::from("/sys"),
-            proc: PathBuf::from("/proc"),
-        }
-    }
-}
+pub use inventory::{
+    CpuThread, Roots, derived_serial, disks, dmi_serial, interfaces, location, memory_mib,
+    oem_strings, smbios, threads,
+};
 
 /// Read the whole inventory. `kept_serial` is the serial number already
-/// kept in `host.toml`, if any.
-///
-/// The serial number is DMI's when DMI has a real one (source `dmi`);
-/// otherwise the kept one, or the one derived from the first NIC's MAC
-/// (source `derived`); with neither it is empty and the source `none`.
+/// kept in `host.toml`, if any (`inventory::read`).
 pub fn read(roots: &Roots, kept_serial: Option<&str>) -> state::Inventory {
-    read::inventory(roots, kept_serial)
-}
-
-/// The network interfaces, with their location codes, and nothing else
-/// of the inventory.
-pub fn interfaces(roots: &Roots) -> Vec<state::doc::inventory::Interface> {
-    read::interfaces(roots)
+    let mut inv = inventory::read(roots, kept_serial);
+    huge::fill(&roots.sys, &mut inv.memory);
+    pci::isolation(&roots.sys, &mut inv.pci);
+    inv.iommu = iommu(roots);
+    inv
 }
 
 /// The IOMMU: whether it translates and remaps interrupts.
 pub fn iommu(roots: &Roots) -> state::doc::inventory::Iommu {
-    read::iommu(roots)
+    pci::iommu(&roots.sys, &roots.proc)
 }
 
 /// The PCI devices as they are now, with their isolation groups, resets
 /// and interrupts.
 pub fn pci(roots: &Roots) -> Vec<state::doc::inventory::Pci> {
-    read::pci(roots)
+    let mut devices = inventory::pci(roots);
+    pci::isolation(&roots.sys, &mut devices);
+    devices
 }
 
 /// The interrupts a function's configuration space says it can signal.
-pub use read::pci::{interrupt_kinds, remapped};
+pub use pci::{interrupt_kinds, remapped};
 /// A physical tape drive.
-pub use read::tapes::TapeDrive;
+pub use tapes::TapeDrive;
 
 /// The physical tape drives, by their tape device's number.
 pub fn tapes(roots: &Roots) -> Vec<TapeDrive> {
-    read::tapes(roots)
+    tapes::read(&roots.sys, &inventory::read::slots(roots))
 }
 
-/// The serial DMI gives, when it is a real one: not empty and not a
-/// placeholder such as `Not Specified` or `To Be Filled By O.E.M.`.
-pub fn dmi_serial(roots: &Roots) -> Option<String> {
-    system::serial::dmi(&roots.sys, &smbios::table(&roots.sys))
-}
-
-/// The serial derived from a MAC: `M` and the twelve hex digits, upper
-/// case.
-pub fn derived_serial(mac: [u8; 6]) -> String {
-    system::serial::derived(mac)
-}
-
-/// One thread of a processor.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CpuThread {
-    /// The kernel's number for it, `cpuN`.
-    pub cpu: u32,
-    /// Its socket.
-    pub socket: u32,
-    /// Its core's number within the socket.
-    pub core: u32,
-}
-
-/// The processors' threads that are online, in the kernel's order.
-pub fn threads(roots: &Roots) -> Vec<CpuThread> {
-    read::threads::read(&roots.sys)
-}
-
-/// The memory the kernel has, in MiB.
-pub fn memory_mib(roots: &Roots) -> u64 {
-    read(roots, None).memory.total_bytes >> 20
-}
-
-/// The SMBIOS OEM strings (type 11), in order; empty when the table is
-/// unreadable.
-pub fn oem_strings(roots: &Roots) -> Vec<String> {
-    smbios::oem_strings(&smbios::table(&roots.sys))
-}
-
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    use crate::fixture::Tree;
+    use inventory::fixture::{Tree, slot, structure};
 
-    #[test]
-    fn the_default_roots_are_sys_and_proc() {
-        let roots = Roots::default();
-        assert_eq!(roots.sys, PathBuf::from("/sys"));
-        assert_eq!(roots.proc, PathBuf::from("/proc"));
+    /// A small host: one socket with VMX, 2 MB pages, a slotted network
+    /// card behind a root port in an isolation group, and a virtio disk.
+    fn host(tree: &Tree) {
+        tree.file(
+            "proc/cpuinfo",
+            "processor\t: 0\nmodel name\t: Example CPU\nphysical id\t: 0\ncore id\t: 0\nflags\t\t: fpu vmx\n",
+        );
+        tree.file("proc/meminfo", "MemTotal:        2097152 kB\n");
+        tree.file("proc/interrupts", "  0:  1  IR-IO-APIC  2-edge  timer\n");
+        tree.dir("sys/kernel/mm/hugepages/hugepages-2048kB");
+        tree.dir("sys/class/iommu/dmar0");
+        tree.dir("sys/kernel/iommu_groups/5");
+        let mut table = structure(1, &[1, 2, 0, 3], &["Quartz", "Model 9", "SN12345"]);
+        table.extend(slot("PCIe Slot 3", 0, 0, 0x1c, 0));
+        tree.file("sys/firmware/dmi/tables/DMI", &table);
+        let port = "sys/devices/pci0000:00/0000:00:1c.0";
+        let card = format!("{port}/0000:03:00.0");
+        for (dir, class) in [(port, "0x060400"), (card.as_str(), "0x020000")] {
+            tree.file(&format!("{dir}/vendor"), "0x8086\n");
+            tree.file(&format!("{dir}/device"), "0x1533\n");
+            tree.file(&format!("{dir}/class"), format!("{class}\n"));
+            let address = dir.rsplit('/').next().unwrap();
+            tree.link(&format!("sys/bus/pci/devices/{address}"), dir);
+        }
+        tree.link(&format!("{card}/iommu_group"), "sys/kernel/iommu_groups/5");
+        tree.file(&format!("{card}/reset_method"), "flr\n");
     }
 
     #[test]
-    fn an_empty_root_reads_as_an_empty_inventory() {
-        let tree = Tree::new("empty");
+    fn the_host_s_fields_are_added_to_the_base_inventory() {
+        let tree = Tree::new("hostinv-host");
+        host(&tree);
         let inv = read(&tree.roots(), None);
-        let expected = state::Inventory {
-            system: state::doc::inventory::System {
-                serial_source: "none".into(),
-                ..Default::default()
-            },
-            processors: state::doc::inventory::Processors {
-                virtualization: "none".into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        assert_eq!(inv, expected);
-        assert_eq!(dmi_serial(&tree.roots()), None);
-        assert!(oem_strings(&tree.roots()).is_empty());
+        let base = inventory::read(&tree.roots(), None);
+        assert_eq!(inv.system, base.system);
+        assert_eq!(inv.processors.virtualization, "VMX");
+        assert_eq!(inv.memory.total_bytes, base.memory.total_bytes);
+        assert!(inv.memory.huge_2m && !inv.memory.huge_1g);
+        assert!(!base.memory.huge_2m);
+        assert!(inv.iommu.translation && inv.iommu.remapping);
+        assert_eq!(inv.pci.len(), 2);
+        assert_eq!(inv.pci[1].location, "SPCIE-SLOT-3");
+        assert_eq!(inv.pci[1].group, Some(5));
+        assert_eq!(inv.pci[1].reset, ["flr"]);
+        assert_eq!(base.pci[1].group, None);
+        assert_eq!(pci(&tree.roots()), inv.pci);
     }
 
     #[test]
-    fn roots_that_do_not_exist_read_as_an_empty_inventory() {
-        let roots = Roots {
-            sys: PathBuf::from("/nonexistent/hostinv/sys"),
-            proc: PathBuf::from("/nonexistent/hostinv/proc"),
-        };
-        let inv = read(&roots, Some("KEPT01"));
-        assert_eq!(inv.system.serial, "KEPT01");
-        assert_eq!(inv.system.serial_source, "derived");
-        assert!(inv.disks.is_empty() && inv.interfaces.is_empty() && inv.pci.is_empty());
+    fn the_inventory_renders_as_a_state_document() {
+        let tree = Tree::new("hostinv-render");
+        host(&tree);
+        let inv = read(&tree.roots(), None);
+        let text = state::store::render(&inv).unwrap();
+        assert_eq!(state::store::parse::<state::Inventory>(&text).unwrap(), inv);
     }
 
     #[test]
-    fn the_oem_strings_come_from_the_table_under_the_root() {
-        let tree = Tree::new("oem");
-        let table = fixture::structure(11, &[2], &["qsvs:role=host", "second"]);
+    fn the_oem_strings_are_base_s() {
+        let tree = Tree::new("hostinv-oem");
+        let table = structure(11, &[2], &["qsvs:role=host", "second"]);
         tree.file("sys/firmware/dmi/tables/DMI", &table);
         assert_eq!(oem_strings(&tree.roots()), ["qsvs:role=host", "second"]);
-    }
-
-    #[test]
-    fn the_derived_serial_is_m_and_twelve_hex_digits() {
-        assert_eq!(
-            derived_serial([0x52, 0x54, 0x00, 0x12, 0x34, 0x56]),
-            "M525400123456"
-        );
     }
 }

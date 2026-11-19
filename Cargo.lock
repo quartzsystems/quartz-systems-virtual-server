@@ -997,7 +997,7 @@ dependencies = [
 name = "hostinv"
 version = "0.1.0"
 dependencies = [
- "appliance",
+ "inventory",
  "state",
 ]
 
@@ -1249,6 +1249,14 @@ dependencies = [
  "seed",
  "state",
  "users",
+]
+
+[[package]]
+name = "inventory"
+version = "0.1.0"
+dependencies = [
+ "appliance",
+ "state",
 ]
 
 [[package]]

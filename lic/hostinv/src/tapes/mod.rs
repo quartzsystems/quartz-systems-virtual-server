@@ -9,10 +9,10 @@
 
 use std::path::Path;
 
-use super::disks::{scsi_unit, serial};
-use super::place::chain;
-use crate::location::{Slot, unit_code};
-use crate::sysfs::{names, numbered, resolve, text};
+use inventory::location::{Slot, unit_code};
+use inventory::place::chain;
+use inventory::read::disks::{scsi_unit, serial};
+use inventory::sysfs::{names, numbered, resolve, text};
 
 /// A physical tape drive.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -65,7 +65,7 @@ pub(crate) fn read(sys: &Path, slots: &[Slot]) -> Vec<TapeDrive> {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    use crate::fixture::Tree;
+    use inventory::fixture::Tree;
 
     #[test]
     fn a_drive_behind_an_adapter_is_read_with_its_generic_device() {

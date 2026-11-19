@@ -1,0 +1,18 @@
+[package]
+name = "inventory"
+description = "The hardware inventory of an appliance: processors, memory, disks, network interfaces and PCI devices from sysfs, procfs and DMI, each with a location code"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# The sysfs and SMBIOS fixtures, for a product's own readers' tests.
+fixture = []
+
+[dependencies]
+state = { path = "../state", version = "0.1.0" }
+appliance = { path = "../appliance", version = "0.1.0" }
+
+[lints]
+workspace = true

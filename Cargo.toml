@@ -51,6 +51,7 @@ members = [
     "base/fdpass",
     "base/stream",
     "base/processor",
+    "base/inventory",
     # The VMM: one process for one partition.
     "vmm/arch",
     "vmm/acpi",
