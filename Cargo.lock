@@ -1742,6 +1742,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "processor"
+version = "0.1.0"
+
+[[package]]
 name = "protect"
 version = "0.1.0"
 source = "git+https://github.com/quartzsystems/quartz-systems-400?rev=423c65dea0b8c9fab3d2c3efaba6e9f27e679c99#423c65dea0b8c9fab3d2c3efaba6e9f27e679c99"
@@ -1779,6 +1783,7 @@ name = "qsilocal"
 version = "0.1.0"
 dependencies = [
  "ipc",
+ "processor",
 ]
 
 [[package]]

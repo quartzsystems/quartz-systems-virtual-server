@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 ipc.workspace = true
+processor = { path = "../../base/processor", version = "0.1.0" }
 
 [lints]
 workspace = true

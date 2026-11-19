@@ -1,0 +1,10 @@
+[package]
+name = "processor"
+description = "The processor features QSI's cryptography needs, and which of them a processor lacks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

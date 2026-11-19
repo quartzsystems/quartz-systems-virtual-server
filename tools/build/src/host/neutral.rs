@@ -7,7 +7,8 @@
 //! code names no product: everything of QS/VS's comes in through the
 //! `Appliance` description. The check fails on the product's
 //! identifier in a `base/` source file outside its tests and comments,
-//! and on a `base/` crate that depends on a crate of `lic/`.
+//! and on a `base/` crate that depends on any crate of the repository
+//! outside `base/`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,8 +17,6 @@ use anyhow::{Context, Result};
 
 /// Where the neutral crates are.
 const BASE: &str = "base";
-/// Where the product's own crates are.
-const LIC: &str = "lic";
 
 /// The lines of a source file that are code and not tests: comment
 /// lines are left out, and everything from the tests module at the
@@ -44,9 +43,10 @@ fn names_product(text: &str, id: &str) -> Vec<usize> {
         .collect()
 }
 
-/// The dependencies of a `Cargo.toml` that are path dependencies into
-/// `lic/`, or crates of that name.
-fn lic_dependencies(manifest: &str, lic: &[String]) -> Vec<String> {
+/// The dependencies of a `base/` crate's `Cargo.toml` that leave
+/// `base/`: a path that climbs out of it (`../../`), or a crate named
+/// as one of `outside`, the repository's crates outside `base/`.
+fn outside_dependencies(manifest: &str, outside: &[String]) -> Vec<String> {
     let mut found = Vec::new();
     let mut in_dependencies = false;
     for line in manifest.lines() {
@@ -59,8 +59,8 @@ fn lic_dependencies(manifest: &str, lic: &[String]) -> Vec<String> {
             continue;
         };
         let name = name.trim().trim_end_matches(".workspace");
-        let into_lic = value.contains(&format!("/{LIC}/")) || value.contains(&format!("\"{LIC}/"));
-        if in_dependencies && (into_lic || lic.iter().any(|l| l == name)) {
+        let leaves = value.contains("path") && value.contains("../../");
+        if in_dependencies && (leaves || outside.iter().any(|o| o == name)) {
             found.push(name.to_string());
         }
     }
@@ -90,23 +90,58 @@ fn subdirectories(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(dirs)
 }
 
+/// The package name a `Cargo.toml` gives.
+fn package_name(manifest: &str) -> Option<String> {
+    let mut in_package = false;
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+        } else if in_package
+            && let Some((key, value)) = line.split_once('=')
+            && key.trim() == "name"
+        {
+            return Some(value.trim().trim_matches('"').to_string());
+        }
+    }
+    None
+}
+
+/// The package names of the repository's crates outside `base/`: every
+/// crate one level under a category folder.
+fn outside_crates(repo: &Path) -> Result<Vec<String>> {
+    let mut names = Vec::new();
+    for entry in fs::read_dir(repo)?.flatten() {
+        let category = entry.path();
+        let skip = category
+            .file_name()
+            .is_some_and(|n| n == BASE || n == "target" || n.to_string_lossy().starts_with('.'));
+        if !category.is_dir() || skip {
+            continue;
+        }
+        for dir in subdirectories(&category)? {
+            let manifest = fs::read_to_string(dir.join("Cargo.toml"))?;
+            names.extend(package_name(&manifest));
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
 /// How many `base/` crates `repo` has, and what is not neutral in them.
 pub fn check(repo: &Path, id: &str) -> Result<(usize, Vec<String>)> {
     let name = |p: &Path| {
         p.file_name()
             .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
     };
-    let lic: Vec<String> = subdirectories(&repo.join(LIC))?
-        .iter()
-        .map(|p| name(p))
-        .collect();
+    let outside = outside_crates(repo)?;
     let crates = subdirectories(&repo.join(BASE))?;
     let mut problems = Vec::new();
     for dir in &crates {
         let manifest = fs::read_to_string(dir.join("Cargo.toml"))?;
-        for dependency in lic_dependencies(&manifest, &lic) {
+        for dependency in outside_dependencies(&manifest, &outside) {
             problems.push(format!(
-                "{BASE}/{} depends on {LIC}/{dependency}",
+                "{BASE}/{} depends on {dependency}, outside {BASE}/",
                 name(dir)
             ));
         }
@@ -145,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn a_dependency_into_lic_is_found_by_path_or_by_name() {
+    fn a_dependency_outside_base_is_found_by_path_or_by_name() {
         let lic = vec!["release".to_string(), "refcode".to_string()];
         let manifest = "[package]\nname = \"state\"\ndescription = \"no release here\"\n\n\
                         [dependencies]\nappliance = { path = \"../appliance\" }\n\
@@ -153,10 +188,16 @@ mod tests {
                         other = { path = \"../../lic/hostinv\" }\n\n\
                         [target.'cfg(unix)'.dependencies]\nrelease = { version = \"1\" }\n";
         assert_eq!(
-            lic_dependencies(manifest, &lic),
+            outside_dependencies(manifest, &lic),
             ["refcode", "other", "release"]
         );
-        assert!(lic_dependencies("[dependencies]\nipc.workspace = true\n", &lic).is_empty());
+        assert!(outside_dependencies("[dependencies]\nipc.workspace = true\n", &lic).is_empty());
+        let vmm = "[dependencies]\nkvm = { path = \"../../vmm/arch\", version = \"0.1.0\" }\n";
+        assert_eq!(outside_dependencies(vmm, &lic), ["kvm"]);
+        assert_eq!(
+            package_name("[package]\nname = \"qsvmm\"\n"),
+            Some("qsvmm".into())
+        );
     }
 
     /// The check itself, over this repository: acceptance 4 of Phase 1.
@@ -165,6 +206,24 @@ mod tests {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let (count, problems) = check(&repo, "qsvs").unwrap();
         assert!(count >= 6, "{count} base crates");
+        let outside = outside_crates(&repo).unwrap();
+        for name in [
+            "qsvsinit",
+            "qsvmm",
+            "partd",
+            "qsilocal",
+            "conformance",
+            "qsvstools",
+        ] {
+            assert!(
+                outside.iter().any(|o| o == name),
+                "{name} not seen outside base/"
+            );
+        }
+        assert!(
+            !outside.iter().any(|o| o == "appliance"),
+            "a base crate counted outside"
+        );
         assert!(problems.is_empty(), "base/ is not neutral: {problems:#?}");
     }
 }

@@ -50,6 +50,7 @@ members = [
     "base/stgd",
     "base/fdpass",
     "base/stream",
+    "base/processor",
     # The VMM: one process for one partition.
     "vmm/arch",
     "vmm/acpi",

@@ -144,7 +144,7 @@ fn neutral(ctx: &Ctx) -> Row {
         Ok((count, problems)) if problems.is_empty() => row(
             name,
             true,
-            format!("{count} crates name no product and depend on nothing of lic/"),
+            format!("{count} crates name no product and depend on nothing outside base/"),
             true,
         ),
         Ok((_, problems)) => row(name, false, problems.join("; "), true),
