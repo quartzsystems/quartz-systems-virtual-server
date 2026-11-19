@@ -233,6 +233,15 @@ impl Machine {
     }
 }
 
+/// Whether `new`, held, takes the place of `old`: a medium another of
+/// its kind in the same slot, a virtual disk only itself. An adapter's
+/// virtual disks are all held at once.
+fn replaces(new: &Want, old: &Want) -> bool {
+    new.kind == old.kind
+        && new.slot == old.slot
+        && (new.kind != poold::proto::Kind::Vdisk || (new.pool == old.pool && new.name == old.name))
+}
+
 /// One request on the control socket of `id`'s VMM, with `file`; its
 /// answer, waited for `wait` at most (for ever with none).
 fn exchange(
@@ -435,7 +444,7 @@ impl System for Machine {
         let held = self.held.entry(id).or_default();
         let mut out = Vec::with_capacity(given.len());
         for (g, file) in given {
-            held.retain(|(w, _)| !(w.kind == g.want.kind && w.slot == g.want.slot));
+            held.retain(|(w, _)| !replaces(&g.want, w));
             held.push((g.want.clone(), file));
             out.push(g);
         }
@@ -792,3 +801,34 @@ impl System for Machine {
 /// The devices fenced since the IPL, in the run directory: a manager
 /// started again keeps them, a host restarted forgets them.
 const FENCED: &str = "fenced";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use poold::proto::Kind;
+
+    fn want(kind: Kind, slot: u32, name: &str) -> Want {
+        Want {
+            kind,
+            pool: if kind == Kind::Vdisk {
+                "P".into()
+            } else {
+                String::new()
+            },
+            name: name.into(),
+            slot,
+        }
+    }
+
+    #[test]
+    fn an_adapters_disks_are_all_kept_and_a_medium_replaces_its_slots() {
+        let a = want(Kind::Vdisk, 2, "U00");
+        let b = want(Kind::Vdisk, 2, "U01");
+        assert!(!replaces(&b, &a) && replaces(&a, &a));
+        let first = want(Kind::Image, 5, "ONE");
+        let second = want(Kind::Image, 5, "TWO");
+        assert!(replaces(&second, &first));
+        assert!(!replaces(&want(Kind::Volume, 5, "T"), &first));
+        assert!(!replaces(&want(Kind::Image, 6, "ONE"), &first));
+    }
+}
