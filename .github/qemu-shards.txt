@@ -24,3 +24,4 @@ physio: pio-nvme pio-refused pio-group pio-iommu-off pio-held pio-reset pio-rest
 physio-installed: pio-tools pio-qsi
 physio-tape: pio-tape-save pio-tape-volumes pio-tape-span
 security: vmm-confined host-panic memory-clean
+limits: limits power-writers
