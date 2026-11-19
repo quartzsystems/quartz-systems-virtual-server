@@ -51,6 +51,7 @@ pub fn passed(run: &Run<'_>) -> Result<Vec<Passed>, String> {
         Passed::Pair {
             place: PASSED_PAIR,
             paths: pair,
+            serials: crate::qemu::PAIR_SERIALS.map(String::from),
         },
     ])
 }

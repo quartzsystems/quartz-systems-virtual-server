@@ -44,7 +44,7 @@ fn host<'a>(run: &Run<'a>) -> Result<Qsi<'a>, String> {
     let port = free_port()?;
     l.nic = Some(MANAGEMENT_MAC.into());
     l.keys = true;
-    l.qsi = Some(port);
+    l.forwards = crate::qemu::qsi_forward(port);
     l.iommu = true;
     l.passed = passed(run)?;
     l.memory_mb = crate::suite::partition::HOST_MEMORY_MB;

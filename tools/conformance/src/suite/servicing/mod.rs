@@ -110,7 +110,7 @@ pub fn host<'a>(run: &Run<'a>, opts: &Opts) -> Result<Rig<'a>, String> {
     launch.vars = Some(vars);
     launch.nic = Some(MAC.into());
     launch.keys = true;
-    launch.qsi = Some(free_port()?);
+    launch.forwards = crate::qemu::qsi_forward(free_port()?);
     launch.monitor = Some(run.socket("monitor.sock"));
     launch.oem = opts.hooks.iter().map(|h| qsvshook::oem_string(h)).collect();
     launch.cpu.clone_from(&opts.cpu);
@@ -173,7 +173,7 @@ pub fn start<'a>(run: &Run<'a>, launch: Launch) -> Result<Qsi<'a>, String> {
         qsvshook::proto::QUIET,
         hex::encode(b"1")
     ))?;
-    let port = launch.qsi.unwrap_or(0);
+    let port = crate::qemu::qsi_port(&launch);
     Ok(Qsi {
         guest,
         address: format!("127.0.0.1:{port}"),

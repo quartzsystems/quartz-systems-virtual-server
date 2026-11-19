@@ -52,6 +52,7 @@ members = [
     "base/stream",
     "base/processor",
     "base/inventory",
+    "base/qemu",
     # The VMM: one process for one partition.
     "vmm/arch",
     "vmm/acpi",

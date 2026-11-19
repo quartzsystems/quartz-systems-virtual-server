@@ -166,12 +166,12 @@ pub fn shutdown(run: &Run<'_>) -> Result<String, String> {
     };
     let mut guest = booted(run, &launch)?;
     // The three keys do nothing but a line on the console.
-    guest.monitor("sendkey ctrl-alt-delete")?;
+    guest.ctrl_alt_delete()?;
     guest.seen(CAD_IGNORED, run.deadline())?;
     if guest.said(&refcode::SHUTDOWN_STARTED.tag()) {
         return Err("Ctrl-Alt-Del started a shutdown".into());
     }
-    guest.monitor("system_powerdown")?;
+    guest.power_button()?;
     let pressed = Instant::now();
     let limit = pressed + SHUTDOWN_WITHIN;
     let started = posted(&refcode::SHUTDOWN_STARTED, "power off, by the power button");

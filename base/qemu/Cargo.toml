@@ -1,0 +1,18 @@
+[package]
+name = "qemu"
+description = "The QEMU driver of an appliance's conformance harness: q35 with OVMF, its variable store, the serial port, the monitor, disks, NICs, removable volumes and power pulls"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+diskimg.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+seed = { path = "../seed", version = "0.1.0" }
+
+[lints]
+workspace = true

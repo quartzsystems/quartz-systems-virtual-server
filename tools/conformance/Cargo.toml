@@ -7,6 +7,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# The QEMU driver every appliance's harness shares.
+driver = { package = "qemu", path = "../../base/qemu", version = "0.1.0" }
 release = { path = "../../lic/release", version = "0.1.0" }
 refcode = { path = "../../lic/refcode", version = "0.1.0" }
 loadsource = { path = "../../base/loadsource", version = "0.1.0" }

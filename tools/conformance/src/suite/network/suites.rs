@@ -518,20 +518,20 @@ pub fn uplink_loss(run: &Run<'_>) -> Result<String, String> {
         return Err("no echo through the bond before anything".into());
     }
     let deadline = run.deadline();
-    net.guest.monitor("set_link up0 off")?;
+    net.guest.link("up0", false)?;
     net.station.cut(0, true);
     net.guest
         .expect(&posted(&refcode::UPLINK_MEMBER_DOWN, ""), deadline)?;
     let named = net.guest.rest_of_line(deadline)?;
     std::thread::sleep(Duration::from_secs(2));
     let one_down = ping(&net)?;
-    net.guest.monitor("set_link up1 off")?;
+    net.guest.link("up1", false)?;
     net.station.cut(1, true);
     net.guest
         .expect(&posted(&refcode::UPLINK_LOST, ""), deadline)?;
     let lost = net.guest.rest_of_line(deadline)?;
     let sent = counter(&mut net.guest, &tap(a, 5), "rx_packets")?;
-    net.guest.monitor("set_link up0 on")?;
+    net.guest.link("up0", true)?;
     net.station.cut(0, false);
     net.guest
         .expect(&posted(&refcode::UPLINK_RETURNED, ""), deadline)?;

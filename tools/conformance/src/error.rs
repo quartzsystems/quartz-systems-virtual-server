@@ -5,7 +5,6 @@
 //! Harness errors. A failed step carries the serial log so far.
 
 use std::io;
-use std::path::PathBuf;
 
 use thiserror::Error;
 
@@ -18,35 +17,9 @@ pub enum HarnessError {
         /// Which image.
         what: &'static str,
     },
-    /// QEMU is not installed or not on `PATH`.
-    #[error("{binary} not found on PATH (or set {env})")]
-    QemuNotFound {
-        /// Binary name.
-        binary: &'static str,
-        /// Override variable.
-        env: &'static str,
-    },
-    /// No OVMF image was found.
-    #[error("OVMF {what} not found; set {env} or install it ({hint}); tried {tried:?}")]
-    FirmwareNotFound {
-        /// The code image or the variable store template.
-        what: &'static str,
-        /// Variable that names the file.
-        env: &'static str,
-        /// Paths that were tried.
-        tried: Vec<PathBuf>,
-        /// Package hint.
-        hint: &'static str,
-    },
-    /// QEMU could not be started.
-    #[error("cannot start {qemu}: {source}")]
-    Spawn {
-        /// Binary that was launched.
-        qemu: PathBuf,
-        /// Underlying error.
-        #[source]
-        source: io::Error,
-    },
+    /// QEMU or OVMF is missing, or QEMU could not be started.
+    #[error(transparent)]
+    Qemu(#[from] driver::Error),
     /// A step could not be set up.
     #[error("step {step}: {reason}")]
     Setup {

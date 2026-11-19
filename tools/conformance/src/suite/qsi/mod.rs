@@ -80,7 +80,7 @@ pub fn host_disks<'a>(run: &Run<'a>, partition: bool, more: &[PathBuf]) -> Resul
     let port = free_port()?;
     launch.nic = Some(MAC.into());
     launch.keys = true;
-    launch.qsi = Some(port);
+    launch.forwards = crate::qemu::qsi_forward(port);
     if partition {
         let image = super::partition::qs400_image()?;
         let copy = run.file("unit.img");

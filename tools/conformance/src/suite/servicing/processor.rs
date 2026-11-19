@@ -19,13 +19,13 @@ pub fn processor(run: &Run<'_>) -> Result<String, String> {
     let mut launch = machine(run, &[Some(disks[0].as_path())]);
     launch.nic = Some(crate::suite::base::MAC.into());
     launch.keys = true;
-    launch.qsi = Some(crate::suite::qsi::free_port()?);
+    launch.forwards = crate::qemu::qsi_forward(crate::suite::qsi::free_port()?);
     launch.cpu = Some("host,-avx2,-adx,-aes,-pclmulqdq".into());
     let mut guest = boot(run, &launch)?;
     let deadline = run.deadline();
     guest.seen(&refcode::QSI_PROCESSOR.tag(), deadline)?;
     // Nothing listens on the QSI port.
-    let address = format!("127.0.0.1:{}", launch.qsi.unwrap_or(0));
+    let address = format!("127.0.0.1:{}", crate::qemu::qsi_port(&launch));
     let id = crate::suite::qsi::identity("MC1")?;
     if qsictl::link::Link::connect(&address, &id, None).is_ok() {
         return Err("a session was made with the service interface down".into());

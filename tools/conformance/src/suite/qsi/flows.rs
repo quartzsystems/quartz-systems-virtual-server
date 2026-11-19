@@ -508,7 +508,7 @@ pub fn power(run: &Run<'_>) -> Result<String, String> {
     drop(q);
     let mut q = super::Qsi {
         guest: crate::suite::install::boot(run, &launch)?,
-        address: format!("127.0.0.1:{}", launch.qsi.unwrap_or_default()),
+        address: format!("127.0.0.1:{}", crate::qemu::qsi_port(&launch)),
         launch,
     };
     q.guest.seen(

@@ -418,6 +418,7 @@ dependencies = [
  "pesign",
  "pio",
  "poold",
+ "qemu",
  "qsi",
  "qsictl",
  "qsipart",
@@ -1762,6 +1763,16 @@ dependencies = [
  "crc",
  "thiserror",
  "tracing",
+]
+
+[[package]]
+name = "qemu"
+version = "0.1.0"
+dependencies = [
+ "diskimg",
+ "seed",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]

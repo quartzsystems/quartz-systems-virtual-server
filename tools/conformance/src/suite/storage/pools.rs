@@ -212,7 +212,7 @@ fn pulled(run: &Run<'_>, protection: &str, n: usize, pulls: &[usize]) -> Result<
     for unit in pulls {
         // QEMU's drive is taken from under the host: every transfer of
         // it fails from now on.
-        guest.monitor(&format!("drive_del hd{}", unit + 1))?;
+        guest.pull_drive(&format!("hd{}", unit + 1))?;
         // A transfer makes the set see it.
         channel(&mut guest)?.ask_within(
             &format!("copy {file} 0 {file}.again 0 {}", 1 << 20),
@@ -275,8 +275,8 @@ pub fn lost(run: &Run<'_>) -> Result<String, String> {
     make(&mut guest, "LOST", "mirrored", &names[..2], &[])?;
     make(&mut guest, "KEPT", "none", &names[2..], &[])?;
     pool_until(&mut guest, "LOST", Instant::now() + WORK_WITHIN, active)?;
-    guest.monitor("drive_del hd1")?;
-    guest.monitor("drive_del hd2")?;
+    guest.pull_drive("hd1")?;
+    guest.pull_drive("hd2")?;
     let _ = channel(&mut guest)?.ask("copy /dev/urandom 0 /pools/LOST/x 0 1048576");
     guest.seen(&posted(&refcode::POOL_FAILED, "LOST"), run.deadline())?;
     let lost = pool_until(&mut guest, "LOST", run.deadline(), |p| {

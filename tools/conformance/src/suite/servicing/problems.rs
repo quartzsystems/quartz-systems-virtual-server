@@ -121,7 +121,7 @@ pub fn pool(run: &Run<'_>) -> Result<String, String> {
     })?;
     let file = "/pools/POOL1/pulled";
     let pull = |rig: &mut super::Rig<'_>, hd: usize| -> Result<(), String> {
-        rig.q.guest.monitor(&format!("drive_del hd{hd}"))?;
+        rig.q.guest.pull_drive(&format!("hd{hd}"))?;
         channel(&mut rig.q.guest)?.ask_within(
             &format!("copy /dev/urandom 0 {file} 0 {}", 4 << 20),
             Duration::from_mins(2),

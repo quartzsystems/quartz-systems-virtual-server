@@ -40,6 +40,7 @@ fn all_passed(run: &Run<'_>) -> Result<Vec<Passed>, String> {
         path: shared,
         serial: SHARED_SERIAL.into(),
         beside,
+        beside_serial: crate::qemu::BESIDE_SERIAL.into(),
     });
     Ok(all)
 }
