@@ -138,6 +138,9 @@ enum Command {
     /// Check host prerequisites, the license headers and that `base/`
     /// is product-neutral.
     Doctor,
+    /// Build and run the fixture appliance (`tools/fixture`), which
+    /// takes the base crates as git dependencies at HEAD.
+    Fixture,
     /// Run cargo-deny plus the C-linkage check of the compiled graph.
     Deny,
     /// Write `NOTICES.txt` (every crate of `Cargo.lock`, its license and
@@ -202,7 +205,7 @@ fn main() -> Result<()> {
     if !cfg!(target_os = "linux")
         && !matches!(
             cli.command,
-            Command::Doctor | Command::Deny | Command::Notices { .. }
+            Command::Doctor | Command::Deny | Command::Notices { .. } | Command::Fixture
         )
     {
         tracing::warn!("the pipeline needs a Linux host; run this from WSL");
@@ -264,6 +267,9 @@ fn main() -> Result<()> {
             }
         },
         Command::Doctor => buildkit::host::doctor::doctor(&ctx)?,
+        Command::Fixture => {
+            host::fixture::fixture(&ctx)?;
+        }
         Command::Deny => buildkit::host::deny::deny(&ctx)?,
         Command::Notices { check } => {
             notices::notices(&ctx, check)?;

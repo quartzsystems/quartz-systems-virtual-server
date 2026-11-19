@@ -109,7 +109,7 @@ fn package_name(manifest: &str) -> Option<String> {
 
 /// The package names of the repository's crates outside `base/`: every
 /// crate one level under a category folder.
-fn outside_crates(repo: &Path) -> Result<Vec<String>> {
+pub fn outside_crates(repo: &Path) -> Result<Vec<String>> {
     let mut names = Vec::new();
     for entry in fs::read_dir(repo)?.flatten() {
         let category = entry.path();

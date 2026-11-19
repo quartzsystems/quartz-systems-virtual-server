@@ -1,0 +1,23 @@
+# The fixture appliance: a crate of its own, outside this workspace, that
+# takes this repository's base crates as another repository takes them.
+# `build fixture` copies this tree to a clean directory and writes
+# Cargo.toml from this file, with @REPO@ this repository's file:// URL
+# and @REV@ its HEAD, so the crates are git dependencies at that commit.
+
+[package]
+name = "qsdemo-fixture"
+description = "An appliance of no product's that uses the base crates from a git dependency"
+version = "0.3.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace]
+
+[dependencies]
+processor = { git = "@REPO@", rev = "@REV@" }
+qemu = { git = "@REPO@", rev = "@REV@" }
+inventory = { git = "@REPO@", rev = "@REV@" }
+netd = { git = "@REPO@", rev = "@REV@" }
+state = { git = "@REPO@", rev = "@REV@" }
+appliance = { git = "@REPO@", rev = "@REV@" }
