@@ -89,12 +89,12 @@ fn qemu() -> Result<String, String> {
 /// An erased variable store: a firmware volume header with an
 /// authenticated variable store and nothing in it.
 fn empty_store() -> Vec<u8> {
-    const LEN: usize = 0x2_0000;
-    let mut s = vec![0xFF_u8; LEN];
+    const LEN: u32 = 0x2_0000;
+    let mut s = vec![0xFF_u8; 0x2_0000];
     s[..0x48].fill(0);
     // The volume header: its length at 32, `_FVH` at 40, its header
     // length at 48.
-    s[32..40].copy_from_slice(&(LEN as u64).to_le_bytes());
+    s[32..40].copy_from_slice(&u64::from(LEN).to_le_bytes());
     s[40..44].copy_from_slice(b"_FVH");
     s[48..50].copy_from_slice(&0x48u16.to_le_bytes());
     // The variable store's header: its GUID, size, formatted and healthy.
@@ -103,7 +103,7 @@ fn empty_store() -> Vec<u8> {
         0x92,
     ];
     s[0x48..0x58].copy_from_slice(&guid);
-    s[0x58..0x5C].copy_from_slice(&((LEN - 0x48) as u32).to_le_bytes());
+    s[0x58..0x5C].copy_from_slice(&(LEN - 0x48).to_le_bytes());
     s[0x5C] = 0x5A;
     s[0x5D] = 0xFE;
     s[0x5E..0x64].fill(0);
@@ -154,8 +154,11 @@ fn network() -> Result<String, String> {
     ))
 }
 
+/// One part: what it says when it held, or why it did not.
+type Part = fn() -> Result<String, String>;
+
 fn main() -> Result<(), String> {
-    let parts: [(&str, fn() -> Result<String, String>); 4] = [
+    let parts: [(&str, Part); 4] = [
         ("processor", processor),
         ("qemu", qemu),
         ("inventory", inventory),
