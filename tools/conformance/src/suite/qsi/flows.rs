@@ -318,7 +318,13 @@ pub fn events(run: &Run<'_>) -> Result<String, String> {
         return Err(format!("codes as events {codes:?}, the history {local:?}"));
     }
     // The server killed and started again: it numbers on.
-    let before = l.session.last_event().unwrap_or(0);
+    // The last seen on either connection: the second may have had none
+    // when the system had IPLed by the end of the first.
+    let before = l
+        .session
+        .last_event()
+        .or_else(|| all.last().map(|(s, _)| *s))
+        .unwrap_or(last);
     l.close();
     let started = super::posted(&mut q, &refcode::QSI_STARTED);
     channel(&mut q.guest)?.ask(&format!("{} qsid", qsvshook::proto::command::KILL))?;
