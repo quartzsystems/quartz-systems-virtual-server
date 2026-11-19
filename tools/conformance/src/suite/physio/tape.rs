@@ -381,7 +381,7 @@ pub fn save(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         "CRTLIB LIB(TAPLIB)",
-        "Library TAPLIB created | TAPLIB *LIB created",
+        "Library TAPLIB created | TAPLIB *LIB created | Library TAPLIB was created",
         two,
     )?;
     for (_, cmd) in OBJECTS {
@@ -501,7 +501,7 @@ fn big_library(guest: &mut Session, id: u32, notes: &mut String) -> Result<(), S
         guest,
         id,
         "CRTLIB LIB(BIGLIB)",
-        "Library BIGLIB created | BIGLIB *LIB created",
+        "Library BIGLIB created | BIGLIB *LIB created | Library BIGLIB was created",
         Duration::from_mins(2),
     )?;
     let m = mark(guest, id)?;
@@ -783,7 +783,7 @@ pub fn volumes(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         "CRTLIB LIB(SMALL)",
-        "Library SMALL created | SMALL *LIB created",
+        "Library SMALL created | SMALL *LIB created | Library SMALL was created",
         Duration::from_mins(2),
     )?;
     unmount(g, first)?;
