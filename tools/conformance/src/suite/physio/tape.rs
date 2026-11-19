@@ -46,10 +46,11 @@ const FAILURES: &[&str] = &[
     "The save ended",                      // CPF3794
     "Nothing named was found in the save", // CPF3780
     // The same as QS/400's catalogue has them since its handoff 21.
-    "is write protected",           // CPF6768
-    "cannot be used now",           // CPF6718
-    "ended before it was done",     // CPF3794
-    "The save holds nothing named", // CPF3780
+    "is write protected",            // CPF6768
+    "cannot be used now",            // CPF6718
+    "ended before it was done",      // CPF3794
+    "The save holds nothing named",  // CPF3780
+    "Nothing was saved or restored", // CPF3770
     // The same by identifier, which QS/400 puts before its own text
     // where that is not the catalogue's (`docs/QS400_GUEST.md`).
     "CPF6708",
@@ -60,6 +61,7 @@ const FAILURES: &[&str] = &[
     "CPF6760",
     "CPF3794",
     "CPF3780",
+    "CPF3770",
     "not found",
     "not allowed",
     "not valid",
