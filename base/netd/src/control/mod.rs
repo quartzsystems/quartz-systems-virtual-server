@@ -88,6 +88,10 @@ ipc::rpc! {
     5 => fn set_clock / SetClock (secs: i64) -> Result<(), String>;
     /// Every interface, in `network.toml`'s order.
     6 => fn interfaces / Interfaces () -> Vec<NetStatus>;
+    /// As [`Net::apply`], but kept only when [`Net::confirm`] is called
+    /// within `seconds` (none is thirty, ten minutes at most), and
+    /// taken back when they are up, whatever carrier and address say.
+    7 => fn apply_confirmed / ApplyConfirmed (network: String, seconds: u32) -> Result<(), String>;
 }
 
 /// A client of the service's socket.

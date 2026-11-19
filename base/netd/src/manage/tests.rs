@@ -622,3 +622,55 @@ fn the_roles_are_the_appliance_s() {
     doubled.interfaces[1].role = String::new();
     assert!(check_roles(&doubled, &roles).is_err());
 }
+
+#[test]
+fn a_change_kept_only_when_confirmed_is_taken_back_unless_it_is() {
+    use crate::trial::{Last, Trial, settle};
+    let dir = std::env::temp_dir().join(format!("netd-confirm-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let store = state::Store::at(&dir);
+    let (mut m, log, _said, now) = machine(static_config(), vec![eth(2, "eth0", true)]);
+    m.refresh(now);
+    let old = m.config().clone();
+    let new = Network::from(Interface {
+        address: Some("192.0.2.20/24".parse().unwrap()),
+        ..static_one()
+    });
+    let window = Duration::from_secs(60);
+
+    // Never confirmed: it works, carrier and address, and is taken
+    // back when the window ends; nothing is written.
+    m.reload(new.clone(), "HOST1".into(), now);
+    let soon = now + Duration::from_secs(5);
+    m.refresh(soon);
+    let first = &m.statuses()[0];
+    assert!(
+        first.carrier && first.address == "192.0.2.20/24",
+        "{first:?}"
+    );
+    let trial = Trial::begin_confirmed(old.clone(), new.clone(), now, window);
+    let trial = settle(trial, &mut m, &store, "HOST1", soon).expect("on trial");
+    take(&log);
+    let came_to = settle(trial, &mut m, &store, "HOST1", now + window).unwrap_err();
+    assert_eq!(
+        came_to,
+        Last::Restored("it was not confirmed within 60 seconds".into())
+    );
+    assert_eq!(m.config(), &old);
+    assert!(take(&log).contains(&"address 192.0.2.10/24 on 2".to_string()));
+    assert_eq!(store.load::<Network>().unwrap(), None);
+
+    // Confirmed within the window: kept and written.
+    m.reload(new.clone(), "HOST1".into(), now);
+    let mut trial = Trial::begin_confirmed(old, new.clone(), now, window);
+    let trial_open = settle(trial.clone(), &mut m, &store, "HOST1", soon);
+    assert!(trial_open.is_ok());
+    trial.confirmed = true;
+    assert_eq!(
+        settle(trial, &mut m, &store, "HOST1", soon).unwrap_err(),
+        Last::Kept
+    );
+    assert_eq!(store.load::<Network>().unwrap(), Some(new));
+    let _ = std::fs::remove_dir_all(dir);
+}

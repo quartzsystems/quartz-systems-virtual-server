@@ -23,7 +23,7 @@ use crate::manage::{Manager, Reporter, check_roles};
 use crate::sys::clock::{SystemClock, write_rtc};
 use crate::sys::kernel::Linux;
 use crate::time::{Shared, keep};
-use crate::trial::{Last, Trial, Verdict, changed};
+use crate::trial::{Last, Trial, settle, window};
 
 /// The resolver's file.
 const RESOLV: &str = "/etc/resolv.conf";
@@ -44,6 +44,9 @@ pub enum Msg {
     Interfaces(Sender<Vec<NetStatus>>),
     /// A change of the network, to be tried.
     Apply(String, Sender<Result<(), String>>),
+    /// A change of the network, kept only when confirmed within this
+    /// many seconds.
+    ApplyConfirmed(String, u32, Sender<Result<(), String>>),
     /// How the last change stands.
     Trial(Sender<TrialStatus>),
     /// Keep the change on trial.
@@ -102,6 +105,11 @@ impl Net for Asker {
             .unwrap_or_else(|| Err("the service did not answer".into()))
     }
 
+    fn apply_confirmed(&mut self, network: String, seconds: u32) -> Result<(), String> {
+        self.ask(|reply| Msg::ApplyConfirmed(network, seconds, reply))
+            .unwrap_or_else(|| Err("the service did not answer".into()))
+    }
+
     fn trial(&mut self) -> TrialStatus {
         self.ask(Msg::Trial).unwrap_or_default()
     }
@@ -143,6 +151,31 @@ fn watch_links(tx: &Sender<Msg>) {
     }
 }
 
+/// Put the change `text` on the interfaces, on trial: kept only when
+/// confirmed within `confirm` when there is one. Refused while another
+/// is on trial.
+fn try_change(
+    appliance: &Appliance,
+    text: &str,
+    confirm: Option<Duration>,
+    trial: &mut Option<Trial>,
+    manager: &mut Manager<Linux>,
+    name: &str,
+    now: Instant,
+) -> Result<(), String> {
+    if trial.is_some() {
+        return Err("a change is being tried already".into());
+    }
+    let new = parse(appliance, text)?;
+    let old = manager.config().clone();
+    manager.reload(new.clone(), name.to_string(), now);
+    *trial = Some(match confirm {
+        Some(window) => Trial::begin_confirmed(old, new, now, window),
+        None => Trial::begin(old, new, now),
+    });
+    Ok(())
+}
+
 fn manage(
     appliance: &Appliance,
     mut manager: Manager<Linux>,
@@ -171,17 +204,28 @@ fn manage(
                 let _ = reply.send(manager.statuses());
             }
             Ok(Msg::Apply(text, reply)) => {
-                let answer = match (&trial, parse(appliance, &text)) {
-                    (Some(_), _) => Err("a change is being tried already".to_string()),
-                    (None, Err(e)) => Err(e),
-                    (None, Ok(new)) => {
-                        let old = manager.config().clone();
-                        manager.reload(new.clone(), name.clone(), now);
-                        trial = Some(Trial::begin(old, new, now));
-                        last = Last::Trying;
-                        Ok(())
-                    }
-                };
+                let answer =
+                    try_change(appliance, &text, None, &mut trial, &mut manager, &name, now);
+                if answer.is_ok() {
+                    last = Last::Trying;
+                }
+                let _ = reply.send(answer);
+            }
+            Ok(Msg::ApplyConfirmed(text, seconds, reply)) => {
+                let answer = window(seconds).and_then(|w| {
+                    try_change(
+                        appliance,
+                        &text,
+                        Some(w),
+                        &mut trial,
+                        &mut manager,
+                        &name,
+                        now,
+                    )
+                });
+                if answer.is_ok() {
+                    last = Last::Trying;
+                }
                 let _ = reply.send(answer);
             }
             Ok(Msg::Trial(reply)) => {
@@ -225,29 +269,18 @@ fn manage(
             Err(RecvTimeoutError::Disconnected) => std::thread::sleep(Duration::from_secs(1)),
         }
         // A change on trial is kept once each interface it changes
-        // works, and taken back when its time is up.
+        // works, or once it is confirmed, and taken back when its time
+        // is up.
         if let Some(t) = trial.take() {
-            let touched = changed(&t.old, &t.new);
-            let failing = manager
-                .statuses()
-                .into_iter()
-                .find(|s| touched.contains(&s.role) && (!s.carrier || s.address.is_empty()));
-            match t.judge(failing.is_none(), now) {
-                Verdict::Wait => trial = Some(t),
-                Verdict::Keep => {
-                    last = match Store::at(appliance.state_dir()).save(&t.new) {
-                        Ok(()) => Last::Kept,
-                        Err(e) => {
-                            manager.reload(t.old, name.clone(), now);
-                            Last::Restored(format!("it could not be written: {e}"))
-                        }
-                    };
-                }
-                Verdict::Restore => {
-                    let why = failing.map(|s| s.line).unwrap_or_default();
-                    manager.reload(t.old, name.clone(), now);
-                    last = Last::Restored(why);
-                }
+            match settle(
+                t,
+                &mut manager,
+                &Store::at(appliance.state_dir()),
+                &name,
+                now,
+            ) {
+                Ok(t) => trial = Some(t),
+                Err(came_to) => last = came_to,
             }
         }
         shared.lock().unwrap_or_else(PoisonError::into_inner).online = manager.online();

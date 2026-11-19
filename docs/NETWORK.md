@@ -146,7 +146,14 @@ carrier that no other interface has), DHCP or a static address, an
 optional VLAN, and whether it carries the default route (one at most),
 the name servers and the time. A reload or a change on trial undoes
 and remakes only the interfaces that changed, and a change is judged
-by those alone. QS/VS names one role, `management`, and has one
+by those alone. A change made with `apply` is kept once each interface
+it changes has carrier and an address; one made with `apply_confirmed`
+is kept only when `confirm` is called within its window (thirty
+seconds unless the caller names one, ten minutes at most), and is
+taken back when the window ends whatever the interfaces say. A console
+reached over the network it changes uses the second, so an address
+the operator cannot reach is never kept; QS/VS's local console uses
+the first. QS/VS names one role, `management`, and has one
 interface, so its file is version 1's interface as the first of the
 list: an interface with no role is the first role's, and one written
 by version 1 migrates to that with nothing else changed. Nothing
