@@ -1,0 +1,133 @@
+# Copyright (C), 2026 Quartz Systems. Some rights reserved. This work is
+# licensed under the terms of the MIT license which can be found in the
+# root directory of this project.
+#
+# A tag v<VERSION> publishes a GitHub release (docs/RELEASING.md): the tag
+# is checked against VERSION and the release notes, ci.yml's checks run,
+# the release is built twice from clean, compared and signed on a
+# GitHub-hosted runner with the keys in the `release` environment's
+# secrets (only v* tags may use that environment), and its files are
+# published: the ISO, the update image, the manifest, SHA256SUMS and its
+# signature, the notices, the release notes, the catalogue, the Secure
+# Boot certificate and the stream's index.
+#
+# The environment's secrets, as QS/400's:
+#   QSVS_SIGNING_KEY   the text of qsvs-release.ed25519
+#   QSVS_SB_KEY        the text of qsvs-db.key (PEM)
+#   QSVS_SB_CERT_B64   the text of qsvs-db.cer.b64 (the DER certificate in base64)
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  version:
+    name: tag, VERSION and the release notes agree
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          version=$(cat VERSION)
+          [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "::error::tag $GITHUB_REF_NAME is not v$version (VERSION)"; exit 1; }
+          IFS=. read -r v r m <<< "$version"
+          release="V${v}R${r}M${m}"
+          [ -f "docs/RELEASE_NOTES_$release.md" ] || { echo "::error::no docs/RELEASE_NOTES_$release.md"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: build and sign ${{ needs.version.outputs.release }}
+    needs: [version, ci]
+    runs-on: ubuntu-24.04
+    # Holds the release keys; its deployment rule admits v* tags only.
+    environment: release
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/qsvs-host
+      # The keys go to a directory only this job's user can read, for the
+      # signing step alone, and are removed whatever happens. Without all
+      # three `build release` refuses, so the job stops here first.
+      - name: Release keys from the release environment
+        env:
+          SIGNING_KEY: ${{ secrets.QSVS_SIGNING_KEY }}
+          SB_KEY: ${{ secrets.QSVS_SB_KEY }}
+          SB_CERT_B64: ${{ secrets.QSVS_SB_CERT_B64 }}
+        run: |
+          for k in SIGNING_KEY SB_KEY SB_CERT_B64; do
+            [ -n "${!k}" ] || { echo "::error::secret for $k is missing in the release environment (docs/RELEASING.md)"; exit 1; }
+          done
+          umask 077
+          dir=$(mktemp -d)
+          printf '%s' "$SIGNING_KEY" > "$dir/qsvs-release.ed25519"
+          printf '%s\n' "$SB_KEY" > "$dir/qsvs-db.key"
+          printf '%s' "$SB_CERT_B64" | base64 -d > "$dir/qsvs-db.cer"
+          echo "KEYDIR=$dir" >> "$GITHUB_ENV"
+      - name: build release (twice from clean, compared, signed)
+        run: |
+          QSVS_SIGNING_KEY="$KEYDIR/qsvs-release.ed25519" \
+          QSVS_SB_KEY="$KEYDIR/qsvs-db.key" \
+          QSVS_SB_CERT="$KEYDIR/qsvs-db.cer" \
+            cargo run -q -p build -- release "${{ needs.version.outputs.version }}"
+      - name: Remove the keys
+        if: always()
+        run: '[ -z "${KEYDIR:-}" ] || rm -rf "$KEYDIR"'
+      - name: Release files
+        run: |
+          out="target/release/${{ needs.version.outputs.release }}"
+          mkdir -p dist
+          cp -r "$out"/. dist/
+          ( cd dist && sha256sum -c SHA256SUMS )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: dist/
+
+  publish:
+    name: publish ${{ needs.version.outputs.release }}
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: dist
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "QS/VS ${{ needs.version.outputs.release }} (${{ needs.version.outputs.version }})."
+            echo
+            echo "Check a download against SHA256SUMS, which is signed with the QS/VS release key (SHA256SUMS.sig). The release notes are RELEASE_NOTES_${{ needs.version.outputs.release }}.md, here and at the root of the ISO."
+          } > notes.md
+          # The stream's index goes up as index.toml beside the files.
+          mv dist/stream/index.toml dist/index.toml && rmdir dist/stream
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "QS/VS ${{ needs.version.outputs.release }} (${{ needs.version.outputs.version }})" \
+            --notes-file notes.md

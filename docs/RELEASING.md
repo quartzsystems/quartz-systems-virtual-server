@@ -101,6 +101,24 @@ path and compares every file byte for byte; a difference stops it
 (`--no-compare` builds once, for a trial). The tag, `v1.0.0`, is
 Cody's, and is pushed with the release's files published.
 
+### From a tag, on GitHub
+
+A tag `v<VERSION>` pushed runs `.github/workflows/release.yml`: the
+tag, `VERSION` and the release notes are checked to agree, `ci.yml`
+runs, and `build release` runs as above on a GitHub-hosted runner with
+the keys from the repository's `release` environment, whose deployment
+rule admits `v*` tags only. Its files are published as the tag's GitHub
+release. The environment's three secrets, as QS/400's:
+
+| Secret | The text of |
+|---|---|
+| `QSVS_SIGNING_KEY` | `qsvs-release.ed25519` |
+| `QSVS_SB_KEY` | `qsvs-db.key` |
+| `QSVS_SB_CERT_B64` | `qsvs-db.cer.b64` (`base64 -w0 qsvs-db.cer`) |
+
+`qsvs-release.pub`, `qsvs-db.cer` and `qsvs-db.esl` are public and are
+not secrets.
+
 ## The stream
 
 Releases of QS/VS are published as the `qsvs` stream: one directory
