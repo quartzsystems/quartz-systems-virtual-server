@@ -7,6 +7,9 @@
 //! file's defaults. Version 2 adds `[install]`, an installer's answers:
 //! with it the file is the answers file of an unattended installation.
 //! A running host reads the other tables and leaves that one alone.
+//!
+//! `[network]` is read in either form of `network.toml`: the keys of
+//! one interface (its version 1), or `[[network.interface]]` tables.
 
 use serde::Deserialize;
 use state::{Document, Host, Network};
@@ -25,8 +28,16 @@ struct File {
     #[serde(default)]
     host: Host,
     #[serde(default)]
-    network: Network,
+    network: toml::Table,
     install: Option<Install>,
+}
+
+/// `[network]` in either form, as `network.toml`'s newest.
+fn network(mut table: toml::Table) -> Result<Network, String> {
+    if !table.contains_key("interface") {
+        state::doc::network::from_version_1(&mut table)?;
+    }
+    table.try_into().map_err(|e: toml::de::Error| e.to_string())
 }
 
 /// How the load source is protected.
@@ -121,12 +132,12 @@ pub fn parse(text: &str) -> Result<Seed, String> {
     file.host
         .validate()
         .map_err(|e| format!("{FILE}: [host]: {e}"))?;
-    file.network
-        .validate()
+    let network = network(file.network)
+        .and_then(|n| n.validate().map(|()| n))
         .map_err(|e| format!("{FILE}: [network]: {e}"))?;
     Ok(Seed {
         host: file.host,
-        network: file.network,
+        network,
         install: file.install,
     })
 }
@@ -141,6 +152,23 @@ mod tests {
             "schema_version = 2\n[install]\ndisks = {disks}\nuser_id = \"ADMIN\"\n\
              password_hash = \"$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA\"\n{rest}"
         ))
+    }
+
+    #[test]
+    fn the_network_table_is_read_in_both_forms() {
+        let one = "schema_version = 1\n[network]\nmode = \"static\"\n\
+                   address = \"192.0.2.10/24\"\nvlan = 7\n";
+        let list = "schema_version = 1\n[[network.interface]]\nmode = \"static\"\n\
+                    address = \"192.0.2.10/24\"\nvlan = 7\n";
+        let (a, b) = (parse(one).unwrap(), parse(list).unwrap());
+        assert_eq!(a.network, b.network);
+        assert_eq!(a.network.primary().vlan, Some(7));
+        let two = "schema_version = 2\n[[network.interface]]\nrole = \"public\"\n\
+                   [[network.interface]]\nrole = \"private\"\ndevice = \"eth1\"\n\
+                   carries_route = false\n";
+        assert_eq!(parse(two).unwrap().network.interfaces.len(), 2);
+        let clash = "schema_version = 2\n[[network.interface]]\n[[network.interface]]\n";
+        assert!(parse(clash).unwrap_err().contains("[network]"));
     }
 
     #[test]
@@ -187,15 +215,15 @@ mod tests {
         .unwrap();
         assert_eq!(seed.host.name.as_deref(), Some("vs-01"));
         assert_eq!(seed.host.ntp_servers, ["10.0.2.2:12300"]);
-        assert_eq!(seed.network.mode, Mode::Static);
-        assert_eq!(seed.network.vlan, Some(100));
+        assert_eq!(seed.network.primary().mode, Mode::Static);
+        assert_eq!(seed.network.primary().vlan, Some(100));
     }
 
     #[test]
     fn tables_left_out_are_the_defaults() {
         let seed = parse("schema_version = 1\n").unwrap();
         assert_eq!(seed.host, Host::default());
-        assert_eq!(seed.network.device, Device::Auto);
+        assert_eq!(seed.network.primary().device, Device::Auto);
         let seed = parse("schema_version = 1\n[host]\nname = \"a\"\n").unwrap();
         assert_eq!(seed.network, Network::default());
     }

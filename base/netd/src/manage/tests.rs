@@ -90,9 +90,14 @@ impl Kernel for Fake {
         link: &LinkInfo,
         host_name: &str,
         previous: Option<Lease>,
+        route: bool,
     ) -> Result<Box<dyn DhcpClient>, String> {
         let again = if previous.is_some() { " again" } else { "" };
-        self.say(format!("dhcp start {} as {host_name}{again}", link.name));
+        let alone = if route { "" } else { " without the route" };
+        self.say(format!(
+            "dhcp start {} as {host_name}{again}{alone}",
+            link.name
+        ));
         Ok(Box::new(FakeDhcp(self.log.clone(), link.name.clone())))
     }
     fn resolver(&mut self, servers: &[IpAddr]) {
@@ -120,7 +125,14 @@ fn machine(config: Network, links: Vec<LinkInfo>) -> (Manager<Fake>, Log, Log, I
     let (posts, notes) = (said.clone(), said.clone());
     let report = Reporter {
         post: Box::new(move |e| posts.lock().unwrap().push(format!("{e:?}"))),
-        note: Box::new(move |n| notes.lock().unwrap().push(format!("note {n}"))),
+        note: Box::new(move |role, n| {
+            let who = if role.is_empty() {
+                String::new()
+            } else {
+                format!("{role}: ")
+            };
+            notes.lock().unwrap().push(format!("note {who}{n}"));
+        }),
     };
     let fake = Fake {
         links,
@@ -151,14 +163,18 @@ fn lease(addr: [u8; 4]) -> Lease {
     }
 }
 
-fn static_config() -> Network {
-    Network {
+fn static_one() -> Interface {
+    Interface {
         mode: Mode::Static,
         address: Some("192.0.2.10/24".parse().unwrap()),
         gateway: Some(Ipv4Addr::new(192, 0, 2, 1)),
         dns: vec!["192.0.2.53".parse().unwrap()],
-        ..Network::default()
+        ..Interface::default()
     }
+}
+
+fn static_config() -> Network {
+    static_one().into()
 }
 
 #[test]
@@ -179,7 +195,10 @@ fn dhcp_on_the_first_link_with_carrier() {
         ]
     );
     assert!(!m.online());
-    m.bound(&lease([10, 0, 2, 15]));
+    // A word from a link no client runs on is not this interface's.
+    m.bound(2, &lease([10, 0, 2, 99]));
+    assert!(take(&said).is_empty());
+    m.bound(3, &lease([10, 0, 2, 15]));
     assert_eq!(take(&log), ["dns 10.0.2.3"]);
     assert_eq!(
         take(&said),
@@ -199,17 +218,17 @@ fn dhcp_on_the_first_link_with_carrier() {
         ("eth1", true, "10.0.2.15/24")
     );
     // A renewal of the same lease says nothing new.
-    m.bound(&lease([10, 0, 2, 15]));
+    m.bound(3, &lease([10, 0, 2, 15]));
     assert!(take(&said).is_empty());
 }
 
 #[test]
 fn a_static_address_on_a_vlan_of_a_named_device() {
-    let config = Network {
+    let config = Network::from(Interface {
         device: Device::Name("eth0".into()),
         vlan: Some(100),
-        ..static_config()
-    };
+        ..static_one()
+    });
     let (mut m, log, said, now) = machine(config, vec![eth(2, "eth0", true), eth(3, "eth1", true)]);
     m.refresh(now);
     assert_eq!(
@@ -238,7 +257,7 @@ fn a_static_address_on_a_vlan_of_a_named_device() {
 fn carrier_loss_and_return_are_followed_without_a_restart() {
     let (mut m, log, said, now) = machine(Network::default(), vec![eth(2, "eth0", true)]);
     m.refresh(now);
-    m.bound(&lease([10, 0, 2, 15]));
+    m.bound(2, &lease([10, 0, 2, 15]));
     take(&log);
     take(&said);
 
@@ -258,7 +277,7 @@ fn carrier_loss_and_return_are_followed_without_a_restart() {
     m.kernel().link("eth0").carrier = true;
     m.refresh(now + Duration::from_secs(70));
     assert_eq!(take(&log), ["dhcp start eth0 as HOST1 again"]);
-    m.bound(&lease([10, 0, 2, 15]));
+    m.bound(2, &lease([10, 0, 2, 15]));
     assert_eq!(
         take(&said),
         [
@@ -296,10 +315,10 @@ fn no_address_and_no_interface_are_posted_after_thirty_seconds() {
     assert_eq!(m.status().interface, "eth0");
 
     // A named device that is not there.
-    let config = Network {
+    let config = Network::from(Interface {
         device: Device::Name("eth7".into()),
-        ..Network::default()
-    };
+        ..Interface::default()
+    });
     let (mut m, _log, said, now) = machine(config, vec![eth(2, "eth0", true)]);
     m.refresh(now);
     assert_eq!(take(&said), ["note none: no interface eth7"]);
@@ -307,10 +326,10 @@ fn no_address_and_no_interface_are_posted_after_thirty_seconds() {
 
 #[test]
 fn a_reload_undoes_the_old_interface_and_makes_the_new() {
-    let config = Network {
+    let config = Network::from(Interface {
         vlan: Some(7),
-        ..static_config()
-    };
+        ..static_one()
+    });
     let (mut m, log, said, now) = machine(config.clone(), vec![eth(2, "eth0", true)]);
     m.refresh(now);
     take(&log);
@@ -336,7 +355,7 @@ fn a_reload_undoes_the_old_interface_and_makes_the_new() {
             "note none: waiting for DHCP on eth0"
         ]
     );
-    m.bound(&lease([10, 0, 2, 15]));
+    m.bound(2, &lease([10, 0, 2, 15]));
     take(&log);
     // And back to static: the lease is released.
     m.reload(static_config(), "HOST1".into(), now);
@@ -348,13 +367,13 @@ fn a_reload_undoes_the_old_interface_and_makes_the_new() {
 
 #[test]
 fn a_device_that_goes_away_takes_the_interface_with_it() {
-    let config = Network {
+    let config = Network::from(Interface {
         device: Device::Mac([0x52, 0x54, 0, 0, 0, 2]),
-        ..Network::default()
-    };
+        ..Interface::default()
+    });
     let (mut m, log, said, now) = machine(config, vec![eth(2, "eth0", true)]);
     m.refresh(now);
-    m.bound(&lease([10, 0, 2, 15]));
+    m.bound(2, &lease([10, 0, 2, 15]));
     take(&log);
     take(&said);
     m.kernel().links.clear();
@@ -370,28 +389,28 @@ fn a_device_that_goes_away_takes_the_interface_with_it() {
 fn a_stopped_client_s_last_word_does_not_take_a_static_address_away() {
     let (mut m, log, said, now) = machine(Network::default(), vec![eth(2, "eth0", true)]);
     m.refresh(now);
-    m.bound(&lease([10, 0, 2, 15]));
+    m.bound(2, &lease([10, 0, 2, 15]));
     take(&log);
     take(&said);
     // The same address, now static: the client is stopped, the address set.
-    let fixed = Network {
+    let fixed = Network::from(Interface {
         mode: Mode::Static,
         address: Some("10.0.2.15/24".parse().unwrap()),
         gateway: Some(Ipv4Addr::new(10, 0, 2, 2)),
-        ..Network::default()
-    };
+        ..Interface::default()
+    });
     m.reload(fixed, "HOST1".into(), now);
     assert!(take(&log).contains(&"dhcp stop eth0 release".to_string()));
     assert!(m.online());
     // The stopped client's word that its lease is off arrives afterwards.
-    m.unbound(now);
+    m.unbound(2, now);
     assert!(m.online());
     assert_eq!(m.line(), "10.0.2.15/24 on eth0, gateway 10.0.2.2");
     // A client that is running and loses its lease is believed.
     m.reload(Network::default(), "HOST1".into(), now);
-    m.bound(&lease([10, 0, 2, 15]));
+    m.bound(2, &lease([10, 0, 2, 15]));
     assert!(m.online());
-    m.unbound(now);
+    m.unbound(2, now);
     assert!(!m.online());
 }
 
@@ -406,12 +425,200 @@ fn a_link_that_is_anothers_is_never_the_management_interface() {
     m.refresh(now);
     assert_eq!(take(&log), ["up eth0"]);
     assert_eq!(m.status().device, "");
-    let named = Network {
+    let named = Network::from(Interface {
         device: state::Device::Name("eth1".into()),
-        ..Network::default()
-    };
+        ..Interface::default()
+    });
     let (mut m, log, _, now) = machine(named, vec![taken]);
     m.refresh(now);
     assert!(take(&log).is_empty());
     assert_eq!(m.status().interface, "");
+}
+
+fn role(name: &str, rest: Interface) -> Interface {
+    Interface {
+        role: name.into(),
+        ..rest
+    }
+}
+
+/// A public interface carrying the route, the name servers and the
+/// time, and a private one on VLAN 20 of its own link carrying none.
+fn two() -> Network {
+    Network {
+        interfaces: vec![
+            role("public", Interface::default()),
+            role(
+                "private",
+                Interface {
+                    device: Device::Name("eth1".into()),
+                    vlan: Some(20),
+                    mode: Mode::Static,
+                    address: Some("10.1.0.1/24".parse().unwrap()),
+                    dns: vec!["10.1.0.53".parse().unwrap()],
+                    carries_route: false,
+                    carries_dns: false,
+                    carries_time: false,
+                    ..Interface::default()
+                },
+            ),
+        ],
+    }
+}
+
+#[test]
+fn two_interfaces_are_each_managed_on_their_own() {
+    let links = vec![eth(2, "eth0", true), eth(3, "eth1", true)];
+    let (mut m, log, said, now) = machine(two(), links);
+    m.refresh(now);
+    // The public interface takes the first link with carrier; eth1 is
+    // the private one's by name, and its VLAN goes on it.
+    assert_eq!(
+        take(&log),
+        [
+            "up eth0",
+            "up eth1",
+            "dhcp start eth0 as HOST1",
+            "vlan eth1.20 on 3 id 20",
+            "up eth1.20",
+            "address 10.1.0.1/24 on 120",
+        ]
+    );
+    // The private interface carries no name servers: the resolver is
+    // not touched for it.
+    assert_eq!(
+        take(&said),
+        [
+            "InterfaceUp { interface: \"eth0\" }",
+            "InterfaceUp { interface: \"eth1.20\" }",
+            "AddressAcquired { interface: \"eth1.20\", address: \"10.1.0.1/24\", gateway: None }",
+            "note public: none: waiting for DHCP on eth0",
+            "note private: 10.1.0.1/24 on eth1.20",
+        ]
+    );
+    // An address on the private network alone does not keep the clock.
+    assert!(!m.online());
+    m.bound(2, &lease([10, 0, 2, 15]));
+    assert_eq!(take(&log), ["dns 10.0.2.3"]);
+    assert!(m.online());
+    let all = m.statuses();
+    let seen: Vec<(&str, &str, &str)> = all
+        .iter()
+        .map(|s| (s.role.as_str(), s.interface.as_str(), s.address.as_str()))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("public", "eth0", "10.0.2.15/24"),
+            ("private", "eth1.20", "10.1.0.1/24")
+        ]
+    );
+    assert_eq!(m.status(), all[0]);
+    take(&said);
+
+    // Carrier leaves the private link: only its interface says so.
+    m.kernel().link("eth1").carrier = false;
+    m.refresh(now + Duration::from_secs(1));
+    assert_eq!(take(&said), ["note private: none: no carrier on eth1.20"]);
+    assert!(m.online());
+    m.refresh(now + Duration::from_secs(31));
+    assert_eq!(take(&said), ["NoCarrier { interface: \"eth1.20\" }"]);
+}
+
+#[test]
+fn a_reload_of_one_interface_leaves_the_other_running() {
+    let links = vec![eth(2, "eth0", true), eth(3, "eth1", true)];
+    let (mut m, log, said, now) = machine(two(), links);
+    m.refresh(now);
+    m.bound(2, &lease([10, 0, 2, 15]));
+    take(&log);
+    take(&said);
+    // The private interface moves to VLAN 30; the public one's lease
+    // is not touched.
+    let mut moved = two();
+    moved.interfaces[1].vlan = Some(30);
+    m.reload(moved.clone(), "HOST1".into(), now);
+    assert_eq!(
+        take(&log),
+        [
+            "no address 10.1.0.1/24 on 120",
+            "delete link 120",
+            "vlan eth1.30 on 3 id 30",
+            "up eth1.30",
+            "address 10.1.0.1/24 on 130",
+        ]
+    );
+    assert!(m.online());
+    assert_eq!(m.statuses()[0].address, "10.0.2.15/24");
+    // A new host name changes them all: the public lease is released.
+    m.reload(moved, "HOST2".into(), now);
+    let log = take(&log);
+    assert_eq!(log[0], "dhcp stop eth0 release");
+    assert!(
+        log.contains(&"dhcp start eth0 as HOST2".to_string()),
+        "{log:?}"
+    );
+}
+
+#[test]
+fn only_the_route_s_interface_puts_its_router_on() {
+    // The private interface by DHCP, carrying no route: its client is
+    // told so, and its lease's router is not its gateway.
+    let mut config = two();
+    config.interfaces[1].mode = Mode::Dhcp;
+    config.interfaces[1].address = None;
+    config.interfaces[1].vlan = None;
+    let (mut m, log, said, now) = machine(config, vec![eth(2, "eth0", true), eth(3, "eth1", true)]);
+    m.refresh(now);
+    assert_eq!(
+        take(&log)[2..],
+        [
+            "dhcp start eth0 as HOST1",
+            "dhcp start eth1 as HOST1 without the route",
+        ]
+    );
+    take(&said);
+    m.bound(3, &lease([10, 1, 0, 9]));
+    assert_eq!(
+        take(&said),
+        [
+            "AddressAcquired { interface: \"eth1\", address: \"10.1.0.9/24\", gateway: None }",
+            "note private: 10.1.0.9/24 on eth1",
+        ]
+    );
+}
+
+#[test]
+fn two_interfaces_that_take_any_link_take_different_ones() {
+    let mut config = two();
+    config.interfaces[1] = role(
+        "private",
+        Interface {
+            carries_route: false,
+            ..Interface::default()
+        },
+    );
+    let links = vec![eth(2, "eth0", true), eth(3, "eth1", true)];
+    let (mut m, _log, _said, now) = machine(config, links);
+    m.refresh(now);
+    let devices: Vec<String> = m.statuses().into_iter().map(|s| s.device).collect();
+    assert_eq!(devices, ["eth0", "eth1"]);
+}
+
+#[test]
+fn the_roles_are_the_appliance_s() {
+    let roles = ["public", "private"];
+    assert!(check_roles(&two(), &roles).is_ok());
+    // An interface without a role is the first role's.
+    assert!(check_roles(&Network::default(), &roles).is_ok());
+    assert!(check_roles(&Network::default(), &["management"]).is_ok());
+    let unknown = Network::from(role("other", Interface::default()));
+    assert!(check_roles(&unknown, &roles).unwrap_err().contains("other"));
+    let swapped = Network {
+        interfaces: two().interfaces.into_iter().rev().collect(),
+    };
+    assert!(check_roles(&swapped, &roles).unwrap_err().contains("first"));
+    let mut doubled = two();
+    doubled.interfaces[1].role = String::new();
+    assert!(check_roles(&doubled, &roles).is_err());
 }

@@ -146,6 +146,10 @@ pub static POOL_DISK: pool::PoolDiskNames = pool::PoolDiskNames {
     parity_state_magic: *b"QSVSPSTA",
 };
 
+/// The roles of QS/VS's network interfaces: the management interface
+/// alone.
+pub const INTERFACE_ROLES: &[&str] = &["management"];
+
 /// QS/VS as the base crates see it. The caller says how an event is
 /// posted and a fact noted: PID 1 does both itself, a service asks
 /// PID 1.
@@ -158,6 +162,7 @@ pub const fn appliance(post: fn(&Event<'_>), note: fn(&str, &str)) -> Appliance 
         run_dir: RUN_DIR,
         host_prefix: HOST_PREFIX,
         seed_label: SEED_LABEL,
+        interface_roles: INTERFACE_ROLES,
         load_source: &LOAD_SOURCE,
         post,
         note,

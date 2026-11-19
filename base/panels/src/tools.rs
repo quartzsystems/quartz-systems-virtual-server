@@ -234,11 +234,13 @@ impl<E: Host + ?Sized + 'static, O: 'static> Panel<E, O> for NetworkPanel {
     fn enter(&mut self, fields: &[String], env: &mut E) -> PanelFlow<E, O> {
         self.entry = NetworkEntry::take(fields);
         let links = env.links();
-        let (name, network) = match self.entry.check(&links) {
+        let (name, interface) = match self.entry.check(&links) {
             Ok(checked) => checked,
             Err(e) => return Flow::Error(e),
         };
         let (host, current) = env.settings();
+        // The other interfaces, and this one's role, are kept.
+        let network = current.clone().with_primary(interface);
         let renamed = host.name.as_deref() != Some(name.as_str());
         if renamed && let Err(e) = env.set_name(&name) {
             return Flow::Error(e);

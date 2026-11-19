@@ -456,9 +456,9 @@ impl<'a> Panel<Env<'a>, Outcome> for Net {
         self.entry = NetworkEntry::take(fields);
         let links = env.target.links();
         match self.entry.check(&links) {
-            Ok((host, network)) => {
+            Ok((host, interface)) => {
                 env.host = host;
-                env.network = network;
+                env.network = env.network.clone().with_primary(interface);
                 env.net_entry = Some(self.entry.clone());
                 Flow::Push(Box::new(Time {
                     entry: env.time_entry.clone(),
@@ -609,7 +609,7 @@ fn summary(answers: &Answers) -> Vec<String> {
         },
     ));
     lines.push(row("Host name", &answers.host));
-    let n = &answers.network;
+    let n = answers.network.primary();
     lines.push(row("Interface", &n.device.to_string()));
     lines.push(row(
         "Address",

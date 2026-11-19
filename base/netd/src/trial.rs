@@ -2,18 +2,18 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! A change of the management network made from the local console is
-//! on trial first: it is applied, and written to `network.toml` only
-//! once the interface has carrier and an address with it, or the
+//! A change of the network made from the local console is on trial
+//! first: it is applied, and written to `network.toml` only once each
+//! interface it changes has carrier and an address with it, or the
 //! operator says to keep it anyway. A change that has neither after
 //! thirty seconds is taken back: the configuration of before is put on
-//! the interface again and the file was never touched. So a mistyped
+//! the interfaces again and the file was never touched. So a mistyped
 //! address cannot leave a host that is reached over that network
-//! unreachable.
+//! unreachable. The interfaces a change leaves alone are not judged.
 
 use std::time::{Duration, Instant};
 
-use state::Network;
+use state::{Interface, Network};
 
 /// How long a change may be without carrier or address.
 pub const WINDOW: Duration = Duration::from_secs(30);
@@ -40,6 +40,16 @@ pub struct Trial {
     pub deadline: Instant,
     /// The operator said to keep it whatever the interface says.
     pub confirmed: bool,
+}
+
+/// The roles (as written) of the interfaces of `new` that are not in
+/// `old` as they are: what a change touches, and is judged by.
+pub fn changed(old: &Network, new: &Network) -> Vec<String> {
+    new.interfaces
+        .iter()
+        .filter(|n| !old.interfaces.contains(n))
+        .map(|n: &Interface| n.role.clone())
+        .collect()
 }
 
 impl Trial {
@@ -118,5 +128,36 @@ mod tests {
         assert_eq!(trial.judge(false, now), Verdict::Keep);
         assert_eq!(Last::Restored("x".into()).word(), "restored");
         assert_eq!(Last::default().word(), "none");
+    }
+
+    #[test]
+    fn a_change_touches_only_the_interfaces_that_differ() {
+        let public = Interface {
+            role: "public".into(),
+            ..Interface::default()
+        };
+        let private = Interface {
+            role: "private".into(),
+            vlan: Some(20),
+            carries_route: false,
+            ..Interface::default()
+        };
+        let old = Network {
+            interfaces: vec![public.clone(), private.clone()],
+        };
+        let mut new = old.clone();
+        assert!(changed(&old, &new).is_empty());
+        new.interfaces[1].vlan = Some(30);
+        assert_eq!(changed(&old, &new), ["private"]);
+        assert_eq!(
+            changed(
+                &Network::default(),
+                &Network::from(Interface {
+                    vlan: Some(7),
+                    ..Interface::default()
+                })
+            ),
+            [""]
+        );
     }
 }

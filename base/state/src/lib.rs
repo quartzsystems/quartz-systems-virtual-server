@@ -19,5 +19,5 @@ pub mod store;
 pub use doc::host::Host;
 pub use doc::identity::Identity;
 pub use doc::inventory::Inventory;
-pub use doc::network::{Cidr, Device, Mode, Network};
+pub use doc::network::{Cidr, Device, Interface, Mode, Network};
 pub use store::{Document, Migration, StateError, Store, atomic_write};

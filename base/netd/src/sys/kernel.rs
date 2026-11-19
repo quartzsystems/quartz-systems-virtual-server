@@ -150,12 +150,14 @@ impl Kernel for Linux {
         link: &LinkInfo,
         host_name: &str,
         previous: Option<Lease>,
+        route: bool,
     ) -> Result<Box<dyn DhcpClient>, String> {
         let mut config = Config::new(link.mac);
         config.host_name = Some(host_name.to_string());
         config.previous = previous;
         let sink = LeaseSink {
             index: link.index,
+            route,
             tx: self.tx.clone(),
         };
         let agent = Agent::spawn(&link.name, config, Box::new(sink)).map_err(|e| e.to_string())?;
@@ -185,6 +187,8 @@ impl DhcpClient for Client {
 /// Where the agent's lease goes: onto the link, then to the machine.
 struct LeaseSink {
     index: u32,
+    /// The lease's router is the default route.
+    route: bool,
     tx: Sender<Msg>,
 }
 
@@ -201,20 +205,20 @@ impl Sink for LeaseSink {
     fn bind(&mut self, lease: &Lease) -> Result<(), String> {
         let mut rtnl = Rtnl::open().map_err(|e| text(&e))?;
         or_exists(rtnl.add_address(&address(self.index, Self::cidr(lease))))?;
-        if let Some(router) = lease.router {
+        if let Some(router) = lease.router.filter(|_| self.route) {
             or_exists(rtnl.add_route(&default_route(self.index, router, RTPROT_DHCP)))?;
         }
-        let _ = self.tx.send(Msg::Bound(lease.clone()));
+        let _ = self.tx.send(Msg::Bound(self.index, lease.clone()));
         Ok(())
     }
 
     fn unbind(&mut self, lease: &Lease) {
         if let Ok(mut rtnl) = Rtnl::open() {
-            if let Some(router) = lease.router {
+            if let Some(router) = lease.router.filter(|_| self.route) {
                 let _ = rtnl.delete_route(&default_route(self.index, router, RTPROT_DHCP));
             }
             let _ = rtnl.delete_address(&address(self.index, Self::cidr(lease)));
         }
-        let _ = self.tx.send(Msg::Unbound);
+        let _ = self.tx.send(Msg::Unbound(self.index));
     }
 }

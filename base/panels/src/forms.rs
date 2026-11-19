@@ -13,7 +13,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use appliance::time::{Zone, civil, from_civil};
 use console::Screen;
 use scrkit::ui::{self, FormLine};
-use state::{Cidr, Device, Document, Host, Mode, Network};
+use state::{Cidr, Device, Document, Host, Interface, Mode, Network};
 
 use crate::kit;
 
@@ -65,9 +65,11 @@ pub struct NetworkEntry {
 }
 
 impl NetworkEntry {
-    /// The entry that shows `host` and `network` over `links`.
+    /// The entry that shows `host` and `network`'s first interface
+    /// over `links`.
     #[must_use]
     pub fn of(host: &str, network: &Network, links: &[LinkChoice]) -> Self {
+        let network = network.primary();
         let at = |found: Option<usize>| found.map(|i| (i + 1).to_string()).unwrap_or_default();
         let interface = match &network.device {
             Device::Auto => String::new(),
@@ -165,8 +167,9 @@ impl NetworkEntry {
         s
     }
 
-    /// The host name and the network this entry means over `links`.
-    pub fn check(&self, links: &[LinkChoice]) -> Result<(String, Network), String> {
+    /// The host name and the first interface this entry means over
+    /// `links`; its role is the network's to keep.
+    pub fn check(&self, links: &[LinkChoice]) -> Result<(String, Interface), String> {
         if !state::doc::host::valid_name(&self.host) {
             return Err(
                 "Host name must be letters, digits and hyphens, 63 at most, no hyphen first or last."
@@ -240,16 +243,17 @@ impl NetworkEntry {
                     .map_err(|_| format!("DNS server {server} is not an IP address."))?,
             );
         }
-        let network = Network {
+        let interface = Interface {
             device,
             mode,
             address,
             gateway,
             vlan,
             dns,
+            ..Interface::default()
         };
-        network.validate().map_err(|e| sentence(&e))?;
-        Ok((self.host.clone(), network))
+        interface.validate().map_err(|e| sentence(&e))?;
+        Ok((self.host.clone(), interface))
     }
 }
 
@@ -507,9 +511,11 @@ mod tests {
     fn a_network_entry_becomes_the_state_file_and_back() {
         let (host, network) = entry().check(&links()).unwrap();
         assert_eq!(host, "vs-01");
-        assert_eq!(network.device.to_string(), "52:54:00:12:34:57");
-        assert_eq!(network.address.unwrap().to_string(), "192.0.2.10/24");
-        assert_eq!((network.vlan, network.dns.len()), (Some(100), 2));
+        let network = Network::from(network);
+        let first = network.primary();
+        assert_eq!(first.device.to_string(), "52:54:00:12:34:57");
+        assert_eq!(first.address.unwrap().to_string(), "192.0.2.10/24");
+        assert_eq!((first.vlan, first.dns.len()), (Some(100), 2));
         assert_eq!(NetworkEntry::of("vs-01", &network, &links()), entry());
         // DHCP on whatever has carrier.
         let dhcp = NetworkEntry {
@@ -518,6 +524,7 @@ mod tests {
             ..NetworkEntry::default()
         };
         let (_, network) = dhcp.check(&links()).unwrap();
+        let network = Network::from(network);
         assert_eq!(network, Network::default());
         assert_eq!(NetworkEntry::of("a", &network, &links()), dhcp);
     }

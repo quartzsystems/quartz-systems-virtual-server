@@ -2,7 +2,7 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The network service: the interface machine on its own thread of
+//! The network service: the interfaces' machine on its own thread of
 //! messages, a thread watching the links, one serving the socket and
 //! one keeping time.
 
@@ -13,17 +13,17 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use appliance::{Appliance, Event, NOTE_MANAGEMENT};
+use appliance::{Appliance, Event};
 use dhcp::Lease;
 use netlink::route::LinkEvents;
 use state::{Host, Network, Store};
 
 use crate::control::{Net, NetStatus, Request, TrialStatus, dispatch};
-use crate::manage::{Manager, Reporter};
+use crate::manage::{Manager, Reporter, check_roles};
 use crate::sys::clock::{SystemClock, write_rtc};
 use crate::sys::kernel::Linux;
 use crate::time::{Shared, keep};
-use crate::trial::{Last, Trial, Verdict};
+use crate::trial::{Last, Trial, Verdict, changed};
 
 /// The resolver's file.
 const RESOLV: &str = "/etc/resolv.conf";
@@ -32,14 +32,16 @@ const RESOLV: &str = "/etc/resolv.conf";
 pub enum Msg {
     /// The links changed.
     Links,
-    /// The DHCP client put this lease on the interface.
-    Bound(Lease),
-    /// The DHCP client took its lease off.
-    Unbound,
+    /// The DHCP client on the link of this index put this lease on it.
+    Bound(u32, Lease),
+    /// The DHCP client on the link of this index took its lease off.
+    Unbound(u32),
     /// A reload was asked for; the answer goes back.
     Reload(Sender<Result<(), String>>),
     /// Status was asked for.
     Status(Sender<NetStatus>),
+    /// Every interface's status was asked for.
+    Interfaces(Sender<Vec<NetStatus>>),
     /// A change of the network, to be tried.
     Apply(String, Sender<Result<(), String>>),
     /// How the last change stands.
@@ -53,7 +55,16 @@ fn load(appliance: &Appliance) -> Result<(Network, Host), String> {
     let store = Store::at(appliance.state_dir());
     let network = store.load::<Network>().map_err(|e| e.to_string())?;
     let host = store.load::<Host>().map_err(|e| e.to_string())?;
-    Ok((network.unwrap_or_default(), host.unwrap_or_default()))
+    let network = network.unwrap_or_default();
+    check_roles(&network, appliance.interface_roles)?;
+    Ok((network, host.unwrap_or_default()))
+}
+
+/// The text of a `network.toml`, as a change of the appliance's.
+fn parse(appliance: &Appliance, text: &str) -> Result<Network, String> {
+    let network = state::store::parse::<Network>(text).map_err(|e| e.to_string())?;
+    check_roles(&network, appliance.interface_roles)?;
+    Ok(network)
 }
 
 fn host_name(appliance: &Appliance, host: &Host) -> String {
@@ -80,6 +91,10 @@ impl Net for Asker {
 
     fn status(&mut self) -> NetStatus {
         self.ask(Msg::Status).unwrap_or_default()
+    }
+
+    fn interfaces(&mut self) -> Vec<NetStatus> {
+        self.ask(Msg::Interfaces).unwrap_or_default()
     }
 
     fn apply(&mut self, network: String) -> Result<(), String> {
@@ -147,15 +162,18 @@ fn manage(
         let now = Instant::now();
         match msg {
             Ok(Msg::Links) | Err(RecvTimeoutError::Timeout) => manager.refresh(now),
-            Ok(Msg::Bound(lease)) => manager.bound(&lease),
-            Ok(Msg::Unbound) => manager.unbound(now),
+            Ok(Msg::Bound(index, lease)) => manager.bound(index, &lease),
+            Ok(Msg::Unbound(index)) => manager.unbound(index, now),
             Ok(Msg::Status(reply)) => {
                 let _ = reply.send(manager.status());
             }
+            Ok(Msg::Interfaces(reply)) => {
+                let _ = reply.send(manager.statuses());
+            }
             Ok(Msg::Apply(text, reply)) => {
-                let answer = match (&trial, state::store::parse::<Network>(&text)) {
+                let answer = match (&trial, parse(appliance, &text)) {
                     (Some(_), _) => Err("a change is being tried already".to_string()),
-                    (None, Err(e)) => Err(e.to_string()),
+                    (None, Err(e)) => Err(e),
                     (None, Ok(new)) => {
                         let old = manager.config().clone();
                         manager.reload(new.clone(), name.clone(), now);
@@ -206,12 +224,15 @@ fn manage(
             // Every sender is gone only when the process is ending.
             Err(RecvTimeoutError::Disconnected) => std::thread::sleep(Duration::from_secs(1)),
         }
-        // A change on trial is kept once it works, and taken back when
-        // its time is up.
+        // A change on trial is kept once each interface it changes
+        // works, and taken back when its time is up.
         if let Some(t) = trial.take() {
-            let status = manager.status();
-            let working = status.carrier && !status.address.is_empty();
-            match t.judge(working, now) {
+            let touched = changed(&t.old, &t.new);
+            let failing = manager
+                .statuses()
+                .into_iter()
+                .find(|s| touched.contains(&s.role) && (!s.carrier || s.address.is_empty()));
+            match t.judge(failing.is_none(), now) {
                 Verdict::Wait => trial = Some(t),
                 Verdict::Keep => {
                     last = match Store::at(appliance.state_dir()).save(&t.new) {
@@ -223,7 +244,7 @@ fn manage(
                     };
                 }
                 Verdict::Restore => {
-                    let why = status.line;
+                    let why = failing.map(|s| s.line).unwrap_or_default();
                     manager.reload(t.old, name.clone(), now);
                     last = Last::Restored(why);
                 }
@@ -271,7 +292,7 @@ pub fn run(
 
     let report = Reporter {
         post: Box::new(|event| (appliance.post)(event)),
-        note: Box::new(|line| (appliance.note)(NOTE_MANAGEMENT, line)),
+        note: Box::new(|role, line| (appliance.note)(appliance.interface_note(role), line)),
     };
     let kernel = Linux::open(tx, RESOLV, reserved).map_err(io::Error::other)?;
     let name = host_name(appliance, &host);

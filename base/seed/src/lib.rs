@@ -94,7 +94,7 @@ mod tests {
         let host: Host = store.load().unwrap().unwrap();
         assert_eq!(host.name.as_deref(), Some("vs-01"));
         let net: Network = store.load().unwrap().unwrap();
-        assert_eq!(net.vlan, Some(7));
+        assert_eq!(net.primary().vlan, Some(7));
         std::fs::remove_dir_all(store.dir()).unwrap();
     }
 

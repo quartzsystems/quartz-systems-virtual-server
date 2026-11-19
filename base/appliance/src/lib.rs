@@ -41,6 +41,10 @@ pub struct Appliance {
     pub host_prefix: &'static str,
     /// The FAT volume label of a seed volume.
     pub seed_label: &'static str,
+    /// The roles of its network interfaces, as `network.toml` names
+    /// them; the first is the network it is managed over, and an
+    /// interface written without a role has it.
+    pub interface_roles: &'static [&'static str],
     /// What its load source carries that is its own.
     pub load_source: &'static LoadSourceNames,
     /// Post the reference code the product has for an event.
@@ -82,8 +86,32 @@ impl Appliance {
     }
 }
 
-/// The key of the status screen's management line.
+/// The key of the status screen's management line: the first
+/// interface role's.
 pub const NOTE_MANAGEMENT: &str = "management";
+
+impl Appliance {
+    /// The role an interface of `network.toml` has: its own, or the
+    /// first when it names none.
+    pub fn interface_role<'a>(&self, written: &'a str) -> &'a str {
+        if written.is_empty() {
+            self.interface_roles.first().copied().unwrap_or_default()
+        } else {
+            written
+        }
+    }
+
+    /// The status screen's key for the line of the interface with
+    /// `role`: [`NOTE_MANAGEMENT`] for the first role, else the role.
+    pub fn interface_note<'a>(&self, role: &'a str) -> &'a str {
+        let role = self.interface_role(role);
+        if self.interface_roles.first() == Some(&role) {
+            NOTE_MANAGEMENT
+        } else {
+            role
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -99,9 +127,20 @@ mod tests {
             run_dir: "/run",
             host_prefix: "QSDEMO",
             seed_label: "QSDEMOSEED",
+            interface_roles: &["public", "private"],
             post: |_| {},
             note: |_, _| {},
         }
+    }
+
+    #[test]
+    fn an_interface_without_a_role_has_the_first() {
+        let a = demo();
+        assert_eq!(a.interface_role(""), "public");
+        assert_eq!(a.interface_role("private"), "private");
+        assert_eq!(a.interface_note(""), NOTE_MANAGEMENT);
+        assert_eq!(a.interface_note("public"), NOTE_MANAGEMENT);
+        assert_eq!(a.interface_note("private"), "private");
     }
 
     #[test]

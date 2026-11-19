@@ -8,9 +8,11 @@
 #[cfg(unix)]
 use std::path::{Path, PathBuf};
 
-/// The management interface, as status shows it.
+/// An interface, as status shows it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NetStatus {
+    /// Its role as `network.toml` writes it: empty for the first.
+    pub role: String,
     /// The interface, empty when there is none.
     pub interface: String,
     /// The device it is on: the interface itself, or the link a VLAN
@@ -22,10 +24,12 @@ pub struct NetStatus {
     pub address: String,
     /// The default gateway, empty when there is none.
     pub gateway: String,
-    /// The status screen's management line.
+    /// Its status line: the status screen's management line for the
+    /// first interface.
     pub line: String,
 }
 ipc::wire_struct!(NetStatus {
+    role,
     interface,
     device,
     carrier,
@@ -53,7 +57,8 @@ pub struct TrialStatus {
     pub seconds_left: u32,
     /// The status screen's management line, as it is now.
     pub line: String,
-    /// Why a change was taken back.
+    /// Why a change was taken back: the status line of the interface
+    /// that did not work.
     pub reason: String,
 }
 ipc::wire_struct!(TrialStatus {
@@ -65,13 +70,15 @@ ipc::wire_struct!(TrialStatus {
 
 ipc::rpc! {
     request Request, service Net, client Calls, dispatch dispatch;
-    /// Read the state files again and apply what changed.
+    /// Read the state files again and apply what changed: an interface
+    /// that did not change is left running.
     0 => fn reload / Reload () -> Result<(), String>;
-    /// The management interface.
+    /// The first interface: the management interface.
     1 => fn status / Status () -> NetStatus;
     /// Put the network of `network` (the text of a `network.toml`) on
-    /// the interface, on trial: it is written only once it works or is
-    /// confirmed, and taken back after thirty seconds otherwise.
+    /// the interfaces, on trial: it is written only once each interface
+    /// it changes works, or it is confirmed, and taken back after thirty
+    /// seconds otherwise. The interfaces it leaves alone run on.
     2 => fn apply / Apply (network: String) -> Result<(), String>;
     /// How the change made last stands.
     3 => fn trial / Trial () -> TrialStatus;
@@ -79,6 +86,8 @@ ipc::rpc! {
     4 => fn confirm / Confirm () -> Result<(), String>;
     /// Set the clock, and the RTC from it: seconds since the epoch.
     5 => fn set_clock / SetClock (secs: i64) -> Result<(), String>;
+    /// Every interface, in `network.toml`'s order.
+    6 => fn interfaces / Interfaces () -> Vec<NetStatus>;
 }
 
 /// A client of the service's socket.
