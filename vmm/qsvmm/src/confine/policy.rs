@@ -102,8 +102,12 @@ const KVM: &[u32] = &[
 ];
 
 /// What a virtio-net adapter's start and reset ask of vhost-net and
-/// the tap, on the processor that wrote the device's status.
+/// the tap, on the processor that wrote the device's status. The owner
+/// and the memory table are set at the adapter's first start, which is
+/// the guest's.
 const VHOST: &[u32] = &[
+    0xAF01,      // VHOST_SET_OWNER
+    0x4008_AF03, // VHOST_SET_MEM_TABLE
     0x8008_AF00, // VHOST_GET_FEATURES
     0x4008_AF00, // VHOST_SET_FEATURES
     0x4008_AF10, // VHOST_SET_VRING_NUM
@@ -236,9 +240,13 @@ fn starts_threads(kind: Kind) -> bool {
     matches!(kind, Kind::Processor | Kind::Console | Kind::Channel)
 }
 
-/// The kinds that kick other threads of the process.
+/// The kinds that kick other threads of the process. A device's
+/// worker holds the processors when its pool has no room for a write.
 fn kicks(kind: Kind) -> bool {
-    matches!(kind, Kind::Processor | Kind::Control | Kind::Signals)
+    matches!(
+        kind,
+        Kind::Processor | Kind::Worker | Kind::Control | Kind::Signals
+    )
 }
 
 fn ioctls(kind: Kind) -> Vec<u32> {
@@ -425,7 +433,16 @@ mod tests {
         assert_eq!(kick(4242), ALLOW);
         assert_eq!(kick(1), KILL_PROCESS);
         assert_eq!(
-            decide(Kind::Worker, libc::SYS_tgkill, [4242, 7, 34, 0, 0, 0]),
+            decide(Kind::Serial, libc::SYS_tgkill, [4242, 7, 34, 0, 0, 0]),
+            KILL_PROCESS
+        );
+        // A worker holds the processors for its pool's space.
+        assert_eq!(
+            decide(Kind::Worker, libc::SYS_tkill, [99, 35, 0, 0, 0, 0]),
+            ALLOW
+        );
+        assert_eq!(
+            decide(Kind::Worker, libc::SYS_tgkill, [1, 7, 35, 0, 0, 0]),
             KILL_PROCESS
         );
         let tkill = |signal| decide(Kind::Control, libc::SYS_tkill, [99, signal, 0, 0, 0, 0]);
@@ -456,6 +473,10 @@ mod tests {
         assert_eq!(ioctl(Kind::Process, 0x4020_AE46), KILL_PROCESS);
         assert_eq!(ioctl(Kind::Control, 0x8090_AE81), ALLOW);
         assert_eq!(ioctl(Kind::Serial, 0x5421), ALLOW);
+        // An adapter's first start: its owner and the memory table.
+        assert_eq!(ioctl(Kind::Processor, 0xAF01), ALLOW);
+        assert_eq!(ioctl(Kind::Processor, 0x4008_AF03), ALLOW);
+        assert_eq!(ioctl(Kind::Worker, 0xAF01), KILL_PROCESS);
     }
 
     #[test]

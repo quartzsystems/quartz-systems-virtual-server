@@ -41,8 +41,8 @@ Each partition's `qsvmm` (`vmm/qsvmm/src/confine`):
 
 | Kind | Its own calls, past every thread's (memory, futexes, time, `read`, `write`, `close`, thread exit) |
 |---|---|
-| processor | `ioctl` for KVM's processor requests (running it, its state, its clock, interrupt routing, ioeventfds, irqfds, MSI), vhost-net's and the tap's offloads (a device's start), VFIO's interrupts; `eventfd2`, `epoll_create1`, `epoll_ctl`, `pread64`/`pwrite64` (a passed function's regions); `clone` of a thread (a device's worker) and `seccomp` to add a filter; a signal to a thread of its own process |
-| device worker | `epoll_wait`, `pread64`/`pwrite64`/`preadv`/`pwritev`, `fsync`/`fdatasync`, `fallocate`, `ftruncate`, `sendmsg`/`recvmsg` (the tape relay) |
+| processor | `ioctl` for KVM's processor requests (running it, its state, its clock, interrupt routing, ioeventfds, irqfds, MSI), vhost-net's (its owner and memory table at an adapter's first start, its features and rings) and the tap's offloads, VFIO's interrupts; `eventfd2`, `epoll_create1`, `epoll_ctl`, `pread64`/`pwrite64` (a passed function's regions); `clone` of a thread (a device's worker) and `seccomp` to add a filter; a signal to a thread of its own process |
+| device worker | `epoll_wait`, `pread64`/`pwrite64`/`preadv`/`pwritev`, `fsync`/`fdatasync`, `fallocate`, `ftruncate`, `sendmsg`/`recvmsg` (the tape relay); a signal to a thread of its own process (a disk's write holds the processors when its pool is full) |
 | serial log | `openat` and `renameat` in the log directory's descriptor alone, `fdatasync`, `sendto` |
 | console, console input, channel ports | `accept4`, `recvfrom`/`recvmsg`, `sendto`/`sendmsg`, `setsockopt`, `shutdown`; the console's listener may start its input threads |
 | control | the listeners' calls, a dump written to the file it was handed, KVM's state requests for the dump, a signal to its own threads |
@@ -65,7 +65,9 @@ interpreter of the program.
 
 The policy was taken from `strace` of a QS/400 partition's whole life
 (its IPL, the console, the service channel's ports, a tape unloaded and
-loaded, a hold and a dump) and from the learning mode, a test image's
+loaded, a hold and a dump) and from the learning mode, which saw neither
+an adapter's first start nor a full pool: those two were added on
+2026-11-18, when the network and pool suites first ran confined; a test image's
 hook (`confinelearn`) in which a refused call is reported and fails
 instead of ending the VMM: a QS/400 partition's run in it refused
 nothing. `vmm-confined` shows the running VMM as the kernel sees it
