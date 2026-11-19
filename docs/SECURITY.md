@@ -163,7 +163,9 @@ is in `docs/PHASE11.md` ("Baselines").
 and so are `/run`, `/dev` (`nosuid,noexec`), `/proc`, `/sys`, the
 control groups, efivarfs and pstore. Once every mount point exists and
 before any service starts, PID 1 mounts a small `tmpfs` at `/pools` (where
-pools are mounted) and remounts the root, the initramfs where every
+pools are mounted) and one at `/etc` (the network service's resolver
+file, until 2026-11-18 left unwritable by the read-only root) and
+remounts the root, the initramfs where every
 program is, read-only: nothing on a file system that can be written is
 ever executed.
 

@@ -117,8 +117,8 @@ pub fn host_group() -> Result<(), String> {
 
 /// The root, where every program is, read-only from here on: every file
 /// system that can be written is mounted `noexec`, so nothing written is
-/// ever run. Each of `mount_points`, a directory services make mount
-/// points in, is first given a small `tmpfs` of its own. Called once
+/// ever run. Each of `mount_points`, a directory a service writes or
+/// makes mount points in, is first given a small `tmpfs` of its own. Called once
 /// every other mount point exists, before any service.
 pub fn root_read_only(mount_points: &[&'static str]) -> Result<(), String> {
     let table: Vec<Mount> = mount_points

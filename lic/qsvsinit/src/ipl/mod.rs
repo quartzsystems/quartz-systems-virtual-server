@@ -468,7 +468,8 @@ mod on_host {
                 "not a release: an update or installation signed by a release key is refused",
             );
         }
-        if let Err(e) = mounts::root_read_only(&[release::POOLS_DIR]) {
+        // `/etc` for the network service's resolver file.
+        if let Err(e) = mounts::root_read_only(&[release::POOLS_DIR, "/etc"]) {
             host.line(&format!("the root stays writable: {e}"));
         }
         services(&mut host);
