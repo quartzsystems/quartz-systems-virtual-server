@@ -19,7 +19,7 @@ use vswitchd::proto::Calls as _;
 
 use crate::qemu::session::Session;
 use crate::suite::base::power::Moments;
-use crate::suite::base::{Run, channel, posted};
+use crate::suite::base::{Run, channel};
 use crate::suite::network::vswitchd;
 use crate::suite::partition::manager::partd;
 use crate::suite::partition::{fresh_host, host, launch};
@@ -28,10 +28,10 @@ use crate::suite::storage::{POOL_DISK_BYTES, disk_names, pool_disks, pool_until,
 /// How often the power is pulled.
 const CUTS: u32 = 30;
 
-/// What the host has after an IPL: an error, or how many partitions,
-/// virtual disks and host dumps the writers left.
+/// What the host has after an IPL, its base ready (`host` waited for
+/// it): an error, or how many partitions, virtual disks and host dumps
+/// the writers left.
 fn whole(g: &mut Session, run: &Run<'_>) -> Result<(usize, usize, usize), String> {
-    g.expect(&posted(&refcode::BASE_READY, ""), run.deadline())?;
     for code in [&refcode::STATE_INVALID, &refcode::DATA_NOT_MOUNTED] {
         if g.said(&code.tag()) {
             return Err(format!("the IPL posted {}", code.line()));
