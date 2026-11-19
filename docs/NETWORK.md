@@ -137,6 +137,21 @@ forwarding are off: nothing is forwarded between switches or between a
 switch and the management network. A partition cannot reach the host
 through its adapters.
 
+## The host's own interfaces
+
+`network.toml` (version 2, `base/state`) lists the host's interfaces,
+each with the role the appliance names, and `base/netd` runs each on
+its own: its device (a name, a MAC, or the first Ethernet link with
+carrier that no other interface has), DHCP or a static address, an
+optional VLAN, and whether it carries the default route (one at most),
+the name servers and the time. A reload or a change on trial undoes
+and remakes only the interfaces that changed, and a change is judged
+by those alone. QS/VS names one role, `management`, and has one
+interface, so its file is version 1's interface as the first of the
+list: an interface with no role is the first role's, and one written
+by version 1 migrates to that with nothing else changed. Nothing
+listens on any of them but the QSI host server (`docs/QSISERVER.md`).
+
 ## Limits
 
 Settings of `vswitch.toml`'s `[limits]`, with their defaults:

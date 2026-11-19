@@ -5,8 +5,8 @@ item 8). What real hardware has still to show is at the end.
 
 Every disk, network interface and PCI device in the host inventory
 (`inventory.toml`) has a location code: one string that says where the
-device is. The format is `lic/hostinv/src/location/mod.rs`; nothing else
-spells a code.
+device is. The format is `base/inventory/src/location/mod.rs`, which
+every appliance shares; nothing else spells a code.
 
 A code is upper case, has no spaces, and is the same from IPL to IPL as
 long as the hardware and the firmware settings do not change.

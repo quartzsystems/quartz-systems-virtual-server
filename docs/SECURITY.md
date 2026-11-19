@@ -144,7 +144,7 @@ the configuration's.
 | `DEVMEM`, `DEVPORT`, `PROC_KCORE` off | no way to physical memory or ports from user space |
 | `X86_IOPL_IOPERM`, `IA32_EMULATION`, `LEGACY_VSYSCALL_NONE` | no I/O ports from user space, no 32-bit programs, no vsyscall page |
 | `LEGACY_TIOCSTI`, `LDISC_AUTOLOAD` off | no typing into another's terminal, no line discipline loaded on demand |
-| `BINFMT_MISC`, `KPROBES`, `UPROBES`, `UPROBE_EVENTS`, `EFI_CUSTOM_SSDT_OVERLAYS`, `MAGIC_SYSRQ`, `DEBUG_FS` off | nothing a hypervisor host uses (a test image's kernel has debugfs) |
+| `BINFMT_MISC`, `KPROBES`, `UPROBES`, `UPROBE_EVENTS`, `EFI_CUSTOM_SSDT_OVERLAYS`, `MAGIC_SYSRQ`, `DEBUG_FS` off, and `BLK_DEV_IO_TRACE`, which `x86_64_defconfig` turns on and which selects `DEBUG_FS` | nothing a hypervisor host uses (a test image's kernel has debugfs). Every symbol the fragment turns off is checked off in the built `.config`, so one that a default selects back on fails the build (`tools/build/src/product/kernel.rs`); until 2026-11-18 debugfs was on despite the fragment |
 | `USER_NS`, `BPF_SYSCALL`, `USERFAULTFD`, `SECURITY_SELINUX` off | no user namespaces, no BPF programs from user space, no userfaultfd; no policy |
 | `IPV6_SIT` off | no fallback tunnel device in every new network namespace: a VMM's has its loopback alone (found by `vmm-confined`) |
 

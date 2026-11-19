@@ -99,6 +99,14 @@ it.
 
 IPv6 is link-local only and has no keys.
 
+The table is read in either form of `network.toml`: the keys above,
+which describe the management interface (the file's version 1), or
+one `[[network.interface]]` table an interface (its version 2), with
+those keys and `role`, `carries_route`, `carries_dns` and
+`carries_time` (`docs/NETWORK.md`, "The host's own interfaces"). QS/VS
+has one interface, so the first form is all it needs; either becomes a
+`network.toml` of version 2.
+
 ### `[install]`, the answers of an unattended installation
 
 ```toml

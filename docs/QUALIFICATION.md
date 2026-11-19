@@ -46,6 +46,14 @@ image, and say so.
       ISO from the iDRAC's virtual media and from a USB stick, the
       display and the serial-over-LAN console both, attended and
       unattended, one disk and mirrored.
+- [ ] The ISO from a real optical drive (or the iDRAC's virtual CD-ROM)
+      starts every time: ten starts, each to the installer's first
+      screen. Under QEMU with Ubuntu's OVMF, the ISO on q35's IDE
+      CD-ROM hung in the firmware before the kernel on a share of
+      starts (4 of 12 for V1R0M0's ISO, as QS/MC found); on a virtio-scsi
+      CD-ROM it never did, and the harness boots it that way since
+      2026-11-18 (`docs/PHASE11.md`). It is not known to be fixed; a
+      real SATA or USB drive is the case to watch.
 
 ## 4. The load source and disks
 

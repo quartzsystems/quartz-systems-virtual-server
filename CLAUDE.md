@@ -78,11 +78,16 @@ written with.
   crates from this repository. What QS/MC's installer and local console
   will also need goes there: the installer's screens, the common
   panels, service tools users. So does the load source and its
-  storage service: QS/MC has the same mirrored load source. Only
-  QS/VS's menu and its host-specific panels are under `svc/`. A `base/`
-  crate takes an `Appliance` description from its caller, has no
-  `qsvs` or `QSVS` in its code outside tests and comments, and depends
-  on no crate of `lic/`. `build doctor` and a unit test fail otherwise.
+  storage service: QS/MC has the same mirrored load source. So do the
+  processor check, the hardware inventory, the network service with
+  its list of interfaces and the QEMU driver of a harness. Only
+  QS/VS's menu and its host-specific panels are under `svc/`, and
+  only a hypervisor's fields of the inventory are in `lic/hostinv`. A
+  `base/` crate takes an `Appliance` description from its caller, has
+  no `qsvs` or `QSVS` in its code outside tests and comments, and
+  depends on no crate of this repository outside `base/`. `build
+  doctor` and a unit test fail otherwise; `build fixture` builds an
+  appliance of no product's from them as git dependencies.
 - What is on an installed disk and is QS/VS's own (the partition
   types and names, the records' magics, the set's label) is
   `release::LOAD_SOURCE`. None of it may change: a test there holds
@@ -316,7 +321,8 @@ See `docs/ARCHITECTURE.md`. Short form:
   partition) and option 7 shows the problem log.
 - **Time zones.** Fixed UTC offsets only, in V1.
 - **Base crates.** `base/` is product-neutral and shared with QS/MC,
-  the load source and its storage service included.
+  the load source and its storage service included, and the processor
+  check, the inventory, the interfaces and the QEMU driver.
 - **Identity.** Release `V1R0M0` from `VERSION` (`1.0.0`). Fixes
   `QVnnnnn`. Message prefix `QVS`. Environment prefix `QSVS_`. Kernel
   command-line keys `qsvs.`.
@@ -348,18 +354,19 @@ tools/          host tools
   build/          the orchestrator, a thin binary over buildkit: cargo run -p build -- <cmd>
     src/product/    QS/VS as buildkit's Product: names, kernel symbols, initramfs, media; the two image kinds
     src/image/      the userland step and the hooks check, the A/B record on the disk image, the manifest's kind, the update image
-    src/host/       doctor rows, the license header check, the neutrality check of base/, `test`, `fuzz`
+    src/host/       doctor rows, the license header check, the neutrality check of base/, `fixture`, `test`, `fuzz`
   conformance/    the QEMU harness
-    src/qemu/       launch, OVMF, serial capture, the serial port as a 24x80 grid, typed keys, golden files, firmware variables, image copies, the test hooks' channel
+    src/qemu/       base/qemu with QS/VS's variables, serials and device places; golden files, the A/B record and ESP on an image, the test hooks' channel
     src/suite/      Phase 0's steps; base/ has the ten suites of Phase 1; install/ the fifteen of Phase 2 and of the answers to its questions; partition/ the ten of Phase 3 and the sixteen of Phase 4, with the partition manager's client over the hooks' channel; storage/ Phase 5's, with the pool service's client; network/ Phase 6's, with the switch service's client; service/ Phase 7's; qsi/ Phase 8's, a console over the management network; servicing/ Phase 9's and the update suites of Phase 11; physio/ Phase 10's; security/ Phase 11's of the host's boundaries; soak/ the fault soak and the day's (named only); limits/ the limits, the writers' power pulls and the baselines (named only)
     golden/         every installer and Service Tools screen, as text
   fuzz/           qsvsfuzz, the Rust fuzzer: LLVM's coverage counters, the mutator, the loop, a target for every reader of guest bytes
+  fixture/        QSDEMO, an appliance outside the workspace that takes the base crates as git dependencies (`build fixture`)
 base/           what every Quartz appliance needs; product-neutral
   appliance/      the Appliance description with its load-source names, events, civil time, the Ethernet links
   state/          typed TOML state files: schema versions, migration, atomic writes
   supervise/      the service table, restart policy, the runner, the control protocol, signals
   logd/           the NDJSON system log, the reference code history, the kernel log per boot
-  netd/           the management interface (DHCP or static, VLAN, carrier, reload, a change on trial) and NTP
+  netd/           the network interfaces, each with the role the appliance names (DHCP or static, VLAN, the route, DNS and time it carries, carrier, reload, a change on trial), the first the management interface; and NTP
   seed/           seed.toml on a labelled FAT volume, with the [install] table
   users/          service tools user IDs: the password rules and the sign-on rule over QS/400's svcusers
   panels/         panels with help, the console on display and serial, the common forms and Service Tools panels, the unit to keep
@@ -369,6 +376,9 @@ base/           what every Quartz appliance needs; product-neutral
   stgd/           the storage service: the mirrored load source assembled, served through ublk, resynchronized by its write-intent map, rebuilt; its socket
   fdpass/         open files handed between processes over a Unix socket
   stream/         the release stream's index: entries, signed and verified, never older than one seen
+  processor/      the processor features QSI's cryptography needs, and which a processor lacks
+  inventory/      the hardware inventory: processors, memory, disks, interfaces, PCI devices, DMI, the location codes (docs/LOCATION.md)
+  qemu/           a harness's QEMU driver: q35 and OVMF, the variable store, the serial port and its waits, the monitor, disks, NICs, removable volumes, power pulls
 lic/            PID 1, release, installer, base services
   qsvsinit/       PID 1
     src/ipl/        the IPL in order: mounts and the host's control group, the command line, the storage step and the unit to keep, the clock, the state step, the partitions' memory; the hand-off to the installer
@@ -393,7 +403,7 @@ lic/            PID 1, release, installer, base services
     src/partition/  what the partitions say, relayed to the serial port; the probe of requests no guest sends; a console viewer and a dump's read; a hostile system
   release/        V1R0M0 over QS/400's vrm, the banner, the prefixes, the Appliance description, QS/VS's load-source and pool disk names
   refcode/        host reference codes (docs/REFCODES.md), the code of each base event, the poster
-  hostinv/        the host inventory, the processors' threads, and the location codes (docs/LOCATION.md)
+  hostinv/        base/inventory with a hypervisor's fields: PCI devices' isolation groups, resets and interrupts, the IOMMU, huge pages, tape drives
 vmm/            the VMM: one process for one partition
   arch/           x86_64 boot state: the memory map, page tables and GDT, registers, the zero page, the reset vector, the SMBIOS tables; CPUID and MSR policy with a core's sibling threads, the local APIC
   acpi/           the tables in place of firmware: RSDP, XSDT, FADT, MADT, MCFG, the DSDT
@@ -462,6 +472,7 @@ cargo run -p build -- release         a release: built twice from empty and comp
 cargo run -p build -- keys DIR        make a set of release keys (for a test; the real ones are Cody's)
 cargo run -p build -- stream add|verify   the stream's signed index
 cargo run -p build -- deny            cargo-deny and the C-linkage check
+cargo run -p build -- fixture         build and run QSDEMO from the base crates as git dependencies at HEAD
 cargo run -p build -- notices         rewrite lic/release/NOTICES.txt (--check in CI)
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings

@@ -377,7 +377,13 @@ logging, the management network with time, the seed, since Phase 2
 the installer's screens, the panels every service console has, service
 tools users and the host's identity, and since Phase 3 the load source
 and the storage service that protects it: QS/MC is an appliance with a
-load source too, and gets the same mirrored one. These were to
+load source too, and gets the same mirrored one. Since 2026-11-18, what
+QS/MC's first phases found it needed too: the processor check of QSI's
+cryptography (`base/processor`), the hardware inventory with its
+location codes (`base/inventory`; a hypervisor's fields stay in
+`lic/hostinv`), a list of network interfaces each with the role the
+appliance names (`base/netd`, `network.toml` version 2), and the QEMU
+driver of a conformance harness (`base/qemu`). These were to
 live in the QS/MC repository; that repository is still empty, so they
 are written here and QS/MC will pin them from this repository, as this
 repository pins QS/400's. Everything under `base/` is therefore
@@ -387,7 +393,9 @@ reference code, the release banner, the seed label, and what its load
 source carries that is its own: the GPT types and names of its
 partitions, the ESP's vendor directory, the magics of its records) and
 contains no QS/VS name outside its tests and comments, and no `base/`
-crate depends on a crate of `lic/`. So a QS/VS disk and a QS/MC disk
+crate depends on a crate of this repository outside `base/`. `build
+fixture` builds an appliance of no product's (`tools/fixture`) from them
+as git dependencies at HEAD. So a QS/VS disk and a QS/MC disk
 have the same layout and neither appliance takes the other's for its
 own. A test fails the build otherwise
 (`tools/build/src/host/neutral.rs`, also a row of `build doctor`). The
