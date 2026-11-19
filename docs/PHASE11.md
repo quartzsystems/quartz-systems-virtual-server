@@ -193,14 +193,118 @@ What they would have shown is not shown:
   depth was not run: no host here has QEMU in it.
 - `BLOCKED(phase11)`: the fuzz targets ran about 3.5 hours of 24 (four
   at a time), with no finding; the corpus was not saved.
-- `BLOCKED(phase11)`: not run: `soak-day`, `power-writers`, `limits`,
-  `baselines` (and the cost of the hardening), `memory-clean`,
-  `svc-update-migrate`, `svc-update-keys`, the Secure Boot suite on the
-  release, and the acceptance run of every suite on HEAD from empty
-  targets. `vmm-confined` last failed on `sit0`, which `9f11fd5` leaves
-  out of the kernel; it has not run since.
-- `BLOCKED(phase11)`: the golden screens of the status panel and the
-  installer's summary were not written again for the Secure Boot row.
+- `BLOCKED(phase11)`: not run: `soak-day`, `baselines` (and the cost
+  of the hardening), the Secure Boot suite on the release, and the
+  acceptance run of every suite on HEAD from empty targets.
+  `power-writers`, `limits`, `memory-clean`, `svc-update-migrate`,
+  `svc-update-keys` and `vmm-confined` have passed since, and the
+  golden screens have the Secure Boot row (below, 2026-11-19).
 - `NEEDS-CODY`: the Dell's qualification (`docs/QUALIFICATION.md`),
   the fortnight's soak among it; the trademark review of the names; the
   first push of CI; the joint gate with QS/MC.
+
+## 2026-11-19: the base follow-ups for QS/MC
+
+After V1R0M0, not part of it: what QS/MC's `docs/OPEN_QUESTIONS.md`
+asked of QS/VS's `base/` (its items 3, 4, 5, 11 and 12), at the same
+QS/400 pin.
+
+### What moved
+
+- The processor check is `base/processor` (`9e35754`): `NEEDED`,
+  `lacking`, `lacking_from`. PID 1, the QSI server and Service Tools
+  keep their words; `qsi/local` re-exports it.
+- The QEMU driver is `base/qemu` (`650a6b7`): launch, OVMF and the
+  variable store, the serial port and its waits, the monitor, disks,
+  NICs, removable volumes, power pulls. Every environment variable's
+  name is its caller's; QS/VS's harness keeps the `QSVS_` ones in
+  `tools/conformance/src/qemu`. An ISO is booted from a virtio-scsi
+  CD-ROM, not q35's IDE one, which hung in OVMF on a share of starts;
+  that is not known to be fixed for a real drive
+  (`docs/QUALIFICATION.md`, section 3).
+- The neutral part of the inventory is `base/inventory` (`267c0bd`):
+  processors and their threads, memory, disks, interfaces, PCI
+  devices' identities, DMI, the location codes. `lic/hostinv` keeps a
+  hypervisor's fields: isolation groups, resets and interrupts, the
+  IOMMU, huge pages, tape drives. The installer's disk choices and the
+  console's link choices are made from its lists.
+- `base/netd` manages a list of interfaces, each with a role the
+  appliance names (`bd9a4ea`). `network.toml` is version 2 (an
+  `[[interface]]` table each, with `carries_route`, `carries_dns` and
+  `carries_time`); version 1 migrates to one interface with nothing
+  else changed, and a seed's `[network]` is read in either form. QS/VS
+  names one role, `management`. A reload or a change on trial remakes
+  only the interfaces that changed. Nothing new listens.
+- The neutrality check covers the new crates, and a `base/` crate may
+  depend on no crate of this repository outside `base/` (it said
+  `lic/` before). `build fixture` builds QSDEMO (`tools/fixture`), an
+  appliance outside the workspace, from `processor`, `qemu`,
+  `inventory`, `netd` and `state` as git dependencies at HEAD; at
+  `992e100` it built with 7 base crates and none outside `base/`, and
+  each of its parts held.
+
+### debugfs
+
+V1R0M0's kernel has debugfs: its `.config` has `CONFIG_DEBUG_FS=y`
+though the fragment turns it off, because `x86_64_defconfig` turns on
+`BLK_DEV_IO_TRACE`, which selects it, and the build's check did not
+list it. Of the sixteen symbols that select `DEBUG_FS`, that was the
+only one on. The fragment turns it off now (`20cf33d`), and the check
+lists every symbol the fragment turns off, so one a default selects
+back on fails the build. Against V1R0M0's `.config`, the symbols the
+fragment turns off that were on: `DEBUG_FS` alone. In an older target
+of the phase, `IPV6_SIT` too, which `9f11fd5` had already left out. A
+test image's kernel keeps debugfs, by its own fragment
+(`kernel.rs`, `TEST_ON`). The kernel built since has neither symbol.
+
+### What running every suite found
+
+Phase 11 cut V1R0M0 without running every suite on its HEAD. Running
+them found these, each fixed here:
+
+- The root is read-only, so the resolver's file could not be written:
+  `/etc` is a tmpfs (`cb5b973`; `dhcp`, `installed-base`).
+- The VMM's seccomp filter refused vhost-net's `VHOST_SET_OWNER` and
+  `VHOST_SET_MEM_TABLE`, and a worker thread's kick: every partition
+  with an adapter ended with `A2005190` (`fd2761e`; the network
+  suites, `pool-full`).
+- The golden screens lacked the Secure Boot row (`1e0727a`).
+- Service Tools had lost `SYS_ADMIN`, so option 8 could not mount a
+  removable volume, for an update image or a dump (`4154293`;
+  `svc-tools`).
+- A partition at its limits could not be activated, by three faults
+  of `partd` and the pool service: a hold's files went on one byte,
+  which carries 16 (`0f1f8a5`); a VMM given more than 61 files had
+  its control group's file closed under it, so it started outside its
+  group or not at all (`036568a`); and an adapter's virtual disks were
+  kept one to a slot, so a profile with two pool disks on one adapter
+  gave the VMM the wrong files (`4481b44`). `limits` passes.
+- The suites: `power-writers` waited for "Base ready" twice
+  (`602e5fb`); `qsi-events` took the last event from a link that had
+  seen none (`c83338e`); the tape suites took QS/400's messages from
+  before the pin, and its next-volume inquiries `CPA4088` and
+  `CPA4089` were not answered from the reply list (`ed04605`,
+  `e45d0c7`, `94d742e`).
+
+All 154 suites of Phases 0 to 11 ran, each alone, on images of this
+work. Every one has passed but `pio-tape-span` and `pio-tape-volumes`,
+not on one build: those that failed were run again on the next.
+`net-tagged`, `net-counters`, `service-console`, `memory-clean` and
+`qsi-hostile` each failed once and passed when run again:
+`net-tagged` and `service-console` by a partition's kernel panic
+(Section 1), `memory-clean` by an activation slower than the hook
+channel's 30 s, `net-counters` (a tap gone) and `qsi-hostile` (a TLS
+connection ended) with no cause found. The acceptance run on
+one build, from empty targets, is the next pin's.
+
+### Not done here
+
+- `BLOCKED(phase11)`: `pio-tape-span` (its next-volume reply, fixed
+  in the suite, not yet run) and `pio-tape-volumes` (QS/400's console
+  lost the session or a typed line in the middle of the suite).
+- `BLOCKED(phase11)`: QS/MC's newer asks of QS/VS, after this work
+  began: a frame capture of the user network's NIC in `base/qemu` and
+  `cpu` honoured without KVM (its item 4), a write-intent map for a
+  member absent at assembly (its item 13, QS/400's `protect` first),
+  and `base/stgd` looking for the load-source disks once a start (its
+  item 14).
