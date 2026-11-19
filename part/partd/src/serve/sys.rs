@@ -27,7 +27,9 @@ pub fn spawn_with(command: &mut Command, procs: File, files: Vec<File>) -> io::R
         high.push(rustix::io::fcntl_dupfd_cloexec(f, above).map_err(io::Error::from)?);
     }
     drop(files);
-    let procs = rustix::io::fcntl_dupfd_cloexec(&procs, above).map_err(io::Error::from)?;
+    let moved = rustix::io::fcntl_dupfd_cloexec(&procs, above).map_err(io::Error::from)?;
+    drop(procs);
+    let procs = moved;
     let raw: Vec<i32> = high.iter().map(std::os::fd::AsRawFd::as_raw_fd).collect();
     // SAFETY: the closure runs in the child between `fork` and `exec`,
     // where only async-signal-safe calls are allowed. It makes two
