@@ -117,7 +117,7 @@ everything it starts hold its set and no more
 | `vswitchd` | root | `NET_ADMIN`, `NET_RAW`, `CHOWN` | `vswitch.toml`, bridges, bonds, taps |
 | `partd` | root | `CHOWN`, `DAC_OVERRIDE`, `FOWNER` (the VMMs' directories), `KILL` (VMMs run as their own users), `SETUID`, `SETGID`, `SETPCAP`, `SYS_ADMIN` and `SYS_CHROOT` (what a VMM needs as root for its drop, its namespaces and its empty root; it inherits these), `IPC_LOCK` (a VMM pins memory for a device's DMA), `SYS_RAWIO` (`SG_IO` of a tape drive), `SYS_NICE`, `SYS_RESOURCE` | definitions and profiles, control groups, devices' driver bindings, partitions' dumps |
 | `qsvmm` | root at start, then 23000 + ID | none after its drop | its serial log; a dump into a file handed to it |
-| `tools` (Service Tools) | root | `SYS_TTY_CONFIG` (the display's console) | the service tools users' hashes; everything else is asked of the service that owns it |
+| `tools` (Service Tools) | root | `SYS_TTY_CONFIG` (the display's console), `SYS_ADMIN` (a removable volume mounted at option 8, `nodev`, `nosuid`, `noexec`, for an update image or a dump) | the service tools users' hashes; everything else is asked of the service that owns it |
 | `updd` | root | `SYS_ADMIN`, `SYS_RAWIO`, `CHOWN` | the slot that does not run, on every load-source disk; staged images |
 | `qsid` (QSI server) | root to read its identity and own its directory, then 22990 | at start `SETUID`, `SETGID`, `SETPCAP` (its drop), `CHOWN`, `FOWNER`, `DAC_OVERRIDE` (its directory); none after | its pins and its event log |
 

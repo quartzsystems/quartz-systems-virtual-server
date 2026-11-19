@@ -132,7 +132,8 @@ pub const PARTD: Service = Service {
     ]),
 };
 
-/// The Service Tools console, on the display and the serial port.
+/// The Service Tools console, on the display and the serial port. It
+/// mounts a removable volume at option 8 (an update image, a dump).
 pub const TOOLS: Service = Service {
     name: "tools",
     binary: "/qsvs/bin/qsvstools",
@@ -140,7 +141,7 @@ pub const TOOLS: Service = Service {
     order: 30,
     needs: &[],
     ready_within: READY_WITHIN,
-    caps: Caps::Only(&[SYS_TTY_CONFIG]),
+    caps: Caps::Only(&[SYS_TTY_CONFIG, SYS_ADMIN]),
 };
 
 /// The update service: staging, installing and activating code
