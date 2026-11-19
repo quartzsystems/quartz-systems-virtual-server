@@ -45,6 +45,11 @@ const FAILURES: &[&str] = &[
     "is not ready",                        // CPF6760
     "The save ended",                      // CPF3794
     "Nothing named was found in the save", // CPF3780
+    // The same as QS/400's catalogue has them since its handoff 21.
+    "is write protected",           // CPF6768
+    "cannot be used now",           // CPF6718
+    "ended before it was done",     // CPF3794
+    "The save holds nothing named", // CPF3780
     // The same by identifier, which QS/400 puts before its own text
     // where that is not the catalogue's (`docs/QS400_GUEST.md`).
     "CPF6708",
@@ -404,10 +409,10 @@ pub fn save(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         &format!("SAVLIB LIB(TAPLIB) DEV({DEVICE})"),
-        "objects saved from library TAPLIB",
+        "objects saved from library TAPLIB | from library TAPLIB were saved on",
         Duration::from_mins(15),
     )?;
-    let _ = writeln!(notes, "SAVLIB: `{}`", line_with(&s, "objects saved"));
+    let _ = writeln!(notes, "SAVLIB: `{}`", line_with(&s, "saved"));
     let labels = display(g, first, &format!("DSPTAP DEV({DEVICE})"))?;
     if !labels.contains("SAV001") {
         return Err(format!("DSPTAP:\n{labels}"));
@@ -424,10 +429,10 @@ pub fn save(run: &Run<'_>) -> Result<String, String> {
         g,
         second,
         &format!("RSTLIB SAVLIB(TAPLIB) DEV({DEVICE})"),
-        "objects restored to library TAPLIB | objects restored to TAPLIB",
+        "objects restored to library TAPLIB | objects restored to TAPLIB | were restored to library TAPLIB",
         Duration::from_mins(15),
     )?;
-    let _ = writeln!(notes, "RSTLIB: `{}`", line_with(&s, "objects restored"));
+    let _ = writeln!(notes, "RSTLIB: `{}`", line_with(&s, "restored"));
     let after_restore = display(g, second, "DSPOBJD OBJ(TAPLIB/*ALL) OBJTYPE(*ALL)")?;
     let restored = typed_objects(&after_restore, &names);
     if restored != saved {
@@ -613,10 +618,10 @@ pub fn span(run: &Run<'_>) -> Result<String, String> {
         g,
         first,
         &format!("SAVLIB LIB(BIGLIB) DEV({DEVICE}) VOL(SPN001 SPN002)"),
-        "objects saved from library BIGLIB",
+        "objects saved from library BIGLIB | from library BIGLIB were saved on",
         &mut notes,
     )?;
-    let _ = writeln!(notes, "SAVLIB: `{}`", line_with(&s, "objects saved"));
+    let _ = writeln!(notes, "SAVLIB: `{}`", line_with(&s, "saved"));
     // The restore on the second partition, across both volumes.
     unmount(g, first)?;
     start(g, second, profile("/dev/vdc", None), run)?;
@@ -626,10 +631,10 @@ pub fn span(run: &Run<'_>) -> Result<String, String> {
         g,
         second,
         &format!("RSTLIB SAVLIB(BIGLIB) DEV({DEVICE}) VOL(SPN001 SPN002)"),
-        "objects restored to library BIGLIB | objects restored to BIGLIB",
+        "objects restored to library BIGLIB | objects restored to BIGLIB | were restored to library BIGLIB",
         &mut notes,
     )?;
-    let _ = writeln!(notes, "RSTLIB: `{}`", line_with(&s, "objects restored"));
+    let _ = writeln!(notes, "RSTLIB: `{}`", line_with(&s, "restored"));
     let fd = display(g, second, "DSPFD FILE(BIGLIB/BIG) TYPE(*MBR)")?;
     let _ = writeln!(notes, "DSPFD: `{}`", line_with(&fd, "ecords"));
     if !fd.contains("2097152") && !fd.contains("2,097,152") {
@@ -790,7 +795,10 @@ pub fn volumes(run: &Run<'_>) -> Result<String, String> {
     crate::suite::storage::said(poold(g)?.protect_volume("PROT1".into(), true))?;
     mount(g, first, "PROT1")?;
     let save = format!("SAVLIB LIB(SMALL) DEV({DEVICE})");
-    let saved = ["objects saved from library SMALL"];
+    let saved = [
+        "objects saved from library SMALL",
+        "from library SMALL were saved on",
+    ];
     let o = outcome(g, first, &save, &saved)?;
     let _ = writeln!(notes, "PROT1 protected: SAVLIB {o}");
     let o = outcome(
