@@ -38,8 +38,9 @@ fn git(repo: &Path, args: &[&str]) -> Result<String> {
         .to_string())
 }
 
-/// The fixture in `dir`, its manifest naming this repository's HEAD.
-fn lay_out(repo: &Path, dir: &Path) -> Result<String> {
+/// The fixture in `dir`, its manifest naming this repository's HEAD:
+/// the commit and the repository's URL.
+fn lay_out(repo: &Path, dir: &Path) -> Result<(String, String)> {
     if dir.exists() {
         fs::remove_dir_all(dir).with_context(|| dir.display().to_string())?;
     }
@@ -61,7 +62,7 @@ fn lay_out(repo: &Path, dir: &Path) -> Result<String> {
         .replace("@REPO@", &url)
         .replace("@REV@", &rev);
     fs::write(dir.join("Cargo.toml"), manifest)?;
-    Ok(rev)
+    Ok((rev, url))
 }
 
 /// The package names of the repository's crates outside `base/`.
@@ -75,7 +76,7 @@ fn outside(repo: &Path) -> Result<Vec<String>> {
 pub fn fixture(ctx: &Ctx) -> Result<String> {
     let repo = &ctx.paths.repo;
     let dir = ctx.paths.target.join("fixture");
-    let rev = lay_out(repo, &dir)?;
+    let (rev, url) = lay_out(repo, &dir)?;
     let target = dir.join("target");
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     info!("fixture: building QSDEMO in {}", dir.display());
@@ -103,7 +104,7 @@ pub fn fixture(ctx: &Ctx) -> Result<String> {
     let short = &rev[..rev.len().min(7)];
     let ours: Vec<&str> = tree
         .lines()
-        .filter(|l| l.contains("quartz-systems-virtual-server"))
+        .filter(|l| l.contains(url.as_str()))
         .filter_map(|l| l.split_whitespace().next())
         .collect();
     for take in TAKES {
@@ -114,7 +115,7 @@ pub fn fixture(ctx: &Ctx) -> Result<String> {
     }
     ensure!(
         tree.lines()
-            .filter(|l| l.contains("quartz-systems-virtual-server"))
+            .filter(|l| l.contains(url.as_str()))
             .all(|l| l.contains(short)),
         "a crate of this repository is not at {short}:\n{tree}"
     );
