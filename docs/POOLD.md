@@ -28,7 +28,7 @@ pool formats its file system.
 Two requests carry more than frames:
 
 - **hold** (22): after an answer that gives backing stores, their open
-  files follow on one byte of their own (`SCM_RIGHTS`,
+  files follow on bytes of their own, sixteen a byte (`SCM_RIGHTS`,
   `base/fdpass`), in the answer's order.
 - **upload** (14): after an `Ok` answer the client sends the image's
   bytes, exactly as many as it said, and the service answers a second

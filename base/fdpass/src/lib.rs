@@ -10,6 +10,7 @@
 //!
 //! The receiver takes at most the number it asked for; any more that
 //! came are closed, and a byte that carries none gives an empty list.
+//! More than one byte carries ride on several ([`send_all`]).
 
 #![forbid(unsafe_code)]
 
@@ -85,6 +86,34 @@ pub fn recv(stream: &UnixStream, max: usize) -> io::Result<Vec<OwnedFd>> {
     Ok(fds)
 }
 
+/// The bytes `count` descriptors ride on: [`MAX_FDS`] a byte, and one
+/// byte for none.
+fn bytes_for(count: usize) -> usize {
+    count.div_ceil(MAX_FDS).max(1)
+}
+
+/// Send `fds` on as many bytes as they need, [`MAX_FDS`] on each.
+pub fn send_all(stream: &UnixStream, fds: &[BorrowedFd<'_>]) -> io::Result<()> {
+    if fds.is_empty() {
+        return send(stream, &[]);
+    }
+    for some in fds.chunks(MAX_FDS) {
+        send(stream, some)?;
+    }
+    Ok(())
+}
+
+/// Receive the `count` descriptors [`send_all`] sent: fewer when the
+/// sender sent fewer, never more.
+pub fn recv_all(stream: &UnixStream, count: usize) -> io::Result<Vec<OwnedFd>> {
+    let mut fds = Vec::new();
+    for _ in 0..bytes_for(count) {
+        let want = count.saturating_sub(fds.len()).min(MAX_FDS);
+        fds.extend(recv(stream, want)?);
+    }
+    Ok(fds)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,5 +163,20 @@ mod tests {
         assert!(send(&a, &many).is_err());
         drop(a);
         assert!(recv(&b, 1).is_err());
+    }
+
+    #[test]
+    fn more_than_one_byte_carries_ride_on_several() {
+        let (a, mut b) = UnixStream::pair().unwrap();
+        let f = File::open("/dev/null").unwrap();
+        for count in [0, 1, MAX_FDS, MAX_FDS + 1, 69] {
+            let many: Vec<BorrowedFd<'_>> = (0..count).map(|_| f.as_fd()).collect();
+            send_all(&a, &many).unwrap();
+            (&a).write_all(b"next").unwrap();
+            assert_eq!(recv_all(&b, count).unwrap().len(), count);
+            let mut frame = [0u8; 4];
+            b.read_exact(&mut frame).unwrap();
+            assert_eq!(&frame, b"next");
+        }
     }
 }

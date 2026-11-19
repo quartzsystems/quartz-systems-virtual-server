@@ -8,7 +8,8 @@
 //! that applies. Two requests carry more than frames:
 //!
 //! - **hold**: after an answer that gives backing stores, their open
-//!   files follow on one byte (`base/fdpass`), in the answer's order.
+//!   files follow on bytes of their own, sixteen a byte (`base/fdpass`),
+//!   in the answer's order.
 //! - **upload**: after an `Ok` answer the client sends the image's
 //!   bytes, exactly as many as it said, and the service answers again
 //!   when they are checked and named.
@@ -425,7 +426,7 @@ impl Client {
         if given.is_empty() {
             return Ok(Ok(Vec::new()));
         }
-        let fds = fdpass::recv(&stream, given.len())?;
+        let fds = fdpass::recv_all(&stream, given.len())?;
         if fds.len() != given.len() {
             return Err(ipc::WireError::from(std::io::Error::other(
                 "fewer files than were given",

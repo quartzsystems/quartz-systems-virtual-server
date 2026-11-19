@@ -945,7 +945,7 @@ pub fn connection(core: &Shared, stream: &UnixStream) {
                         if fds.is_empty() {
                             Ok(())
                         } else {
-                            fdpass::send(stream, &fds)
+                            fdpass::send_all(stream, &fds)
                         }
                     })
                 }
