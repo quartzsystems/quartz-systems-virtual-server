@@ -177,8 +177,23 @@ pub const REQUIRED_Y: &[&str] = &[
     "CPU_MITIGATIONS",
 ];
 
-/// Symbols QS/VS must not have `=y`, past the baseline.
+/// Symbols QS/VS must not have `=y`, past the baseline: every symbol
+/// the fragment turns off, so one another symbol selects back on fails
+/// the build.
 pub const REQUIRED_N: &[&str] = &[
+    // The release is the kernel's name; no tree state is appended.
+    "LOCALVERSION_AUTO",
+    // One compression, xz, for the whole image.
+    "KERNEL_GZIP",
+    "RD_GZIP",
+    "RD_BZIP2",
+    "RD_LZMA",
+    "RD_XZ",
+    "RD_LZO",
+    "RD_LZ4",
+    "RD_ZSTD",
+    // The display is simpledrm's.
+    "FB_EFI",
     // Disks keep their order from boot to boot.
     "SCSI_SCAN_ASYNC",
     // The image's bytes do not depend on where it was built.
@@ -215,12 +230,31 @@ pub const REQUIRED_N: &[&str] = &[
     "UPROBE_EVENTS",
     "EFI_CUSTOM_SSDT_OVERLAYS",
     "MAGIC_SYSRQ",
+    // x86_64_defconfig's block layer tracing selects debugfs.
+    "DEBUG_FS",
+    "BLK_DEV_IO_TRACE",
     "SECURITY_SELINUX",
     "USER_NS",
     "BPF_SYSCALL",
     "USERFAULTFD",
     "IPV6_SIT",
 ];
+
+/// What the test image's fragment turns back on of [`REQUIRED_N`]: the
+/// isolation and panic suites read debugfs. Never a release's.
+pub const TEST_ON: &[&str] = &["DEBUG_FS"];
+
+/// The test image's [`REQUIRED_N`]: the release's, less [`TEST_ON`].
+pub fn test_required_n() -> &'static [&'static str] {
+    static LIST: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| {
+        REQUIRED_N
+            .iter()
+            .copied()
+            .filter(|s| !TEST_ON.contains(s))
+            .collect()
+    });
+    LIST.as_slice()
+}
 
 #[cfg(test)]
 mod tests {
@@ -343,7 +377,15 @@ mod tests {
         ] {
             assert!(REQUIRED_Y.contains(&sym), "{sym}");
         }
-        for sym in ["MODULES", "DEVMEM", "KEXEC", "IA32_EMULATION", "USER_NS"] {
+        for sym in [
+            "MODULES",
+            "DEVMEM",
+            "KEXEC",
+            "IA32_EMULATION",
+            "USER_NS",
+            "DEBUG_FS",
+            "BLK_DEV_IO_TRACE",
+        ] {
             assert!(REQUIRED_N.contains(&sym), "{sym}");
         }
         // The command line is the locked one (CLAUDE.md).
@@ -417,6 +459,49 @@ mod tests {
         ] {
             let unset = format!("# CONFIG_{sym} is not set");
             assert!(text.lines().any(|l| l == unset), "{sym}");
+        }
+    }
+
+    /// The test image's exceptions are exactly what its fragment turns
+    /// on of the release's list, and nothing else is let through.
+    #[test]
+    fn the_test_image_lets_through_only_what_its_fragment_turns_on() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../kernel/config/qsvs-test.config"
+        );
+        let text = std::fs::read_to_string(path).unwrap();
+        let on: Vec<&str> = text
+            .lines()
+            .filter_map(|l| l.strip_prefix("CONFIG_")?.strip_suffix("=y"))
+            .filter(|s| REQUIRED_N.contains(s))
+            .collect();
+        assert_eq!(on, TEST_ON);
+        let checked = test_required_n();
+        assert_eq!(checked.len(), REQUIRED_N.len() - TEST_ON.len());
+        assert!(checked.contains(&"BLK_DEV_IO_TRACE") && !checked.contains(&"DEBUG_FS"));
+    }
+
+    /// Every symbol the fragments turn off is checked in the built
+    /// `.config`: a default that selects one back on (as block layer
+    /// tracing selects debugfs) fails the build instead of passing.
+    #[test]
+    fn every_symbol_turned_off_is_checked() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../kernel/config/");
+        for fragment in [FRAGMENT, TEST_FRAGMENT] {
+            let text = std::fs::read_to_string(format!("{dir}{fragment}")).unwrap();
+            for line in text.lines() {
+                let Some(sym) = line
+                    .strip_prefix("# CONFIG_")
+                    .and_then(|l| l.strip_suffix(" is not set"))
+                else {
+                    continue;
+                };
+                assert!(
+                    REQUIRED_N.contains(&sym),
+                    "{fragment} turns {sym} off and REQUIRED_N does not check it"
+                );
+            }
         }
     }
 }

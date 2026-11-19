@@ -118,11 +118,12 @@ pub fn qsvs(image: Image) -> Result<Product> {
         Image::Release => (release::NAME, RELEASE_PACKAGES, initramfs::entries),
         Image::Test => (TEST_NAME, TEST_PACKAGES, initramfs::test_entries),
     };
-    let (fragments, cmdline): (&'static [&'static str], _) = match image {
-        Image::Release => (&[kernel::FRAGMENT], kernel::CMDLINE),
+    let (fragments, cmdline, required_n): (&'static [&'static str], _, _) = match image {
+        Image::Release => (&[kernel::FRAGMENT], kernel::CMDLINE, kernel::REQUIRED_N),
         Image::Test => (
             &[kernel::FRAGMENT, kernel::TEST_FRAGMENT],
             kernel::TEST_CMDLINE,
+            kernel::test_required_n(),
         ),
     };
     let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -141,7 +142,7 @@ pub fn qsvs(image: Image) -> Result<Product> {
         build_id: release::BUILD_ID.to_string(),
         fragments,
         required_y: kernel::REQUIRED_Y,
-        required_n: kernel::REQUIRED_N,
+        required_n,
         cmdline,
         packages,
         init: INIT,
@@ -236,6 +237,14 @@ mod tests {
         );
         let release = include_str!("../../../../kernel/config/qsvs.config");
         assert!(!release.contains("SCSI_DEBUG"));
+        // A release checks debugfs off; a test image lets it through.
+        assert!(
+            qsvs(Image::Release)
+                .unwrap()
+                .required_n
+                .contains(&"DEBUG_FS")
+        );
+        assert!(!qsvs(Image::Test).unwrap().required_n.contains(&"DEBUG_FS"));
         // The double makes no device at the IPL; a release has no word of it.
         assert_eq!(qsvs(Image::Release).unwrap().cmdline, kernel::CMDLINE);
         let test = qsvs(Image::Test).unwrap();
