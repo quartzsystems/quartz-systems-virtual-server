@@ -408,11 +408,9 @@ those would give. A release of this code is cut with them
 
 ### Not done
 
-- `BLOCKED(phase11)`: `service-hostile` has not passed at the pin: the
-  hostile system faulted both times (Section 1).
-- `BLOCKED(phase11)`: the suites were not run on one build from empty
-  at `bb85ac5`; the run from empty was at `2fe7583`, and what failed
-  in it, with four network suites, was run again at `bb85ac5`.
+- `service-hostile` had not passed at this pin, and the suites were
+  not run on one build from empty: both are answered at the pin of
+  handoff 23 (below).
 - `BLOCKED(phase11)`: QS/MC's newer asks of QS/VS, its items 4, 13
   and 14 (above).
 
@@ -423,16 +421,78 @@ QS/400 `cb58b010a8b96ac48a66e06079e1ff4e4af371c7`, its `main` of
 `155aba2`: `termlook` (a terminal's look, its screen and script) and
 `srcdata` (the reference codes as data) made neutral, and its fixture
 given a terminal page. The pin was at `3fba6cf` (`a3ab02d`) for the
-morning, before the handoff's documents landed. QS/VS takes neither. No crate QS/VS takes
-changed in its source; under `buildkit` only its own fixture and a
+morning, before the handoff's documents landed. QS/VS takes neither.
+No crate QS/VS takes changed in its source; under `buildkit` only its own fixture and a
 test did. The kernel pin is the same. Every `rev =` moved in one
 commit each time; `Cargo.lock` changed in the revs only.
 
-From an empty target in WSL: `build doctor`, `build deny`, `build
-notices --check`, `cargo fmt --check`, the workspace's clippy, `cargo
-test --workspace` and `build fixture` passed.
+### From empty targets
+
+In a clean clone at `3feacb0` (the pin) on ext4 in WSL, every target
+empty, the signing key of the reproducibility runs, QS/400's guest
+image and ISO built at `cb58b01` (`qs400-V1R1M0-57ac22978d4d.img`,
+`QS400-V1R1M0-6097ac178e7b.iso` with `pool-install.rsp`, 36 minutes),
+the update images of the next release built from the clone. Host:
+rustc 1.98.0, clang 21.1.8, QEMU 10.2.1, cargo-deny 0.20.2, kernel
+6.18.33.2-microsoft-standard-WSL2, 12 processors.
+
+`build doctor`, `build deny`, `cargo fmt --check`, both clippy runs,
+`cargo test --workspace`, `build notices --check` and `build fixture`
+passed. Of the 154 suites, each run alone, 147 passed and 7 failed;
+run again alone on the same build, 6 of the 7 passed:
+
+| Suite | First run | Again |
+|---|---|---|
+| `partition-attributes` | QS/400's `IPL Options` never came | pass |
+| `partition-recorded` | the partition's processor triple faulted (`A2005170`) | pass |
+| `service-states` | a partition's kernel faulted (Section 1) | pass |
+| `service-dumps` | QS/400's storage service ended (`B1001060`) | pass |
+| `qsi-hostile` | TLS ended early while WSL refused new sessions under load | pass |
+| `memory-clean` | `partd`'s channel answered `EAGAIN` under the same load | pass |
+| `qsi-two-consoles` | the second console closed (`QSI0107`) | the same |
+
+`qsi-two-consoles` waited on the first console for the partition to
+run and never read the second, which the host closes when it hears
+nothing for 45 s (`qsisess`'s `timeout_ms`, the same at both pins): a
+QS/400 IPL longer than that failed it. It reads both now (`ee1b077`)
+and passed three times of three on the same build. `service-hostile`,
+which failed twice at the last pin, passed.
+
+So every suite has passed at the pin, `qsi-two-consoles` with the
+suite's fix.
+
+### The release
+
+`build release 1.0.0` in a clean clone at `3feacb0`, with the test
+keys (the release signing key of a test set, trusting its second
+key; its Secure Boot db certificate of SHA-256
+`D9:64:31:39:01:C7:A3:28:E7:1F:07:16:F6:A0:7E:48:DD:A3:1F:99:9C:C4:3D:B9:F6:A0:49:E3:08:7B:03:F3`),
+built it twice from empty and found its 12 files the same byte for
+byte (1040 s for both). `SHA256SUMS` checks. The kernel's `.config`
+has neither `DEBUG_FS` nor `BLK_DEV_IO_TRACE`, and no other symbol the
+fragment turns off.
+
+| File | SHA-256 |
+|---|---|
+| `MANIFEST.json` | `d09edc72d3e4d7f156cd56adde1274dbcb75ce141122fac46e603151cd5960c7` |
+| `MANIFEST.sig` | `1818cdfb8fb2698931a411998ac55291fa3ac59b5a087f75a364ce3946ac618d` |
+| `NOTICES.txt` | `37334a6b79aac22a12dd700c7a04e4d2f5ae1958bab12c814a3732394604efaf` |
+| `QSVS-V1R0M0-26b2658a513e.iso` | `c9d5a0ef7dd7cb83c5a6c24360e6bbb16438634a3377487c57c0d2d2e4d1edb0` |
+| `QSVS-V1R0M0-update-71dffc944984.upd` | `71dffc94498444694265c7ef96bdb64cf4c5fcecdcd0b5ea0a8a4380cfb533e4` |
+| `RELEASE_NOTES_V1R0M0.md` | `dc4f4195f4cf3152cb08016d4323a9444aab30b36629fc77554e4b932b305461` |
+| `catalogue.json` | `0ba154343884a7f10bb4c20008d33a64687a76acdb223bcd3212b75abf6dd794` |
+| `catalogue.schema.json` | `21584e8d75a2fdb60d264b08742726cc70e635b8a9d5e3e3fef817350c33c138` |
+| `qsvs-db.cer` | `d964313901c7a328e71f0716f6a07e48dda31f999cc43db9f6a049e3087b03f3` |
+| `stream/index.toml` | `a5a1ee1b5860efb6959d144d0b71a9a3a70b348da3bda5b2af03448e489033b3` |
+
+Against handoff 22's: the notices, the release notes, the schema and
+the certificate are the same. The rest differ by the commit: the
+build ID is in the catalogue, the manifest and the images, and the
+code differs by the pin and the network change kept only when
+confirmed (`ff181be`). `ee1b077` changes a suite only, nothing a
+release holds.
 
 ### Not done
 
-- `BLOCKED(phase11)`: the image suites and `build release` were not
-  run at this pin; nothing they build from changed but the revs.
+Nothing new at this pin: QS/MC's items 4, 13 and 14 stay open
+(above).
