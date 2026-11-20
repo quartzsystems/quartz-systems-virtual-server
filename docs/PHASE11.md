@@ -415,3 +415,22 @@ those would give. A release of this code is cut with them
   in it, with four network suites, was run again at `bb85ac5`.
 - `BLOCKED(phase11)`: QS/MC's newer asks of QS/VS, its items 4, 13
   and 14 (above).
+
+## 2026-11-20: the pin at QS/400's main of 2026-11-20
+
+QS/400 `3fba6cf55c68abcb137ef8787f58a5d770a8fce5`, six commits past
+`155aba2`: `termlook` (a terminal's look, its screen and script) and
+`srcdata` (the reference codes as data) made neutral, and its fixture
+given a terminal page. QS/VS takes neither. No crate QS/VS takes
+changed in its source; under `buildkit` only its own fixture and a
+test did. The kernel pin is the same. Every `rev =` moved in one
+commit (`a3ab02d`); `Cargo.lock` changed in the revs only.
+
+From an empty target in WSL: `build doctor`, `build deny`, `build
+notices --check`, `cargo fmt --check`, the workspace's clippy, `cargo
+test --workspace` and `build fixture` passed.
+
+### Not done
+
+- `BLOCKED(phase11)`: the image suites and `build release` were not
+  run at this pin; nothing they build from changed but the revs.
