@@ -318,3 +318,100 @@ one build, from empty targets, is the next pin's.
   member absent at assembly (its item 13, QS/400's `protect` first),
   and `base/stgd` looking for the load-source disks once a start (its
   item 14).
+
+## 2026-11-19: the pin at QS/400's handoff 22
+
+### The pin
+
+QS/400 `155aba213638b178cb730cff4a4113ef1d8fb525`, its `main` of
+2026-11-19, with its handoff 22 (`2f9a3c3`): its web layer made
+neutral, and `x509kit`, the certificates without the store. Every
+`rev =` moved to it in one commit of its own (`982cc83`). Of the
+crates QS/VS takes, `certs` changed (it takes `x509kit` now) and
+`tls` under it; nothing else, and the kernel pin is the same
+(`kernel/VERSION` 6.18.55). `x509kit` is pure Rust: `build deny`
+passes.
+
+What the pin broke here: `lic/release/NOTICES.txt` did not list
+`x509kit` (`4629dbf`). And `build fixture` found this repository's
+crates by the name of its folder, so it failed in a clone of another
+name; it finds them by the repository's URL now (`2fe7583`). Nothing
+had its cause in QS/400.
+
+### From empty targets
+
+In a clean clone at `2fe7583` on ext4 in WSL, every target empty, the
+signing key of the reproducibility runs, QS/400's guest image and ISO
+built at the same commit (`qs400-V1R1M0-434e2d0f2249.img`,
+`QS400-V1R1M0-19dc6f9c6a83.iso` with `pool-install.rsp`, 35 minutes),
+the update images of the next release built from the clone. Host:
+rustc 1.98.0, clang 21.1.8, QEMU 10.2.1, cargo-deny 0.20.2, kernel
+6.18.33.2-microsoft-standard-WSL2, 12 processors. QS/MC's suites ran
+in the same WSL at the same time.
+
+`build doctor`, `build deny`, `cargo fmt --check`, both clippy runs,
+`cargo test --workspace`, `build notices --check` and `build fixture`
+passed. Of the 154 suites of Phases 0 to 11, each run alone, 142
+passed and 12 failed. Run again alone on images of `bb85ac5`, with
+four network suites for `base/netd`'s change (`dhcp`, `static-vlan`,
+`tools-network`, `net-management`), 15 of 16 passed:
+
+| Suite | First run | Again |
+|---|---|---|
+| `installed-base` | the inventory read before the link had carrier | pass |
+| `svc-update` | QS/400 held in storage management recovery | pass |
+| `partition-attributes` | QS/400's storage service panicked after its IPL (`UserProfile has no field Magic`), its code the same at both pins | pass |
+| `net-host-unreachable`, `net-vmm-kill`, `service-dumps`, `memory-clean` | a partition's kernel faulted (Section 1) | pass |
+| `qsi-families` | QS/400 did not reach its IPL complete | pass |
+| `qsi-power` | QS/400's storage service ended (`B1001060`) | pass |
+| `qsi-qsictl` | `qsictl` was not built by the run | pass |
+| `pio-tape-volumes` | QS/400's `CPF3770` on an ASCII-labelled volume, which the suite did not list (`bb85ac5`) | pass |
+| `service-hostile` | the hostile system's kernel faulted | its PID 1 faulted (SIGSEGV) |
+
+So every suite has passed at the pin but `service-hostile`, which
+failed twice in the hostile system itself, by two faults unlike each
+other: Section 1's, which these runs met far more often than the
+morning's. `pio-tape-span` and `pio-tape-save` passed at the pin with
+the suites' fixes of the morning.
+
+### The release
+
+`build release 1.0.0` in a clean clone at `bb85ac5`, with the test keys
+(the release signing key of a test set, trusting its second key; its
+Secure Boot db certificate of SHA-256
+`D9:64:31:39:01:C7:A3:28:E7:1F:07:16:F6:A0:7E:48:DD:A3:1F:99:9C:C4:3D:B9:F6:A0:49:E3:08:7B:03:F3`),
+built it twice from empty and found its 12 files the same byte for
+byte (1498 s for both). `SHA256SUMS` checks. The kernel's `.config`
+has neither `DEBUG_FS` nor `BLK_DEV_IO_TRACE`, and no other symbol the
+fragment turns off.
+
+| File | SHA-256 |
+|---|---|
+| `MANIFEST.json` | `f6b048e385fce9c0796c8161d2b964b929d4a49fdc1200e6d749208c53e03171` |
+| `MANIFEST.sig` | `5252f8f0fbb0beba362dd7057a03764ca0f3657ec29649f1355e2ceafdc4b1de` |
+| `NOTICES.txt` | `37334a6b79aac22a12dd700c7a04e4d2f5ae1958bab12c814a3732394604efaf` |
+| `QSVS-V1R0M0-91ca538bb761.iso` | `819790f97d470bf0dc12fc103550e4f62194751dba203c20879dabaf524f4b65` |
+| `QSVS-V1R0M0-update-527020370e51.upd` | `527020370e5191bd12c35fc2b8509fb9fb5ae24ea0f25b4737975d46972578ab` |
+| `RELEASE_NOTES_V1R0M0.md` | `dc4f4195f4cf3152cb08016d4323a9444aab30b36629fc77554e4b932b305461` |
+| `catalogue.json` | `19f70527ef6bdc8ac2fc1da781abe53eda0a8311b5771bd677bb48f9c73bb9bb` |
+| `catalogue.schema.json` | `21584e8d75a2fdb60d264b08742726cc70e635b8a9d5e3e3fef817350c33c138` |
+| `qsvs-db.cer` | `d964313901c7a328e71f0716f6a07e48dda31f999cc43db9f6a049e3087b03f3` |
+| `stream/index.toml` | `0a3da8988c19247884654bc8dd09d19da9e7f76a6ef841078635f86e9175f28f` |
+
+Why they are new against V1R0M0's: the code differs (the base
+follow-ups of the morning, the kernel without debugfs, the fixes the
+suites found, `base/netd`'s confirmed change, the pin and `x509kit` in
+the notices), and these are signed with test keys, not the release
+keys Cody keeps, so every signed file and the ISO differ from what
+those would give. A release of this code is cut with them
+(`docs/RELEASING.md`).
+
+### Not done
+
+- `BLOCKED(phase11)`: `service-hostile` has not passed at the pin: the
+  hostile system faulted both times (Section 1).
+- `BLOCKED(phase11)`: the suites were not run on one build from empty
+  at `bb85ac5`; the run from empty was at `2fe7583`, and what failed
+  in it, with four network suites, was run again at `bb85ac5`.
+- `BLOCKED(phase11)`: QS/MC's newer asks of QS/VS, its items 4, 13
+  and 14 (above).
