@@ -496,3 +496,12 @@ release holds.
 
 Nothing new at this pin: QS/MC's items 4, 13 and 14 stay open
 (above).
+
+## 2026-11-20: the catalogue alone, for QS/MC
+
+QS/MC's Phase 4 explains a host's reference codes and messages from the
+catalogue a release carries, at the commit it pins. `build catalogue
+FILE` writes the same file without a release (`tools/build/src/main.rs`,
+over `host::catalogue::json`): `QSVS_BUILD_ID=3feacb0` gave exactly the
+`catalogue.json` of the release built at `3feacb0` (201 codes, 274
+messages). `cargo fmt --check` and the build's clippy pass.

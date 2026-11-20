@@ -135,6 +135,12 @@ enum Command {
         #[command(subcommand)]
         action: StreamAction,
     },
+    /// Write the catalogue alone (`catalogue.json`, as a release has it,
+    /// `docs/catalogue.schema.json`) to a file: what a console reads.
+    Catalogue {
+        /// The file to write.
+        out: std::path::PathBuf,
+    },
     /// Check host prerequisites, the license headers and that `base/`
     /// is product-neutral.
     Doctor,
@@ -205,7 +211,11 @@ fn main() -> Result<()> {
     if !cfg!(target_os = "linux")
         && !matches!(
             cli.command,
-            Command::Doctor | Command::Deny | Command::Notices { .. } | Command::Fixture
+            Command::Doctor
+                | Command::Deny
+                | Command::Notices { .. }
+                | Command::Fixture
+                | Command::Catalogue { .. }
         )
     {
         tracing::warn!("the pipeline needs a Linux host; run this from WSL");
@@ -266,6 +276,10 @@ fn main() -> Result<()> {
                 image::release::stream_verify(&ctx, &stream)?;
             }
         },
+        Command::Catalogue { out } => {
+            let json = host::catalogue::json(&ctx.product.release, &ctx.product.build_id);
+            fs::write(&out, json).with_context(|| format!("cannot write {}", out.display()))?;
+        }
         Command::Doctor => buildkit::host::doctor::doctor(&ctx)?,
         Command::Fixture => {
             host::fixture::fixture(&ctx)?;

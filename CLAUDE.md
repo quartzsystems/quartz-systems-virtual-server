@@ -471,6 +471,7 @@ cargo run -p build -- update          the update image of the release just built
 cargo run -p build -- release         a release: built twice from empty and compared, signed with the release keys (docs/RELEASING.md)
 cargo run -p build -- keys DIR        make a set of release keys (for a test; the real ones are Cody's)
 cargo run -p build -- stream add|verify   the stream's signed index
+cargo run -p build -- catalogue FILE  the catalogue alone, as a release has it: what QS/MC builds its explanations from
 cargo run -p build -- deny            cargo-deny and the C-linkage check
 cargo run -p build -- fixture         build and run QSDEMO from the base crates as git dependencies at HEAD
 cargo run -p build -- notices         rewrite lic/release/NOTICES.txt (--check in CI)
