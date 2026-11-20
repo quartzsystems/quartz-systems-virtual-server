@@ -154,6 +154,36 @@ pub(crate) fn wait_state(
         .ok_or_else(|| format!("partition {id} never {state:?}: {:?}", state_of(l, id)))
 }
 
+/// [`wait_state`] on `l`, reading `other` meanwhile so the host hears
+/// it through a long wait (it closes a console silent for 45 s).
+pub(crate) fn wait_state_both(
+    l: &mut Link,
+    other: &mut Link,
+    id: u32,
+    state: PartitionState,
+    within: Duration,
+) -> Result<partitions::Status, String> {
+    let mut lost = None;
+    let got = eventually(within, || {
+        match other.step() {
+            Ok(got) => other.besides.extend(got),
+            Err(e) => {
+                lost = Some(e);
+                return Some(None);
+            }
+        }
+        state_of(l, id).filter(|s| s.state == state).map(Some)
+    });
+    match (got, lost) {
+        (_, Some(e)) => Err(format!("the other console, waiting for {state:?}: {e}")),
+        (Some(Some(s)), None) => Ok(s),
+        _ => Err(format!(
+            "partition {id} never {state:?}: {:?}",
+            state_of(l, id)
+        )),
+    }
+}
+
 /// Subscribe; the next event's number.
 pub(crate) fn subscribe(l: &mut Link, since: Option<u64>) -> Result<base::Subscribed, String> {
     let AnyReply::Base(base::Reply::Subscribe(s)) = ask(
@@ -434,7 +464,13 @@ pub fn two_consoles(run: &Run<'_>) -> Result<String, String> {
     }
     // The console: A views, B takes it over.
     activate(&mut a, id, None, "")?;
-    wait_state(&mut a, id, PartitionState::Running, Duration::from_mins(10))?;
+    wait_state_both(
+        &mut a,
+        &mut b,
+        id,
+        PartitionState::Running,
+        Duration::from_mins(10),
+    )?;
     let mut va = Viewer::attach(&mut a, id, false)?;
     let busy = Viewer::attach(&mut b, id, false).err().unwrap_or_default();
     let _vb = Viewer::attach(&mut b, id, true)?;
