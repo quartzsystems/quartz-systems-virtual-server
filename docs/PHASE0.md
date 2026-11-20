@@ -9,12 +9,12 @@ Every QS/400 crate is a git dependency on
 `https://github.com/quartzsystems/quartz-systems-400` at one commit:
 
 ```
-3fba6cf55c68abcb137ef8787f58a5d770a8fce5
+cb58b010a8b96ac48a66e06079e1ff4e4af371c7
 ```
 
-It is QS/400's `main` of 2026-11-20: `termlook` and `srcdata` made
-neutral, neither taken here, and no crate QS/VS takes changed
-(`docs/PHASE11.md`, 2026-11-20). Before it the pin was `155aba21`,
+It is QS/400's `main` of 2026-11-20, with its handoff 23: `termlook`
+and `srcdata` made neutral, neither taken here, and no crate QS/VS
+takes changed (`docs/PHASE11.md`, 2026-11-20). Before it the pin was `155aba21`,
 QS/400's `main` of 2026-11-19, with its handoff 22: its web layer
 made neutral and `x509kit`, the certificates without the store,
 which `certs` now takes (`docs/PHASE11.md`, 2026-11-19). V1R0M0 was
