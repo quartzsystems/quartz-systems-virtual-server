@@ -110,12 +110,48 @@ pub fn degraded(run: &Run<'_>) -> Result<String, String> {
         guest.type_keys(key::F3)?;
         guest.type_keys(key::F3)?;
         power_off(&mut guest)?;
+        drop(guest);
         seen.push(format!(
             "without unit {} the host IPLs on {data}, posts `{wanted}` and shows the unit Missing",
             unit.number
         ));
+        if missing == 1 {
+            seen.push(returned(run, &disks)?);
+        }
     }
     Ok(seen.join("; "))
+}
+
+/// `unit N, D of T MiB already in step`: D and T.
+fn in_step(line: &str) -> Option<(u64, u64)> {
+    let head = line.split(" MiB already in step").next()?;
+    let (done, total) = head.rsplit_once(", ")?.1.split_once(" of ")?;
+    Some((done.trim().parse().ok()?, total.trim().parse().ok()?))
+}
+
+/// The disk of unit 2, absent at the IPL of a clean pair, put back: the
+/// unit comes back by what was written while it was away (the map
+/// `protect` starts for a member absent at a clean open, QS/MC's item
+/// 13), never copied whole.
+fn returned(run: &Run<'_>, disks: &[std::path::PathBuf]) -> Result<String, String> {
+    let launch = machine(run, &[Some(disks[0].as_path()), Some(disks[1].as_path())]);
+    let mut guest = boot(run, &launch)?;
+    let deadline = run.deadline();
+    let line = guest.line_with("MiB already in step", deadline)?;
+    let Some((done, total)) = in_step(&line) else {
+        return Err(format!("not a resume's line: `{line}`"));
+    };
+    if !line.contains("unit 2") || done == 0 || done >= total {
+        return Err(format!("unit 2 came back copied whole: `{line}`"));
+    }
+    let storage = protected(&mut guest, Duration::from_secs(120))?;
+    check_marker(&mut guest)?;
+    power_off(&mut guest)?;
+    Ok(format!(
+        "unit 2's disk put back: brought back from {done} of {total} MiB already in step, \
+         both units {} and the marker written without it read back",
+        storage.units[1].state
+    ))
 }
 
 /// Suite 5.
@@ -379,4 +415,14 @@ pub fn storage_kill(run: &Run<'_>) -> Result<String, String> {
         done.len(),
         storage.units[0].state
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_resume_line_reads_as_what_was_in_step() {
+        let line = "C2003010 Rebuild started: unit 2, 637 of 765 MiB already in step";
+        assert_eq!(super::in_step(line), Some((637, 765)));
+        assert_eq!(super::in_step("units in step again"), None);
+    }
 }
