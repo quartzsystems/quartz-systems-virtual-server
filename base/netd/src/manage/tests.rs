@@ -526,6 +526,22 @@ fn two_interfaces_are_each_managed_on_their_own() {
 }
 
 #[test]
+fn a_role_a_change_removes_is_noted_as_having_none() {
+    let links = vec![eth(2, "eth0", true), eth(3, "eth1", true)];
+    let (mut m, _log, said, now) = machine(two(), links);
+    m.refresh(now);
+    take(&said);
+    let mut one = two();
+    one.interfaces.truncate(1);
+    m.reload(one, "HOST1".into(), now);
+    let notes: Vec<String> = take(&said)
+        .into_iter()
+        .filter(|s| s.starts_with("note "))
+        .collect();
+    assert_eq!(notes, [format!("note private: {}", super::REMOVED)]);
+}
+
+#[test]
 fn a_reload_of_one_interface_leaves_the_other_running() {
     let links = vec![eth(2, "eth0", true), eth(3, "eth1", true)];
     let (mut m, log, said, now) = machine(two(), links);

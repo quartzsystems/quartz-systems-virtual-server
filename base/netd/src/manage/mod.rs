@@ -585,9 +585,15 @@ impl<K: Kernel> Manager<K> {
                 .flatten();
             ifaces.push(kept);
         }
-        // What is not kept is undone first, so its links are free.
+        // What is not kept is undone first, so its links are free. A
+        // role the new configuration has no interface for is said to
+        // have none, so nothing keeps showing its last line.
         for mut gone in old.into_iter().flatten() {
             Self::teardown(&mut self.kernel, &mut gone, true);
+            let role = &gone.config.role;
+            if !config.interfaces.iter().any(|c| c.role == *role) {
+                (self.report.note)(role, REMOVED);
+            }
         }
         self.ifaces = ifaces
             .into_iter()
@@ -603,7 +609,12 @@ impl<K: Kernel> Manager<K> {
     pub fn config(&self) -> &Network {
         &self.config
     }
+}
 
+/// The line of a role a change removed (QS/MC's item 28).
+pub const REMOVED: &str = "none: not in the network configuration";
+
+impl<K: Kernel> Manager<K> {
     /// The first interface's status line: the address, or why there is
     /// none.
     pub fn line(&self) -> String {
