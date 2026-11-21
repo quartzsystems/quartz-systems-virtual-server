@@ -83,7 +83,10 @@ impl Env {
                 release::ID,
                 release::RUN_DIR,
             )),
-            updates: update::proto::Client::new(update::proto::socket(release::RUN_DIR)),
+            updates: update::proto::Client::new(update::proto::socket(
+                release::ID,
+                release::RUN_DIR,
+            )),
             store: Store::at(appliance.state_dir()),
             name: release::NAME.into(),
         }

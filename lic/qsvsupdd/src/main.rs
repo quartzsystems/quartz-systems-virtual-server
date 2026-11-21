@@ -2,7 +2,7 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! QS/VS's update service (`docs/UPDATE.md`): `svc/update` run as
+//! QS/VS's update service (`docs/UPDATE.md`): `base/update` run as
 //! QS/VS, with the release that runs, the keys its image trusts, its
 //! load-source names, and its directory on `/data`.
 
@@ -11,7 +11,12 @@ fn main() {
     use std::path::{Path, PathBuf};
 
     let host = update::serve::Host {
-        post: refcode::post::remote::code_about,
+        id: release::ID,
+        format: &qsvsupdd::FORMAT,
+        messages: &qsvsupdd::MESSAGES,
+        post: |c, detail, about| {
+            refcode::post::remote::code_about(qsvsupdd::code(c), detail, about);
+        },
         share: release::share_with_server,
         run_dir: release::RUN_DIR,
         dir: Path::new(release::DATA_DIR).join("update"),
@@ -21,7 +26,11 @@ fn main() {
         release: release::RELEASE,
         build: release::BUILD_ID,
         control: PathBuf::from(release::CONTROL_SOCKET),
-        partd: partd::proto::socket(release::RUN_DIR),
+        partitions: || {
+            Box::new(qsvsupdd::Partd(partd::Client::new(partd::proto::socket(
+                release::RUN_DIR,
+            ))))
+        },
         names: &release::LOAD_SOURCE,
     };
     // It returns only when it could not start.

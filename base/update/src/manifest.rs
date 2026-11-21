@@ -2,14 +2,13 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! An update image's manifest (`docs/UPDATE.md`): what it is and what
-//! it holds, as text, signed whole. Read as hostile: bounded, every
-//! line known, every field checked.
+//! An update image's manifest: what it is and what it holds, as text,
+//! signed whole; its first line is the product's ([`Format::head`]).
+//! Read as hostile: bounded, every line known, every field checked.
 
 use std::fmt::Write as _;
 
-/// The manifest's first line.
-pub const HEAD: &str = "QSVS-UPDATE 1";
+use crate::Format;
 /// The longest manifest.
 pub const MAX_TEXT: usize = 64 * 1024;
 /// The most fixes, state files and files it may name.
@@ -37,7 +36,7 @@ pub struct Manifest {
     pub release: String,
     /// The build ID.
     pub build: String,
-    /// The fixes it contains, `QVnnnnn`.
+    /// The fixes it contains: the product's prefix and five digits.
     pub fixes: Vec<String>,
     /// Each state file the release reads, with the newest schema
     /// version it reads.
@@ -56,19 +55,24 @@ fn word(w: &str) -> Result<String, String> {
     Ok(w.to_string())
 }
 
-/// Whether `fix` is a fix's name: `QV` and five digits.
+/// Whether `fix` is a fix's name in `format`: its prefix and five
+/// digits.
 #[must_use]
-pub fn valid_fix(fix: &str) -> bool {
-    fix.len() == 7 && fix.starts_with("QV") && fix[2..].bytes().all(|b| b.is_ascii_digit())
+pub fn valid_fix(format: &Format, fix: &str) -> bool {
+    fix.len() == format.fix_prefix.len() + 5
+        && fix.starts_with(format.fix_prefix)
+        && fix[format.fix_prefix.len()..]
+            .bytes()
+            .all(|b| b.is_ascii_digit())
 }
 
 impl Manifest {
     /// The text that is signed.
     #[must_use]
-    pub fn render(&self) -> String {
+    pub fn render(&self, format: &Format) -> String {
         let mut out = format!(
-            "{HEAD}\nproduct {}\nrelease {}\nbuild {}\n",
-            self.product, self.release, self.build
+            "{}\nproduct {}\nrelease {}\nbuild {}\n",
+            format.head, self.product, self.release, self.build
         );
         for f in &self.fixes {
             let _ = writeln!(out, "fix {f}");
@@ -86,13 +90,16 @@ impl Manifest {
     ///
     /// # Errors
     /// What is wrong with it.
-    pub fn parse(text: &str) -> Result<Self, String> {
+    pub fn parse(format: &Format, text: &str) -> Result<Self, String> {
         if text.len() > MAX_TEXT {
             return Err("the manifest is too long".into());
         }
         let mut lines = text.lines();
-        if lines.next() != Some(HEAD) {
-            return Err(format!("the manifest does not start with `{HEAD}`"));
+        if lines.next() != Some(format.head) {
+            return Err(format!(
+                "the manifest does not start with `{}`",
+                format.head
+            ));
         }
         let mut m = Manifest::default();
         for line in lines {
@@ -102,7 +109,7 @@ impl Manifest {
                 return Err("the manifest names too much".into());
             }
             match key {
-                // A product's name has spaces: `QS/VS (test image)`.
+                // A product's name has spaces: `DEMO (test image)`.
                 "product" if m.product.is_empty() => {
                     if rest.is_empty()
                         || rest.len() > MAX_WORD
@@ -115,7 +122,7 @@ impl Manifest {
                 "release" if m.release.is_empty() => m.release = word(rest)?,
                 "build" if m.build.is_empty() => m.build = word(rest)?,
                 "fix" if m.fixes.len() < MAX_ITEMS => {
-                    if !valid_fix(rest) {
+                    if !valid_fix(format, rest) {
                         return Err(format!("`{}` is not a fix", rest.escape_debug()));
                     }
                     m.fixes.push(rest.to_string());
@@ -169,14 +176,15 @@ impl Manifest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DEMO;
 
     /// A manifest as the build writes one.
     pub(crate) fn sample() -> Manifest {
         Manifest {
-            product: "QS/VS".into(),
+            product: "DEMO".into(),
             release: "V1R0M1".into(),
             build: "phase9-1".into(),
-            fixes: vec!["QV00001".into(), "QV00002".into()],
+            fixes: vec!["DM00001".into(), "DM00002".into()],
             schemas: vec![("host.toml".into(), 1), ("definition.toml".into(), 3)],
             files: vec![File {
                 name: "SLOTA.EFI".into(),
@@ -189,17 +197,17 @@ mod tests {
     #[test]
     fn a_manifest_round_trips() {
         let m = sample();
-        let text = m.render();
-        assert!(text.starts_with("QSVS-UPDATE 1\nproduct QS/VS\nrelease V1R0M1\n"));
-        assert_eq!(Manifest::parse(&text), Ok(m));
+        let text = m.render(&DEMO);
+        assert!(text.starts_with("DEMO-UPDATE 1\nproduct DEMO\nrelease V1R0M1\n"));
+        assert_eq!(Manifest::parse(&DEMO, &text), Ok(m));
     }
 
     #[test]
     fn what_is_not_a_manifest_is_refused() {
-        let text = sample().render();
+        let text = sample().render(&DEMO);
         for bad in [
-            text.replacen("QSVS-UPDATE 1", "QSVS-UPDATE 2", 1),
-            text.replacen("fix QV00001", "fix QV1", 1),
+            text.replacen("DEMO-UPDATE 1", "DEMO-UPDATE 2", 1),
+            text.replacen("fix DM00001", "fix DM1", 1),
             text.replacen("state host.toml 1", "state host.toml one", 1),
             text.replacen(&"ab".repeat(32), "ab", 1),
             format!("{text}release V9R9M9\n"),
@@ -207,7 +215,7 @@ mod tests {
             text.replacen("build phase9-1\n", "", 1),
             "x".repeat(MAX_TEXT + 1),
         ] {
-            assert!(Manifest::parse(&bad).is_err(), "{bad}");
+            assert!(Manifest::parse(&DEMO, &bad).is_err(), "{bad}");
         }
     }
 }

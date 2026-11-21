@@ -19,11 +19,10 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use qvsmsg::Issued;
-use refcode::RefCode;
-use refcode::about::About;
+use msg::Issued;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use serde::{Deserialize, Serialize};
+use supervise::control::About;
 use supervise::control::Calls as _;
 use supervise::signal::{Signals, TERM};
 use vrm::Release;
@@ -36,8 +35,15 @@ use crate::verify::{self, Refusal, Running};
 /// What the service is given by the product it runs as.
 #[derive(Clone)]
 pub struct Host {
-    /// Post a reference code, with what it is about.
-    pub post: fn(&'static RefCode, &str, &[About]),
+    /// The product's id (`appliance.id`): the socket's name.
+    pub id: &'static str,
+    /// Its images' format.
+    pub format: &'static crate::Format,
+    /// The messages it refuses with.
+    pub messages: &'static crate::Messages,
+    /// Post the product's code for one of the service's, with what it is
+    /// about.
+    pub post: fn(crate::Code, &str, &[About]),
     /// Share the socket with the QSI server's group.
     pub share: fn(&Path) -> io::Result<()>,
     /// The run directory: the socket.
@@ -56,8 +62,8 @@ pub struct Host {
     pub build: &'static str,
     /// PID 1's control socket.
     pub control: PathBuf,
-    /// The partition manager's socket.
-    pub partd: PathBuf,
+    /// What must be stopped before a restart.
+    pub partitions: fn() -> Box<dyn crate::Partitions + Send>,
     /// What a load-source disk carries.
     pub names: &'static appliance::LoadSourceNames,
 }
@@ -130,6 +136,17 @@ pub(crate) fn lock(core: &Shared) -> MutexGuard<'_, Core> {
     core.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// The product's messages, given once at the start.
+static MESSAGES: std::sync::OnceLock<&'static crate::Messages> = std::sync::OnceLock::new();
+
+/// The product's messages.
+pub(crate) fn msgs() -> &'static crate::Messages {
+    MESSAGES
+        .get()
+        .copied()
+        .expect("the update service's messages are given at its start")
+}
+
 pub(crate) fn now() -> u64 {
     u64::try_from(appliance::time::now_secs()).unwrap_or(0)
 }
@@ -139,7 +156,7 @@ impl Core {
         self.subscribers.retain(|tx| tx.send(e.clone()).is_ok());
     }
 
-    pub(crate) fn post(&self, code: &'static RefCode, detail: &str, about: &[About]) {
+    pub(crate) fn post(&self, code: crate::Code, detail: &str, about: &[About]) {
         (self.host.post)(code, detail, about);
     }
 
@@ -154,6 +171,7 @@ impl Core {
     /// What runs, for verification.
     pub(crate) fn running(&self) -> Running {
         Running {
+            format: self.host.format,
             product: self.host.product.to_string(),
             release: self.host.release,
             keys: fs::read(&self.host.keys).unwrap_or_default(),
@@ -262,15 +280,15 @@ impl Core {
 /// A refusal of an image as the host's message.
 pub(crate) fn refusal(name: &str, r: &Refusal, running: &Running) -> Issued {
     match r {
-        Refusal::Signature => qvsmsg::UPDATE_SIGNATURE.with(&[name]),
-        Refusal::Damaged(why) => qvsmsg::UPDATE_DAMAGED.with(&[name, why]),
-        Refusal::Product { theirs, .. } => {
-            qvsmsg::UPDATE_PRODUCT.with(&[name, theirs, &running.product])
-        }
+        Refusal::Signature => msgs().signature.with(&[name]),
+        Refusal::Damaged(why) => msgs().damaged.with(&[name, why]),
+        Refusal::Product { theirs, .. } => msgs().product.with(&[name, theirs, &running.product]),
         Refusal::Older { theirs, ours } => {
-            qvsmsg::UPDATE_OLDER.with(&[name, &theirs.to_string(), &ours.to_string()])
+            msgs()
+                .older
+                .with(&[name, &theirs.to_string(), &ours.to_string()])
         }
-        Refusal::State { file, found, reads } => qvsmsg::UPDATE_STATE.with(&[
+        Refusal::State { file, found, reads } => msgs().state.with(&[
             name,
             "its release",
             &format!("{file} is version {found}, and it reads {reads} at most"),
@@ -294,7 +312,7 @@ fn verify_staged(core: &Shared, name: &str, bytes: u64, allow_older: bool) -> St
     let running = lock(core).running();
     let data = fs::read(&path);
     let result = data
-        .map_err(|e| vec![qvsmsg::UPDATE_NOT_KEPT.with(&[name, &e.to_string()])])
+        .map_err(|e| vec![msgs().not_kept.with(&[name, &e.to_string()])])
         .and_then(|data| {
             verify::verify(&data, &running, allow_older)
                 .map_err(|r| vec![refusal(name, &r, &running)])
@@ -323,7 +341,7 @@ fn verify_staged(core: &Shared, name: &str, bytes: u64, allow_older: bool) -> St
             });
             if let Err(e) = renamed {
                 c.forget_staged();
-                let error = vec![qvsmsg::UPDATE_NOT_KEPT.with(&[name, &e.to_string()])];
+                let error = vec![msgs().not_kept.with(&[name, &e.to_string()])];
                 return refused(&mut c, name, bytes, error, time);
             }
             let staged = Staged {
@@ -337,7 +355,7 @@ fn verify_staged(core: &Shared, name: &str, bytes: u64, allow_older: bool) -> St
             c.staged = Some(staged.clone());
             c.allow_older = allow_older;
             c.post(
-                &refcode::UPDATE_VERIFIED,
+                crate::Code::Verified,
                 &format!("{name}: {} build {}", image.release, image.build),
                 &[],
             );
@@ -358,7 +376,7 @@ fn verify_staged(core: &Shared, name: &str, bytes: u64, allow_older: bool) -> St
 
 fn refused(c: &mut Core, name: &str, bytes: u64, error: Vec<Issued>, time: u64) -> Staged {
     let why = error.first().map(|i| i.text.clone()).unwrap_or_default();
-    c.post(&refcode::UPDATE_REFUSED, &why, &[]);
+    c.post(crate::Code::Refused, &why, &[]);
     c.publish(&Event::Verified {
         name: name.to_string(),
         image: None,
@@ -380,17 +398,17 @@ fn begin_stage(core: &Shared, name: &str, bytes: u64) -> Result<(), Vec<Issued>>
     let mut c = lock(core);
     if !valid_stage(name, bytes) {
         return Err(vec![
-            qvsmsg::UPDATE_NAME.with(&[&format!("{name:?}, {bytes} bytes")]),
+            msgs().name.with(&[&format!("{name:?}, {bytes} bytes")]),
         ]);
     }
     if let Some(s) = &c.staged {
-        return Err(vec![qvsmsg::UPDATE_STAGED_ALREADY.with(&[&s.name])]);
+        return Err(vec![msgs().staged_already.with(&[&s.name])]);
     }
     if let Some(b) = &c.busy {
-        return Err(vec![qvsmsg::UPDATE_BUSY.with(&[b])]);
+        return Err(vec![msgs().busy.with(&[b])]);
     }
     fs::create_dir_all(&c.host.dir)
-        .map_err(|e| vec![qvsmsg::UPDATE_NOT_KEPT.with(&[name, &e.to_string()])])?;
+        .map_err(|e| vec![msgs().not_kept.with(&[name, &e.to_string()])])?;
     c.staged = Some(Staged {
         name: name.to_string(),
         bytes,
@@ -422,7 +440,7 @@ fn receive(
         Err(e) => {
             let mut c = lock(core);
             c.forget_staged();
-            let error = vec![qvsmsg::UPDATE_NOT_KEPT.with(&[name, &e.to_string()])];
+            let error = vec![msgs().not_kept.with(&[name, &e.to_string()])];
             c.publish(&Event::Staged {
                 name: name.to_string(),
                 bytes: 0,
@@ -435,7 +453,11 @@ fn receive(
     let mut c = lock(core);
     if got < bytes {
         c.forget_staged();
-        let error = vec![qvsmsg::UPDATE_CUT.with(&[name, &got.to_string(), &bytes.to_string()])];
+        let error = vec![
+            msgs()
+                .cut
+                .with(&[name, &got.to_string(), &bytes.to_string()]),
+        ];
         c.publish(&Event::Staged {
             name: name.to_string(),
             bytes: got,
@@ -447,11 +469,7 @@ fn receive(
     if let Some(s) = c.staged.as_mut() {
         s.verification = Verification::Verifying;
     }
-    c.post(
-        &refcode::UPDATE_STAGED,
-        &format!("{name}, {bytes} bytes"),
-        &[],
-    );
+    c.post(crate::Code::Staged, &format!("{name}, {bytes} bytes"), &[]);
     c.publish(&Event::Staged {
         name: name.to_string(),
         bytes,
@@ -485,8 +503,8 @@ impl Updates for Session<'_> {
         let name = p
             .file_name()
             .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned());
-        let mut file = fs::File::open(p)
-            .map_err(|e| vec![qvsmsg::UPDATE_NOT_KEPT.with(&[&name, &e.to_string()])])?;
+        let mut file =
+            fs::File::open(p).map_err(|e| vec![msgs().not_kept.with(&[&name, &e.to_string()])])?;
         let bytes = file.metadata().map_or(0, |m| m.len());
         begin_stage(self.0, &name, bytes)?;
         receive(self.0, &mut file, &name, bytes, allow_older)
@@ -495,13 +513,13 @@ impl Updates for Session<'_> {
     fn discard(&mut self) -> Result<(), Vec<Issued>> {
         let mut c = lock(self.0);
         if let Some(b) = &c.busy {
-            return Err(vec![qvsmsg::UPDATE_BUSY.with(&[b])]);
+            return Err(vec![msgs().busy.with(&[b])]);
         }
         let Some(s) = c.staged.clone() else {
-            return Err(vec![qvsmsg::UPDATE_NOTHING_STAGED.issue()]);
+            return Err(vec![msgs().nothing_staged.issue()]);
         };
         c.forget_staged();
-        c.post(&refcode::UPDATE_DISCARDED, &s.name, &[]);
+        c.post(crate::Code::Discarded, &s.name, &[]);
         Ok(())
     }
 
@@ -610,7 +628,8 @@ pub fn run(host: Host) -> String {
         error: Vec::new(),
         time: s.time,
     });
-    let socket = proto::socket(host.run_dir);
+    MESSAGES.get_or_init(|| host.messages);
+    let socket = proto::socket(host.id, host.run_dir);
     let _ = fs::remove_file(&socket);
     let listener = match UnixListener::bind(&socket) {
         Ok(l) => l,

@@ -26,7 +26,7 @@ vswitch = { path = "../../net/vswitch", version = "0.1.0" }
 vswitchd = { path = "../../net/vswitchd", version = "0.1.0" }
 qsilocal = { path = "../../qsi/local", version = "0.1.0" }
 problem = { path = "../../base/problem", version = "0.1.0" }
-update = { path = "../update", version = "0.1.0" }
+update = { path = "../../base/update", version = "0.1.0" }
 hostdump = { path = "../hostdump", version = "0.1.0" }
 qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
 loadsource = { path = "../../base/loadsource", version = "0.1.0" }

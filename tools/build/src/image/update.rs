@@ -34,7 +34,7 @@ pub fn named_fixes() -> Result<Vec<String>> {
 fn fixes(text: &str) -> Result<Vec<String>> {
     let mut out: Vec<String> = Vec::new();
     for f in text.split(',').map(str::trim).filter(|f| !f.is_empty()) {
-        if !update::manifest::valid_fix(f) {
+        if !update::manifest::valid_fix(&qsvsupdd::FORMAT, f) {
             bail!("{FIXES}: `{f}` is not a fix (QV and five digits)");
         }
         if !out.iter().any(|o| o == f) {
@@ -64,14 +64,16 @@ pub fn update(ctx: &Ctx) -> Result<PathBuf> {
         release: ctx.product.release.clone(),
         build: ctx.product.build_id.clone(),
         fixes: fixes(&std::env::var(FIXES).unwrap_or_default())?,
-        schemas: update::schemas::this_release(),
+        schemas: qsvsupdd::schemas::this_release(),
         files: vec![
             entry(update::verify::SLOT_A, &a),
             entry(update::verify::SLOT_B, &b),
         ],
     };
     let key = buildkit::image::manifest::signing_key(ctx)?;
-    let image = update::make(&manifest, &a, &b, |text| key.sign(text).to_bytes());
+    let image = update::make(&qsvsupdd::FORMAT, &manifest, &a, &b, |text| {
+        key.sign(text).to_bytes()
+    });
     let hash = sha256_bytes(&image);
     let out = ctx.paths.images();
     fs::create_dir_all(&out)?;

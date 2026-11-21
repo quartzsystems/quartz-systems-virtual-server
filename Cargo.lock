@@ -221,6 +221,7 @@ dependencies = [
  "hex",
  "loadsource",
  "pesign",
+ "qsvsupdd",
  "qvsmsg",
  "refcode",
  "release",
@@ -435,6 +436,7 @@ dependencies = [
  "qsitrust",
  "qsvmm",
  "qsvshook",
+ "qsvsupdd",
  "qvsmsg",
  "refcode",
  "release",
@@ -867,6 +869,7 @@ dependencies = [
  "pool",
  "qsipart",
  "qsiserver",
+ "qsvsupdd",
  "refcode",
  "release",
  "seed",
@@ -2131,10 +2134,15 @@ dependencies = [
 name = "qsvsupdd"
 version = "0.1.0"
 dependencies = [
+ "model",
  "partd",
+ "qvsmsg",
  "refcode",
  "release",
+ "resource",
+ "state",
  "update",
+ "vswitch",
 ]
 
 [[package]]
@@ -3066,11 +3074,7 @@ dependencies = [
  "hex",
  "ipc",
  "loadsource",
- "model",
- "partd",
- "qvsmsg",
- "refcode",
- "resource",
+ "msg",
  "rustix",
  "serde",
  "serde_json",
@@ -3078,7 +3082,6 @@ dependencies = [
  "state",
  "supervise",
  "vrm",
- "vswitch",
 ]
 
 [[package]]

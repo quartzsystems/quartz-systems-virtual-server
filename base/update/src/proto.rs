@@ -7,19 +7,18 @@
 //! answer, or a subscription whose events follow. Root's and the QSI
 //! server's group's.
 
-use qvsmsg::Issued;
+use msg::Issued;
 
 /// The service's name in PID 1's table.
 pub const NAME: &str = "updd";
 /// The socket's file, in the run directory.
-pub const SOCKET_FILE: &str = "qsvsupdd.sock";
 /// The longest request, answer or event.
 pub const MAX_FRAME: usize = 256 * 1024;
 
 /// The socket in `run_dir`.
 #[must_use]
-pub fn socket(run_dir: &str) -> std::path::PathBuf {
-    std::path::Path::new(run_dir).join(SOCKET_FILE)
+pub fn socket(id: &str, run_dir: &str) -> std::path::PathBuf {
+    std::path::Path::new(run_dir).join(format!("{id}{NAME}.sock"))
 }
 
 /// How a slot's last activation ended.
@@ -360,7 +359,11 @@ mod tests {
             staged: Some(Staged {
                 name: "V1R0M1".into(),
                 verification: Verification::Refused,
-                error: vec![qvsmsg::NAME_INVALID.with(&["x"])],
+                error: vec![msg::Issued {
+                    id: "XMP0001".into(),
+                    text: "x".into(),
+                    help: String::new(),
+                }],
                 ..Staged::default()
             }),
             installing: None,

@@ -20,7 +20,7 @@ fn image(product: &str, release: &str, signer: &SigningKey) -> Vec<u8> {
         product: product.into(),
         release: release.into(),
         build: "test".into(),
-        fixes: vec!["QV00001".into()],
+        fixes: vec!["DM00001".into()],
         schemas: vec![("host.toml".into(), 1), ("definition.toml".into(), 2)],
         files: vec![
             File {
@@ -35,12 +35,15 @@ fn image(product: &str, release: &str, signer: &SigningKey) -> Vec<u8> {
             },
         ],
     };
-    crate::make(&m, &a, &b, |text| signer.sign(text).to_bytes())
+    crate::make(&crate::DEMO, &m, &a, &b, |text| {
+        signer.sign(text).to_bytes()
+    })
 }
 
 fn running() -> Running {
     Running {
-        product: "QS/VS".into(),
+        format: &crate::DEMO,
+        product: "DEMO".into(),
         release: V1R0M0,
         keys: [
             key(9).verifying_key().to_bytes(),
@@ -53,22 +56,22 @@ fn running() -> Running {
 
 #[test]
 fn a_signed_image_of_a_newer_release_verifies() {
-    let img = image("QS/VS", "V1R0M1", &key(1));
+    let img = image("DEMO", "V1R0M1", &key(1));
     let v = verify(&img, &running(), false).unwrap();
     assert_eq!(v.manifest.release, "V1R0M1");
     assert_eq!(&img[v.slots[1].clone()][..2], &[0x5A, 0x5A]);
     // The same release again verifies too: a rebuild.
-    assert!(verify(&image("QS/VS", "V1R0M0", &key(1)), &running(), false).is_ok());
+    assert!(verify(&image("DEMO", "V1R0M0", &key(1)), &running(), false).is_ok());
 }
 
 #[test]
 fn each_refusal_says_which_check() {
     let r = running();
     assert_eq!(
-        verify(&image("QS/VS", "V1R0M1", &key(2)), &r, false),
+        verify(&image("DEMO", "V1R0M1", &key(2)), &r, false),
         Err(Refusal::Signature)
     );
-    let mut damaged = image("QS/VS", "V1R0M1", &key(1));
+    let mut damaged = image("DEMO", "V1R0M1", &key(1));
     let last = damaged.len() - 1;
     damaged[last] ^= 1;
     assert!(matches!(verify(&damaged, &r, false), Err(Refusal::Damaged(w)) if w.contains("hash")));
@@ -77,14 +80,14 @@ fn each_refusal_says_which_check() {
         Err(Refusal::Damaged(_))
     ));
     assert!(matches!(
-        verify(&image("QS/MC", "V1R0M1", &key(1)), &r, false),
+        verify(&image("OTHER", "V1R0M1", &key(1)), &r, false),
         Err(Refusal::Product { .. })
     ));
     let older = Running {
         release: Release { v: 1, r: 0, m: 1 },
         ..running()
     };
-    let img = image("QS/VS", "V1R0M0", &key(1));
+    let img = image("DEMO", "V1R0M0", &key(1));
     assert!(matches!(
         verify(&img, &older, false),
         Err(Refusal::Older { .. })
@@ -105,7 +108,7 @@ fn each_refusal_says_which_check() {
     );
     // A signature over another manifest: the manifest changed after it
     // was signed.
-    let mut changed = image("QS/VS", "V1R0M1", &key(1));
+    let mut changed = image("DEMO", "V1R0M1", &key(1));
     let at = changed.windows(6).position(|w| w == b"V1R0M1").unwrap();
     changed[at + 5] = b'9';
     assert_eq!(verify(&changed, &r, false), Err(Refusal::Signature));

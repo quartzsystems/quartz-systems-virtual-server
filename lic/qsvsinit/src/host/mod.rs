@@ -358,7 +358,7 @@ impl Host {
                 // The copy of state is dropped by a thread: /data.
                 std::thread::spawn(|| {
                     if let Err(e) =
-                        crate::ipl::update::confirmed(std::path::Path::new(release::DATA_DIR))
+                        ::update::state_copy::confirmed(std::path::Path::new(release::DATA_DIR))
                     {
                         eprintln!("the copy of state was not dropped: {e}");
                     }

@@ -30,7 +30,6 @@ members = [
     "svc/tools",
     # Service: the host's dump and code update.
     "svc/hostdump",
-    "svc/update",
     "qsi/local",
     "qsi/server",
     # Base: what every Quartz appliance needs, product-neutral. QS/MC pins
@@ -56,6 +55,7 @@ members = [
     "base/problem",
     "base/servicedump",
     "base/confine",
+    "base/update",
     # The VMM: one process for one partition.
     "vmm/arch",
     "vmm/acpi",

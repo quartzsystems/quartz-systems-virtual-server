@@ -1318,13 +1318,13 @@ pub const TARGETS: &[Target] = &[
         name: "update-image",
         about: "an update image a console uploads: its container, its manifest and its verification",
         seeds: update_image_seeds,
-        run: update::fuzz_image,
+        run: |d| update::fuzz_image(&qsvsupdd::FORMAT, d),
     },
     Target {
         name: "update-manifest",
         about: "an update image's manifest, read and rendered again",
         seeds: update_manifest_seeds,
-        run: update::fuzz_manifest,
+        run: |d| update::fuzz_manifest(&qsvsupdd::FORMAT, d),
     },
 ];
 
@@ -1352,11 +1352,17 @@ fn update_manifest() -> update::Manifest {
 }
 
 fn update_manifest_seeds() -> Vec<Vec<u8>> {
-    vec![update_manifest().render().into_bytes()]
+    vec![update_manifest().render(&qsvsupdd::FORMAT).into_bytes()]
 }
 
 fn update_image_seeds() -> Vec<Vec<u8>> {
-    let image = update::make(&update_manifest(), &[0xA5; 64], &[0x5A; 64], |_| [7; 64]);
+    let image = update::make(
+        &qsvsupdd::FORMAT,
+        &update_manifest(),
+        &[0xA5; 64],
+        &[0x5A; 64],
+        |_| [7; 64],
+    );
     vec![image]
 }
 

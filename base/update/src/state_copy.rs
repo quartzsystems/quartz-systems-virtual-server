@@ -142,7 +142,7 @@ mod tests {
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("qsvs-update-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("state-copy-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(d.join("state/partitions/1")).unwrap();
         fs::write(d.join("state/host.toml"), "before").unwrap();

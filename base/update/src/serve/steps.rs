@@ -10,13 +10,11 @@
 //! A power loss before that leaves nothing pending.
 
 use std::fs::{self, OpenOptions};
-use std::time::{Duration, Instant};
 
-use partd::Calls as _;
-use qvsmsg::Issued;
+use msg::Issued;
 use supervise::control::Calls as _;
 
-use super::{Held, Shared, lock, now};
+use super::{Held, Shared, lock, msgs, now};
 use crate::proto::{Attempt, Event, ImageInfo, Progress, Verification};
 use crate::verify;
 
@@ -44,41 +42,37 @@ fn write_slot(esp: &std::path::Path, path: &str, data: &[u8]) -> Result<(), Stri
 pub(crate) fn install(core: &Shared) -> Result<String, Vec<Issued>> {
     let mut c = lock(core);
     if let Some(b) = &c.busy {
-        return Err(vec![qvsmsg::UPDATE_BUSY.with(&[b])]);
+        return Err(vec![msgs().busy.with(&[b])]);
     }
     let staged = c
         .staged
         .clone()
-        .ok_or_else(|| vec![qvsmsg::UPDATE_NOTHING_STAGED.issue()])?;
+        .ok_or_else(|| vec![msgs().nothing_staged.issue()])?;
     if staged.verification != Verification::Verified {
         let why = staged
             .error
             .first()
             .map_or("it is not verified yet", |i| i.text.as_str());
-        return Err(vec![qvsmsg::UPDATE_NOT_VERIFIED.with(&[&staged.name, why])]);
+        return Err(vec![msgs().not_verified.with(&[&staged.name, why])]);
     }
     let slots = c
         .pid1()
         .slots()
-        .map_err(|e| vec![qvsmsg::UPDATE_RECORD.with(&[&e.to_string()])])?;
+        .map_err(|e| vec![msgs().record.with(&[&e.to_string()])])?;
     if !slots.pending.is_empty() {
-        return Err(vec![qvsmsg::UPDATE_PENDING.with(&[&slots.pending])]);
+        return Err(vec![msgs().pending.with(&[&slots.pending])]);
     }
     let target = c
         .other()
-        .ok_or_else(|| vec![qvsmsg::UPDATE_RECORD.with(&["this IPL has no A/B record"])])?;
+        .ok_or_else(|| vec![msgs().record.with(&["this IPL has no A/B record"])])?;
     c.busy = Some(format!("being installed into slot {target}"));
     c.installing = Some(Progress {
         slot: target.clone(),
         percent: 0,
         time: now(),
     });
-    let about = [refcode::about::slot(&target)];
-    c.post(
-        &refcode::UPDATE_INSTALLING,
-        &format!("slot {target}"),
-        &about,
-    );
+    let about = [crate::slot_about(&target)];
+    c.post(crate::Code::Installing, &format!("slot {target}"), &about);
     drop(c);
     let core2 = core.clone();
     let slot = target.clone();
@@ -87,7 +81,7 @@ pub(crate) fn install(core: &Shared) -> Result<String, Vec<Issued>> {
         let mut c = lock(&core2);
         c.busy = None;
         c.installing = None;
-        let about = [refcode::about::slot(&slot)];
+        let about = [crate::slot_about(&slot)];
         match outcome {
             Ok(image) => {
                 let mut kept = c.kept();
@@ -103,7 +97,7 @@ pub(crate) fn install(core: &Shared) -> Result<String, Vec<Issued>> {
                 // The slot has it now: nothing is staged.
                 c.forget_staged();
                 c.post(
-                    &refcode::UPDATE_INSTALLED,
+                    crate::Code::Installed,
                     &format!("{} build {} in slot {slot}", image.release, image.build),
                     &about,
                 );
@@ -124,7 +118,7 @@ pub(crate) fn install(core: &Shared) -> Result<String, Vec<Issued>> {
                 };
                 c.keep(&kept);
                 let why = error.first().map(|i| i.text.clone()).unwrap_or_default();
-                c.post(&refcode::UPDATE_INSTALL_FAILED, &why, &about);
+                c.post(crate::Code::InstallFailed, &why, &about);
                 c.publish(&Event::Installed {
                     slot,
                     image: None,
@@ -160,7 +154,7 @@ fn write_all(core: &Shared, slot: &str) -> Result<ImageInfo, Vec<Issued>> {
             c.allow_older,
         )
     };
-    let fail = |why: String| vec![qvsmsg::UPDATE_NOT_WRITTEN.with(&[slot, &why])];
+    let fail = |why: String| vec![msgs().not_written.with(&[slot, &why])];
     let bytes = fs::read(&path).map_err(|e| fail(e.to_string()))?;
     let v = verify::verify(&bytes, &running, allow_older).map_err(|r| fail(r.to_string()))?;
     let (file, uki_path) = if slot == "A" {
@@ -179,16 +173,16 @@ fn write_all(core: &Shared, slot: &str) -> Result<ImageInfo, Vec<Issued>> {
         progress(core, slot, percent);
         let c = lock(core);
         c.post(
-            &refcode::UPDATE_SLOT_WRITTEN,
+            crate::Code::SlotWritten,
             &format!("slot {slot} on {}", s.disk),
-            &[refcode::about::slot(slot)],
+            &[crate::slot_about(slot)],
         );
     }
     let c = lock(core);
     c.pid1()
         .install_slot(slot.to_string())
-        .map_err(|e| vec![qvsmsg::UPDATE_RECORD.with(&[&e.to_string()])])?
-        .map_err(|e| vec![qvsmsg::UPDATE_RECORD.with(&[&e])])?;
+        .map_err(|e| vec![msgs().record.with(&[&e.to_string()])])?
+        .map_err(|e| vec![msgs().record.with(&[&e])])?;
     drop(c);
     progress(core, slot, 100);
     Ok(ImageInfo {
@@ -211,30 +205,23 @@ pub(crate) fn activate(
 ) -> Result<(), Vec<Issued>> {
     let mut c = lock(core);
     if let Some(b) = &c.busy {
-        return Err(vec![qvsmsg::UPDATE_BUSY.with(&[b])]);
+        return Err(vec![msgs().busy.with(&[b])]);
     }
     let slots = c
         .pid1()
         .slots()
-        .map_err(|e| vec![qvsmsg::UPDATE_RECORD.with(&[&e.to_string()])])?;
+        .map_err(|e| vec![msgs().record.with(&[&e.to_string()])])?;
     if slots.pending.is_empty() {
-        return Err(vec![qvsmsg::UPDATE_NOTHING_PENDING.issue()]);
+        return Err(vec![msgs().nothing_pending.issue()]);
     }
     if slots.activated {
-        return Err(vec![qvsmsg::UPDATE_BUSY.with(&["being activated"])]);
+        return Err(vec![msgs().busy.with(&["being activated"])]);
     }
-    let mut partd = partd::Client::new(&c.host.partd);
-    let running: Vec<partd::Status> = partd
-        .list()
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|p| p.state.active())
-        .collect();
+    let mut partitions = (c.host.partitions)();
+    let running = partitions.running();
     if !running.is_empty() && !shut_down {
-        let names: Vec<String> = running.iter().map(|p| p.name.clone()).collect();
-        return Err(vec![
-            qvsmsg::UPDATE_PARTITIONS_RUN.with(&[&names.join(", ")]),
-        ]);
+        let names: Vec<String> = running.iter().map(|(_, n)| n.clone()).collect();
+        return Err(vec![msgs().partitions_run.with(&[&names.join(", ")])]);
     }
     let slot = slots.pending.clone();
     c.busy = Some(format!("activating slot {slot}"));
@@ -242,8 +229,10 @@ pub(crate) fn activate(
     let core2 = core.clone();
     let by = by.to_string();
     std::thread::spawn(move || {
-        let ids: Vec<u32> = running.iter().map(|p| p.id).collect();
-        end_partitions(&mut partd, &ids, timeout);
+        let ids: Vec<u32> = running.iter().map(|(id, _)| *id).collect();
+        if !ids.is_empty() {
+            partitions.end(&ids, timeout);
+        }
         let mut c = lock(&core2);
         c.publish(&Event::Activating {
             slot: slot.clone(),
@@ -263,62 +252,32 @@ pub(crate) fn activate(
     Ok(())
 }
 
-/// Shut each of `ids` down through its system, then end at once each
-/// still active after `timeout` seconds.
-fn end_partitions(partd: &mut partd::Client, ids: &[u32], timeout: u32) {
-    if ids.is_empty() {
-        return;
-    }
-    for id in ids {
-        let _ = partd.shut_down_as(*id, partd::proto::Shutdown::System, timeout, false);
-    }
-    let active = |p: &mut partd::Client| -> Vec<u32> {
-        p.list()
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|s| s.state.active() && ids.contains(&s.id))
-            .map(|s| s.id)
-            .collect()
-    };
-    let until = Instant::now() + Duration::from_secs(u64::from(timeout));
-    while Instant::now() < until && !active(partd).is_empty() {
-        std::thread::sleep(Duration::from_millis(500));
-    }
-    for id in active(partd) {
-        let _ = partd.shut_down(id);
-    }
-    let until = Instant::now() + Duration::from_secs(60);
-    while Instant::now() < until && !active(partd).is_empty() {
-        std::thread::sleep(Duration::from_millis(500));
-    }
-}
-
 /// The pending slot is pending no more.
 pub(crate) fn cancel(core: &Shared) -> Result<(), Vec<Issued>> {
     let c = lock(core);
     if let Some(b) = &c.busy {
-        return Err(vec![qvsmsg::UPDATE_BUSY.with(&[b])]);
+        return Err(vec![msgs().busy.with(&[b])]);
     }
     let slots = c
         .pid1()
         .slots()
-        .map_err(|e| vec![qvsmsg::UPDATE_RECORD.with(&[&e.to_string()])])?;
+        .map_err(|e| vec![msgs().record.with(&[&e.to_string()])])?;
     if slots.pending.is_empty() {
-        return Err(vec![qvsmsg::UPDATE_NOTHING_PENDING.issue()]);
+        return Err(vec![msgs().nothing_pending.issue()]);
     }
     c.pid1()
         .cancel_slot()
-        .map_err(|e| vec![qvsmsg::UPDATE_RECORD.with(&[&e.to_string()])])?
-        .map_err(|e| vec![qvsmsg::UPDATE_RECORD.with(&[&e])])?;
+        .map_err(|e| vec![msgs().record.with(&[&e.to_string()])])?
+        .map_err(|e| vec![msgs().record.with(&[&e])])?;
     let mut kept = c.kept();
     let h = kept.of(&slots.pending);
     h.last = Attempt::Never;
     h.time = now();
     c.keep(&kept);
     c.post(
-        &refcode::UPDATE_CANCELLED,
+        crate::Code::Cancelled,
         &format!("slot {}", slots.pending),
-        &[refcode::about::slot(&slots.pending)],
+        &[crate::slot_about(&slots.pending)],
     );
     Ok(())
 }

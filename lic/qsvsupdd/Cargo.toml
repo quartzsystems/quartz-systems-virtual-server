@@ -1,6 +1,6 @@
 [package]
 name = "qsvsupdd"
-description = "QS/VS's update service: svc/update run as QS/VS, with the release that runs, the keys its image trusts and its load-source names"
+description = "QS/VS's update service: base/update run as QS/VS, with the release that runs, the keys its image trusts and its load-source names"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +9,14 @@ publish.workspace = true
 [dependencies]
 release = { path = "../release", version = "0.1.0" }
 refcode = { path = "../refcode", version = "0.1.0" }
-update = { path = "../../svc/update", version = "0.1.0" }
+update = { path = "../../base/update", version = "0.1.0" }
+qvsmsg = { path = "../qvsmsg", version = "0.1.0" }
+state = { path = "../../base/state", version = "0.1.0" }
+model = { path = "../../part/model", version = "0.1.0" }
+resource = { path = "../../part/resource", version = "0.1.0" }
+vswitch = { path = "../../net/vswitch", version = "0.1.0" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
 partd = { path = "../../part/partd", version = "0.1.0" }
 
 [lints]

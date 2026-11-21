@@ -22,7 +22,6 @@ pub mod memory;
 pub mod mounts;
 #[cfg(target_os = "linux")]
 mod state;
-pub mod update;
 
 #[cfg(target_os = "linux")]
 pub use on_host::run;
@@ -43,7 +42,7 @@ mod on_host {
     use supervise::signal::{CHLD, INT, Signals, TERM};
 
     use super::cmdline::{self, Source};
-    use super::{choose, clock, install, memory, mounts, state as state_step, update};
+    use super::{choose, clock, install, memory, mounts, state as state_step};
     use crate::console::Console;
     use crate::host::{Host, table};
     use crate::{kvm, slot, sys};
@@ -230,24 +229,28 @@ mod on_host {
             return;
         };
         let (ipl, fell) = match slots.ipl {
-            loadsource::record::Ipl::Trial => (update::Ipl::Trial, None),
+            loadsource::record::Ipl::Trial => (::update::state_copy::Ipl::Trial, None),
             loadsource::record::Ipl::FellBack { pending } => (
-                update::Ipl::FellBack,
+                ::update::state_copy::Ipl::FellBack,
                 Some(loadsource::record::letter(pending)),
             ),
-            loadsource::record::Ipl::Normal => (update::Ipl::Normal, None),
+            loadsource::record::Ipl::Normal => (::update::state_copy::Ipl::Normal, None),
         };
-        match update::before_state(Path::new(release::DATA_DIR), ipl) {
-            Ok(update::Done::Copied) => {
-                host.post(&refcode::UPDATE_STATE_KEPT, update::COPY);
+        match ::update::state_copy::before_state(Path::new(release::DATA_DIR), ipl) {
+            Ok(::update::state_copy::Done::Copied) => {
+                host.post(&refcode::UPDATE_STATE_KEPT, ::update::state_copy::COPY);
             }
-            Ok(update::Done::Restored) => {
+            Ok(::update::state_copy::Done::Restored) => {
                 host.post(
                     &refcode::UPDATE_STATE_RESTORED,
                     "/data/state as it was before the update",
                 );
             }
-            Ok(update::Done::Kept | update::Done::Dropped | update::Done::Nothing) => {}
+            Ok(
+                ::update::state_copy::Done::Kept
+                | ::update::state_copy::Done::Dropped
+                | ::update::state_copy::Done::Nothing,
+            ) => {}
             Err(e) => host.line(&format!("the state across the update: {e}")),
         }
         if let Some(slot) = fell {

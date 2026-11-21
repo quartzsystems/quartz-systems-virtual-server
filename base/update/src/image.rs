@@ -2,11 +2,11 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! An update image's container (`docs/UPDATE.md`): one file, its
-//! signed manifest first, then the files it names.
+//! An update image's container: one file, its signed manifest first,
+//! then the files it names.
 //!
 //! ```text
-//! "QSVSUPDT"            8 bytes
+//! the product's magic   8 bytes
 //! version               u32, little-endian: 1
 //! manifest length       u32
 //! signature length      u32: 64, ed25519
@@ -21,10 +21,8 @@
 
 use std::ops::Range;
 
+use crate::Format;
 use crate::manifest::{MAX_ITEMS, MAX_TEXT, MAX_WORD};
-
-/// The first bytes.
-pub const MAGIC: &[u8; 8] = b"QSVSUPDT";
 /// The container's version.
 pub const VERSION: u32 = 1;
 /// An ed25519 signature's length.
@@ -95,13 +93,13 @@ impl Reader<'_> {
 ///
 /// # Errors
 /// It is not an image, or not a whole one.
-pub fn parse(bytes: &[u8]) -> Result<Parsed, Damaged> {
+pub fn parse(format: &Format, bytes: &[u8]) -> Result<Parsed, Damaged> {
     if bytes.len() as u64 > MAX_IMAGE {
         return Err(damaged("the image is larger than any can be"));
     }
     let mut r = Reader { bytes, at: 0 };
-    let magic = r.take(MAGIC.len(), "magic")?;
-    if &bytes[magic] != MAGIC {
+    let magic = r.take(format.magic.len(), "magic")?;
+    if bytes[magic] != format.magic {
         return Err(damaged("it is not an update image"));
     }
     if r.u32("version")? != VERSION {
@@ -141,10 +139,15 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed, Damaged> {
 
 /// The image of `manifest` (its text), `signature` and `files`.
 #[must_use]
-pub fn write(manifest: &str, signature: &[u8; SIGNATURE], files: &[(&str, &[u8])]) -> Vec<u8> {
+pub fn write(
+    format: &Format,
+    manifest: &str,
+    signature: &[u8; SIGNATURE],
+    files: &[(&str, &[u8])],
+) -> Vec<u8> {
     let size: usize = files.iter().map(|(n, d)| 10 + n.len() + d.len()).sum();
     let mut out = Vec::with_capacity(24 + manifest.len() + SIGNATURE + size);
-    out.extend_from_slice(MAGIC);
+    out.extend_from_slice(&format.magic);
     out.extend_from_slice(&VERSION.to_le_bytes());
     for n in [manifest.len(), SIGNATURE, files.len()] {
         out.extend_from_slice(&u32::try_from(n).unwrap_or(u32::MAX).to_le_bytes());
@@ -163,33 +166,38 @@ pub fn write(manifest: &str, signature: &[u8; SIGNATURE], files: &[(&str, &[u8])
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DEMO;
 
     #[test]
     fn an_image_reads_back_and_a_damaged_one_does_not() {
         let img = write(
-            "QSVS-UPDATE 1\n",
+            &DEMO,
+            "DEMO-UPDATE 1\n",
             &[7; SIGNATURE],
             &[("SLOTA.EFI", b"aaaa"), ("SLOTB.EFI", b"bb")],
         );
-        let p = parse(&img).unwrap();
-        assert_eq!(&img[p.manifest.clone()], b"QSVS-UPDATE 1\n");
+        let p = parse(&DEMO, &img).unwrap();
+        assert_eq!(&img[p.manifest.clone()], b"DEMO-UPDATE 1\n");
         assert_eq!(&img[p.signature.clone()], &[7; SIGNATURE]);
         assert_eq!(p.files.len(), 2);
         assert_eq!(&img[p.files[1].1.clone()], b"bb");
         // Every cut, and a byte more, is refused, never a panic.
         for n in 0..img.len() {
-            assert!(parse(&img[..n]).is_err(), "cut at {n}");
+            assert!(parse(&DEMO, &img[..n]).is_err(), "cut at {n}");
         }
         let mut longer = img.clone();
         longer.push(0);
-        assert!(parse(&longer).is_err());
+        assert!(parse(&DEMO, &longer).is_err());
         let mut other = img.clone();
         other[0] = b'X';
-        assert_eq!(parse(&other).unwrap_err().0, "it is not an update image");
+        assert_eq!(
+            parse(&DEMO, &other).unwrap_err().0,
+            "it is not an update image"
+        );
         // A size that names more than there is.
         let mut huge = img.clone();
         let at = img.len() - 2 - 8;
         huge[at..at + 8].copy_from_slice(&u64::MAX.to_le_bytes());
-        assert!(parse(&huge).is_err());
+        assert!(parse(&DEMO, &huge).is_err());
     }
 }

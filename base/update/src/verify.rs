@@ -26,6 +26,8 @@ pub const SLOT_B: &str = "SLOTB.EFI";
 /// What runs, that an image is checked against.
 #[derive(Clone, Debug)]
 pub struct Running {
+    /// Its images' format.
+    pub format: &'static crate::Format,
     /// The product's name.
     pub product: String,
     /// Its release.
@@ -113,14 +115,14 @@ pub fn signed(text: &[u8], signature: &[u8], keys: &[u8]) -> bool {
 /// # Errors
 /// The first check it fails.
 pub fn verify(bytes: &[u8], running: &Running, allow_older: bool) -> Result<Verified, Refusal> {
-    let parsed = image::parse(bytes).map_err(|d| Refusal::Damaged(d.0))?;
+    let parsed = image::parse(running.format, bytes).map_err(|d| Refusal::Damaged(d.0))?;
     let text = &bytes[parsed.manifest.clone()];
     if !signed(text, &bytes[parsed.signature.clone()], &running.keys) {
         return Err(Refusal::Signature);
     }
     let text = std::str::from_utf8(text)
         .map_err(|_| Refusal::Damaged("its manifest is not text".into()))?;
-    let manifest = Manifest::parse(text).map_err(Refusal::Damaged)?;
+    let manifest = Manifest::parse(running.format, text).map_err(Refusal::Damaged)?;
     let mut slots = Vec::new();
     for name in [SLOT_A, SLOT_B] {
         let listed = manifest

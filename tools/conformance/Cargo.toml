@@ -52,7 +52,8 @@ hex.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 # Phase 9's suites: update images crafted and read, host dumps read.
-update = { path = "../../svc/update", version = "0.1.0" }
+update = { path = "../../base/update", version = "0.1.0" }
+qsvsupdd = { path = "../../lic/qsvsupdd", version = "0.1.0" }
 hostdump = { path = "../../svc/hostdump", version = "0.1.0" }
 identity = { path = "../../base/identity", version = "0.1.0" }
 ed25519-dalek = "3.0.0"

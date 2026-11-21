@@ -77,9 +77,9 @@ fn running(c: &mut Console) -> Result<(String, String), String> {
 /// The release the image at `file` holds.
 fn release_of(file: &Path) -> Result<String, String> {
     let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
-    let p = update::image::parse(&bytes).map_err(|d| d.0)?;
+    let p = update::image::parse(&qsvsupdd::FORMAT, &bytes).map_err(|d| d.0)?;
     let text = std::str::from_utf8(&bytes[p.manifest]).map_err(|e| e.to_string())?;
-    Ok(update::Manifest::parse(text)?.release)
+    Ok(update::Manifest::parse(&qsvsupdd::FORMAT, text)?.release)
 }
 
 /// Stage, install and activate `file`; the host back after its
@@ -388,9 +388,9 @@ fn crafted(
     change: impl FnOnce(&mut update::Manifest),
 ) -> Result<Vec<u8>, String> {
     let bytes = std::fs::read(from).map_err(|e| e.to_string())?;
-    let p = update::image::parse(&bytes).map_err(|d| d.0)?;
+    let p = update::image::parse(&qsvsupdd::FORMAT, &bytes).map_err(|d| d.0)?;
     let text = std::str::from_utf8(&bytes[p.manifest.clone()]).map_err(|e| e.to_string())?;
-    let mut m = update::Manifest::parse(text)?;
+    let mut m = update::Manifest::parse(&qsvsupdd::FORMAT, text)?;
     change(&mut m);
     let file = |name: &str| {
         p.files
@@ -400,7 +400,9 @@ fn crafted(
             .unwrap_or_default()
     };
     let (a, b) = (file(update::verify::SLOT_A), file(update::verify::SLOT_B));
-    Ok(update::make(&m, &a, &b, |t| key.sign(t).to_bytes()))
+    Ok(update::make(&qsvsupdd::FORMAT, &m, &a, &b, |t| {
+        key.sign(t).to_bytes()
+    }))
 }
 
 /// Stage `bytes` written to a scratch file: refused, its identifiers.
@@ -553,7 +555,7 @@ pub fn power(run: &Run<'_>) -> Result<String, String> {
             let disk = on_disk(&rig.disks[0])?;
             let uki = if p == "A" { disk.slot_a } else { disk.slot_b };
             let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
-            let parsed = update::image::parse(&bytes).map_err(|d| d.0)?;
+            let parsed = update::image::parse(&qsvsupdd::FORMAT, &bytes).map_err(|d| d.0)?;
             let want = if p == "A" {
                 update::verify::SLOT_A
             } else {
@@ -606,7 +608,7 @@ pub fn power(run: &Run<'_>) -> Result<String, String> {
 /// The bytes of slot `slot`'s UKI in the image at `file`.
 fn uki_of(file: &Path, slot: &str) -> Result<Vec<u8>, String> {
     let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
-    let p = update::image::parse(&bytes).map_err(|d| d.0)?;
+    let p = update::image::parse(&qsvsupdd::FORMAT, &bytes).map_err(|d| d.0)?;
     let want = if slot == "A" {
         update::verify::SLOT_A
     } else {
