@@ -16,7 +16,7 @@ network-qs400: net-qs400 net-throughput net-counters net-service-kill net-vmm-ki
 service: service-codes service-states service-none service-silent service-auto-wait service-delayed service-system service-terminal service-panel service-hostile
 service-console: service-console service-install-console service-dumps service-dump-restart service-manager-restart service-host-power-off service-tools
 qsi: qsi-listen qsi-pairing qsi-trust qsi-families qsi-streams qsi-log qsi-two-consoles qsi-hostile qsi-service-kill
-qsi-flows: qsi-end-to-end qsi-events qsi-power qsi-qsictl
+qsi-flows: qsi-end-to-end qsi-events qsi-power qsi-qsictl qsi-additions
 servicing: svc-problems svc-problem-kill svc-problem-pool svc-processor svc-hostdump svc-tools svc-qsictl svc-away svc-capture
 update: svc-update svc-update-back svc-update-mirror svc-update-power svc-update-refused svc-update-rollback
 update-keys: svc-update-migrate svc-update-keys
