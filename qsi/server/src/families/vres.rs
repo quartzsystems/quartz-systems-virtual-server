@@ -593,7 +593,18 @@ fn managed_switches(s: &mut Services, r: Request) -> Result<Reply, Vec<Note>> {
             Reply::SwitchCreate(switch(&made).ok_or_else(not_here)?)
         }
         Request::SwitchChange(w) => {
-            local(VSWITCHD, s.vswitchd.change(w.name, w.vlans, w.mtu)).map_err(lead)?;
+            // QSI's 0 is the host's default: a change keeps the MTU the
+            // switch has.
+            let mtu = if w.mtu == 0 {
+                reached(VSWITCHD, s.vswitchd.switches())?
+                    .iter()
+                    .filter_map(|st| st.switch.as_ref())
+                    .find(|sw| sw.name == w.name)
+                    .map_or(0, |sw| sw.mtu)
+            } else {
+                w.mtu
+            };
+            local(VSWITCHD, s.vswitchd.change(w.name, w.vlans, mtu)).map_err(lead)?;
             Reply::SwitchChange(Empty)
         }
         Request::SwitchRename(w) => {

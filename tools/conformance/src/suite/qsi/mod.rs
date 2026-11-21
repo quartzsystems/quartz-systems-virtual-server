@@ -11,6 +11,7 @@
 // Two consoles, a link, a host: short names read best in these steps.
 #![allow(clippy::many_single_char_names)]
 
+mod additions;
 pub(crate) mod families;
 pub(crate) mod flows;
 mod hostile;
@@ -44,6 +45,7 @@ pub const SUITES: &[(&str, SuiteFn)] = &[
     ("qsi-listen", hostile::listen),
     ("qsi-qsictl", flows::qsictl),
     ("qsi-log", hostile::log),
+    ("qsi-additions", additions::additions),
 ];
 
 /// The title of option 4.

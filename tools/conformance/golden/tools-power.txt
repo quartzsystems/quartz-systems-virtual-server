@@ -5,7 +5,7 @@
 
       1. Power off
       2. Restart
-
+      3. Power-on settings
 
 
 
