@@ -603,3 +603,54 @@ is `docs/BASE.md`'s closing table: the host's side of QSI's bits 19 to
 P10) and proved from `QSDEMO`, QS/MC's items 13, 14 and 28, the
 outside harness's document and the catalogue as data. `qsi-additions`
 is the suite of Part 1.
+
+## 2026-11-21: every suite on GitHub's runners, and the release again
+
+At `029c776` every suite passes on GitHub's hosted runners: the `qemu`
+workflow (run 44926036871: the images, then the 23 shards of
+`.github/qemu-shards.txt`) and the `ci` workflow (run 44926036849:
+rustfmt, clippy, the unit tests and the header check, deny and
+notices, the fuzz targets for 60 s each). A hosted runner is an AMD
+machine of 4 processors, nested and without performance counters,
+slower than the machines the suites were made on. What it took, after
+`02f8e93`:
+
+| Commit | What |
+|---|---|
+| `5a35354`, `d07aebc` | `qsi-additions` counted among the QSI suites and put in a shard |
+| `a066606` | CI signs every image and update image with a key it makes, not each target's development key; the shards build `qsictl`; the suites' waits are 2.5 times as long there (`QSVS_BOOT_TIMEOUT=150`) |
+| `847316c`, `df5473d` | `qsi-hostile` links again once the flood's handshakes are let go, keeping its first session spoken to meanwhile |
+| `d2c6ae1` | CI takes Ubuntu 26.04's OVMF (`ovmf-generic` 2025.11-3ubuntu7.3, by its SHA-256): with 24.04's, an installed disk had no boot entry after an orderly power off and the firmware's shell started. `mirror-split` reads its last code from the history; `vmm-confined` asks again of a control socket not yet listening |
+| `df5473d` | `qsi-two-consoles` compares the events both consoles were subscribed for |
+| `a7d4820` | The baked command line ends `quiet loglevel=3`: KVM's `Unhandled WRMSR(0xc0010007)`, logged as an error when a partition writes a performance counter the processor lacks, was drawn over Service Tools' display. Kernel errors go to the system log alone; critical messages and panics still reach the consoles |
+| `029c776` | `partition-attributes` presses Enter again at an IPL menu that stays |
+
+`partition-core-sched` needs a processor with two threads a core; a
+hosted runner has none, and it runs in the nightly only, on the machine
+`QSVS_NIGHTLY_RUNS_ON` names.
+
+### The release
+
+`a7d4820` changed the UKIs, so the release of `02f8e93` above is not
+this one. `build release 1.0.0` in a clean clone at `029c776`, with the
+same test keys (the db certificate's SHA-256 as above), built it twice
+from empty and found its 12 files the same byte for byte (1636 s for
+both). `SHA256SUMS` checks; the kernel's `.config` has neither
+`DEBUG_FS` nor `BLK_DEV_IO_TRACE`, and no other symbol the fragment
+turns off.
+
+| File | SHA-256 |
+|---|---|
+| `MANIFEST.json` | `cf05b077d0702ae11ebc46c43e9d1aada3994a50e9ade5e0ec8d91268dc35d5e` |
+| `MANIFEST.sig` | `56ba60ecb41022f922bc7a88fd038af67cf1d9544d0391e8dfce405509647c2e` |
+| `NOTICES.txt` | `37334a6b79aac22a12dd700c7a04e4d2f5ae1958bab12c814a3732394604efaf` |
+| `QSVS-V1R0M0-c1e9113a4902.iso` | `1ba14a3a4e2f434fff253d10a50d670f4c088c723ae91f6b468465429a571a04` |
+| `QSVS-V1R0M0-update-95c354bf257e.upd` | `95c354bf257e28ffd2adbbecb4ccf9e3ea2f0c48bf98196e46f0a0dfb80182f5` |
+| `RELEASE_NOTES_V1R0M0.md` | `dc4f4195f4cf3152cb08016d4323a9444aab30b36629fc77554e4b932b305461` |
+| `catalogue.json` | `9bac981943ccb944a54ee06bc558b4608d7f415e4bdde3fdb74d2b00327950c2` |
+| `catalogue.schema.json` | `21584e8d75a2fdb60d264b08742726cc70e635b8a9d5e3e3fef817350c33c138` |
+| `qsvs-db.cer` | `d964313901c7a328e71f0716f6a07e48dda31f999cc43db9f6a049e3087b03f3` |
+| `stream/index.toml` | `82875e9a11bb78767fd63810daadde6015c9c693d08fad333e6cc029672f7be5` |
+
+Against `02f8e93`'s: the notices, the release notes, the schema and
+the certificate are the same; the rest carry the build ID or the UKIs.
