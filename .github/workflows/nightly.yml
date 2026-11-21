@@ -96,10 +96,15 @@ jobs:
       - uses: ./.github/actions/qsvs-host
         with:
           images: "true"
-      - name: Keys
+      # Release-style keys (docs/PHASE11.md, Section 6). `ci` signs every
+      # image and update image here: a key given, not the build's own
+      # development key, which an image shows on its status screen and
+      # which each target would have of its own. The test image trusts
+      # k2 beside it, and k3 not.
+      - name: Test keys
         run: |
-          cargo run -q -p build -- keys "$RUNNER_TEMP/keys/k2"
-          cargo run -q -p build -- keys "$RUNNER_TEMP/keys/k3"
+          for k in ci k2 k3; do cargo run -q -p build -- keys "$RUNNER_TEMP/keys/$k"; done
+          echo "QSVS_SIGNING_KEY=$RUNNER_TEMP/keys/ci/qsvs-release.ed25519" >> "$GITHUB_ENV"
       - run: cargo run -q -p build -- all --test-image
         env:
           QSVS_TRUSTED_KEYS: ${{ runner.temp }}/keys/k2/qsvs-release.pub
@@ -110,7 +115,6 @@ jobs:
           QSVS_RELEASE: V1R0M1
           QSVS_FIXES: QV00001
         run: |
-          export QSVS_SIGNING_KEY="$PWD/target/keys/dev.ed25519"
           cargo run -q -p build -- all --test-image
           cargo run -q -p build -- update --test-image
           cp "$(ls -t "$QSVS_TARGET_DIR"/test-image/images/*-update-*.upd | head -1)" "$RUNNER_TEMP/next.upd"

@@ -107,14 +107,16 @@ jobs:
           cp "$(cat "$RUNNER_TEMP/qs400-target/images/iso.path")" "$RUNNER_TEMP/qs400-install.iso"
           rm -rf "$RUNNER_TEMP/qs400" "$RUNNER_TEMP/qs400-target"
 
-      - run: cargo run -q -p build -- all
-      # Release-style keys for the update suites (docs/PHASE11.md,
-      # Section 6): the test image trusts the second beside its own;
-      # the third it does not.
+      # Release-style keys (docs/PHASE11.md, Section 6). `ci` signs every
+      # image and update image here: a key given, not the build's own
+      # development key, which an image shows on its status screen and
+      # which each target would have of its own. The test image trusts
+      # k2 beside it, and k3 not.
       - name: Test keys
         run: |
-          cargo run -q -p build -- keys "$RUNNER_TEMP/keys/k2"
-          cargo run -q -p build -- keys "$RUNNER_TEMP/keys/k3"
+          for k in ci k2 k3; do cargo run -q -p build -- keys "$RUNNER_TEMP/keys/$k"; done
+          echo "QSVS_SIGNING_KEY=$RUNNER_TEMP/keys/ci/qsvs-release.ed25519" >> "$GITHUB_ENV"
+      - run: cargo run -q -p build -- all
       - run: cargo run -q -p build -- all --test-image
         env:
           QSVS_TRUSTED_KEYS: ${{ runner.temp }}/keys/k2/qsvs-release.pub
@@ -128,7 +130,6 @@ jobs:
           QSVS_RELEASE: V1R0M1
           QSVS_FIXES: QV00001
         run: |
-          export QSVS_SIGNING_KEY="$PWD/target/keys/dev.ed25519"
           cargo run -q -p build -- all --test-image
           cargo run -q -p build -- update --test-image
           cp "$(ls -t "$QSVS_TARGET_DIR"/test-image/images/*-update-*.upd | head -1)" next.upd
@@ -202,6 +203,10 @@ jobs:
     needs: images
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    # A hosted runner is slower than the machines the suites' waits were
+    # set on: every wait that scales with the boot's is 2.5 times as long.
+    env:
+      QSVS_BOOT_TIMEOUT: "150"
     strategy:
       fail-fast: false
       matrix:
@@ -226,9 +231,12 @@ jobs:
             echo "QSVS_UPDATE_SCHEMA_IMAGE=$RUNNER_TEMP/schema.upd"
             echo "QSVS_UPDATE_KEY2=$RUNNER_TEMP/keys/k2/qsvs-release.ed25519"
             echo "QSVS_UPDATE_KEY3=$RUNNER_TEMP/keys/k3/qsvs-release.ed25519"
+            echo "QSVS_SIGNING_KEY=$RUNNER_TEMP/keys/ci/qsvs-release.ed25519"
           } >> "$GITHUB_ENV"
           rm "$RUNNER_TEMP/images.tar.zst"
           df -h /
+      # The console the QSI and servicing suites drive.
+      - run: cargo build -q -p qsictl
       - name: The suites
         env:
           SUITES: ${{ matrix.suites }}
