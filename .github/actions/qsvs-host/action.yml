@@ -64,6 +64,19 @@ runs:
         sudo apt-get install -y --no-install-recommends lld-21 llvm-21
         echo /usr/lib/llvm-21/bin >> "$GITHUB_PATH"
 
+    # The firmware the suites were made on: Ubuntu 26.04's OVMF. The
+    # runner's own (24.04's) gives an installed disk no boot entry
+    # after an orderly power off, and boots its shell.
+    - name: OVMF
+      shell: bash
+      run: |
+        deb=ovmf-generic_2025.11-3ubuntu7.3_all.deb
+        wget -qO "/tmp/$deb" "http://archive.ubuntu.com/ubuntu/pool/main/e/edk2/$deb"
+        echo "d35554c74dccef60c12d63dda1120bf1ddc3a44054a1bf4b596f7dda7504c588  /tmp/$deb" | sha256sum -c
+        dpkg-deb -x "/tmp/$deb" "$RUNNER_TEMP/ovmf"
+        echo "QSVS_OVMF_CODE=$RUNNER_TEMP/ovmf/usr/share/OVMF/OVMF_CODE_4M.fd" >> "$GITHUB_ENV"
+        echo "QSVS_OVMF_VARS=$RUNNER_TEMP/ovmf/usr/share/OVMF/OVMF_VARS_4M.fd" >> "$GITHUB_ENV"
+
     - name: Toolchain (rust-toolchain.toml)
       shell: bash
       run: rustup show active-toolchain || rustup toolchain install

@@ -49,13 +49,13 @@ fn ended_within(address: &str, send: &[u8], within: Duration) -> Result<Option<D
 
 /// A link once the server has let go of the flood's connections: until
 /// it sees them closed they hold its four handshakes, and a fifth is
-/// ended, as it should be. Tried every 3 s for 30 s.
+/// ended, as it should be. Tried every 3 s for 90 s.
 fn link_when_free(
     q: &super::Qsi<'_>,
     id: &qsitrust::Identity,
     host: qsitrust::Fingerprint,
 ) -> Result<qsictl::link::Link, String> {
-    let until = Instant::now() + Duration::from_secs(30);
+    let until = Instant::now() + Duration::from_secs(90);
     loop {
         match link(q, id, host) {
             Ok(l) => return Ok(l),

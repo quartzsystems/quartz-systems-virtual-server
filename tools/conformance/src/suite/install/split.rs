@@ -156,8 +156,11 @@ pub fn split(run: &Run<'_>) -> Result<String, String> {
     }
     in_history(&mut guest, &refcode::RESYNC_STARTED, "unit 1", deadline)?;
     let storage = protected(&mut guest, COPY_WITHIN)?;
-    guest.seen(
-        &posted(&refcode::RESYNC_FINISHED, "unit 1"),
+    // In the history: the console may have the serial port when it is posted.
+    in_history(
+        &mut guest,
+        &refcode::RESYNC_FINISHED,
+        "unit 1",
         Instant::now() + Duration::from_secs(30),
     )?;
     power_off(&mut guest)?;

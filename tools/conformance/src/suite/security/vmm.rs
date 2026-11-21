@@ -139,11 +139,24 @@ pub fn confined(run: &Run<'_>) -> Result<String, String> {
     for place in ["control", "processor"] {
         for call in CALLS {
             let tried = up(&mut guest, "TRIED", "/dev/vdc", run)?;
-            // The VMM ends before it answers: what comes back is no matter.
-            let answer = ask(
-                &mut guest,
-                &format!("{} control {tried} try {place} {call}", command::PARTITION),
-            );
+            // The VMM ends before it answers: what comes back is no matter,
+            // but a control socket not yet listening is asked again.
+            let asked = Instant::now();
+            let answer = loop {
+                let answer = ask(
+                    &mut guest,
+                    &format!("{} control {tried} try {place} {call}", command::PARTITION),
+                );
+                match &answer {
+                    Err(e)
+                        if e.contains("Connection refused")
+                            && asked.elapsed() < Duration::from_secs(30) =>
+                    {
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
+                    _ => break answer,
+                }
+            };
             let deadline = Instant::now() + Duration::from_mins(1);
             let status = manager::until(&mut guest, tried, State::Error, deadline)
                 .map_err(|e| format!("{call} from the {place}: {e}; it answered {answer:?}"))?;
