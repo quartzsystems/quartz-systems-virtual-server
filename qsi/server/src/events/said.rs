@@ -189,13 +189,16 @@ impl Said {
                 true
             }
             AnyEvent::Vres(e) => self.note_vres(e),
-            AnyEvent::Service(e) => {
-                let (qsi::service::Event::Opened(n)
+            AnyEvent::Service(e) => match e {
+                qsi::service::Event::Opened(n)
                 | qsi::service::Event::Seen(n)
                 | qsi::service::Event::Cleared(n)
-                | qsi::service::Event::Closed(n)) = e;
-                self.set(format!("problem.{}", n.problem.number), encoded(&n.problem))
-            }
+                | qsi::service::Event::Closed(n) => {
+                    self.set(format!("problem.{}", n.problem.number), encoded(&n.problem))
+                }
+                // A note is said once; nothing of it is kept to compare.
+                qsi::service::Event::Noted(_) => true,
+            },
             _ => true,
         }
     }

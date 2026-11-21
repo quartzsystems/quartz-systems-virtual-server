@@ -247,6 +247,22 @@ pub(super) fn answer(s: &mut Services, r: Request) -> Answered {
         }
         // A stream's: the connection opens it.
         Request::ImageUpload(_) => Err(not_here()),
+        // Bits this host's hello does not say.
+        Request::Disks(_)
+        | Request::PoolCreate(_)
+        | Request::PoolDelete(_)
+        | Request::PoolRename(_)
+        | Request::UnitReplace(_)
+        | Request::SpareAdd(_)
+        | Request::SpareRemove(_)
+        | Request::Designate(_)
+        | Request::PoolExtend(_)
+        | Request::SwitchCreate(_)
+        | Request::SwitchChange(_)
+        | Request::SwitchRename(_)
+        | Request::SwitchDelete(_)
+        | Request::UplinkSet(_)
+        | Request::UplinkClear(_) => Err(vec![super::base::not_agreed()]),
         Request::TapeDrives(_) => reached(PARTD, s.partd.tape_drives()).map(|drives| {
             Reply::TapeDrives(
                 drives

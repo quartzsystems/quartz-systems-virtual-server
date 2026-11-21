@@ -150,6 +150,9 @@ pub(super) fn answer(s: &mut Services, r: &Request, user: &str) -> Result<AnyRep
                 local(NAME, s.probd.close(c.number, c.anyway, user.to_string())).map_err(led)?;
             Reply::Close(summary(&closed.summary))
         }
+        Request::Note(_) | Request::ListRated(_) | Request::GetRated(_) => {
+            return Err(vec![super::base::not_agreed()]);
+        }
     }))
 }
 

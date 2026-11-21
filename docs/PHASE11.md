@@ -505,3 +505,29 @@ FILE` writes the same file without a release (`tools/build/src/main.rs`,
 over `host::catalogue::json`): `QSVS_BUILD_ID=3feacb0` gave exactly the
 `catalogue.json` of the release built at `3feacb0` (201 codes, 274
 messages). `cargo fmt --check` and the build's clippy pass.
+
+## 2026-11-20: the pin at QS/400's handoff 24
+
+QS/400 `cf8f01453846fdf78129ca79589e18798aa03fae`, its `main` of
+2026-11-20 with all of its handoff 24 (49 commits past `cb58b01`). Of
+the crates QS/VS takes, these changed:
+
+- `qsi`: bits 19 to 27, each a new operation or event (switches and
+  storage pools managed, partition version 3, activation times, a
+  host's power-on settings, the panel's functions, problem notes and
+  severity, dump space, the fix level). No known body changed.
+- `qsisess`: the new bits in its tests and loopback.
+- `protect`: a member absent at a clean open keeps a map
+  (`7e65f618e`, QS/MC's item 13).
+- `console`: the QSI console's tee and viewer, QS/400's own; QS/VS
+  takes `console` without them.
+- `tls`, `x509kit`: a configuration helper; PKCS#12's iteration
+  counts bounded.
+- `buildkit`: its own fixture fetches a pinned download.
+
+The kernel pin is the same. Every `rev =` moved in one commit;
+`Cargo.lock` changed in the revs only. The pin broke one crate:
+`qsiserver`'s matches over QSI's requests and events are exhaustive,
+and the new operations were not covered. Until the host says those
+bits each answers `QSI0003`'s not agreed, which the session already
+gives before a request reaches the server.

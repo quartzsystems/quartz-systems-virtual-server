@@ -167,8 +167,10 @@ pub(super) fn answer(s: &mut Services, r: &Request, user: &str) -> Result<AnyRep
             s.facts.delete_host_dump(&d.name)?;
             Reply::DeleteDump(Empty)
         }
-        // The connection's: it opens a stream.
-        Request::DownloadDump(_) => return Err(vec![not_agreed()]),
+        // The connection's: it opens a stream; or bits this host does not say.
+        Request::DownloadDump(_) | Request::DumpSpace(_) | Request::FixLevel(_) => {
+            return Err(vec![not_agreed()]);
+        }
         // The connection's: they need the event log.
         Request::Subscribe(_) | Request::Unsubscribe(_) => {
             return Err(vec![Note {

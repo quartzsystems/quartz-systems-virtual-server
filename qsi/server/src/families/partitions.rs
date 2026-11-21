@@ -62,6 +62,7 @@ pub(super) fn partitions(s: &mut Services, r: &partitions::Request) -> Answered 
                     .collect(),
             )
         }
+        Request::Activations(_) => return Err(vec![super::base::not_agreed()]),
     }))
 }
 
@@ -126,6 +127,9 @@ pub(super) fn partition(s: &mut Services, r: partition::Request, user: &str) -> 
             let by = format!("a management console, user {user:?}");
             let current = local(PARTD, s.partd.entitlement(e.id, change, by))?;
             Reply::Entitlement(convert::current(&current))
+        }
+        Request::CreateWith(_) | Request::GetSettings(_) | Request::SetSettings(_) => {
+            return Err(vec![super::base::not_agreed()]);
         }
     }))
 }
@@ -201,6 +205,7 @@ pub(super) fn profiles(s: &mut Services, r: profiles::Request) -> Answered {
                 local(PARTD, s.partd.save_current(c.id, c.name, c.revision)).map_err(saved)?;
             Reply::SaveCurrent(Saved { revision })
         }
+        Request::Activated(_) => return Err(vec![super::base::not_agreed()]),
     }))
 }
 
@@ -228,7 +233,10 @@ pub(super) fn refcodes(s: &mut Services, r: &refcodes::Request) -> Answered {
 }
 
 pub(super) fn panel(s: &mut Services, r: &panel::Request) -> Answered {
-    let panel::Request::Function(f) = r;
+    let f = match r {
+        panel::Request::Function(f) => f,
+        panel::Request::Functions(_) => return Err(vec![super::base::not_agreed()]),
+    };
     let n = |e: Note| vec![e];
     let args = partd::proto::PanelArgs {
         source: f
@@ -285,6 +293,7 @@ pub(super) fn dumps(s: &mut Services, r: dumps::Request) -> Answer {
         Request::Delete(d) => {
             local(PARTD, s.partd.delete_dump(d.id, d.name)).map(|()| Reply::Delete(Empty))
         }
+        Request::Space(_) => Err(vec![super::base::not_agreed()]),
     };
     reply.map(AnyReply::Dumps).into()
 }

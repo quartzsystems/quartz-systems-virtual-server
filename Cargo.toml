@@ -90,36 +90,36 @@ publish = false
 [workspace.dependencies]
 # QS/400's crates: git dependencies, every one at the same commit
 # (docs/PHASE0.md records it). Never path dependencies, never copies.
-buildkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-vrm = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-diskimg = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-abrec = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-ipc = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-netlink = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-dhcp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-ntp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-blockdev = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-protect = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-ublk = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-console = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7", default-features = false }
-scrkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-svcusers = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
+buildkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+vrm = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+diskimg = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+abrec = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+ipc = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+netlink = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+dhcp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+ntp = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+blockdev = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+protect = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+ublk = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+console = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae", default-features = false }
+scrkit = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+svcusers = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
 # The guest's LIC record. The one QS/400-specific crate QS/VS depends on,
 # and only the IPL loader (vmm/ipl) uses it.
-licpart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
+licpart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
 # The partition service channel's protocol (QS/400's docs/QSID.md): the
 # frames, the messages, the console as cells. The partition manager
 # alone speaks it; qsvmm carries its bytes.
-qsipart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
+qsipart = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
 # QSI: the messages and families, the session, and the trust rules
 # (QS/400's docs/QSI.md). The QSI host server alone speaks them.
-qsi = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-qsisess = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-qsitrust = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
+qsi = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+qsisess = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+qsitrust = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
 # Secure Boot: the UKIs signed (Authenticode) by `build release` with the
 # db key, and the pair made by `build keys`; the build tool alone.
-pesign = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
-certs = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cb58b010a8b96ac48a66e06079e1ff4e4af371c7" }
+pesign = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
+certs = { git = "https://github.com/quartzsystems/quartz-systems-400", rev = "cf8f01453846fdf78129ca79589e18798aa03fae" }
 
 # The rust-vmm crates the VMM is built on (docs/PHASE3.md says why each
 # passes deny).

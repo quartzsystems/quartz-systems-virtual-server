@@ -179,5 +179,8 @@ pub(super) fn answer(s: &mut Services, r: &Request) -> Answered {
                 .map(super::convert::device)
                 .collect(),
         ),
+        Request::PowerOn(_) | Request::SetPowerOn(_) => {
+            return Err(vec![super::base::not_agreed()]);
+        }
     }))
 }
