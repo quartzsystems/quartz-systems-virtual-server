@@ -18,7 +18,7 @@ use loadsource::disks::{self, LoadSource};
 use loadsource::set::{self, SetLabel};
 use supervise::signal::Signals;
 
-use super::{Msg, Shown, What, found_disks, text};
+use super::{Msg, Shown, What, text};
 use crate::{APART, Host, MIRRORED, Status, Unit};
 
 /// One unit that ran alone: its disk and the label that disk holds.
@@ -186,13 +186,13 @@ fn number(unit: &Alone) -> u32 {
 pub fn settle(
     app: &Appliance,
     host: Host,
+    sources: &[LoadSource],
     rx: &Receiver<Msg>,
     signals: &mut Signals,
     shown: &Shown,
 ) {
     let marker = crate::choose_marker(app);
-    let sources = found_disks(app.load_source);
-    let Some(apart) = Apart::find(app, host, &sources) else {
+    let Some(apart) = Apart::find(app, host, sources) else {
         // A marker of a server that ended before this one.
         let _ = fs::remove_file(&marker);
         return;

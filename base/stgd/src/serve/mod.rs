@@ -253,12 +253,12 @@ impl Core {
             .find(|s| s.data_guid == member.partition)
     }
 
-    /// Find the disks and assemble what their label describes.
-    fn assemble(app: &Appliance, host: Host) -> Result<Self, String> {
+    /// Assemble what the label of the disks found describes.
+    fn assemble(app: &Appliance, host: Host, sources: Vec<LoadSource>) -> Result<Self, String> {
         let mut core = Core {
             app: *app,
             host,
-            sources: found_disks(app.load_source),
+            sources,
             inventory: Vec::new(),
             label: None,
             set: None,
@@ -850,8 +850,12 @@ pub fn run(appliance: &Appliance, host: Host) -> String {
     let shown = Shown::default();
     let for_socket = shown.clone();
     std::thread::spawn(move || serve_socket(&listener, &tx, for_socket));
-    apart::settle(appliance, host, &rx, &mut signals, &shown);
-    let mut core = match Core::assemble(appliance, host) {
+    // The disks are looked for once a start, with the wait for a late
+    // one, and what was found is used by both steps: a degraded IPL
+    // waits for its missing disk once, not twice.
+    let sources = found_disks(appliance.load_source);
+    apart::settle(appliance, host, &sources, &rx, &mut signals, &shown);
+    let mut core = match Core::assemble(appliance, host, sources) {
         Ok(core) => core,
         Err(e) => {
             (appliance.post)(&Event::Storage {
