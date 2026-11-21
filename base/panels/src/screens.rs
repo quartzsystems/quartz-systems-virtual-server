@@ -188,6 +188,7 @@ impl Screens {
         std::thread::spawn(move || {
             while let Ok(key) = typed.recv() {
                 *stamp.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
+                let Some(key) = rolled(key) else { continue };
                 if to.send(key).is_err() {
                     break;
                 }
@@ -256,6 +257,34 @@ impl Screens {
     }
 }
 
+/// `KEY_PAGEUP` and `KEY_PAGEDOWN` of an event device.
+const PAGE_UP: u16 = 104;
+const PAGE_DOWN: u16 = 109;
+
+/// A key as the panels get it: Page Up and Page Down, which `console`'s
+/// editor drops, become the roll keys; their release is nothing.
+fn rolled(command: Command) -> Option<Command> {
+    let roll = |forward| {
+        Some(Command::Virtual(Key::Function(if forward {
+            crate::panel::ROLL_FORWARD
+        } else {
+            crate::panel::ROLL_BACK
+        })))
+    };
+    match command {
+        Command::Key(ev) if ev.code == PAGE_UP || ev.code == PAGE_DOWN => {
+            if ev.pressed {
+                roll(ev.code == PAGE_DOWN)
+            } else {
+                None
+            }
+        }
+        Command::Virtual(Key::PageUp) => roll(false),
+        Command::Virtual(Key::PageDown) => roll(true),
+        other => Some(other),
+    }
+}
+
 /// How a run of panels ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ended<O> {
@@ -301,5 +330,36 @@ pub fn run<E: Named + ?Sized, O>(
             Some(End::Outcome(outcome)) => return Ended::Outcome(outcome),
             None => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use console::keyboard::KeyEvent;
+
+    #[allow(clippy::needless_pass_by_value)] // takes what `rolled` gives
+    fn function(command: Option<Command>) -> Option<u8> {
+        match command {
+            Some(Command::Virtual(Key::Function(n))) => Some(n),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn page_keys_become_the_roll_keys() {
+        let ev = |code, pressed| Command::Key(KeyEvent { code, pressed });
+        let back = crate::panel::ROLL_BACK;
+        let forward = crate::panel::ROLL_FORWARD;
+        assert_eq!(function(rolled(ev(PAGE_UP, true))), Some(back));
+        assert_eq!(function(rolled(ev(PAGE_DOWN, true))), Some(forward));
+        assert!(rolled(ev(PAGE_DOWN, false)).is_none());
+        assert_eq!(function(rolled(Command::Virtual(Key::PageUp))), Some(back));
+        assert_eq!(
+            function(rolled(Command::Virtual(Key::PageDown))),
+            Some(forward)
+        );
+        // Any other key passes as it is.
+        assert!(matches!(rolled(ev(28, true)), Some(Command::Key(_))));
     }
 }

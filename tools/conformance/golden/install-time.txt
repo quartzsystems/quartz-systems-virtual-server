@@ -1,7 +1,7 @@
                                  Install QS/VS
                                                                System:  vs-test
 
- UTC offset  . . . . :
+ UTC offset  . . . . :        F4 for a list
  Time servers  . . . :
  Date  . . . . . . . :
  Time  . . . . . . . :
@@ -20,5 +20,5 @@
 
 
 
- Enter=Continue   F1=Help   F3=Exit   F12=Cancel
+ Enter=Continue   F1=Help   F3=Exit   F4=Prompt   F12=Cancel
 

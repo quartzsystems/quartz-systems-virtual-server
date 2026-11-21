@@ -12,7 +12,9 @@ use scrkit::panel::Flow;
 use scrkit::ui::{self, FormLine};
 use state::{Host as HostFile, Network};
 
-use crate::forms::{LinkChoice, NetworkEntry, TimeChoice, TimeEntry, UserEntry};
+use crate::forms::{
+    LinkChoice, NetworkEntry, TimeChoice, TimeEntry, TimeForm, TimeStep, UserEntry,
+};
 use crate::kit;
 use crate::panel::{Help, Named, Panel, PanelFlow};
 
@@ -559,14 +561,14 @@ impl<E: Host + ?Sized, O> Panel<E, O> for Password {
 
 /// `Date and time`.
 pub struct TimePanel {
-    entry: TimeEntry,
+    form: TimeForm,
 }
 
 impl TimePanel {
     /// The panel, showing the settings in use.
     pub fn new<E: Host + ?Sized>(env: &mut E) -> Self {
         Self {
-            entry: TimeEntry::of(&env.settings().0),
+            form: TimeForm::new(TimeEntry::of(&env.settings().0)),
         }
     }
 }
@@ -578,28 +580,40 @@ impl<E: Host + ?Sized, O> Panel<E, O> for TimePanel {
 
     fn render(&self, env: &mut E) -> Screen {
         let now = env.now();
-        self.entry.screen(
+        self.form.screen(
             "Date and Time",
             &env.system(),
             now,
-            "Enter=Apply   F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Apply   F1=Help   F3=Exit   F4=Prompt   F12=Cancel",
         )
     }
 
     fn enter(&mut self, fields: &[String], env: &mut E) -> PanelFlow<E, O> {
-        self.entry = TimeEntry::take(fields);
-        let choice = match self.entry.check() {
-            Ok(choice) => choice,
-            Err(e) => return Flow::Error(e),
+        let choice = match self.form.enter(fields) {
+            TimeStep::Done(choice) => choice,
+            TimeStep::Stay => return Flow::Stay,
+            TimeStep::Error(e) => return Flow::Error(e),
         };
         match env.set_time(&choice) {
             Ok(()) => {
                 // The clock is set once, not at every Enter.
-                self.entry.date.clear();
-                self.entry.time.clear();
+                self.form.entry.date.clear();
+                self.form.entry.time.clear();
                 Flow::Message("Date and time settings changed.".into())
             }
             Err(e) => Flow::Error(e),
+        }
+    }
+
+    fn function(&mut self, key: u8, fields: &[String], _env: &mut E) -> PanelFlow<E, O> {
+        match self.form.function(key, fields) {
+            Some(TimeStep::Error(e)) => Flow::Error(e),
+            Some(_) => Flow::Stay,
+            None => match key {
+                3 => Flow::PopAll,
+                12 => Flow::Pop,
+                _ => Flow::Stay,
+            },
         }
     }
 

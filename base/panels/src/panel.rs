@@ -46,6 +46,11 @@ pub trait Panel<E: ?Sized, O> {
             _ => Flow::Stay,
         }
     }
+    /// Page Up (`forward` false) or Page Down: F7 and F8, the keys a
+    /// list pages with, unless overridden.
+    fn roll(&mut self, forward: bool, fields: &[String], env: &mut E) -> PanelFlow<E, O> {
+        self.function(if forward { 8 } else { 7 }, fields, env)
+    }
     /// What F1 shows.
     fn help(&self) -> Help;
     /// Whether the screen is drawn again every second while no key
@@ -62,6 +67,11 @@ pub trait Panel<E: ?Sized, O> {
 
 /// What a [`Panel`] answers a key with.
 pub type PanelFlow<E, O> = Flow<Box<dyn Panel<E, O>>, O>;
+
+/// Page Up, as the function key a console reports it as: past F24.
+pub const ROLL_BACK: u8 = 25;
+/// Page Down.
+pub const ROLL_FORWARD: u8 = 26;
 
 /// The keys of a help display.
 pub const HELP_KEYS: &str = "Enter=Continue   F12=Cancel";
@@ -142,7 +152,12 @@ impl<E: Named + ?Sized, O> Runner<E, O> {
             self.helping = true;
             return None;
         }
-        let flow = self.stack.top_mut().function(key, fields, env);
+        let top = self.stack.top_mut();
+        let flow = match key {
+            ROLL_BACK => top.roll(false, fields, env),
+            ROLL_FORWARD => top.roll(true, fields, env),
+            key => top.function(key, fields, env),
+        };
         self.stack.apply(flow)
     }
 

@@ -11,7 +11,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 
 use appliance::time::{Zone, civil, from_civil};
-use console::Screen;
+use console::{Attr, Color, Screen};
 use scrkit::ui::{self, FormLine};
 use state::{Cidr, Device, Document, Host, Interface, Mode, Network};
 
@@ -417,6 +417,229 @@ impl TimeEntry {
     }
 }
 
+/// Every UTC offset in use, with places that keep it in standard time.
+pub const OFFSETS: [(&str, &str); 38] = [
+    ("-12:00", "Baker Island"),
+    ("-11:00", "Pago Pago, Niue"),
+    ("-10:00", "Honolulu, Tahiti"),
+    ("-09:30", "Marquesas Islands"),
+    ("-09:00", "Anchorage"),
+    ("-08:00", "Los Angeles, Vancouver"),
+    ("-07:00", "Denver, Phoenix"),
+    ("-06:00", "Chicago, Mexico City"),
+    ("-05:00", "New York, Toronto, Bogota"),
+    ("-04:00", "Halifax, Santiago, Caracas"),
+    ("-03:30", "St. John's"),
+    ("-03:00", "Sao Paulo, Buenos Aires"),
+    ("-02:00", "South Georgia"),
+    ("-01:00", "Azores, Cape Verde"),
+    ("+00:00", "UTC, London, Lisbon, Accra"),
+    ("+01:00", "Berlin, Paris, Rome, Lagos"),
+    ("+02:00", "Athens, Helsinki, Cairo, Johannesburg"),
+    ("+03:00", "Moscow, Istanbul, Riyadh, Nairobi"),
+    ("+03:30", "Tehran"),
+    ("+04:00", "Dubai, Baku"),
+    ("+04:30", "Kabul"),
+    ("+05:00", "Karachi, Tashkent"),
+    ("+05:30", "Mumbai, Delhi, Colombo"),
+    ("+05:45", "Kathmandu"),
+    ("+06:00", "Dhaka, Almaty"),
+    ("+06:30", "Yangon"),
+    ("+07:00", "Bangkok, Jakarta, Hanoi"),
+    ("+08:00", "Singapore, Beijing, Perth"),
+    ("+08:45", "Eucla"),
+    ("+09:00", "Tokyo, Seoul"),
+    ("+09:30", "Adelaide, Darwin"),
+    ("+10:00", "Sydney, Brisbane, Guam"),
+    ("+10:30", "Lord Howe Island"),
+    ("+11:00", "Noumea, Solomon Islands"),
+    ("+12:00", "Auckland, Fiji"),
+    ("+12:45", "Chatham Islands"),
+    ("+13:00", "Apia, Tonga"),
+    ("+14:00", "Kiritimati"),
+];
+
+/// Rows of the offsets' list on one page.
+const OFFSET_ROWS: usize = 13;
+
+/// What a key on a [`TimeForm`] comes to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TimeStep {
+    /// Show the form again.
+    Stay,
+    /// Show the form again with this message.
+    Error(String),
+    /// The settings, checked.
+    Done(TimeChoice),
+}
+
+/// The time form, with its list of offsets on F4. While time servers
+/// are given, Date and Time are shown and cannot be typed in.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TimeForm {
+    /// What is typed.
+    pub entry: TimeEntry,
+    /// The first row shown while the offsets are listed.
+    listing: Option<usize>,
+}
+
+impl TimeForm {
+    /// The form, holding `entry`.
+    #[must_use]
+    pub fn new(entry: TimeEntry) -> Self {
+        Self {
+            entry,
+            listing: None,
+        }
+    }
+
+    /// Whether Date and Time are the time servers'.
+    fn kept(&self) -> bool {
+        !self.entry.servers.trim().is_empty()
+    }
+
+    /// The form, or the list of offsets; `keys` are the form's own.
+    #[must_use]
+    pub fn screen(&self, title: &str, system: &str, now: i64, keys: &str) -> Screen {
+        if let Some(top) = self.listing {
+            return Self::list(title, system, top);
+        }
+        let mut s = self.entry.screen(title, system, now, keys);
+        if let Some(offset) = s.fields.first().copied() {
+            s.put(
+                offset.row,
+                offset.col + offset.len + 1,
+                "F4 for a list",
+                Attr::GREEN,
+            );
+        }
+        if self.kept() {
+            // Date and Time: shown, not typed in.
+            s.fields.truncate(2);
+            let col = s.fields.get(1).map_or(ui::BODY_COL, |f| f.col);
+            let dim = Attr::color(Color::Blue);
+            for (i, label) in ["Date", "Time"].iter().enumerate() {
+                let row = ui::BODY_ROW + 2 + i;
+                s.put(row, ui::BODY_COL, &" ".repeat(76), dim);
+                s.put(
+                    row,
+                    ui::BODY_COL,
+                    &kit::dotted(label, col - ui::BODY_COL - 2),
+                    dim,
+                );
+                s.put(row, col, "kept by the time servers", dim);
+            }
+        }
+        s
+    }
+
+    fn list(title: &str, system: &str, top: usize) -> Screen {
+        let all: Vec<String> = OFFSETS
+            .iter()
+            .map(|(offset, places)| format!("UTC{offset}  {places}"))
+            .collect();
+        let (rows, foot) = kit::window(&all, top, OFFSET_ROWS);
+        let mut s = ui::list(
+            title,
+            system,
+            "Type 1 by an offset and press Enter.",
+            "Opt Offset     Places in standard time",
+            &rows,
+            "Enter=Select   F7=Backward   F8=Forward   F12=Cancel",
+        );
+        kit::put(
+            &mut s,
+            ui::BODY_ROW + 3 + OFFSET_ROWS,
+            &format!("{foot:>76}"),
+        );
+        kit::put(
+            &mut s,
+            ui::BODY_ROW + 4 + OFFSET_ROWS,
+            "An offset is fixed: the display does not change for summer time.",
+        );
+        s
+    }
+
+    /// Enter, with the fields of the screen shown.
+    pub fn enter(&mut self, fields: &[String]) -> TimeStep {
+        if let Some(top) = self.listing {
+            let chosen: Vec<usize> = fields
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| !f.trim().is_empty())
+                .map(|(i, _)| top + i)
+                .collect();
+            return match chosen.as_slice() {
+                [] => {
+                    self.listing = None;
+                    TimeStep::Stay
+                }
+                [i] => {
+                    if let Some((offset, _)) = OFFSETS.get(*i) {
+                        self.entry.offset = if *offset == "+00:00" {
+                            String::new()
+                        } else {
+                            (*offset).to_string()
+                        };
+                    }
+                    self.listing = None;
+                    TimeStep::Stay
+                }
+                _ => TimeStep::Error("Type 1 by one offset.".into()),
+            };
+        }
+        let was_kept = self.kept();
+        self.take(fields);
+        if was_kept && !self.kept() {
+            // Date and Time can be typed now: the form is shown with them.
+            return TimeStep::Error(
+                "Type the date and time to set the clock, or press Enter to leave it.".into(),
+            );
+        }
+        match self.entry.check() {
+            Ok(choice) => TimeStep::Done(choice),
+            Err(e) => TimeStep::Error(e),
+        }
+    }
+
+    /// A function key: `None` when it is not the form's.
+    pub fn function(&mut self, key: u8, fields: &[String]) -> Option<TimeStep> {
+        match (self.listing, key) {
+            (Some(top), 7 | 8) => {
+                self.listing = Some(kit::scroll(top, key, OFFSETS.len(), OFFSET_ROWS));
+                Some(TimeStep::Stay)
+            }
+            (Some(_), 12) => {
+                self.listing = None;
+                Some(TimeStep::Stay)
+            }
+            (Some(_), _) => Some(TimeStep::Stay),
+            (None, 4) => {
+                self.take(fields);
+                let now = OFFSETS
+                    .iter()
+                    .position(|(o, _)| {
+                        *o == self.entry.offset || (self.entry.offset.is_empty() && *o == "+00:00")
+                    })
+                    .unwrap_or(0);
+                self.listing = Some(now - now % OFFSET_ROWS);
+                Some(TimeStep::Stay)
+            }
+            (None, _) => None,
+        }
+    }
+
+    /// What the form's fields hold: Date and Time only when shown.
+    fn take(&mut self, fields: &[String]) {
+        self.entry = TimeEntry::take(fields);
+        if self.kept() {
+            // Time servers keep the clock: nothing typed there is set.
+            self.entry.date.clear();
+            self.entry.time.clear();
+        }
+    }
+}
+
 /// A service tools user, as typed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UserEntry {
@@ -606,6 +829,67 @@ mod tests {
         assert!(wrong("", "", "12.11.2026", "10:00").starts_with("Date"));
         assert!(wrong("", "", "2026-11-12", "25:00").starts_with("Time"));
         assert!(wrong("", "", "2026-02-30", "10:00").contains("no such day"));
+    }
+
+    #[test]
+    fn every_offset_listed_is_a_zone() {
+        for (offset, _) in OFFSETS {
+            let entry = TimeEntry {
+                offset: offset.to_string(),
+                ..TimeEntry::default()
+            };
+            assert!(entry.check().is_ok(), "{offset}");
+        }
+    }
+
+    #[test]
+    fn f4_lists_the_offsets_and_1_takes_one() {
+        let mut form = TimeForm::default();
+        let fields = |v: &[&str]| v.iter().map(ToString::to_string).collect::<Vec<_>>();
+        assert_eq!(
+            form.function(4, &fields(&["", "", "", ""])),
+            Some(TimeStep::Stay)
+        );
+        // UTC's page is shown: +00:00 is the 15th, the second page's 2nd.
+        let s = form.screen("Time", "SYS", 0, "");
+        assert!(s.dump().contains("UTC+00:00"));
+        assert_eq!(s.fields.len(), OFFSET_ROWS);
+        // PgDn, then 1 by the first row of the last page.
+        form.function(8, &[]);
+        let mut typed = vec![String::new(); OFFSET_ROWS];
+        typed[0] = "1".into();
+        assert_eq!(form.enter(&typed), TimeStep::Stay);
+        assert_eq!(form.entry.offset, OFFSETS[2 * OFFSET_ROWS].0);
+        // Back on the form: F12 there is not the form's.
+        assert_eq!(form.function(12, &[]), None);
+    }
+
+    #[test]
+    fn with_time_servers_date_and_time_are_not_typed() {
+        let mut form = TimeForm::default();
+        let open = form.screen("Time", "SYS", 0, "");
+        assert_eq!(open.fields.len(), 4);
+        // As the golden screens have it.
+        let line = open.dump().lines().nth(3).unwrap().trim_end().to_string();
+        assert_eq!(line, " UTC offset  . . . . :        F4 for a list");
+        let typed = |v: &[&str]| v.iter().map(ToString::to_string).collect::<Vec<_>>();
+        // Servers with a date typed: the date is not set.
+        let step = form.enter(&typed(&["", "pool.example", "2026-11-12", "10:00"]));
+        let TimeStep::Done(choice) = step else {
+            panic!("{step:?}")
+        };
+        assert_eq!(choice.clock, None);
+        let kept = form.screen("Time", "SYS", 0, "");
+        assert_eq!(kept.fields.len(), 2);
+        assert!(kept.dump().contains("kept by the time servers"));
+        // The servers taken away: Date and Time come back first.
+        assert!(matches!(form.enter(&typed(&["", ""])), TimeStep::Error(_)));
+        assert_eq!(form.screen("Time", "SYS", 0, "").fields.len(), 4);
+        let step = form.enter(&typed(&["", "", "2026-11-12", "10:00"]));
+        assert!(matches!(
+            step,
+            TimeStep::Done(TimeChoice { clock: Some(_), .. })
+        ));
     }
 
     #[test]

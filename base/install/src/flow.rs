@@ -10,7 +10,7 @@
 //! step of the progress display.
 
 use console::{Attr, Screen};
-use panels::forms::{NetworkEntry, TimeChoice, TimeEntry, UserEntry};
+use panels::forms::{NetworkEntry, TimeChoice, TimeEntry, TimeForm, TimeStep, UserEntry};
 use panels::ui;
 use panels::{Flow, Help, Named, Panel, PanelFlow, Runner, kit};
 use state::Network;
@@ -461,7 +461,7 @@ impl<'a> Panel<Env<'a>, Outcome> for Net {
                 env.network = env.network.clone().with_primary(interface);
                 env.net_entry = Some(self.entry.clone());
                 Flow::Push(Box::new(Time {
-                    entry: env.time_entry.clone(),
+                    form: TimeForm::new(env.time_entry.clone()),
                 }))
             }
             Err(e) => Flow::Error(e),
@@ -489,8 +489,11 @@ impl<'a> Panel<Env<'a>, Outcome> for Net {
     }
 }
 
+/// The time form's keys: F4 lists the offsets.
+const TIME_KEYS: &str = "Enter=Continue   F1=Help   F3=Exit   F4=Prompt   F12=Cancel";
+
 struct Time {
-    entry: TimeEntry,
+    form: TimeForm,
 }
 
 impl<'a> Panel<Env<'a>, Outcome> for Time {
@@ -500,19 +503,31 @@ impl<'a> Panel<Env<'a>, Outcome> for Time {
 
     fn render(&self, env: &mut Env<'a>) -> Screen {
         let now = env.target.now();
-        self.entry
-            .screen(&env.title(), &env.system(), now, FORM_KEYS)
+        self.form
+            .screen(&env.title(), &env.system(), now, TIME_KEYS)
     }
 
     fn enter(&mut self, fields: &[String], env: &mut Env<'a>) -> Step<'a> {
-        self.entry = TimeEntry::take(fields);
-        match self.entry.check() {
-            Ok(choice) => {
+        match self.form.enter(fields) {
+            TimeStep::Done(choice) => {
                 env.time = Some(choice);
-                env.time_entry = self.entry.clone();
+                env.time_entry = self.form.entry.clone();
                 Flow::Push(Box::new(User))
             }
-            Err(e) => Flow::Error(e),
+            TimeStep::Stay => Flow::Stay,
+            TimeStep::Error(e) => Flow::Error(e),
+        }
+    }
+
+    fn function(&mut self, key: u8, fields: &[String], _env: &mut Env<'a>) -> Step<'a> {
+        match self.form.function(key, fields) {
+            Some(TimeStep::Error(e)) => Flow::Error(e),
+            Some(_) => Flow::Stay,
+            None => match key {
+                3 => Flow::PopAll,
+                12 => Flow::Pop,
+                _ => Flow::Stay,
+            },
         }
     }
 

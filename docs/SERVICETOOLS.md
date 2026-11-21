@@ -40,9 +40,12 @@ port again.
 | next field, previous field | Tab, Shift+Tab | Tab, Shift+Tab |
 | clear the field from the cursor and go on | keypad + | Ctrl+K |
 | F1 to F12 | F1 to F12 | the terminal's own, or Esc and `1` to `9`, `0`, `-`, `=` |
+| page back, page on | Page Up, Page Down | Page Up, Page Down |
 
 F1 is help on every panel. F12 goes back one panel, F3 to the main
-menu. On the main menu either signs off.
+menu. On the main menu either signs off. Page Up and Page Down are F7
+and F8 on a list that pages; on Work with storage pools, where F7
+imports, they do nothing.
 
 ## Sign-on
 
@@ -350,9 +353,13 @@ The last user ID cannot be removed.
 
 The UTC offset dates and times are displayed in (`+01:00`, `-05:30`;
 blank is UTC), and the time servers the clock is kept in step with.
-With no time servers the clock may be set by hand: the date and the
-time as they are now, in the offset shown. The host keeps its clock in
-UTC and writes the RTC from it.
+F4 lists every offset in use with places that keep it; 1 by one
+takes it. With no time servers the clock may be set by hand: the date
+and the time as they are now, in the offset shown. With time servers,
+Date and Time are shown dimmed and take nothing; when the servers are
+blanked, Enter shows them again before the settings are taken. The
+installer's form is the same. The host keeps its clock in UTC and
+writes the RTC from it.
 
 Only fixed offsets are known in this release: there is no time zone
 database and no change for summer time (`docs/OPEN_QUESTIONS.md`
