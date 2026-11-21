@@ -42,7 +42,7 @@ const ALLOWED: &[(&str, &str)] = &[
 ];
 
 /// This audit's own source, which names what it looks for.
-const SELF: &str = "tools/build/src/host/wording.rs";
+const SELF: &str = "base/buildaid/src/wording.rs";
 
 /// Whether `text` holds `word` standing alone: not inside a longer word.
 fn holds(text: &str, word: &str) -> bool {
@@ -83,9 +83,10 @@ pub fn names_in(file: &str, text: &str) -> Vec<String> {
     out
 }
 
-/// Every forbidden name in the files git tracks under `repo`; the
-/// fuzzer's corpus (bytes, not text) is left out.
-pub fn names(repo: &Path) -> Result<(usize, Vec<String>)> {
+/// Every forbidden name in the files git tracks under `repo`; what is
+/// under each of `bytes` (a fuzzer's corpus: bytes, not text) is left
+/// out.
+pub fn names(repo: &Path, bytes: &[&str]) -> Result<(usize, Vec<String>)> {
     let out = Command::new("git")
         .args(["ls-files", "-z"])
         .current_dir(repo)
@@ -95,7 +96,7 @@ pub fn names(repo: &Path) -> Result<(usize, Vec<String>)> {
     let mut count = 0;
     for file in String::from_utf8_lossy(&out.stdout).split('\0') {
         // The corpus is bytes; this file is the list itself.
-        if file.is_empty() || file.starts_with("tools/fuzz/corpus/") || file == SELF {
+        if file.is_empty() || bytes.iter().any(|d| file.starts_with(d)) || file == SELF {
             continue;
         }
         let Ok(bytes) = std::fs::read(repo.join(file)) else {
@@ -110,12 +111,12 @@ pub fn names(repo: &Path) -> Result<(usize, Vec<String>)> {
     Ok((count, found))
 }
 
-/// Every panel's help with an empty title or no text, in the crates
-/// that have panels.
-pub fn help(repo: &Path) -> Result<(usize, Vec<String>)> {
+/// Every panel's help with an empty title or no text, in `dirs` (the
+/// crates that have panels, relative to `repo`).
+pub fn help(repo: &Path, dirs: &[&str]) -> Result<(usize, Vec<String>)> {
     let mut found = Vec::new();
     let mut count = 0;
-    for dir in ["base/panels/src", "base/install/src", "svc/tools/src"] {
+    for dir in dirs {
         let mut stack = vec![repo.join(dir)];
         while let Some(d) = stack.pop() {
             for e in std::fs::read_dir(&d).with_context(|| d.display().to_string())? {
@@ -170,10 +171,10 @@ mod tests {
     #[test]
     fn the_tree_names_no_other_vendor_and_every_panel_has_help() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let (files, found) = names(&repo).unwrap();
+        let (files, found) = names(&repo, &["tools/fuzz/corpus/"]).unwrap();
         assert!(files > 100);
         assert_eq!(found, Vec::<String>::new());
-        let (panels, empty) = help(&repo).unwrap();
+        let (panels, empty) = help(&repo, &["base/panels/src", "base/install/src"]).unwrap();
         assert!(panels > 10, "{panels}");
         assert_eq!(empty, Vec::<String>::new());
     }

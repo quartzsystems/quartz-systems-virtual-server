@@ -27,6 +27,7 @@ ed25519-dalek = "3.0.0"
 update = { path = "../../base/update", version = "0.1.0" }
 qsvsupdd = { path = "../../lic/qsvsupdd", version = "0.1.0" }
 stream = { path = "../../base/stream", version = "0.1.0" }
+buildaid = { path = "../../base/buildaid", version = "0.1.0" }
 refcode = { path = "../../lic/refcode", version = "0.1.0" }
 qvsmsg = { path = "../../lic/qvsmsg", version = "0.1.0" }
 pesign.workspace = true

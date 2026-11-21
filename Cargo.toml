@@ -56,6 +56,7 @@ members = [
     "base/servicedump",
     "base/confine",
     "base/update",
+    "base/buildaid",
     # The VMM: one process for one partition.
     "vmm/arch",
     "vmm/acpi",

@@ -259,7 +259,7 @@ fn main() -> Result<()> {
             secs,
             jobs,
         } => {
-            host::fuzz::fuzz(&ctx, target.as_deref(), secs, jobs, save_corpus)?;
+            host::fuzz(&ctx, target.as_deref(), secs, jobs, save_corpus)?;
         }
         Command::Release {
             version,

@@ -2,11 +2,11 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! `build fuzz`: the fuzzer (`tools/fuzz`) built with LLVM's coverage
-//! counters, and every target run for a time, each from the corpus kept
-//! in the repository (`tools/fuzz/corpus`), which `--save-corpus`
-//! writes back. A target that finds something fails the step; its
-//! input is under `<target>/fuzz/crashes/`.
+//! A product's fuzzer built with LLVM's coverage counters, and every
+//! target run for a time, each from the corpus kept in the repository,
+//! which `save` writes back. A target that finds something fails the
+//! step; its input is under `<target>/fuzz/crashes/`. The fuzzer is a
+//! binary of the product's that says `list` and `run NAME`.
 
 use std::env;
 use std::path::PathBuf;
@@ -24,11 +24,19 @@ const SANCOV: &str = "-C passes=sancov-module -C llvm-args=-sanitizer-coverage-l
 /// The host triple the fuzzer is built for. Naming it keeps the flags
 /// off build scripts and procedural macros.
 const HOST: &str = "x86_64-unknown-linux-gnu";
-/// The fuzzer's package and its binary.
-const PACKAGE: &str = "fuzz";
-const BINARY: &str = "qsvsfuzz";
 /// The cargo profile: optimized, a panic unwinds, arithmetic is checked.
 const PROFILE: &str = "fuzz";
+
+/// The product's fuzzer.
+#[derive(Clone, Copy, Debug)]
+pub struct Fuzzer {
+    /// Its cargo package.
+    pub package: &'static str,
+    /// Its binary.
+    pub binary: &'static str,
+    /// Its corpus, relative to the repository.
+    pub corpus: &'static str,
+}
 
 /// Where the fuzzer is built and keeps what it finds.
 fn dir(ctx: &Ctx) -> PathBuf {
@@ -36,31 +44,35 @@ fn dir(ctx: &Ctx) -> PathBuf {
 }
 
 /// Build the fuzzer with the counters. The binary.
-fn build(ctx: &Ctx) -> Result<PathBuf> {
+fn build(ctx: &Ctx, f: &Fuzzer) -> Result<PathBuf> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let package = f.package;
     info!(
-        "fuzz: cargo build --profile {PROFILE} -p {PACKAGE} --target {HOST}, with coverage counters"
+        "fuzz: cargo build --profile {PROFILE} -p {package} --target {HOST}, with coverage counters"
     );
     let mut cmd = Cmd::new(cargo, "fuzz");
     cmd.cwd(&ctx.paths.repo)
         .env("RUSTFLAGS", SANCOV)
-        .args(["build", "--locked", "--profile", PROFILE, "-p", PACKAGE])
+        .args(["build", "--locked", "--profile", PROFILE, "-p", package])
         .args(["--target", HOST])
         .arg("--target-dir")
         .arg(dir(ctx))
         .run(ctx)?;
-    let binary = dir(ctx).join(HOST).join(PROFILE).join(BINARY);
+    let binary = dir(ctx).join(HOST).join(PROFILE).join(f.binary);
     ensure!(binary.is_file(), "{} was not built", binary.display());
     Ok(binary)
 }
 
 /// The targets the fuzzer has.
 fn targets(binary: &PathBuf) -> Result<Vec<String>> {
+    let name = binary
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
     let out = Command::new(binary)
         .arg("list")
         .output()
         .with_context(|| format!("cannot run {}", binary.display()))?;
-    ensure!(out.status.success(), "`{BINARY} list` failed");
+    ensure!(out.status.success(), "`{name} list` failed");
     Ok(String::from_utf8_lossy(&out.stdout)
         .lines()
         .filter_map(|l| l.split_ascii_whitespace().next())
@@ -69,15 +81,22 @@ fn targets(binary: &PathBuf) -> Result<Vec<String>> {
 }
 
 /// The corpus kept in the repository.
-fn corpus(ctx: &Ctx) -> PathBuf {
-    ctx.paths.repo.join("tools").join("fuzz").join("corpus")
+fn corpus(ctx: &Ctx, f: &Fuzzer) -> PathBuf {
+    ctx.paths.repo.join(f.corpus)
 }
 
-/// `build fuzz`: every target, or the one named, for `secs` seconds
+/// Every target of `fuzzer`, or the one named, for `secs` seconds
 /// each, `jobs` at a time; with `save`, what each kept is written back
 /// to the corpus.
-pub fn fuzz(ctx: &Ctx, only: Option<&str>, secs: u64, jobs: usize, save: bool) -> Result<()> {
-    let binary = build(ctx)?;
+pub fn fuzz(
+    ctx: &Ctx,
+    fuzzer: &Fuzzer,
+    only: Option<&str>,
+    secs: u64,
+    jobs: usize,
+    save: bool,
+) -> Result<()> {
+    let binary = build(ctx, fuzzer)?;
     let mut names = targets(&binary)?;
     if let Some(only) = only {
         ensure!(
@@ -103,7 +122,7 @@ pub fn fuzz(ctx: &Ctx, only: Option<&str>, secs: u64, jobs: usize, save: bool) -
                     .args(["run", name, "--secs", &secs.to_string(), "--crashes"])
                     .arg(&crashes)
                     .arg("--corpus")
-                    .arg(corpus(ctx));
+                    .arg(corpus(ctx, fuzzer));
                 if save {
                     command.arg("--save");
                 }

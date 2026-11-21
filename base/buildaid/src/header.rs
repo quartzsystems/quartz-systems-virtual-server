@@ -80,7 +80,7 @@ mod tests {
     /// A target directory of another name inside the tree is not read.
     #[test]
     fn a_tagged_target_directory_is_skipped() {
-        let root = std::env::temp_dir().join(format!("qsvs-header-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("buildaid-header-{}", std::process::id()));
         let out = root.join("target-1/build");
         fs::create_dir_all(&out).unwrap();
         fs::write(out.join("gen.rs"), "fn x() {}\n").unwrap();

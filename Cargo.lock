@@ -212,6 +212,7 @@ name = "build"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "buildaid",
  "buildkit",
  "certs",
  "clap",
@@ -231,6 +232,25 @@ dependencies = [
  "tracing-subscriber",
  "update",
  "uuid",
+ "vrm",
+]
+
+[[package]]
+name = "buildaid"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "buildkit",
+ "certs",
+ "ed25519-dalek",
+ "hex",
+ "msg",
+ "pesign",
+ "problem",
+ "serde_json",
+ "stream",
+ "tracing",
+ "update",
  "vrm",
 ]
 

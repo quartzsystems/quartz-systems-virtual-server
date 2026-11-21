@@ -1,0 +1,25 @@
+[package]
+name = "buildaid"
+description = "What an appliance's build does beside buildkit: the license header and wording audits, the release with its keys, sums, stream and second build, the update image, the fuzzer's run"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+buildkit.workspace = true
+pesign.workspace = true
+certs.workspace = true
+vrm.workspace = true
+anyhow.workspace = true
+hex.workspace = true
+tracing.workspace = true
+ed25519-dalek = "3.0.0"
+stream = { path = "../stream", version = "0.1.0" }
+update = { path = "../update", version = "0.1.0" }
+problem = { path = "../problem", version = "0.1.0" }
+msg = { path = "../msg", version = "0.1.0" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

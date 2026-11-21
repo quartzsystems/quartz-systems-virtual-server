@@ -11,35 +11,22 @@
 //! explanation and guided repair from it without restating either.
 //!
 //! [`audit`] is the same join, checked: `build doctor` fails on a code
-//! without a cause or a recovery, or a message without both texts.
+//! without a cause or a recovery, or a message without both texts. The
+//! join is `base/buildaid`'s; the tables are QS/VS's.
 
 use std::fmt::Write as _;
+use std::sync::LazyLock;
 
-use serde_json::{Value, json};
+use buildaid::catalogue::{Code, Tables};
+#[cfg(test)]
+use serde_json::Value;
 
 /// The catalogue's form.
-pub const SCHEMA: &str = "quartz.catalogue/1";
+#[cfg(test)]
+pub const SCHEMA: &str = buildaid::catalogue::SCHEMA;
 
 /// The reference codes' table, as the build reads it.
 const REFCODES: &str = include_str!("../../../../docs/REFCODES.md");
-
-/// Each code's row of `docs/REFCODES.md`: its cause.
-fn causes() -> Vec<(String, String)> {
-    REFCODES
-        .lines()
-        .filter_map(|l| {
-            let cells: Vec<&str> = l.split('|').map(str::trim).collect();
-            // | `C2001000` | text | cause |
-            let code = cells.get(1)?.strip_prefix('`')?.strip_suffix('`')?;
-            (code.len() == 8 && code.as_bytes()[1] == b'2').then(|| {
-                (
-                    code.to_string(),
-                    cells.get(3).map(|c| (*c).to_string()).unwrap_or_default(),
-                )
-            })
-        })
-        .collect()
-}
 
 fn family(f: refcode::Family) -> &'static str {
     match f {
@@ -50,97 +37,45 @@ fn family(f: refcode::Family) -> &'static str {
     }
 }
 
-fn recovery(code: &refcode::RefCode) -> Value {
-    match qvsmsg::problems::condition(code.code) {
-        Some(c) => match &c.opens {
-            Some(o) => json!({
-                "problem": true,
-                "message": o.message.id,
-                "description": o.message.text,
-                "action": o.message.help,
-                "resources": o.resources,
-                "cleared_by": o.cleared_by,
-            }),
-            None => json!({ "problem": false, "action": c.note }),
-        },
-        None => json!({ "problem": false, "action": "None: the host's progress." }),
+/// Every code of the host, as the catalogue has it.
+static CODES: LazyLock<Vec<Code>> = LazyLock::new(|| {
+    refcode::ALL
+        .iter()
+        .map(|c| Code {
+            code: c.code,
+            family: family(c.family),
+            meaning: c.text,
+            needs_recovery: matches!(
+                c.family,
+                refcode::Family::Attention | refcode::Family::Fatal
+            ),
+        })
+        .collect()
+});
+
+/// QS/VS's tables: its codes, `docs/REFCODES.md` (a host code's second
+/// character is `2`), its problem table, its messages.
+fn tables() -> Tables<'static> {
+    Tables {
+        product: release::NAME,
+        codes: &CODES,
+        document: REFCODES,
+        document_name: "docs/REFCODES.md",
+        ours: |c| c.as_bytes().get(1) == Some(&b'2'),
+        rules: &qvsmsg::problems::RULES,
+        messages: qvsmsg::ALL,
+        no_recovery: "None: the host's progress.",
     }
 }
 
 /// The catalogue of `release`, build `build`, as JSON.
 pub fn json(release: &str, build: &str) -> String {
-    let causes = causes();
-    let codes: Vec<Value> = refcode::ALL
-        .iter()
-        .map(|c| {
-            let cause = causes
-                .iter()
-                .find(|(k, _)| k == c.code)
-                .map(|(_, v)| v.as_str())
-                .unwrap_or_default();
-            json!({
-                "code": c.code,
-                "family": family(c.family),
-                "meaning": c.text,
-                "cause": cause,
-                "recovery": recovery(c),
-            })
-        })
-        .collect();
-    let messages: Vec<Value> = qvsmsg::ALL
-        .iter()
-        .map(|m| json!({ "id": m.id, "text": m.text, "help": m.help }))
-        .collect();
-    let all = json!({
-        "schema": SCHEMA,
-        "product": release::NAME,
-        "release": release,
-        "build": build,
-        "codes": codes,
-        "messages": messages,
-    });
-    let mut out = serde_json::to_string_pretty(&all).unwrap_or_default();
-    out.push('\n');
-    out
+    buildaid::catalogue::json(&tables(), release, build)
 }
 
-/// What is missing from the catalogue: a code without its row in
-/// `docs/REFCODES.md` or with an empty cause, a row of no code, an
-/// attention or fatal code outside the problem table, a message without
-/// both texts.
+/// What is missing from the catalogue (`buildaid::catalogue::audit`).
 pub fn audit() -> Vec<String> {
-    let causes = causes();
-    let mut out = Vec::new();
-    for c in refcode::ALL {
-        match causes.iter().find(|(k, _)| k == c.code) {
-            None => out.push(format!("{} has no row in docs/REFCODES.md", c.code)),
-            Some((_, cause)) if cause.is_empty() => {
-                out.push(format!("{} has no cause in docs/REFCODES.md", c.code));
-            }
-            Some(_) => {}
-        }
-        let needs = matches!(
-            c.family,
-            refcode::Family::Attention | refcode::Family::Fatal
-        );
-        if needs && qvsmsg::problems::condition(c.code).is_none() {
-            out.push(format!(
-                "{} is not in the problem table: no recovery",
-                c.code
-            ));
-        }
-    }
-    for (k, _) in &causes {
-        if !refcode::ALL.iter().any(|c| c.code == k) {
-            out.push(format!("docs/REFCODES.md has {k}, which no code is"));
-        }
-    }
-    for m in qvsmsg::ALL {
-        if m.text.trim().is_empty() || m.help.trim().is_empty() {
-            out.push(format!("{} lacks a text", m.id));
-        }
-    }
-    out
+    buildaid::catalogue::audit(&tables())
 }
 
 /// The audit as one line for `doctor`.

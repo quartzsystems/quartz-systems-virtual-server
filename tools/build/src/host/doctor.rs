@@ -126,7 +126,7 @@ fn install_iso() -> Row {
 
 fn headers(ctx: &Ctx) -> Row {
     let name = "license headers";
-    match super::header::check(&ctx.paths.repo) {
+    match buildaid::header::check(&ctx.paths.repo) {
         Ok((count, bad)) if bad.is_empty() => row(
             name,
             true,
@@ -162,7 +162,7 @@ fn catalogue() -> Row {
 
 fn wording(ctx: &Ctx) -> Row {
     let name = "no other vendor's names";
-    match super::wording::names(&ctx.paths.repo) {
+    match buildaid::wording::names(&ctx.paths.repo, &["tools/fuzz/corpus/"]) {
         Ok((files, found)) if found.is_empty() => {
             row(name, true, format!("{files} tracked files"), true)
         }
@@ -173,7 +173,7 @@ fn wording(ctx: &Ctx) -> Row {
 
 fn help(ctx: &Ctx) -> Row {
     let name = "help on every panel";
-    match super::wording::help(&ctx.paths.repo) {
+    match buildaid::wording::help(&ctx.paths.repo, super::PANELS) {
         Ok((panels, empty)) if empty.is_empty() => row(
             name,
             true,
