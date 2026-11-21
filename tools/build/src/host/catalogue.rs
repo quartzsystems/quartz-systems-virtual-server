@@ -99,6 +99,27 @@ pub fn summary() -> Result<String, String> {
 mod tests {
     use super::*;
 
+    /// `docs/catalogue.json` is the catalogue of this tree's tables,
+    /// built `source`: what a console builds into its image at the
+    /// commit it pins, without QS/VS's release build. With
+    /// `QVS_CATALOGUE=update` it is written instead of compared.
+    #[test]
+    fn the_committed_catalogue_is_the_tables() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/catalogue.json");
+        let want = json(&release::RELEASE.to_string(), "source");
+        if std::env::var_os("QVS_CATALOGUE").is_some_and(|v| v == "update") {
+            std::fs::write(path, &want).unwrap();
+            return;
+        }
+        let kept = std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        assert!(
+            kept == want,
+            "docs/catalogue.json is not the tables': run this test with QVS_CATALOGUE=update"
+        );
+    }
+
     #[test]
     fn every_code_and_message_is_whole() {
         assert_eq!(audit(), Vec::<String>::new());
