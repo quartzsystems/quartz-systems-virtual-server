@@ -128,6 +128,15 @@ and `Settings` (`part/resource`, `docs/RESOURCES.md`), `Status`,
 | 41 | take back | a location | the locations taken back | held (`QVS2403`); named by a profile (`QVS2415`); not released (`QVS2402`) |
 | 42 | entitlement | ID, the units, capping and weight to change (each optional), who asks | what the partition holds now | `docs/RESOURCES.md`: `QVS2501` to `QVS2507` |
 | 43 | tape drives | | the host's physical tape drives: location, vendor, product, serial number, released, present, loaded, the holder and its slot | |
+| 44 | create as | an ID or none, a name, the partition's settings | the definition | as create; an ID past `max_partitions` (`QVS2017`), another partition's (`QVS2016`), outside 1 to 999 (`QVS1002`); a settings error |
+| 45 | partition settings | ID | its settings: description, panel, with host, delay | no such partition |
+| 46 | set partition settings | ID, settings | | no such partition; a description over 256 bytes or with a control character (`QVS1008`); a delay over 99999 s (`QVS2302`) |
+| 47 | activations | | each partition, in ID order: when its current activation began (none when it is not activated) and its profile | |
+| 48 | profile uses | ID | each profile, by name: when it was last activated, none for never | no such partition |
+| 49 | panel functions | | every control panel function the host carries out: number, text, whether it needs manual, whether a console asks first (`docs/PANEL.md`) | |
+| 50 | console panel | as panel | as panel | as panel; the partition's settings keep its panel from consoles (`QVS2318`) |
+| 51 | dump space | ID, 0 for every one | each partition's dumps: the bytes they take, the limit, how many, the most | no such partition |
+| 52 | set power on | the power-on settings, the wait, who asks | | a wait outside 10 to 3600 s (`QVS2201`) |
 
 **Revisions.** Every definition and profile has a revision, one more
 at every write the partition manager makes of it, 0 in a file older
@@ -141,6 +150,24 @@ activated partition runs with, with what its activation gave it as the
 desired processors and memory, its minimum and maximum widened to take
 them. **Create with** (36) is a create and a put profile as one: a
 profile refused deletes the partition it made.
+
+**A partition's settings** (45, 46; definition schema version 2, its
+`[settings]` table) are changed apart from the rest of its definition,
+running or not: a description (one line, 256 bytes at most), whether a
+management console may use its control panel (`panel`, true unless
+set; Service Tools and the host always may), and how it is shut down
+when the host powers off (`with_host`: `immediate`, the system's
+immediate power down, as every partition was before; or `delayed`, its
+controlled power down within `delay_secs`). A definition of version 1
+reads with the defaults. **Create as** (44) makes a partition at the ID
+asked for, or at the lowest free, with its settings from the start.
+
+**Activation times.** Each activation's start is in the partition's
+record and in **activations** (47). When each profile was last activated
+is kept in `partitions/<ID>/activations.toml` (schema version 1), beside
+the definition, written at each activation so neither the definition
+nor a profile changes for it, and read by **profile uses** (48). A
+profile deleted is forgotten there.
 
 **Activate** answers when the VMM has been started: the partition is
 then Starting, and a list or the events say how it goes on. The two
@@ -170,11 +197,23 @@ are the crate's.
 **End all** is PID 1's request before the host powers off or restarts:
 the partitions are ended one at a time, in the reverse of the order
 they were activated in, each through its own system when it has its
-IPL complete and its channel up (an operating-system shut down given
-`host_timeout_secs`, 300 s by default), immediately otherwise, and
-nothing is activated afterwards. PID 1 waits that time and the VMM's
-grace for each until a list shows none activated, posts `D2001010`, and
-only then stops the services.
+IPL complete and its channel up, as its settings say: an
+operating-system shut down given `host_timeout_secs` (300 s by
+default) for `with_host = "immediate"`, a delayed one within its
+`delay_secs` and the delayed grace for `delayed`; immediately when the
+system cannot be asked. Nothing is activated afterwards. PID 1 waits
+the longest of those and the VMM's grace for each until a list shows
+none activated, posts `D2001010`, and only then stops the services. A
+power off that asks for immediate, or any power off when the host's
+power-on settings say `power_off = "immediate"`, ends each at once.
+
+**Power-on settings** (52) are `[power_on]` of `partitions.toml`
+(schema version 2): `start_partitions` (true: auto start runs at base
+ready; false: no partition starts with the host) and `power_off`
+(`delayed`, the default, or `immediate`), with the wait being
+`[service]`'s `host_timeout_secs`. A change is published as the
+power-on event with who asked. Service Tools option 9, 3 and QSI's
+host family (bit 23) change them.
 
 ## Events
 
@@ -193,6 +232,7 @@ the subscribers on the socket and written to the host's log.
 | device | a device's location, what changed (released, taken back, given, given back, fenced), the partition and profile when one is concerned, the device as listed, a note (why one was left out), the time |
 | tape drive | a drive's location, the drive as listed or none when it is gone, the time |
 | entitlement | the ID and name, what it held before and after, who asked, the time |
+| power on | the host's power-on settings, the wait, who asked, the time |
 
 The list (request 0) has the same of the channel in each partition's
 `service`.
@@ -266,8 +306,9 @@ and the history is bounded.
 
 ## Auto start
 
-When the host's base is ready (every service has been ready), the
-partitions flagged to start with it are activated with their default
+When the host's base is ready (every service has been ready), and its
+power-on settings start partitions, the partitions flagged to start
+with it are activated with their default
 profiles, in the order of their `auto_start.order` and then of their
 IDs, each after its delay. One whose `auto_start.wait` is set is waited
 for until its system reports its IPL complete, or its `wait_secs` have

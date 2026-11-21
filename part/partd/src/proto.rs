@@ -8,9 +8,9 @@
 //! request is different: after `subscribe` is answered the connection
 //! stays open and every event follows on it, a frame each.
 
-use model::{Definition, IplSource, IplType, Keylock, Profile};
+use model::{Definition, IplSource, IplType, Keylock, PartitionSettings, Profile};
 use qvsmsg::Issued;
-use resource::{Current, HostResources, Pool, Settings};
+use resource::{Current, HostResources, Pool, PowerOn, Settings};
 
 /// The service's name in the service table.
 pub const NAME: &str = "partd";
@@ -305,6 +305,17 @@ pub enum Event {
         /// When.
         time: u64,
     },
+    /// The host's power-on settings changed.
+    PowerOn {
+        /// What they are now.
+        power_on: PowerOn,
+        /// The wait for each system at a delayed power off, in seconds.
+        delay: u32,
+        /// Who asked.
+        by: String,
+        /// When.
+        time: u64,
+    },
     /// A running partition's entitlement changed.
     Entitlement {
         /// The partition.
@@ -361,6 +372,7 @@ ipc::wire_enum!(Event {
     7 => Device { location, change, partition, name, profile, device, note, time },
     8 => Entitlement { id, name, before, current, by, time },
     9 => TapeDrive { location, drive, time },
+    10 => PowerOn { power_on, delay, by, time },
 });
 
 /// A physical tape drive of the host (`docs/STORAGE.md`).
@@ -449,9 +461,75 @@ impl Event {
             | Event::Entitlement { id, .. } => *id,
             Event::Device { partition, .. } => *partition,
             Event::TapeDrive { drive, .. } => drive.as_ref().map_or(0, |d| d.holder),
+            Event::PowerOn { .. } => 0,
         }
     }
 }
+
+/// A partition's current activation: when it began.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Activation {
+    /// The partition.
+    pub id: u32,
+    /// When its current activation began, in seconds since the epoch;
+    /// none when it is not activated.
+    pub since: Option<u64>,
+    /// The profile it was activated with.
+    pub profile: String,
+}
+ipc::wire_struct!(Activation { id, since, profile });
+
+/// One profile's last activation.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProfileUse {
+    /// The profile.
+    pub name: String,
+    /// When it was last activated, in seconds since the epoch; none for
+    /// never.
+    pub last: Option<u64>,
+}
+ipc::wire_struct!(ProfileUse { name, last });
+
+/// A control panel function the host carries out (`docs/PANEL.md`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PanelFunction {
+    /// Its number.
+    pub function: u8,
+    /// What it does.
+    pub text: String,
+    /// It needs the keylock in manual.
+    pub manual: bool,
+    /// It changes or interrupts the system: a console asks first.
+    pub confirm: bool,
+}
+ipc::wire_struct!(PanelFunction {
+    function,
+    text,
+    manual,
+    confirm
+});
+
+/// What a partition's dumps take, and their limits.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DumpSpace {
+    /// The partition.
+    pub id: u32,
+    /// The bytes its dumps take in the pool.
+    pub bytes: u64,
+    /// The most bytes they may take.
+    pub limit: u64,
+    /// How many it has.
+    pub dumps: u32,
+    /// The most it may keep.
+    pub max_dumps: u32,
+}
+ipc::wire_struct!(DumpSpace {
+    id,
+    bytes,
+    limit,
+    dumps,
+    max_dumps
+});
 
 /// One profile of a partition, as listed with its revision.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -605,6 +683,30 @@ ipc::rpc! {
     /// released and taken back with [`Calls::release`] and
     /// [`Calls::take_back`], as a device is.
     43 => fn tape_drives / TapeDrives () -> Vec<TapeDrive>;
+    /// Create a partition called `name` with `settings`, at the ID `id`
+    /// when one is given (1 to the host's most partitions), the lowest
+    /// free otherwise.
+    44 => fn create_as / CreateAs (id: Option<u32>, name: String, settings: PartitionSettings) -> Result<Definition, Refused>;
+    /// A partition's settings.
+    45 => fn partition_settings / GetPartitionSettings (id: u32) -> Result<PartitionSettings, Refused>;
+    /// Change a partition's settings, whether it runs or not.
+    46 => fn set_partition_settings / SetPartitionSettings (id: u32, settings: PartitionSettings) -> Result<(), Refused>;
+    /// When each partition's current activation began, in ID order.
+    47 => fn activations / Activations () -> Vec<Activation>;
+    /// When each of a partition's profiles was last activated, by name.
+    48 => fn profile_uses / ProfileUses (id: u32) -> Result<Vec<ProfileUse>, Refused>;
+    /// The control panel functions this host carries out, by number.
+    49 => fn panel_functions / PanelFunctions () -> Vec<PanelFunction>;
+    /// A control panel function a management console asked for: as
+    /// [`Calls::panel`], refused when the partition's settings do not
+    /// allow a console them.
+    50 => fn console_panel / ConsolePanel (id: u32, function: u8, args: PanelArgs) -> Result<String, Refused>;
+    /// What a partition's dumps take; every partition's with 0.
+    51 => fn dump_space / GetDumpSpace (id: u32) -> Result<Vec<DumpSpace>, Refused>;
+    /// Change what the host does with its partitions as it starts and
+    /// stops, and the wait for each system at a delayed power off
+    /// (`[service]`'s `host_timeout_secs`); `by` says who asked.
+    52 => fn set_power_on / SetPowerOn (power_on: PowerOn, delay: u32, by: String) -> Result<(), Refused>;
 }
 
 /// The most bytes of a dump in one frame of a read.

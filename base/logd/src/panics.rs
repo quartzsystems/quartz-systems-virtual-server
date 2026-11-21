@@ -2,13 +2,14 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! A host that restarted after a kernel panic (`docs/SECURITY.md`). An
+//! A machine that restarted after a kernel panic. An
 //! oops is a panic and a panic restarts the host (`panic=-1`); as it
 //! panics, the kernel writes its last messages into the firmware's
 //! variables (`efi-pstore`). At the next IPL they are moved from
-//! `/sys/fs/pstore` into `/data/log/panics`, which the next host dump
-//! takes, the firmware's variables are freed, and the panic is posted
-//! (`A2001005`), which opens its problem. The most recent ones are kept.
+//! `/sys/fs/pstore` into the caller's directory,
+//! which the next service dump takes, the firmware's variables are freed,
+//! and the caller posts the panic in its own words. The most recent ones
+//! are kept.
 
 use std::fs;
 use std::path::Path;

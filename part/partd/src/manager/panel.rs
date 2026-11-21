@@ -26,10 +26,129 @@ use super::service::Asked;
 use super::{Answer, Manager, System};
 use crate::proto::{PanelArgs, Refused};
 
-/// The functions a partition has.
-pub const FUNCTIONS: [u8; 18] = [
-    1, 2, 3, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 34, 0,
+/// One function the host carries out: what `docs/PANEL.md`'s table
+/// says of it, which a unit test holds the document to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Function {
+    /// Its number.
+    pub number: u8,
+    /// What it does.
+    pub text: &'static str,
+    /// It needs the keylock in manual.
+    pub manual: bool,
+    /// It changes or interrupts the system: a console asks first.
+    pub confirm: bool,
+}
+
+const fn f(number: u8, text: &'static str, manual: bool, confirm: bool) -> Function {
+    Function {
+        number,
+        text,
+        manual,
+        confirm,
+    }
+}
+
+/// The functions a partition has, by number.
+pub const TABLE: [Function; 17] = [
+    f(
+        1,
+        "Display the IPL source, the IPL type and the keylock",
+        false,
+        false,
+    ),
+    f(
+        2,
+        "Select the IPL source, IPL type and keylock for the next activation",
+        false,
+        false,
+    ),
+    f(3, "Restart the partition's IPL now", true, true),
+    f(8, "Power the partition off now", true, true),
+    f(11, "Display the current reference code", false, false),
+    f(
+        12,
+        "Display word 2 of the current reference code",
+        false,
+        false,
+    ),
+    f(
+        13,
+        "Display word 3 of the current reference code",
+        false,
+        false,
+    ),
+    f(
+        14,
+        "Display word 4 of the current reference code",
+        false,
+        false,
+    ),
+    f(
+        15,
+        "Display word 5 of the current reference code",
+        false,
+        false,
+    ),
+    f(
+        16,
+        "Display word 6 of the current reference code",
+        false,
+        false,
+    ),
+    f(
+        17,
+        "Display word 7 of the current reference code",
+        false,
+        false,
+    ),
+    f(
+        18,
+        "Display word 8 of the current reference code",
+        false,
+        false,
+    ),
+    f(
+        19,
+        "Display word 9 of the current reference code",
+        false,
+        false,
+    ),
+    f(
+        20,
+        "Display the partition's type, its serial number and the host's release",
+        false,
+        false,
+    ),
+    f(
+        21,
+        "Dedicated service tools on the partition's console",
+        true,
+        false,
+    ),
+    f(
+        22,
+        "Dump the partition's memory, then restart its IPL",
+        true,
+        true,
+    ),
+    f(
+        34,
+        "Take the dump again from the memory still held",
+        true,
+        false,
+    ),
 ];
+
+/// Whether the host carries out `function`.
+fn has(function: u8) -> bool {
+    TABLE.iter().any(|f| f.number == function)
+}
+
+/// Whether `function` needs the keylock in manual.
+fn needs_manual(function: u8) -> bool {
+    TABLE.iter().any(|f| f.number == function && f.manual)
+}
 
 fn source_word(s: IplSource) -> &'static str {
     match s {
@@ -74,7 +193,7 @@ impl<S: System> Manager<S> {
         args: PanelArgs,
     ) -> Result<Option<String>, Refused> {
         let one = |m: qvsmsg::Issued| vec![m];
-        if function == 0 || !FUNCTIONS.contains(&function) {
+        if !has(function) {
             return Err(one(
                 qvsmsg::PANEL_FUNCTION_INVALID.with(&[&format!("{function:02}")])
             ));
@@ -102,14 +221,13 @@ impl<S: System> Manager<S> {
         let can_panel = p.service.can(qsipart::caps::PANEL);
         let state = p.state;
         let manual = keylock == Keylock::Manual;
-        let needs_manual = matches!(function, 3 | 8 | 21 | 22 | 34);
-        let needs_active = matches!(function, 3 | 8 | 21 | 22 | 34);
-        if needs_active && !active {
+        // What needs manual interrupts the system: it needs one running.
+        if needs_manual(function) && !active {
             return Err(one(
                 qvsmsg::PARTITION_NOT_ACTIVE.with(&[&name, state.word()])
             ));
         }
-        if needs_manual && !manual {
+        if needs_manual(function) && !manual {
             return Err(one(qvsmsg::PANEL_NOT_MANUAL.with(&[
                 &format!("{function:02}"),
                 &name,
@@ -229,5 +347,39 @@ impl<S: System> Manager<S> {
                 qvsmsg::PANEL_FUNCTION_INVALID.with(&[&format!("{function:02}")])
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TABLE;
+
+    /// `docs/PANEL.md`'s table: each row's functions and keylock.
+    #[test]
+    fn the_document_is_written_from_the_table() {
+        let doc = include_str!("../../../../docs/PANEL.md");
+        let mut rows = Vec::new();
+        for line in doc.lines().filter(|l| l.starts_with("| ")) {
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            let (number, keylock) = (cells[1], cells[cells.len() - 2]);
+            let numbers: Vec<u8> = match number.split_once(" to ") {
+                Some((a, b)) => match (a.parse::<u8>(), b.parse::<u8>()) {
+                    (Ok(a), Ok(b)) => (a..=b).collect(),
+                    _ => continue,
+                },
+                None => match number.parse() {
+                    Ok(n) => vec![n],
+                    Err(_) => continue,
+                },
+            };
+            for n in numbers {
+                rows.push((n, keylock == "manual"));
+            }
+        }
+        let table: Vec<(u8, bool)> = TABLE.iter().map(|f| (f.number, f.manual)).collect();
+        assert_eq!(rows, table, "docs/PANEL.md's table and panel::TABLE");
+        let mut sorted = table.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, table, "by number");
     }
 }

@@ -791,6 +791,13 @@ impl proto::Pools for Session<'_> {
     fn disks(&mut self) -> Vec<Disk> {
         lock(self.core).disk_list()
     }
+    fn candidates(&mut self) -> Vec<Disk> {
+        lock(self.core)
+            .disk_list()
+            .into_iter()
+            .filter(|d| d.free || d.foreign)
+            .collect()
+    }
     fn pools(&mut self) -> Vec<PoolStatus> {
         lock(self.core).pool_list()
     }

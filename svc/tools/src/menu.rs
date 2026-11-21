@@ -6,13 +6,12 @@
 //! screen a console shows while nobody is signed on.
 
 use console::{Attr, Screen};
-use panels::tools::{Log, LogPanel, TimePanel, UsersPanel, power};
+use panels::tools::{Log, LogPanel, PowerWords, TimePanel, UsersPanel, power};
 use panels::ui;
 use panels::{Flow, Help, Named, Panel, PanelFlow, kit};
 use release::fact;
 use supervise::control::HostStatus;
 
-use crate::disks::DiskUnits;
 use crate::env::Env;
 use crate::partitions::{self, Partitions};
 
@@ -59,7 +58,7 @@ impl Panel<Env, Outcome> for MainMenu {
     fn enter(&mut self, fields: &[String], env: &mut Env) -> Step {
         match kit::number(fields.first()) {
             Some(1) => Flow::Push(Box::new(SystemStatus)),
-            Some(2) => Flow::Push(Box::new(DiskUnits)),
+            Some(2) => Flow::Push(Box::new(crate::disks::panel())),
             Some(3) => Flow::Push(Box::new(crate::network::Network)),
             Some(4) => Flow::Push(Box::new(crate::consoles::Pairing)),
             Some(5) => Flow::Push(Box::new(UsersPanel)),
@@ -88,15 +87,17 @@ impl Panel<Env, Outcome> for MainMenu {
             Some(9) => Flow::Push(Box::new(Choice {
                 name: "tools-power",
                 title: "Power Off or Restart",
-                options: &[(1, "Power off"), (2, "Restart")],
+                options: &[(1, "Power off"), (2, "Restart"), (3, "Power-on settings")],
                 help: Help {
                     title: "Power Off or Restart",
                     lines: &[
                         "1 shuts the host down in order and powers it off.",
                         "2 shuts it down in order and restarts it.",
-                        "",
                         "Either asks you to confirm first. Partitions that run on",
                         "the host end with it.",
+                        "",
+                        "3 sets whether partitions start with the host and how",
+                        "they end when it powers off.",
                     ],
                 },
             })),
@@ -139,6 +140,27 @@ impl Panel<Env, Outcome> for MainMenu {
 }
 
 /// A short menu that leads to the logs or to the power confirmations.
+/// What ends with a host: its partitions (`base/panels`' power panel).
+const POWER: PowerWords = PowerWords {
+    ends: &[
+        "Its services are stopped, its disks left clean. Every partition",
+        "that runs on this host ends with it.",
+    ],
+    help: Help {
+        title: "Confirm power off or restart",
+        lines: &[
+            "F10 starts an orderly shutdown: the host's services end one",
+            "after another, its data is written and its file system",
+            "unmounted, and then the machine powers off or restarts.",
+            "",
+            "Partitions that run on the host end with it. Stop them from the",
+            "management console first.",
+            "",
+            "F12 goes back and nothing happens.",
+        ],
+    },
+};
+
 struct Choice {
     name: &'static str,
     title: &'static str,
@@ -166,8 +188,9 @@ impl Panel<Env, Outcome> for Choice {
             (Some(1), true) => Flow::Push(Box::new(LogPanel::new(Log::History))),
             (Some(2), true) => Flow::Push(Box::new(LogPanel::new(Log::System))),
             (Some(3), true) => Flow::Push(Box::new(crate::service::problems::Log::default())),
-            (Some(1), false) => Flow::Push(Box::new(power::<Env, Outcome>(false))),
-            (Some(2), false) => Flow::Push(Box::new(power::<Env, Outcome>(true))),
+            (Some(1), false) => Flow::Push(Box::new(power::<Env, Outcome>(false, &POWER))),
+            (Some(2), false) => Flow::Push(Box::new(power::<Env, Outcome>(true, &POWER))),
+            (Some(3), false) => Flow::Push(Box::new(crate::poweron::PowerOnPanel)),
             _ => Flow::Error("Selection not valid.".into()),
         }
     }

@@ -309,7 +309,7 @@ impl Opener for Sockets {
 
     fn host_dump(&mut self, name: &str) -> Result<(u64, Box<dyn Pipe>), Vec<Note>> {
         use std::io::Read;
-        let store = hostdump::Store::at(&self.dumps);
+        let store = hostdump::store::at(&self.dumps);
         let missing = || vec![crate::families::base::no_dump(name)];
         let path = store.path(name).ok_or_else(missing)?;
         let mut file = std::fs::File::open(&path).map_err(|_| missing())?;

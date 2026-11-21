@@ -19,7 +19,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use model::{Definition, Profile};
+use model::{Activations, Definition, Profile};
 use resource::Settings;
 
 /// The directory of the partitions in the state directory.
@@ -73,6 +73,23 @@ impl Store {
     pub fn save_settings(&self, settings: &Settings) -> Result<(), String> {
         state::Store::at(&self.state_dir)
             .save(settings)
+            .map_err(|e| e.to_string())
+    }
+
+    /// When each of a partition's profiles was last activated; none
+    /// known when there is no file, or it is refused.
+    pub fn activations(&self, id: u32) -> Activations {
+        state::Store::at(self.partition_dir(id))
+            .load::<Activations>()
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+    }
+
+    /// Keep when each of a partition's profiles was last activated.
+    pub fn save_activations(&self, id: u32, activations: &Activations) -> Result<(), String> {
+        state::Store::at(self.partition_dir(id))
+            .save(activations)
             .map_err(|e| e.to_string())
     }
 

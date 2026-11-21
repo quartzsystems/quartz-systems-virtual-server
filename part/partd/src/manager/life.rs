@@ -385,6 +385,7 @@ impl<S: System> Manager<S> {
         let devices: Vec<String> = given.iter().map(|g| g.location.clone()).collect();
         let sequence = self.sequence;
         self.sequence += 1;
+        let since = self.system.now();
         let record = Record {
             id,
             profile: profile_name.to_string(),
@@ -395,6 +396,7 @@ impl<S: System> Manager<S> {
             no_channel: false,
             devices: devices.clone(),
             drives: drives.clone(),
+            since,
         };
         self.system.record(id, Some(&record));
         let time = self.system.now();
@@ -417,13 +419,16 @@ impl<S: System> Manager<S> {
                 uplinks_down: Vec::new(),
                 devices,
                 drives: drives.clone(),
+                since,
             });
+            partition.last_used.insert(profile_name.to_string(), since);
             partition.last_profile = profile_name.to_string();
             partition.message = None;
             partition.last_end.clear();
             partition.service = super::service::Service::fresh();
             partition.console = console_port::Console::new();
         }
+        self.keep_activations(id);
         self.set_state(id, State::Starting);
         self.assigned(id, &name, &given);
         self.drives_moved(&drives);
@@ -960,6 +965,7 @@ impl<S: System> Manager<S> {
             uplinks_down: Vec::new(),
             devices: record.devices.clone(),
             drives: record.drives.clone(),
+            since: record.since,
             media: partition
                 .profiles
                 .get(&record.profile)

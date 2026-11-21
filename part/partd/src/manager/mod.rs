@@ -107,6 +107,8 @@ pub struct Record {
     pub devices: Vec<String>,
     /// The physical tape drives it holds: each slot and location code.
     pub drives: Vec<(u32, String)>,
+    /// When it was activated, in seconds since the epoch.
+    pub since: u64,
 }
 ipc::wire_struct!(Record {
     id,
@@ -117,7 +119,8 @@ ipc::wire_struct!(Record {
     state,
     no_channel,
     devices,
-    drives
+    drives,
+    since
 });
 
 /// A dump to be written: where, and what its header says.
@@ -302,6 +305,8 @@ pub(crate) struct Run {
     pub(crate) devices: Vec<String>,
     /// The physical tape drives it holds: each slot and location code.
     pub(crate) drives: Vec<(u32, String)>,
+    /// When it was activated, in seconds since the epoch.
+    pub(crate) since: u64,
 }
 
 /// One partition.
@@ -326,6 +331,8 @@ pub(crate) struct Partition {
     pub(crate) next: PanelArgs,
     /// The dump being taken, and whether the IPL restarts after it.
     pub(crate) dumping: Option<(String, bool)>,
+    /// When each profile was last activated (`activations.toml`).
+    pub(crate) last_used: BTreeMap<String, u64>,
 }
 
 impl Partition {
@@ -345,6 +352,7 @@ impl Partition {
             viewer: None,
             next: PanelArgs::default(),
             dumping: None,
+            last_used: BTreeMap::new(),
         }
     }
 
@@ -456,6 +464,7 @@ impl<S: System> Manager<S> {
             .map(|k| {
                 let id = k.definition.id;
                 let mut p = Partition::of(k);
+                p.last_used = store.activations(id).last;
                 // The history kept, its last code the current one.
                 let mut history: VecDeque<Posted> = system.kept_history(id).into();
                 while history.len() > HISTORY {
@@ -569,6 +578,20 @@ impl<S: System> Manager<S> {
                 "{name}: entitled to {} processing units, by {by}",
                 current.processors.units()
             ),
+            Event::PowerOn {
+                power_on,
+                delay,
+                by,
+                ..
+            } => format!(
+                "power-on settings: partitions start with the host {}, power off {} ({delay} s), by {by}",
+                if power_on.start_partitions {
+                    "yes"
+                } else {
+                    "no"
+                },
+                power_on.power_off.word()
+            ),
             Event::Device {
                 location,
                 change,
@@ -608,6 +631,7 @@ impl<S: System> Manager<S> {
                 no_channel: partition.service.facts.none,
                 devices: run.devices.clone(),
                 drives: run.drives.clone(),
+                since: run.since,
             };
             self.system.record(id, Some(&record));
         }

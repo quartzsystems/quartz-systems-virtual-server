@@ -171,6 +171,9 @@ pub struct Settings {
     /// The service channel's timeouts and the dumps kept.
     #[serde(default, skip_serializing_if = "Service::is_default")]
     pub service: Service,
+    /// What the host does with its partitions as it starts and stops.
+    #[serde(default, skip_serializing_if = "PowerOn::is_default")]
+    pub power_on: PowerOn,
 }
 ipc::wire_struct!(Settings {
     max_partitions,
@@ -179,12 +182,74 @@ ipc::wire_struct!(Settings {
     reserved_memory_mib,
     pools,
     mac_prefix,
-    service
+    service,
+    power_on
 });
 
 /// The least memory a host may be told to keep for itself, in MiB:
 /// with less it does not stay up.
 pub const MIN_RESERVE_MIB: u64 = 512;
+
+/// How the host's partitions end at a power off that does not say.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PowerOff {
+    /// Each is shut down through its own system first, as its settings
+    /// say, and waited for.
+    #[default]
+    Delayed,
+    /// Each is ended at once.
+    Immediate,
+}
+ipc::wire_enum!(PowerOff { 0 => Delayed, 1 => Immediate });
+
+impl PowerOff {
+    /// As the settings have it.
+    pub fn word(self) -> &'static str {
+        match self {
+            PowerOff::Delayed => "delayed",
+            PowerOff::Immediate => "immediate",
+        }
+    }
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// `[power_on]` (schema version 2): what the host does with its
+/// partitions when it starts and when it powers off. The wait for each
+/// system at a delayed power off is `[service]`'s `host_timeout_secs`.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PowerOn {
+    /// Whether the partitions marked to start with the host do.
+    #[serde(default = "yes")]
+    pub start_partitions: bool,
+    /// How they end at a power off that does not say.
+    #[serde(default)]
+    pub power_off: PowerOff,
+}
+ipc::wire_struct!(PowerOn {
+    start_partitions,
+    power_off
+});
+
+impl Default for PowerOn {
+    fn default() -> Self {
+        Self {
+            start_partitions: true,
+            power_off: PowerOff::Delayed,
+        }
+    }
+}
+
+impl PowerOn {
+    #[allow(clippy::trivially_copy_pass_by_ref)] // serde's signature
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -196,6 +261,7 @@ impl Default for Settings {
             pools: Vec::new(),
             mac_prefix: None,
             service: Service::default(),
+            power_on: PowerOn::default(),
         }
     }
 }
@@ -273,8 +339,9 @@ impl Settings {
 
 impl Document for Settings {
     const FILE: &'static str = "partitions.toml";
-    const VERSION: u32 = 1;
-    const MIGRATIONS: &'static [Migration] = &[];
+    // Version 2 added `[power_on]`.
+    const VERSION: u32 = 2;
+    const MIGRATIONS: &'static [Migration] = &[|_| Ok(())];
 
     fn validate(&self) -> Result<(), String> {
         match self.errors().first() {

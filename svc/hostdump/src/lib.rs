@@ -8,21 +8,64 @@
 //! consoles' pins are left out by name, and any file that holds a
 //! private key or a password hash whatever its name.
 //!
-//! - [`zip`]: the archive, stored entries with their CRC-32.
-//! - [`store`]: the dumps on `/data`, named by their time, bounded.
-//! - [`take`]: what a dump holds, gathered and written.
+//! The archive, the store and the rule that keeps secrets out are
+//! `base/servicedump`'s; what is the host's own is here.
+//!
+//! - [`store`]: the host's dumps on `/data`, `HOSTDUMP-` and their time.
+//! - [`take`]: the host's entries beside the base's, and its secrets.
 //! - `live` (Linux): what the services say, from their sockets.
 
 #![forbid(unsafe_code)]
 
 #[cfg(target_os = "linux")]
 pub mod live;
-pub mod store;
 pub mod take;
-pub mod zip;
 
-pub use store::{Info, Store};
+pub use servicedump::zip;
+pub use servicedump::{Info, Store};
 pub use take::{Asked, LEFT_OUT, Paths, Sources, take};
+
+/// The host's dumps in the data file system (`docs/DUMPS.md`).
+pub mod store {
+    use servicedump::Kind;
+
+    pub use servicedump::store::{BY, EXT, Info, Store};
+
+    /// The directory under the data file system.
+    pub const DIR: &str = "dumps/host";
+    /// The most dumps kept.
+    pub const MAX_DUMPS: usize = 8;
+    /// The most bytes they may take together.
+    pub const MAX_TOTAL: u64 = 1024 * 1024 * 1024;
+    /// A dump's name: its prefix, then `YYYYMMDD-HHMMSS`, then [`EXT`].
+    pub const PREFIX: &str = "HOSTDUMP-";
+
+    /// What a host's dumps are.
+    pub static KIND: Kind = Kind {
+        prefix: PREFIX,
+        title: "Host dump",
+        max_dumps: MAX_DUMPS,
+        max_total: MAX_TOTAL,
+        left_out: crate::take::OWN_LEFT_OUT,
+    };
+
+    /// The host's dumps in `dir`.
+    pub fn at(dir: impl Into<std::path::PathBuf>) -> Store {
+        Store::at(dir, &KIND)
+    }
+
+    /// The name of a dump taken at `unix_secs`.
+    #[must_use]
+    pub fn name_at(unix_secs: i64) -> String {
+        servicedump::store::name_at(&KIND, unix_secs)
+    }
+
+    /// Whether `name` is one of a host dump's.
+    #[must_use]
+    pub fn valid_name(name: &str) -> bool {
+        servicedump::store::valid_name(&KIND, name)
+    }
+}
 
 /// What QSI calls the kind of dump this is.
 pub const KIND_NAME: &str = "service data";
@@ -97,7 +140,7 @@ mod tests {
     fn a_dump_holds_what_its_manifest_says_and_no_secret() {
         let d = scratch("take");
         let paths = host(&d);
-        let store = Store::at(d.join("dumps"));
+        let store = store::at(d.join("dumps"));
         let asked = Asked {
             by: "Service Tools, user ADMIN".into(),
             release: "QS/VS V1R0M0".into(),

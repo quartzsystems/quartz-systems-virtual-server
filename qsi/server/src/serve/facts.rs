@@ -137,7 +137,7 @@ impl Facts for HostFacts {
     }
 
     fn host_dumps(&mut self) -> Vec<hostdump::Info> {
-        hostdump::Store::at(&self.paths.dumps).list()
+        hostdump::store::at(&self.paths.dumps).list()
     }
 
     fn take_host_dump(&mut self, by: &str) -> Result<String, Vec<Note>> {
@@ -148,7 +148,7 @@ impl Facts for HostFacts {
     }
 
     fn delete_host_dump(&mut self, name: &str) -> Result<(), Vec<Note>> {
-        let store = hostdump::Store::at(&self.paths.dumps);
+        let store = hostdump::store::at(&self.paths.dumps);
         if store.path(name).is_none_or(|p| !p.is_file()) {
             return Err(vec![crate::families::base::no_dump(name)]);
         }

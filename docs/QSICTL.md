@@ -46,6 +46,14 @@ Each prints the reply whole, or every message of the refusal.
 | `io` | host `Devices`: every device for physical I/O, released or not, held or not, or why it cannot be |
 | `tape` | vres `TapeDrives`: the host's physical tape drives |
 | `partition entitlement ID [--units 0.50] [--capped\|--uncapped] [--weight N]` | partition `Entitlement`: a running shared partition's processors; what is left out stays |
+| `create NAME [--id N] [--description TEXT] [--no-panel] [--with-host-delay S]`, `settings-of ID`, `set-settings ID [--description TEXT] [--no-panel] [--with-host-delay S]` | partition version 3 (bit 21) |
+| `activations`, `profile-uses ID` | activation times (bit 22) |
+| `power-on`, `set-power-on [--no-start] [--immediate] [--delay S]` | host power-on settings (bit 23) |
+| `panel-functions ID` | panel version 2 (bit 24) |
+| `dump-space [ID]`, `hostdump space` | dump space (bit 26) |
+| `pool disks`, `pool create NAME --protection P --disks A,B [--spares C] [--confirm A]`, `pool delete`, `pool rename`, `pool replace POOL UNIT DISK [--confirm]`, `pool add-spare`, `pool remove-spare`, `pool designate [POOL]`, `pool extend` | storage pools managed (bit 20) |
+| `switch create NAME --vlans 1,20 [--mtu N]`, `switch change`, `switch rename`, `switch delete [--force]`, `switch uplink SWITCH --interfaces L1,L2 [--bond active-backup\|lacp] [--native V]`, `switch clear-uplink` | switches managed (bit 19) |
+| `problems note N TEXT`, `problems rated`, `problems show-rated N` | service version 2 (bit 25) |
 
 ## Streams and events
 

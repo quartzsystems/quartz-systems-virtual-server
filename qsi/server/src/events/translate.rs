@@ -105,6 +105,23 @@ pub fn partd(e: &partd::Event) -> AnyEvent {
             time: *time,
         })),
         E::Device { .. } | E::TapeDrive { .. } | E::Entitlement { .. } => physical(e),
+        E::PowerOn {
+            power_on,
+            delay,
+            by,
+            time,
+        } => AnyEvent::Host(host::Event::PowerOn(host::PowerOnChanged {
+            power_on: host::PowerOn {
+                start_partitions: power_on.start_partitions,
+                power_off: match power_on.power_off {
+                    resource::PowerOff::Delayed => host::PowerOff::Delayed,
+                    resource::PowerOff::Immediate => host::PowerOff::Immediate,
+                },
+                delay: *delay,
+            },
+            by: by.clone(),
+            time: *time,
+        })),
     }
 }
 

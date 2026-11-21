@@ -10,6 +10,8 @@
 //! - [`files`]: what is kept under `<data>/log/`: the NDJSON system
 //!   log (rotated by size under a total cap), the reference code
 //!   history (append-only) and the kernel log of each boot.
+//! - [`panics`]: what the kernel kept of a panic, taken at the next IPL
+//!   for PID 1 to post in the product's words.
 //! - [`serve`]: the service: a Unix datagram socket for records and
 //!   `/dev/kmsg` (Linux).
 
@@ -18,6 +20,7 @@
 #[cfg(unix)]
 pub mod client;
 pub mod files;
+pub mod panics;
 pub mod record;
 #[cfg(target_os = "linux")]
 pub mod serve;

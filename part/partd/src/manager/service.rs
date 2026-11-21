@@ -705,14 +705,20 @@ impl<S: System> Manager<S> {
             self.begin_end(id, false);
             return;
         }
+        // Each by its own settings: a controlled power down within its
+        // delay, or the system's immediate one.
+        let (kind, delay) = match self.partitions.get(&id).map(|p| &p.definition.settings) {
+            Some(s) if s.with_host == model::WithHost::Delayed => (Shutdown::Delayed, s.delay_secs),
+            _ => (Shutdown::System, 0),
+        };
         let ask = Ask::PowerDown {
-            immediate: true,
-            delay: 0,
+            immediate: kind == Shutdown::System,
+            delay,
             restart: false,
         };
         let asked = Asked::Shutdown {
-            kind: Shutdown::System,
-            delay: 0,
+            kind,
+            delay,
             restart: false,
             host: true,
         };

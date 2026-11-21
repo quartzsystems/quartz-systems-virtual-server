@@ -57,6 +57,13 @@ pub struct Entry {
     pub iso_bytes: u64,
     /// The ISO's SHA-256, lowercase hex.
     pub iso_sha256: String,
+    /// Its date, `YYYY-MM-DD`; empty when the entry names none (an
+    /// index written before releases had one).
+    #[serde(default)]
+    pub released: String,
+    /// Its release notes' file name, beside the index; empty for none.
+    #[serde(default)]
+    pub notes: String,
 }
 
 impl Entry {
@@ -64,6 +71,38 @@ impl Entry {
     pub fn parsed(&self) -> Option<Release> {
         self.release.parse().ok()
     }
+}
+
+/// The date of `unix` seconds, `YYYY-MM-DD` in UTC.
+#[must_use]
+pub fn date_of(unix: u64) -> String {
+    // Days to the civil date: Howard Hinnant's algorithm.
+    let days = i64::try_from(unix / 86_400).unwrap_or(0) + 719_468;
+    let era = days.div_euclid(146_097);
+    let doe = days.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// Whether `s` is a date as an entry has it.
+fn is_date(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 10
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && b.iter()
+            .enumerate()
+            .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+}
+
+/// Whether `s` is a file name beside the index: no directory in it.
+fn is_file_name(s: &str) -> bool {
+    !s.is_empty() && !s.contains(['/', '\\']) && s != "." && s != ".."
 }
 
 /// The index.
@@ -154,6 +193,13 @@ pub fn render(index: &Index) -> String {
         let _ = writeln!(out, "iso = {}", quoted(&e.iso));
         let _ = writeln!(out, "iso_bytes = {}", e.iso_bytes);
         let _ = writeln!(out, "iso_sha256 = {}", quoted(&e.iso_sha256));
+        // Written only when there: an older index reads back the same.
+        if !e.released.is_empty() {
+            let _ = writeln!(out, "released = {}", quoted(&e.released));
+        }
+        if !e.notes.is_empty() {
+            let _ = writeln!(out, "notes = {}", quoted(&e.notes));
+        }
     }
     out
 }
@@ -193,6 +239,20 @@ pub fn verify(bytes: &[u8], trusted: &[[u8; 32]], seen: u64) -> Result<Index, Re
     }
     if let Some(e) = index.releases.iter().find(|e| e.parsed().is_none()) {
         return Err(Refused::Form(format!("release {:?}", e.release)));
+    }
+    if let Some(e) = index
+        .releases
+        .iter()
+        .find(|e| !e.released.is_empty() && !is_date(&e.released))
+    {
+        return Err(Refused::Form(format!("released {:?}", e.released)));
+    }
+    if let Some(e) = index
+        .releases
+        .iter()
+        .find(|e| !e.notes.is_empty() && !is_file_name(&e.notes))
+    {
+        return Err(Refused::Form(format!("notes {:?}", e.notes)));
     }
     if index.sequence < seen {
         return Err(Refused::Older {
@@ -247,6 +307,8 @@ mod tests {
             iso: format!("X-{release}.iso"),
             iso_bytes: 200,
             iso_sha256: "cd".repeat(32),
+            released: String::new(),
+            notes: String::new(),
         }
     }
 
@@ -301,6 +363,50 @@ mod tests {
         // A second index appended after the signature is not read.
         let tail = format!("{text}[[release]]\n");
         assert!(verify(tail.as_bytes(), &[pk], 0).is_err());
+    }
+
+    #[test]
+    fn a_release_says_its_date_and_notes_and_an_older_entry_reads_without() {
+        let key = SigningKey::from_bytes(&[7; 32]);
+        let pk = key.verifying_key().to_bytes();
+        // Without them, nothing of them is written.
+        let plain = sign(&index(), &key);
+        assert!(!plain.contains("released") && !plain.contains("notes"));
+        let back = verify(plain.as_bytes(), &[pk], 0).unwrap();
+        assert!(back.releases[0].released.is_empty());
+        let mut i = index();
+        i.releases[1].released = date_of(1_793_000_000);
+        i.releases[1].notes = "RELEASE_NOTES_V1R0M1.md".into();
+        let text = sign(&i, &key);
+        assert!(text.contains("released = \"2026-10-26\""), "{text}");
+        let back = verify(text.as_bytes(), &[pk], 0).unwrap();
+        let e = back
+            .releases
+            .iter()
+            .find(|e| e.release == "V1R0M0")
+            .unwrap();
+        assert_eq!(e.notes, "RELEASE_NOTES_V1R0M1.md");
+        // Signed with the rest.
+        let changed = text.replace("2026-10-26", "2026-10-27");
+        assert_eq!(
+            verify(changed.as_bytes(), &[pk], 0),
+            Err(Refused::NotTrusted)
+        );
+        // Not a date, or not a file beside the index: refused.
+        for (field, bad) in [("released", "26 Oct"), ("notes", "../x.md")] {
+            let mut i = index();
+            if field == "released" {
+                i.releases[0].released = bad.into();
+            } else {
+                i.releases[0].notes = bad.into();
+            }
+            assert!(matches!(
+                verify(sign(&i, &key).as_bytes(), &[pk], 0),
+                Err(Refused::Form(_))
+            ));
+        }
+        assert_eq!(date_of(0), "1970-01-01");
+        assert_eq!(date_of(951_782_400), "2000-02-29");
     }
 
     #[test]

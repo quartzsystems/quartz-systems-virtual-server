@@ -4,9 +4,11 @@
 
 //! The partitions at the host's shutdown: the partition manager is
 //! asked to end every one before any service is stopped, each through
-//! its own system when it can be asked, in the reverse of the order
-//! they were activated in. The asking and the waiting are another
-//! thread's; the loop only looks whether it is done.
+//! its own system when it can be asked, as its settings say, in the
+//! reverse of the order they were activated in. A power off that does
+//! not say ends them as the host's power-on settings do. The asking
+//! and the waiting are another thread's; the loop only looks whether
+//! it is done.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
@@ -25,23 +27,54 @@ const PAUSE: Duration = Duration::from_millis(200);
 /// still activated when the wait was given up.
 pub type Outcome = Result<u32, String>;
 
+/// How long one partition may take to end with the host: its own
+/// delayed shut down and the grace after it, or the settings' wait for
+/// a system, whichever is longer.
+fn longest(settings: &resource::Settings, delays: &[u32]) -> u64 {
+    let service = settings.service;
+    let own = delays
+        .iter()
+        .map(|d| u64::from(*d) + u64::from(service.delayed_grace_secs))
+        .max()
+        .unwrap_or(0);
+    own.max(u64::from(service.host_timeout_secs))
+}
+
+/// The delays of the active partitions that are shut down delayed with
+/// the host.
+fn delays(client: &mut Client) -> Vec<u32> {
+    let active: Vec<u32> = client
+        .list()
+        .map(|all| {
+            all.into_iter()
+                .filter(|p| p.state.active())
+                .map(|p| p.id)
+                .collect()
+        })
+        .unwrap_or_default();
+    active
+        .into_iter()
+        .filter_map(|id| client.partition_settings(id).ok()?.ok())
+        .filter(|s| s.with_host == model::WithHost::Delayed)
+        .map(|s| s.delay_secs)
+        .collect()
+}
+
 /// Ask the partition manager at `socket` to end every partition, and
-/// wait until none is activated; with `immediate`, each is ended at
-/// once. The outcome arrives on the channel.
+/// wait until none is activated; with `immediate`, or when the host's
+/// settings power off at once, each is ended at once. The outcome
+/// arrives on the channel.
 pub fn end_all(socket: PathBuf, immediate: bool) -> Receiver<Outcome> {
     let (done, outcome) = mpsc::channel();
     thread::spawn(move || {
         let mut client = Client::new(socket);
         // No partition manager: nothing it started is watched, and
         // there is nobody to ask.
-        // Each is given the time the settings give a system to shut
-        // down at the host's shut down, then the VMM's grace.
-        let system = client
-            .settings()
-            .map_or(resource::Service::default().host_timeout_secs, |s| {
-                s.service.host_timeout_secs
-            });
-        let each = Duration::from_secs(u64::from(system)) + GRACE;
+        let settings = client.settings().unwrap_or_default();
+        let immediate = immediate || settings.power_on.power_off == resource::PowerOff::Immediate;
+        // Each is given the time its settings or the host's give its
+        // system to shut down, then the VMM's grace.
+        let each = Duration::from_secs(longest(&settings, &delays(&mut client))) + GRACE;
         let asked = if immediate {
             end_now(&mut client).ok()
         } else {
@@ -81,4 +114,21 @@ fn end_now(client: &mut Client) -> Result<u32, std::io::Error> {
         let _ = client.shut_down(p.id);
     }
     Ok(u32::try_from(active.len()).unwrap_or(u32::MAX))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_partition_with_a_delay_of_its_own_is_waited_for_that_long() {
+        let settings = resource::Settings::default();
+        let s = settings.service;
+        assert_eq!(
+            super::longest(&settings, &[]),
+            u64::from(s.host_timeout_secs)
+        );
+        assert_eq!(
+            super::longest(&settings, &[60, 3600]),
+            3600 + u64::from(s.delayed_grace_secs)
+        );
+    }
 }

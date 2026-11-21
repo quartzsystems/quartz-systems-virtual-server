@@ -1,0 +1,18 @@
+[package]
+name = "servicedump"
+description = "An appliance's service dump: the archive, the store with its bounds, what every appliance gathers and the rule that leaves its secrets out"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+appliance = { path = "../appliance", version = "0.1.0" }
+ipc.workspace = true
+
+[dev-dependencies]
+identity = { path = "../identity", version = "0.1.0" }
+users = { path = "../users", version = "0.1.0" }
+
+[lints]
+workspace = true

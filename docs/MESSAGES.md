@@ -54,6 +54,7 @@ wording.
 | `QVS1005` | Partition name &1 is already in use. | Partition &2 has that name. No two partitions of a host have one name. Choose another name. |
 | `QVS1006` | The &1 of partition &2 cannot be changed. | A partition's ID, its serial number, its environment and the time it was created are set when it is created and stay as they are for as long as its definition exists. |
 | `QVS1007` | Partition &1 has no profile &2 to be its default. | The default profile of a partition is one of its own profiles. Create the profile first, or name one the partition has. |
+| `QVS1008` | A partition's description of &1 bytes is not valid. | A description is one line of at most &2 bytes, without control characters. |
 | `QVS1101` | Profile name &1 is not valid. | A profile's name is 1 to 10 characters: the letters A to Z, the digits 0 to 9 and the underscore, with a letter first. Choose a name of that form. |
 | `QVS1102` | The number of &1 is out of range: minimum &2, maximum &3. | A profile names at least 1 and at most &4 &1. Correct the minimum or the maximum. |
 | `QVS1103` | Minimum &2, desired &3 and maximum &4 &1 are not in order. | The minimum is not more than the desired value, and the desired value is not more than the maximum. Correct the three values. |
@@ -108,6 +109,8 @@ wording.
 | `QVS2013` | Partition &1's profile &2 is not at revision &3. | It was changed or deleted since it was read, by another console or at the host. Read it again and make the change on what it is now. |
 | `QVS2014` | Partition &1's definition is not at revision &2. | It was changed since it was read, by another console or at the host. Read it again and make the change on what it is now. |
 | `QVS2015` | Partition &1 is not activated: it has no current configuration to save. | Its current configuration is what its activation gave it. Activate it first, or put a profile. |
+| `QVS2016` | Partition ID &1 is in use. | Partition &2 has that ID. Choose another, or leave the ID out for the partition manager to assign the lowest one free. |
+| `QVS2017` | Partition ID &1 is past this host's limit of &2 partitions. | A partition created at an ID of its own is given one from 1 to the host's most partitions. Choose a lower ID, or raise the limit in the host's settings. |
 | `QVS2101` | Partition &1 needs &2 dedicated processors; &3 are available. | The profile's minimum number of processors is more than the cores that no running partition holds and that the shared partitions of the default pool do not need. Shut down a partition, lower the profile's minimum, or use shared processors. |
 | `QVS2102` | Partition &1 needs &2 processing units in pool &3; &4 are available. | The profile's minimum processing units are more than the pool has left: its running partitions are entitled to the rest. Shut down a partition of the pool, lower the profile's minimum, or use another pool. |
 | `QVS2103` | Partition &1 needs &2 virtual processors; pool &3 has &4 cores. | Each virtual processor of a partition runs on a core of its pool, so a partition cannot have more virtual processors than its pool has cores. Lower the profile's minimum, or use a pool with more cores. |
@@ -152,6 +155,7 @@ wording.
 | `QVS2315` | Partition &1's console has shown nothing yet. | The system has not sent its console's screen. It sends it once its IPL has started; ask again in a moment. |
 | `QVS2316` | Partition &1's system says its &2 is &3; the definition has &4. | The system read its identity from its own LIC record or its system values, and it differs from what the host gives the partition. The partition runs on. When the disk is another partition's, correct the profile; otherwise IPL the system again so it reads what the host wrote. |
 | `QVS2317` | Partition &1's service channel was closed: &2. | The system sent what is not the partition service protocol, or more than it allows. The channel is closed and the partition runs on; it is opened again when the system's service daemon says hello again. |
+| `QVS2318` | Partition &1 does not allow control panel functions from a management console. | Its settings keep its control panel to the host: Service Tools and the host's own requests. Change the partition's settings to allow them. |
 | `QVS2401` | No device of the host is at location &1. | A profile's physical I/O names the host's devices by location code, as Service Tools option 10 lists them. Check the code, or whether the device was removed from the machine. |
 | `QVS2402` | Device &1 is not released for partitions. | A device is given to a partition only after an operator releases it at the host, at Service Tools option 10. Release it there, or take it out of the profile. |
 | `QVS2403` | Device &1 is held by partition &2. | A device is one partition's at a time. It is given back when that partition ends. |
@@ -199,6 +203,7 @@ wording.
 | `QVS3016` | Storage pool &1 was not made: &2. | The disks chosen may hold part of the pool. They can be chosen again: a pool is made over what is on them. |
 | `QVS3017` | Hot spare &1: &2. | A pool with protection has up to 8 hot spares, each at least as large as its units. |
 | `QVS3018` | The pool service could not &1: &2. | The host's log has more. Try again; if it fails again, a disk may be failing. |
+| `QVS3019` | Storage pool &1 cannot be extended: a pool's size is fixed when it is made. | A pool's protected set and its file system are made once, of the disks chosen then. Make another pool of the new disks, or move virtual disks to a larger pool. |
 | `QVS3101` | Virtual disk name &1 is not valid. | A virtual disk's name is 1 to 32 letters, digits, - and _, with a letter first. |
 | `QVS3102` | A virtual disk's size is &1 to &2 MiB, not &3. | Sizes are whole megabytes. |
 | `QVS3103` | Storage pool &1 has a virtual disk named &2. | Choose another name. |
@@ -246,6 +251,7 @@ wording.
 | `QVS5002` | Problem &1 was closed already, by &2. | A closed problem stays closed. When its condition is seen again a new problem is opened. |
 | `QVS5003` | The condition of problem &1 still holds. | A problem is closed once its condition no longer holds, which its analysis log says. Close it anyway when the condition is understood and will be dealt with later. |
 | `QVS5004` | The problem log could not be written. | Nothing was changed. The data file system may be full or failing: look at the problems about it, then try again. |
+| `QVS5005` | A note of &1 bytes is not valid. | A note is one line of 1 to &2 bytes, without control characters. It is added to the problem's analysis log with its author's name. |
 | `QVS5101` | The A/B record of the load source was not valid: &1. | No copy of the record read, and a new one was written whose default is the slot the host started from; an update that was pending is forgotten. Display the code levels (Service Tools option 8, 5). If this is seen again the load-source disk may be failing. |
 | `QVS5102` | Code slot &1 did not confirm, and the host went back to the other slot: &2. | An update was activated and the slot it was installed in did not become ready at its IPL. The host runs the release it ran before, with its state as it was before the restart. A host dump was taken: take it to the release's supplier. |
 | `QVS5103` | The data file system was not mounted: &1. | The host runs with its state in memory only, and keeps nothing it is told. Nothing was reformatted. Look at the load-source units, and restart the host when they are in order. |

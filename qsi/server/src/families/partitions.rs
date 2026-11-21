@@ -62,7 +62,16 @@ pub(super) fn partitions(s: &mut Services, r: &partitions::Request) -> Answered 
                     .collect(),
             )
         }
-        Request::Activations(_) => return Err(vec![super::base::not_agreed()]),
+        Request::Activations(_) => Reply::Activations(
+            reached(PARTD, s.partd.activations())?
+                .into_iter()
+                .map(|a| partitions::Activation {
+                    id: a.id,
+                    since: a.since,
+                    profile: a.profile,
+                })
+                .collect(),
+        ),
     }))
 }
 
@@ -128,8 +137,19 @@ pub(super) fn partition(s: &mut Services, r: partition::Request, user: &str) -> 
             let current = local(PARTD, s.partd.entitlement(e.id, change, by))?;
             Reply::Entitlement(convert::current(&current))
         }
-        Request::CreateWith(_) | Request::GetSettings(_) | Request::SetSettings(_) => {
-            return Err(vec![super::base::not_agreed()]);
+        Request::CreateWith(c) => {
+            let settings = convert::settings_in(&c.settings).map_err(|n| vec![n])?;
+            let d = local(PARTD, s.partd.create_as(c.id, c.name, settings))?;
+            Reply::CreateWith(convert::definition(&d))
+        }
+        Request::GetSettings(g) => Reply::GetSettings(convert::settings(&local(
+            PARTD,
+            s.partd.partition_settings(g.id),
+        )?)),
+        Request::SetSettings(c) => {
+            let settings = convert::settings_in(&c.settings).map_err(|n| vec![n])?;
+            local(PARTD, s.partd.set_partition_settings(c.id, settings))?;
+            Reply::SetSettings(Empty)
         }
     }))
 }
@@ -205,7 +225,15 @@ pub(super) fn profiles(s: &mut Services, r: profiles::Request) -> Answered {
                 local(PARTD, s.partd.save_current(c.id, c.name, c.revision)).map_err(saved)?;
             Reply::SaveCurrent(Saved { revision })
         }
-        Request::Activated(_) => return Err(vec![super::base::not_agreed()]),
+        Request::Activated(a) => Reply::Activated(
+            local(PARTD, s.partd.profile_uses(a.id))?
+                .into_iter()
+                .map(|u| profiles::ProfileUse {
+                    name: u.name,
+                    last: u.last,
+                })
+                .collect(),
+        ),
     }))
 }
 
@@ -235,7 +263,21 @@ pub(super) fn refcodes(s: &mut Services, r: &refcodes::Request) -> Answered {
 pub(super) fn panel(s: &mut Services, r: &panel::Request) -> Answered {
     let f = match r {
         panel::Request::Function(f) => f,
-        panel::Request::Functions(_) => return Err(vec![super::base::not_agreed()]),
+        panel::Request::Functions(f) => {
+            // The partition's: one that is not there is refused.
+            definition(s, f.id)?;
+            let all = reached(PARTD, s.partd.panel_functions())?;
+            return Ok(AnyReply::Panel(panel::Reply::Functions(
+                all.into_iter()
+                    .map(|f| panel::FunctionInfo {
+                        function: f.function,
+                        text: f.text,
+                        manual: f.manual,
+                        confirm: f.confirm,
+                    })
+                    .collect(),
+            )));
+        }
     };
     let n = |e: Note| vec![e];
     let args = partd::proto::PanelArgs {
@@ -258,7 +300,9 @@ pub(super) fn panel(s: &mut Services, r: &panel::Request) -> Answered {
             .transpose()
             .map_err(n)?,
     };
-    let text = local(PARTD, s.partd.panel(f.id, f.function, args))?;
+    // A console's: refused when the partition's settings keep its
+    // panel to the host.
+    let text = local(PARTD, s.partd.console_panel(f.id, f.function, args))?;
     Ok(AnyReply::Panel(panel::Reply::Function(panel::Shown {
         text,
     })))
@@ -293,7 +337,21 @@ pub(super) fn dumps(s: &mut Services, r: dumps::Request) -> Answer {
         Request::Delete(d) => {
             local(PARTD, s.partd.delete_dump(d.id, d.name)).map(|()| Reply::Delete(Empty))
         }
-        Request::Space(_) => Err(vec![super::base::not_agreed()]),
+        Request::Space(g) => local(PARTD, s.partd.dump_space(g.id)).map(|all| {
+            Reply::Space(
+                all.into_iter()
+                    .map(|d| dumps::PartitionSpace {
+                        id: d.id,
+                        space: qsi::base::Space {
+                            bytes: d.bytes,
+                            limit: d.limit,
+                            dumps: d.dumps,
+                            max_dumps: d.max_dumps,
+                        },
+                    })
+                    .collect(),
+            )
+        }),
     };
     reply.map(AnyReply::Dumps).into()
 }

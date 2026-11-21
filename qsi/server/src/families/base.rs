@@ -167,8 +167,18 @@ pub(super) fn answer(s: &mut Services, r: &Request, user: &str) -> Result<AnyRep
             s.facts.delete_host_dump(&d.name)?;
             Reply::DeleteDump(Empty)
         }
-        // The connection's: it opens a stream; or bits this host does not say.
-        Request::DownloadDump(_) | Request::DumpSpace(_) | Request::FixLevel(_) => {
+        Request::DumpSpace(_) => {
+            let all = s.facts.host_dumps();
+            Reply::DumpSpace(qsi::base::Space {
+                bytes: all.iter().map(|d| d.bytes).sum(),
+                limit: hostdump::store::MAX_TOTAL,
+                dumps: u32::try_from(all.len()).unwrap_or(u32::MAX),
+                max_dumps: u32::try_from(hostdump::store::MAX_DUMPS).unwrap_or(u32::MAX),
+            })
+        }
+        // The connection's: it opens a stream; or a bit this host does
+        // not say (it keeps no fix level of its own).
+        Request::DownloadDump(_) | Request::FixLevel(_) => {
             return Err(vec![not_agreed()]);
         }
         // The connection's: they need the event log.

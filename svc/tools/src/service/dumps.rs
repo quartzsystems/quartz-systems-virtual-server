@@ -40,7 +40,7 @@ fn partd() -> partd::Client {
 }
 
 fn host_store() -> hostdump::Store {
-    hostdump::Store::at(Path::new(release::DATA_DIR).join(hostdump::store::DIR))
+    hostdump::store::at(Path::new(release::DATA_DIR).join(hostdump::store::DIR))
 }
 
 /// Every dump: the host's, then each partition's, oldest first.

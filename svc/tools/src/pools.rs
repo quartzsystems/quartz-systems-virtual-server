@@ -413,12 +413,9 @@ struct Pick {
     protection: pool::label::Protection,
 }
 
-/// The disks a pool may be made of: not configured, or foreign.
+/// The disks a pool may be made of: the pool service's candidates.
 fn candidates(env: &mut Env) -> Vec<Disk> {
-    disks(env)
-        .into_iter()
-        .filter(|d| d.free || d.foreign)
-        .collect()
+    env.pools().candidates().unwrap_or_default()
 }
 
 impl Panel<Env, Outcome> for Pick {

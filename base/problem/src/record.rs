@@ -200,13 +200,26 @@ pub enum Notice {
     Cleared,
     /// A person closed it.
     Closed,
+    /// A person added a note to its analysis log.
+    Noted,
 }
 ipc::wire_enum!(Notice {
     0 => Opened,
     1 => Seen,
     2 => Cleared,
     3 => Closed,
+    4 => Noted,
 });
+
+/// A person's note in an analysis log: its line, and who wrote it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Note {
+    /// The line as written.
+    pub line: Line,
+    /// Its author, as the request named them.
+    pub by: String,
+}
+ipc::wire_struct!(Note { line, by });
 
 /// An event of the problem service.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -217,12 +230,70 @@ pub struct Noticed {
     pub problem: Summary,
     /// When, seconds since the epoch.
     pub time: u64,
+    /// The note, for [`Notice::Noted`].
+    pub note: Option<Note>,
 }
 ipc::wire_struct!(Noticed {
     notice,
     problem,
-    time
+    time,
+    note
 });
+
+/// How grave a problem is: its condition's, by the product's rule.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Severity {
+    /// A person should look; the host carries on.
+    #[default]
+    Attention,
+    /// The host parked, or a partition was held, for it.
+    Terminal,
+}
+ipc::wire_enum!(Severity {
+    0 => Attention,
+    1 => Terminal,
+});
+
+impl Severity {
+    /// As a table says it.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Severity::Attention => "attention",
+            Severity::Terminal => "terminal",
+        }
+    }
+}
+
+/// A problem's summary with its severity.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Rated {
+    /// How grave it is.
+    pub severity: Severity,
+    /// What a list shows.
+    pub summary: Summary,
+}
+ipc::wire_struct!(Rated { severity, summary });
+
+/// A page of a list with each problem's severity, newest first.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RatedPage {
+    /// The problems.
+    pub problems: Vec<Rated>,
+    /// The next page's `before`; none when this is the last.
+    pub more: Option<u64>,
+}
+ipc::wire_struct!(RatedPage { problems, more });
+
+/// A problem whole with its severity.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RatedProblem {
+    /// How grave it is.
+    pub severity: Severity,
+    /// The problem.
+    pub problem: Problem,
+}
+ipc::wire_struct!(RatedProblem { severity, problem });
 
 /// How a resource is said to a person: `disk unit DD003`, `virtual disk
 /// VD03 in pool POOL1`.

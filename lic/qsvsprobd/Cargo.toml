@@ -1,6 +1,6 @@
 [package]
 name = "qsvsprobd"
-description = "QS/VS's problem service: svc/problem run as QS/VS, over its reference code history and its data file system"
+description = "QS/VS's problem service: base/problem run as QS/VS, over its reference code history and its data file system"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,8 +9,10 @@ publish.workspace = true
 [dependencies]
 release = { path = "../release", version = "0.1.0" }
 refcode = { path = "../refcode", version = "0.1.0" }
-problem = { path = "../../svc/problem", version = "0.1.0" }
+problem = { path = "../../base/problem", version = "0.1.0" }
 logd = { path = "../../base/logd", version = "0.1.0" }
+qvsmsg = { path = "../qvsmsg", version = "0.1.0" }
+supervise = { path = "../../base/supervise", version = "0.1.0" }
 
 [lints]
 workspace = true

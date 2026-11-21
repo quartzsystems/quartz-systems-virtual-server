@@ -150,10 +150,49 @@ pub(super) fn answer(s: &mut Services, r: &Request, user: &str) -> Result<AnyRep
                 local(NAME, s.probd.close(c.number, c.anyway, user.to_string())).map_err(led)?;
             Reply::Close(summary(&closed.summary))
         }
-        Request::Note(_) | Request::ListRated(_) | Request::GetRated(_) => {
-            return Err(vec![super::base::not_agreed()]);
+        Request::Note(n) => {
+            let line = local(
+                NAME,
+                s.probd.note(n.number, n.text.clone(), user.to_string()),
+            )
+            .map_err(led)?;
+            Reply::Note(q::Line {
+                time: line.time,
+                text: line.text,
+            })
+        }
+        Request::ListRated(l) => {
+            let page = reached(
+                NAME,
+                s.probd.list_rated(filter(&l.filter), l.before, l.limit),
+            )?;
+            Reply::ListRated(q::RatedPage {
+                problems: page
+                    .problems
+                    .iter()
+                    .map(|r| q::Rated {
+                        severity: severity(r.severity),
+                        summary: summary(&r.summary),
+                    })
+                    .collect(),
+                more: page.more,
+            })
+        }
+        Request::GetRated(g) => {
+            let r = local(NAME, s.probd.get_rated(g.number)).map_err(led)?;
+            Reply::GetRated(q::RatedProblem {
+                severity: severity(r.severity),
+                problem: problem(&r.problem),
+            })
         }
     }))
+}
+
+fn severity(s: problem::record::Severity) -> q::Severity {
+    match s {
+        problem::record::Severity::Attention => q::Severity::Attention,
+        problem::record::Severity::Terminal => q::Severity::Terminal,
+    }
 }
 
 /// A problem service's event as QSI's.
@@ -163,9 +202,21 @@ pub fn event(e: &problem::Noticed) -> qsi::any::AnyEvent {
         problem: summary(&e.problem),
         time: e.time,
     };
+    if let (problem::Notice::Noted, Some(note)) = (e.notice, &e.note) {
+        return qsi::any::AnyEvent::Service(q::Event::Noted(q::Noted {
+            number: e.problem.number,
+            line: q::Line {
+                time: note.line.time,
+                text: note.line.text.clone(),
+            },
+            by: note.by.clone(),
+            time: e.time,
+        }));
+    }
     qsi::any::AnyEvent::Service(match e.notice {
         problem::Notice::Opened => q::Event::Opened(n),
-        problem::Notice::Seen => q::Event::Seen(n),
+        // A note without its line is said as seen.
+        problem::Notice::Seen | problem::Notice::Noted => q::Event::Seen(n),
         problem::Notice::Cleared => q::Event::Cleared(n),
         problem::Notice::Closed => q::Event::Closed(n),
     })

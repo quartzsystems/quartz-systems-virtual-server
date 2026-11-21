@@ -28,7 +28,7 @@ refcode = { path = "../../lic/refcode", version = "0.1.0" }
 appliance = { path = "../../base/appliance", version = "0.1.0" }
 logd = { path = "../../base/logd", version = "0.1.0" }
 qsilocal = { path = "../local", version = "0.1.0" }
-problem = { path = "../../svc/problem", version = "0.1.0" }
+problem = { path = "../../base/problem", version = "0.1.0" }
 hostdump = { path = "../../svc/hostdump", version = "0.1.0" }
 update = { path = "../../svc/update", version = "0.1.0" }
 ipc.workspace = true

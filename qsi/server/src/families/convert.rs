@@ -48,6 +48,8 @@ pub fn qsi_identifier(id: &str) -> Option<&'static str> {
         | "QVS2412" | "QVS2413" | "QVS2414" => p::NOT_ASSIGNABLE,
         "QVS2420" => p::NOT_A_DRIVE,
         "QVS2421" => p::NOT_VIRTUAL,
+        "QVS2016" => qsi::host::partition::msgid::ID_TAKEN,
+        "QVS2017" => qsi::host::partition::msgid::ID_OUT_OF_RANGE,
         "QVS2501" => e::NOT_RUNNING,
         "QVS2502" => e::DEDICATED,
         "QVS2503" => e::OUTSIDE_PROFILE,
@@ -263,6 +265,37 @@ pub fn definition_in(
         },
         created: kept.created,
         revision: kept.revision,
+        // Changed by version 3's own request, never by a definition's.
+        settings: kept.settings.clone(),
+    })
+}
+
+/// A partition's settings as QSI has them.
+pub fn settings(s: &model::PartitionSettings) -> qsi::host::partition::Settings {
+    use qsi::host::partition::WithHost as W;
+    qsi::host::partition::Settings {
+        description: s.description.clone(),
+        panel: s.panel,
+        with_host: match s.with_host {
+            model::WithHost::Delayed => W::Delayed,
+            model::WithHost::Immediate => W::Immediate,
+        },
+        delay: s.delay_secs,
+    }
+}
+
+/// A console's settings as the host keeps them.
+pub fn settings_in(s: &qsi::host::partition::Settings) -> Result<model::PartitionSettings, Note> {
+    use qsi::host::partition::WithHost as W;
+    Ok(model::PartitionSettings {
+        description: s.description.clone(),
+        panel: s.panel,
+        with_host: match s.with_host {
+            W::Delayed => model::WithHost::Delayed,
+            W::Immediate => model::WithHost::Immediate,
+            W::Other(_) => return Err(no_such("shut down with the host")),
+        },
+        delay_secs: s.delay,
     })
 }
 

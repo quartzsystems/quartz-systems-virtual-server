@@ -8,6 +8,8 @@ publish.workspace = true
 
 [dependencies]
 ipc.workspace = true
+msg = { path = "../../base/msg", version = "0.1.0" }
+problem = { path = "../../base/problem", version = "0.1.0" }
 
 [lints]
 workspace = true

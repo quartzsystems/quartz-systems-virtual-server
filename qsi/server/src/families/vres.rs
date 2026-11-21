@@ -247,7 +247,6 @@ pub(super) fn answer(s: &mut Services, r: Request) -> Answered {
         }
         // A stream's: the connection opens it.
         Request::ImageUpload(_) => Err(not_here()),
-        // Bits this host's hello does not say.
         Request::Disks(_)
         | Request::PoolCreate(_)
         | Request::PoolDelete(_)
@@ -256,13 +255,13 @@ pub(super) fn answer(s: &mut Services, r: Request) -> Answered {
         | Request::SpareAdd(_)
         | Request::SpareRemove(_)
         | Request::Designate(_)
-        | Request::PoolExtend(_)
-        | Request::SwitchCreate(_)
+        | Request::PoolExtend(_) => managed_pools(s, r),
+        Request::SwitchCreate(_)
         | Request::SwitchChange(_)
         | Request::SwitchRename(_)
         | Request::SwitchDelete(_)
         | Request::UplinkSet(_)
-        | Request::UplinkClear(_) => Err(vec![super::base::not_agreed()]),
+        | Request::UplinkClear(_) => managed_switches(s, r),
         Request::TapeDrives(_) => reached(PARTD, s.partd.tape_drives()).map(|drives| {
             Reply::TapeDrives(
                 drives
@@ -412,6 +411,207 @@ fn network(s: &mut Services, r: Request) -> Result<Reply, Vec<Note>> {
                 adapters_per_partition: l.adapters_per_partition,
                 ports_per_switch: l.ports_per_switch,
             })
+        }
+        _ => return Err(not_here()),
+    })
+}
+
+/// A disk a pool may take, as QSI has it.
+pub fn pool_disk(d: &poold::Disk) -> vres::PoolDisk {
+    vres::PoolDisk {
+        name: d.name.clone(),
+        serial: d.serial.clone(),
+        location: d.location.clone(),
+        bytes: d.bytes,
+        block_size: d.logical_block,
+        what: d.what.clone(),
+        pool: d.pool.clone(),
+        free: d.free,
+        foreign: d.foreign,
+    }
+}
+
+/// A protection as the pool service names it.
+fn protection(p: vres::Protection) -> Result<&'static str, Vec<Note>> {
+    Ok(match p {
+        vres::Protection::None => "none",
+        vres::Protection::Mirrored => "mirrored",
+        vres::Protection::Raid5 => "raid5",
+        vres::Protection::Raid6 => "raid6",
+        vres::Protection::Other(_) => return Err(vec![super::convert::no_such("protection")]),
+    })
+}
+
+/// QSI's identifier of a pool service's refusal (bit 20).
+fn pools_identifier(id: &str) -> Option<&'static str> {
+    use vres::pools as p;
+    Some(match id {
+        "QVS3001" => p::BAD_NAME,
+        "QVS3002" => p::NAME_TAKEN,
+        "QVS3003" => p::NO_POOL,
+        "QVS3004" => p::DISK_COUNT,
+        "QVS3005" => p::NO_DISK,
+        "QVS3006" => p::DISK_TAKEN,
+        "QVS3007" => p::FOREIGN,
+        "QVS3008" => p::TOO_SMALL,
+        "QVS3009" => p::BLOCK_SIZES,
+        "QVS3010" | "QVS3017" => p::SPARES,
+        "QVS3011" => p::TOO_LARGE,
+        "QVS3012" => p::NOT_EMPTY,
+        "QVS3013" => p::HELD,
+        "QVS3014" => p::NOT_USABLE,
+        "QVS3015" => p::NOT_FAILED,
+        "QVS3016" => p::STEP_FAILED,
+        "QVS3019" => p::CANNOT_GROW,
+        "QVS3205" => p::MEDIA_IN_USE,
+        _ => return None,
+    })
+}
+
+/// QSI's identifier of a switch service's refusal (bit 19).
+fn switches_identifier(id: &str) -> Option<&'static str> {
+    use vres::switches as w;
+    Some(match id {
+        "QVS4001" => w::BAD_NAME,
+        "QVS4002" => w::NAME_TAKEN,
+        "QVS4003" => w::NO_SWITCH,
+        "QVS4004" | "QVS4005" => w::BAD_VLAN,
+        "QVS4006" | "QVS4105" => w::BAD_MTU,
+        "QVS4007" => w::TOO_MANY,
+        "QVS4008" | "QVS4009" => w::NAMED,
+        "QVS4010" => w::NATIVE_NOT_CARRIED,
+        "QVS4012" => w::NOT_BUILT,
+        "QVS4015" => w::PORTS_ON,
+        "QVS4101" => w::NO_INTERFACE,
+        "QVS4102" => w::MANAGEMENT,
+        "QVS4103" => w::OTHER_SWITCH,
+        "QVS4104" => w::NO_BOND,
+        "QVS4106" | "QVS4107" => w::UPLINK_SIZE,
+        _ => return None,
+    })
+}
+
+/// A refusal led by QSI's identifier from `table`, the host's after it.
+fn led_by(notes: Vec<Note>, table: fn(&str) -> Option<&'static str>) -> Vec<Note> {
+    let Some(ours) = notes.first().and_then(|n| table(&n.msgid)) else {
+        return notes;
+    };
+    let mut all = vec![Note {
+        msgid: ours.into(),
+        text: notes[0].text.clone(),
+        help: notes[0].help.clone(),
+    }];
+    all.extend(notes);
+    all
+}
+
+/// Storage pools made and changed (bit 20): the pool service's.
+fn managed_pools(s: &mut Services, r: Request) -> Result<Reply, Vec<Note>> {
+    let lead = |n| led_by(n, pools_identifier);
+    Ok(match r {
+        Request::Disks(_) => Reply::Disks(
+            reached(POOLD, s.poold.candidates())?
+                .iter()
+                .map(pool_disk)
+                .collect(),
+        ),
+        Request::PoolCreate(c) => {
+            let p = protection(c.protection)?.to_string();
+            let made = local(
+                POOLD,
+                s.poold.create_pool(c.name, p, c.disks, c.spares, c.confirm),
+            )
+            .map_err(lead)?;
+            Reply::PoolCreate(pool(&made))
+        }
+        Request::PoolDelete(d) => {
+            local(POOLD, s.poold.delete_pool(d.name)).map_err(lead)?;
+            Reply::PoolDelete(Empty)
+        }
+        Request::PoolRename(p) => {
+            local(POOLD, s.poold.rename_pool(p.name, p.to)).map_err(lead)?;
+            Reply::PoolRename(Empty)
+        }
+        Request::UnitReplace(u) => {
+            local(
+                POOLD,
+                s.poold.replace_unit(u.pool, u.unit, u.disk, u.confirm),
+            )
+            .map_err(lead)?;
+            Reply::UnitReplace(Empty)
+        }
+        Request::SpareAdd(a) => {
+            local(POOLD, s.poold.add_spare(a.pool, a.disk, a.confirm)).map_err(lead)?;
+            Reply::SpareAdd(Empty)
+        }
+        Request::SpareRemove(a) => {
+            local(POOLD, s.poold.remove_spare(a.pool, a.disk)).map_err(lead)?;
+            Reply::SpareRemove(Empty)
+        }
+        Request::Designate(d) => {
+            local(POOLD, s.poold.designate(d.pool)).map_err(lead)?;
+            Reply::Designate(Empty)
+        }
+        // A pool's set has a fixed size: one that is there cannot grow.
+        Request::PoolExtend(e) => {
+            let there = reached(POOLD, s.poold.pools())?
+                .iter()
+                .any(|p| p.name == e.pool);
+            let why = if there {
+                qvsmsg::SPOOL_FIXED_SIZE.with(&[&e.pool])
+            } else {
+                qvsmsg::SPOOL_MISSING.with(&[&e.pool])
+            };
+            return Err(lead(super::convert::notes(&[why])));
+        }
+        _ => return Err(not_here()),
+    })
+}
+
+/// An uplink as the switch service has it.
+fn uplink(u: vres::Uplink) -> Result<vswitch::Uplink, Vec<Note>> {
+    let bond = match u.bond {
+        None => None,
+        Some(vres::Bond::ActiveBackup) => Some(vswitch::Bond::ActiveBackup),
+        Some(vres::Bond::Lacp) => Some(vswitch::Bond::Lacp),
+        Some(vres::Bond::Other(_)) => return Err(vec![super::convert::no_such("bond mode")]),
+    };
+    Ok(vswitch::Uplink {
+        interfaces: u.interfaces,
+        bond,
+        native_vlan: u.native_vlan,
+    })
+}
+
+/// Switches made and changed (bit 19): the switch service's. The
+/// management interface is refused as an uplink there (`QVS4102`).
+fn managed_switches(s: &mut Services, r: Request) -> Result<Reply, Vec<Note>> {
+    let lead = |n| led_by(n, switches_identifier);
+    Ok(match r {
+        Request::SwitchCreate(w) => {
+            let made = local(VSWITCHD, s.vswitchd.create(w.name, w.vlans, w.mtu)).map_err(lead)?;
+            Reply::SwitchCreate(switch(&made).ok_or_else(not_here)?)
+        }
+        Request::SwitchChange(w) => {
+            local(VSWITCHD, s.vswitchd.change(w.name, w.vlans, w.mtu)).map_err(lead)?;
+            Reply::SwitchChange(Empty)
+        }
+        Request::SwitchRename(w) => {
+            local(VSWITCHD, s.vswitchd.rename(w.name, w.to)).map_err(lead)?;
+            Reply::SwitchRename(Empty)
+        }
+        Request::SwitchDelete(w) => {
+            local(VSWITCHD, s.vswitchd.delete(w.name, w.force)).map_err(lead)?;
+            Reply::SwitchDelete(Empty)
+        }
+        Request::UplinkSet(u) => {
+            let up = uplink(u.uplink)?;
+            local(VSWITCHD, s.vswitchd.set_uplink(u.switch, up)).map_err(lead)?;
+            Reply::UplinkSet(Empty)
+        }
+        Request::UplinkClear(u) => {
+            local(VSWITCHD, s.vswitchd.clear_uplink(u.switch)).map_err(lead)?;
+            Reply::UplinkClear(Empty)
         }
         _ => return Err(not_here()),
     })

@@ -22,6 +22,7 @@ mod network;
 mod partitions;
 mod physio;
 mod pools;
+mod poweron;
 mod service;
 
 #[cfg(target_os = "linux")]

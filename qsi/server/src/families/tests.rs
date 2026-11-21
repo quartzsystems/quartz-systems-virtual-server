@@ -424,8 +424,88 @@ impl problem::proto::Calls for Problems {
                 ipc::encode(&got)
             }
             R::Subscribe {} => ipc::encode(&()),
+            R::AddNote {
+                number: 1,
+                text,
+                by,
+            } => ipc::encode(&Ok::<_, Vec<qvsmsg::Issued>>(problem::Line {
+                time: 9,
+                text: format!("Note by {by}: {text}"),
+            })),
+            R::AddNote { number, .. } => ipc::encode(&Err::<problem::Line, _>(vec![
+                qvsmsg::PROBLEM_CLOSED.with(&[&number.to_string(), "QSECOFR"]),
+            ])),
+            R::ListRated { .. } => ipc::encode(&problem::RatedPage {
+                problems: vec![problem::Rated {
+                    severity: problem::Severity::Attention,
+                    summary: open_problem().summary,
+                }],
+                more: None,
+            }),
+            R::GetRated { number } => {
+                ipc::encode(&Ok::<_, Vec<qvsmsg::Issued>>(problem::RatedProblem {
+                    severity: if *number == 1 {
+                        problem::Severity::Attention
+                    } else {
+                        problem::Severity::Terminal
+                    },
+                    problem: open_problem(),
+                }))
+            }
         })
     }
+}
+
+#[test]
+fn a_note_is_the_users_and_severity_is_beside_the_summary() {
+    use qsi::service::{GetRated, List, Note, Reply, Request, Severity};
+    let fake = Fake::default();
+    let mut s = services(&fake);
+    s.probd = Box::new(Problems::default());
+    let a = answer_as(
+        &mut s,
+        AnyRequest::Service(Request::Note(Note {
+            number: 1,
+            text: "Disk ordered".into(),
+        })),
+    );
+    let Answer::Reply(AnyReply::Service(Reply::Note(line))) = a else {
+        panic!("{a:?}")
+    };
+    assert!(line.text.ends_with(": Disk ordered"), "{}", line.text);
+    // A closed problem takes no note: QSI's identifier first.
+    let a = answer_as(
+        &mut s,
+        AnyRequest::Service(Request::Note(Note {
+            number: 2,
+            text: "late".into(),
+        })),
+    );
+    let Answer::Refused(notes) = a else {
+        panic!("{a:?}")
+    };
+    assert_eq!(notes[0].msgid, qsi::service::msgid::CLOSED);
+    assert_eq!(notes[1].msgid, "QVS5002");
+    let a = answer_as(
+        &mut s,
+        AnyRequest::Service(Request::ListRated(List {
+            filter: qsi::service::Filter::default(),
+            before: None,
+            limit: 10,
+        })),
+    );
+    let Answer::Reply(AnyReply::Service(Reply::ListRated(page))) = a else {
+        panic!("{a:?}")
+    };
+    assert_eq!(page.problems[0].severity, Severity::Attention);
+    let a = answer_as(
+        &mut s,
+        AnyRequest::Service(Request::GetRated(GetRated { number: 3 })),
+    );
+    let Answer::Reply(AnyReply::Service(Reply::GetRated(p))) = a else {
+        panic!("{a:?}")
+    };
+    assert_eq!(p.severity, Severity::Terminal);
 }
 
 #[test]

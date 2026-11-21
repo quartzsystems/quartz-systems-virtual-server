@@ -26,6 +26,7 @@ pub fn definition() -> Definition {
         },
         created: 1_794_000_000,
         revision: 0,
+        settings: crate::definition::PartitionSettings::default(),
     }
 }
 

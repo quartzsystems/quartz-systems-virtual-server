@@ -79,7 +79,10 @@ impl Env {
             qsi: qsilocal::Client::new(
                 std::path::Path::new(release::RUN_DIR).join(qsilocal::SOCKET_FILE),
             ),
-            problems: problem::proto::Client::new(problem::proto::socket(release::RUN_DIR)),
+            problems: problem::proto::Client::new(problem::proto::socket(
+                release::ID,
+                release::RUN_DIR,
+            )),
             updates: update::proto::Client::new(update::proto::socket(release::RUN_DIR)),
             store: Store::at(appliance.state_dir()),
             name: release::NAME.into(),
@@ -448,6 +451,21 @@ impl Host for Env {
             self.control.power_off()
         };
         asked.map_err(|e| wire(e, "PID 1"))
+    }
+}
+
+impl panels::units::LoadSource for Env {
+    fn storage(&mut self) -> Option<stgd::Status> {
+        Env::storage(self)
+    }
+    fn machine_disks(&mut self) -> Vec<state::doc::inventory::Disk> {
+        inventory().disks
+    }
+    fn start_protection(&mut self, disk: &str) -> Result<(), String> {
+        Env::start_protection(self, disk)
+    }
+    fn replace(&mut self, number: u32, disk: &str) -> Result<(), String> {
+        Env::replace(self, number, disk)
     }
 }
 

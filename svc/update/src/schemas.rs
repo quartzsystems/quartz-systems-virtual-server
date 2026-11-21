@@ -22,6 +22,7 @@ pub fn this_release() -> Vec<(String, u32)> {
         (state::Network::FILE, state::Network::VERSION),
         (vswitch::Switches::FILE, vswitch::Switches::VERSION),
         (model::Definition::FILE, model::Definition::VERSION),
+        (model::Activations::FILE, model::Activations::VERSION),
         (model::Profile::FILE, model::Profile::VERSION),
         (resource::Settings::FILE, resource::Settings::VERSION),
         CONSOLES,

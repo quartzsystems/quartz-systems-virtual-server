@@ -264,6 +264,14 @@ fn connection(
             };
             return write_frame(&mut stream, &ipc::encode(&waited(answer, &name)));
         }
+        Request::ConsolePanel { id, function, args } => {
+            let (answer, name) = {
+                let mut manager = lock(shared);
+                let name = manager.name_of(id);
+                (manager.begin_console_panel(id, function, args), name)
+            };
+            return write_frame(&mut stream, &ipc::encode(&waited(answer, &name)));
+        }
         Request::Console { id, take_over } => {
             return console::serve(shared, &paths.serial(id), stream, id, take_over);
         }

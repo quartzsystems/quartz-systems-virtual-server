@@ -23,7 +23,9 @@ pub mod sample;
 pub mod units;
 pub mod validate;
 
-pub use definition::{AutoStart, Definition, Environment, Keylock};
+pub use definition::{
+    Activations, AutoStart, Definition, Environment, Keylock, PartitionSettings, WithHost,
+};
 pub use profile::{
     Boot, ConsoleMode, EthernetAdapter, IplSource, IplType, Lun, MediaDevice, Memory, PhysicalIo,
     ProcessorMode, Processors, Profile, ScsiAdapter, Sharing,

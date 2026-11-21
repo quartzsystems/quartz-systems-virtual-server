@@ -43,6 +43,24 @@ pub enum Problems {
         #[arg(long)]
         anyway: bool,
     },
+    /// Add a note to an open problem's analysis log.
+    Note {
+        /// Its number.
+        number: u64,
+        /// The note, one line.
+        text: String,
+    },
+    /// The problems with their severity, newest first.
+    Rated {
+        /// How many.
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+    },
+    /// One problem whole, with its severity.
+    ShowRated {
+        /// Its number.
+        number: u64,
+    },
 }
 
 /// `qsictl update`.
@@ -95,6 +113,8 @@ pub enum HostDump {
         /// Its name.
         name: String,
     },
+    /// What the host's dumps take, and their limits.
+    Space,
 }
 
 /// Ask `r`; its reply, or the refusal whole.
@@ -149,7 +169,56 @@ fn note(n: Option<&qsi::host::model::Note>) -> String {
 /// # Errors
 /// The request was refused.
 pub fn problems(link: &mut Link, p: &Problems) -> Result<(), String> {
+    match p {
+        Problems::Note { number, text } => {
+            let r = ask(
+                link,
+                &AnyRequest::Service(service::Request::Note(service::Note {
+                    number: *number,
+                    text: text.clone(),
+                })),
+            )?;
+            let AnyReply::Service(service::Reply::Note(written)) = r else {
+                return Err(format!("{r:?}"));
+            };
+            println!("{}  {}", written.time, written.text);
+            return Ok(());
+        }
+        Problems::Rated { limit } => {
+            let r = ask(
+                link,
+                &AnyRequest::Service(service::Request::ListRated(service::List {
+                    filter: service::Filter::default(),
+                    before: None,
+                    limit: *limit,
+                })),
+            )?;
+            let AnyReply::Service(service::Reply::ListRated(page)) = r else {
+                return Err(format!("{r:?}"));
+            };
+            for r in page.problems {
+                println!(
+                    "{:>6}  {:<9}  {}  {}",
+                    r.summary.number,
+                    format!("{:?}", r.severity),
+                    r.summary.refcode.code,
+                    r.summary.description
+                );
+            }
+            return Ok(());
+        }
+        Problems::ShowRated { number } => {
+            let r = ask(
+                link,
+                &AnyRequest::Service(service::Request::GetRated(service::Get { number: *number })),
+            )?;
+            println!("{r:#?}");
+            return Ok(());
+        }
+        _ => {}
+    }
     match *p {
+        Problems::Note { .. } | Problems::Rated { .. } | Problems::ShowRated { .. } => Ok(()),
         Problems::List { open, limit } => {
             let r = ask(
                 link,
@@ -422,6 +491,14 @@ pub fn host_dump(link: &mut Link, what: HostDump) -> Result<(), String> {
                 })),
             )?;
             println!("{name} deleted");
+            Ok(())
+        }
+        HostDump::Space => {
+            let reply = ask(
+                link,
+                &AnyRequest::Base(base::Request::DumpSpace(qsi::Empty)),
+            )?;
+            println!("{reply:#?}");
             Ok(())
         }
     }

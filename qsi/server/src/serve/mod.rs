@@ -31,6 +31,20 @@ use crate::trust::Trust;
 use facts::{HostFacts, Paths};
 use listen::Gate;
 
+/// What the host's hello says it answers (`docs/QSISERVER.md`).
+pub const CAPS: u64 = caps::HOST_V1
+    | caps::SERVICING
+    | caps::PHYSICAL_IO
+    | caps::PARTITION_V2
+    | caps::SWITCHES
+    | caps::POOLS
+    | caps::PARTITION_V3
+    | caps::ACTIVATIONS
+    | caps::POWER_ON
+    | caps::PANEL_FUNCTIONS
+    | caps::PROBLEM_NOTES
+    | caps::DUMP_SPACE;
+
 /// What the server is given.
 #[derive(Clone, Debug)]
 pub struct Settings {
@@ -191,7 +205,7 @@ impl Server {
         let me = crate::families::Facts::identity(&mut facts).ok();
         Hello {
             version: qsi::VERSION,
-            caps: caps::HOST_V1 | caps::SERVICING | caps::PHYSICAL_IO | caps::PARTITION_V2,
+            caps: CAPS,
             kind: PeerKind::Host,
             name: me.as_ref().map_or_else(String::new, |m| m.name.clone()),
             release: self.settings.release.clone(),

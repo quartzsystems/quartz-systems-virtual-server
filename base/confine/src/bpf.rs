@@ -212,6 +212,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn an_instruction_is_the_kernel_s() {
         assert_eq!(size_of::<Insn>(), size_of::<libc::sock_filter>());
         assert_eq!(align_of::<Insn>(), align_of::<libc::sock_filter>());

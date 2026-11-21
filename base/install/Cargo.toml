@@ -14,5 +14,13 @@ users = { path = "../users", version = "0.1.0" }
 panels = { path = "../panels", version = "0.1.0" }
 console.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+loadsource = { path = "../loadsource", version = "0.1.0" }
+netd = { path = "../netd", version = "0.1.0" }
+abrec.workspace = true
+diskimg.workspace = true
+uuid.workspace = true
+rustix.workspace = true
+
 [lints]
 workspace = true

@@ -6,21 +6,20 @@
 //! connection and its answer, or a subscription whose events follow.
 //! Root's and the QSI server's group's.
 
-use qvsmsg::Issued;
+use msg::Issued;
 
-use crate::record::{Filter, Noticed, Page, Problem};
+use crate::record::{Filter, Line, Noticed, Page, Problem, RatedPage, RatedProblem};
 
 /// The service's name in PID 1's table.
 pub const NAME: &str = "probd";
-/// The socket's file, in the run directory.
-pub const SOCKET_FILE: &str = "qsvsprobd.sock";
 /// The longest request, answer or event.
 pub const MAX_FRAME: usize = 256 * 1024;
 
-/// The socket in `run_dir`.
+/// The socket of the product `id` (`appliance.id`) in `run_dir`:
+/// `<id>probd.sock`.
 #[must_use]
-pub fn socket(run_dir: &str) -> std::path::PathBuf {
-    std::path::Path::new(run_dir).join(SOCKET_FILE)
+pub fn socket(id: &str, run_dir: &str) -> std::path::PathBuf {
+    std::path::Path::new(run_dir).join(format!("{id}{NAME}.sock"))
 }
 
 ipc::rpc! {
@@ -35,6 +34,13 @@ ipc::rpc! {
     2 => fn close / Close (number: u64, anyway: bool, by: String) -> Result<Problem, Vec<Issued>>;
     /// Subscribe: the connection every event then arrives on.
     3 => fn subscribe / Subscribe () -> ();
+    /// Add `by`'s note to an open problem's analysis log: the line
+    /// written.
+    4 => fn note / AddNote (number: u64, text: String, by: String) -> Result<Line, Vec<Issued>>;
+    /// [`Calls::list`], each problem with its severity.
+    5 => fn list_rated / ListRated (filter: Filter, before: Option<u64>, limit: u32) -> RatedPage;
+    /// [`Calls::get`], with its severity.
+    6 => fn get_rated / GetRated (number: u64) -> Result<RatedProblem, Vec<Issued>>;
 }
 
 /// A client: each call is its own connection.
@@ -112,6 +118,7 @@ mod tests {
                 ..Summary::default()
             },
             time: 7,
+            note: None,
         };
         assert_eq!(ipc::decode::<Noticed>(&ipc::encode(&e)).unwrap(), e);
     }

@@ -26,6 +26,14 @@ refused with a message; nothing changes.
 | 22 | dump the partition's memory, then restart its IPL | host | manual |
 | 34 | take the dump again from the memory still held | host | manual |
 
+The table is `part/partd/src/manager/panel.rs`'s `TABLE`, and a unit
+test holds this one to it. The partition manager gives it whole
+(request 49, each function's number, text, keylock rule and whether a
+console asks first: 03, 08 and 22), and QSI's panel version 2 (bit 24)
+carries it. A function asked by a management console (request 50) is
+refused when the partition's settings keep its panel from consoles
+(`QVS2318`); Service Tools and the host's own requests are not.
+
 ## Each function
 
 **01.** The partition's IPL as it is: for a running partition, this

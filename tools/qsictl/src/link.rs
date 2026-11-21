@@ -13,6 +13,20 @@ use std::time::{Duration, Instant};
 
 use qsi::any::AnyRequest;
 use qsi::{Hello, PeerKind, caps};
+
+/// What this console asks: every family a QS/VS host answers.
+pub const CAPS: u64 = caps::HOST_V1
+    | caps::SERVICING
+    | caps::PHYSICAL_IO
+    | caps::PARTITION_V2
+    | caps::SWITCHES
+    | caps::POOLS
+    | caps::PARTITION_V3
+    | caps::ACTIVATIONS
+    | caps::POWER_ON
+    | caps::PANEL_FUNCTIONS
+    | caps::PROBLEM_NOTES
+    | caps::DUMP_SPACE;
 use qsisess::{Incoming, Limits, Reply, Role, Session, StreamId};
 use qsitrust::{Fingerprint, Identity, Pins, tls};
 use rustls::{ClientConnection, StreamOwned};
@@ -91,7 +105,7 @@ impl Link {
         }
         let hello = Hello {
             version: qsi::VERSION,
-            caps: caps::HOST_V1 | caps::SERVICING | caps::PHYSICAL_IO | caps::PARTITION_V2,
+            caps: CAPS,
             kind: PeerKind::Console,
             name: "qsictl".into(),
             release: env!("CARGO_PKG_VERSION").into(),

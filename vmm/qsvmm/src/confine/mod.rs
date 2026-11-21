@@ -17,13 +17,15 @@
 //! and failed with `ENOSYS` instead (`sys::report_refused_calls`), so a
 //! run lists what the policy lacks.
 //!
-//! - [`bpf`]: the filter program from its rules.
+//! The filter program and the calls are `base/confine`'s; the VMM's
+//! policy is here.
+//!
 //! - [`policy`]: what each kind of thread may call.
 
-pub mod bpf;
 pub mod policy;
 
-use std::cell::Cell;
+pub use ::confine::bpf;
+
 use std::io;
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
@@ -74,13 +76,9 @@ impl Kind {
     }
 }
 
-thread_local! {
-    static KIND: Cell<&'static str> = const { Cell::new("unconfined") };
-}
-
 /// The kind of the calling thread, for the learning mode's report.
 pub fn thread_kind() -> &'static str {
-    KIND.with(Cell::get)
+    ::confine::sys::thread_kind()
 }
 
 /// What the filters are built against: the process's ID (a signal may
@@ -109,7 +107,7 @@ pub fn enter(kind: Kind) -> io::Result<()> {
     if kind == Kind::Process {
         PROCESS.store(std::process::id(), Ordering::Relaxed);
         if learning() {
-            crate::sys::report_refused_calls()?;
+            ::confine::sys::report_refused_calls("qsvmm")?;
         }
     }
     let context = policy::Context {
@@ -122,11 +120,7 @@ pub fn enter(kind: Kind) -> io::Result<()> {
     } else {
         bpf::KILL_PROCESS
     };
-    let program = bpf::program(&policy::rules(kind, &context), default)
-        .map_err(|e| io::Error::other(format!("the {} filter: {e}", kind.name())))?;
-    crate::sys::install_filter(&program)?;
-    KIND.with(|k| k.set(kind.name()));
-    Ok(())
+    ::confine::filter(kind.name(), &policy::rules(kind, &context), default)
 }
 
 /// [`enter`] from a thread that cannot say why it failed: a thread

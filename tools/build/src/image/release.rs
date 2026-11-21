@@ -315,6 +315,8 @@ fn build_once(ctx: &Ctx, vrm: &str, key: &SigningKey, db: &pesign::DbKey) -> Res
         iso: iso_name.clone(),
         iso_bytes: fs::metadata(out.join(&iso_name))?.len(),
         iso_sha256: sha256_file(&out.join(&iso_name))?,
+        released: stream::date_of(SOURCE_DATE_EPOCH.parse()?),
+        notes: format!("RELEASE_NOTES_{vrm}.md"),
     };
     let index = stream::Index {
         format: stream::FORMAT,

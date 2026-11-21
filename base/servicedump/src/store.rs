@@ -2,22 +2,15 @@
 // licensed under the terms of the MIT license which can be found in the
 // root directory of this project.
 
-//! The host's dumps on `/data`: one archive each, named by when it was
-//! taken, bounded in number and in bytes, the oldest put out first.
+//! An appliance's dumps on its data file system: one archive each,
+//! named by the product's prefix and when it was taken, bounded in
+//! number and in bytes by the product's kind, the oldest put out first.
 //! What asked for one is its archive's comment.
 
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
-/// The directory under the data file system.
-pub const DIR: &str = "dumps/host";
-/// The most dumps kept.
-pub const MAX_DUMPS: usize = 8;
-/// The most bytes they may take together.
-pub const MAX_TOTAL: u64 = 1024 * 1024 * 1024;
-/// A dump's name: its prefix, then `YYYYMMDD-HHMMSS`, then [`EXT`].
-pub const PREFIX: &str = "HOSTDUMP-";
-/// Its extension.
+/// A dump's extension.
 pub const EXT: &str = ".zip";
 /// The comment's prefix that says who asked.
 pub const BY: &str = "by: ";
@@ -44,8 +37,11 @@ ipc::wire_struct!(Info {
 /// Whether `name` is one of a dump's: nothing else is ever opened or
 /// removed by name.
 #[must_use]
-pub fn valid_name(name: &str) -> bool {
-    let Some(stamp) = name.strip_prefix(PREFIX).and_then(|n| n.strip_suffix(EXT)) else {
+pub fn valid_name(kind: &Kind, name: &str) -> bool {
+    let Some(stamp) = name
+        .strip_prefix(kind.prefix)
+        .and_then(|n| n.strip_suffix(EXT))
+    else {
         return false;
     };
     let b = stamp.as_bytes();
@@ -56,13 +52,13 @@ pub fn valid_name(name: &str) -> bool {
             .all(|(i, c)| i == 8 || c.is_ascii_digit())
 }
 
-/// The name of a dump taken at `unix_secs`.
+/// The name of a dump of `kind` taken at `unix_secs`.
 #[must_use]
-pub fn name_at(unix_secs: i64) -> String {
+pub fn name_at(kind: &Kind, unix_secs: i64) -> String {
     let c = appliance::time::civil(unix_secs);
     format!(
-        "{PREFIX}{:04}{:02}{:02}-{:02}{:02}{:02}{EXT}",
-        c.year, c.month, c.day, c.hour, c.minute, c.second
+        "{}{:04}{:02}{:02}-{:02}{:02}{:02}{EXT}",
+        kind.prefix, c.year, c.month, c.day, c.hour, c.minute, c.second
     )
 }
 
@@ -82,16 +78,55 @@ fn time_of(name: &str) -> u64 {
     u64::try_from(secs).unwrap_or(0)
 }
 
+/// What the product's dumps are: its words and its bounds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Kind {
+    /// A dump's name before its time: `HOSTDUMP-`.
+    pub prefix: &'static str,
+    /// The manifest's title: `Host dump`.
+    pub title: &'static str,
+    /// The most dumps kept.
+    pub max_dumps: usize,
+    /// The most bytes they may take together.
+    pub max_total: u64,
+    /// The product's own files that keep a secret, beside the base's
+    /// ([`crate::take::LEFT_OUT`]), each with why.
+    pub left_out: &'static [(&'static str, &'static str)],
+}
+
 /// The dumps kept in a directory.
 #[derive(Clone, Debug)]
 pub struct Store {
     dir: PathBuf,
+    kind: &'static Kind,
 }
 
 impl Store {
-    /// The store in `dir`.
-    pub fn at(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+    /// The store of `kind`'s dumps in `dir`.
+    pub fn at(dir: impl Into<PathBuf>, kind: &'static Kind) -> Self {
+        Self {
+            dir: dir.into(),
+            kind,
+        }
+    }
+
+    /// What its dumps are.
+    #[must_use]
+    pub fn kind(&self) -> &'static Kind {
+        self.kind
+    }
+
+    /// What its dumps take and their bounds: bytes, the most bytes, how
+    /// many, the most.
+    #[must_use]
+    pub fn space(&self) -> (u64, u64, usize, usize) {
+        let all = self.list();
+        (
+            all.iter().map(|i| i.bytes).sum(),
+            self.kind.max_total,
+            all.len(),
+            self.kind.max_dumps,
+        )
     }
 
     /// Its directory.
@@ -103,7 +138,7 @@ impl Store {
     /// The path of the dump `name`; none when the name is no dump's.
     #[must_use]
     pub fn path(&self, name: &str) -> Option<PathBuf> {
-        valid_name(name).then(|| self.dir.join(name))
+        valid_name(self.kind, name).then(|| self.dir.join(name))
     }
 
     /// Every dump, oldest first.
@@ -116,7 +151,7 @@ impl Store {
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().into_string().ok()?;
-                if !valid_name(&name) {
+                if !valid_name(self.kind, &name) {
                     return None;
                 }
                 let bytes = e.metadata().ok()?.len();
@@ -161,7 +196,8 @@ impl Store {
         let mut gone = Vec::new();
         let total = |all: &[Info]| all.iter().map(|i| i.bytes).sum::<u64>();
         while !all.is_empty()
-            && (all.len() + 1 > MAX_DUMPS || total(&all).saturating_add(bytes) > MAX_TOTAL)
+            && (all.len() + 1 > self.kind.max_dumps
+                || total(&all).saturating_add(bytes) > self.kind.max_total)
         {
             let old = all.remove(0);
             if self.delete(&old.name).is_ok() {
@@ -176,37 +212,46 @@ impl Store {
 mod tests {
     use super::*;
 
+    pub(crate) const KIND: Kind = Kind {
+        prefix: "XMPDUMP-",
+        title: "Service dump",
+        max_dumps: 4,
+        max_total: 1 << 30,
+        left_out: &[],
+    };
+
     #[test]
     fn a_name_says_when_and_nothing_else_is_one() {
-        let n = name_at(1_794_834_942);
-        assert_eq!(n, "HOSTDUMP-20261116-131542.zip");
-        assert!(valid_name(&n));
+        let n = name_at(&KIND, 1_794_834_942);
+        assert_eq!(n, "XMPDUMP-20261116-131542.zip");
+        assert!(valid_name(&KIND, &n));
         assert_eq!(time_of(&n), 1_794_834_942);
         for bad in [
             "../x",
-            "HOSTDUMP-2026111-131542.zip",
-            "HOSTDUMP-20261116-131542.zip/..",
+            "XMPDUMP-2026111-131542.zip",
+            "XMPDUMP-20261116-131542.zip/..",
             "identity.key",
         ] {
-            assert!(!valid_name(bad), "{bad}");
+            assert!(!valid_name(&KIND, bad), "{bad}");
         }
     }
 
     #[test]
     fn the_oldest_go_first_at_the_bounds() {
-        let d = std::env::temp_dir().join(format!("hostdump-store-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("servicedump-store-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
-        let s = Store::at(&d);
-        for i in 0..i64::try_from(MAX_DUMPS).unwrap() {
+        let s = Store::at(&d, &KIND);
+        for i in 0..i64::try_from(KIND.max_dumps).unwrap() {
             let mut w = crate::zip::Writer::new(Vec::new(), 0);
             w.add("x", b"y").unwrap();
             let bytes = w.finish("by: test\n").unwrap();
-            fs::write(d.join(name_at(1_794_834_942 + i)), bytes).unwrap();
+            fs::write(d.join(name_at(&KIND, 1_794_834_942 + i)), bytes).unwrap();
         }
         fs::write(d.join("identity.key"), "not a dump").unwrap();
         let all = s.list();
-        assert_eq!((all.len(), all[0].by.as_str()), (MAX_DUMPS, "test"));
+        assert_eq!((all.len(), all[0].by.as_str()), (KIND.max_dumps, "test"));
+        assert_eq!(s.space().2, KIND.max_dumps);
         let gone = s.make_room(10);
         assert_eq!(gone, [all[0].name.clone()]);
         assert!(s.delete("identity.key").is_err(), "only a dump's name");

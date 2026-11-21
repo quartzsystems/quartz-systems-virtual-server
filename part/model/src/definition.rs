@@ -21,6 +21,11 @@ pub const MAX_DELAY_SECS: u32 = 3600;
 /// How long auto start waits for a partition's IPL to complete, unless
 /// its definition says.
 pub const DEFAULT_WAIT_SECS: u32 = 600;
+/// The longest description, in bytes.
+pub const MAX_DESCRIPTION: usize = 256;
+/// The longest delay of a shut down with the host, in seconds: a
+/// system's delayed shut down takes no more (`qsipart`'s).
+pub const MAX_SHUTDOWN_DELAY_SECS: u32 = 99_999;
 
 /// The user and group of the partition `id`'s `qsvmm`.
 pub fn user_of(id: u32) -> u32 {
@@ -129,6 +134,86 @@ fn is_default_wait(secs: &u32) -> bool {
     *secs == DEFAULT_WAIT_SECS
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's signature
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's signature
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// How a partition is shut down when the host powers off.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum WithHost {
+    /// The system's controlled power down, within the settings' delay.
+    Delayed,
+    /// The system's immediate power down.
+    #[default]
+    Immediate,
+}
+ipc::wire_enum!(WithHost { 0 => Delayed, 1 => Immediate });
+
+impl WithHost {
+    /// As a setting has it.
+    pub fn word(self) -> &'static str {
+        match self {
+            WithHost::Delayed => "delayed",
+            WithHost::Immediate => "immediate",
+        }
+    }
+}
+
+/// `[settings]`: what a partition says of itself, what a management
+/// console may do to it, and how it ends with the host. Changed at any
+/// time, whether it runs or not.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PartitionSettings {
+    /// A line about it, at most [`MAX_DESCRIPTION`] bytes.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// Whether a management console may use its control panel
+    /// functions. Service Tools and the host itself always may.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub panel: bool,
+    /// How it is shut down when the host powers off.
+    #[serde(default)]
+    pub with_host: WithHost,
+    /// A delayed shut down's delay with the host, in seconds.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub delay_secs: u32,
+}
+ipc::wire_struct!(PartitionSettings {
+    description,
+    panel,
+    with_host,
+    delay_secs
+});
+
+impl Default for PartitionSettings {
+    fn default() -> Self {
+        Self {
+            description: String::new(),
+            panel: true,
+            with_host: WithHost::Immediate,
+            delay_secs: 0,
+        }
+    }
+}
+
+impl PartitionSettings {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 /// A partition's definition.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -161,6 +246,9 @@ pub struct Definition {
     /// kept.
     #[serde(default)]
     pub revision: u64,
+    /// Its settings (schema version 2): changed apart from the rest.
+    #[serde(default, skip_serializing_if = "PartitionSettings::is_default")]
+    pub settings: PartitionSettings,
 }
 ipc::wire_struct!(Definition {
     id,
@@ -171,26 +259,53 @@ ipc::wire_struct!(Definition {
     default_profile,
     auto_start,
     created,
-    revision
+    revision,
+    settings
 });
 
 impl Document for Definition {
     const FILE: &'static str = "definition.toml";
+    // Version 2 added `[settings]`, which version 1 has none of.
     #[cfg(not(test_schema))]
-    const VERSION: u32 = 1;
+    const VERSION: u32 = 2;
     #[cfg(not(test_schema))]
-    const MIGRATIONS: &'static [Migration] = &[];
-    // A test release's (`build.rs`): version 2 is version 1 renumbered,
+    const MIGRATIONS: &'static [Migration] = &[|_| Ok(())];
+    // A test release's (`build.rs`): version 3 is version 2 renumbered,
     // so an update changes a state file's schema and a rollback or a
     // return to the older release has it to deal with.
     #[cfg(test_schema)]
-    const VERSION: u32 = 2;
+    const VERSION: u32 = 3;
     #[cfg(test_schema)]
-    const MIGRATIONS: &'static [Migration] = &[|_| Ok(())];
+    const MIGRATIONS: &'static [Migration] = &[|_| Ok(()), |_| Ok(())];
 
     /// What a definition may hold is [`crate::validate`]'s.
     fn validate(&self) -> Result<(), String> {
         Ok(())
+    }
+}
+
+/// `activations.toml`: when each of a partition's profiles was last
+/// activated, kept beside its definition so that an activation changes
+/// neither the definition nor the profile.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Activations {
+    /// Each profile's name and the time of its last activation, in
+    /// seconds since the epoch.
+    #[serde(default)]
+    pub last: std::collections::BTreeMap<String, u64>,
+}
+
+impl Document for Activations {
+    const FILE: &'static str = "activations.toml";
+    const VERSION: u32 = 1;
+    const MIGRATIONS: &'static [Migration] = &[];
+
+    fn validate(&self) -> Result<(), String> {
+        match self.last.keys().find(|n| !crate::valid_name(n)) {
+            Some(name) => Err(format!("profile name {name:?} is not valid")),
+            None => Ok(()),
+        }
     }
 }
 
@@ -275,10 +390,13 @@ mod tests {
             },
             created: 1_794_000_000,
             revision: 0,
+            settings: PartitionSettings::default(),
         };
         let text = state::store::render(&definition).unwrap();
         assert!(text.contains("environment = \"QS/400\""), "{text}");
         assert!(text.contains("keylock = \"manual\""), "{text}");
+        // Settings left at their defaults are not written.
+        assert!(!text.contains("[settings]"), "{text}");
         assert_eq!(
             state::store::parse::<Definition>(&text).unwrap(),
             definition
@@ -286,5 +404,41 @@ mod tests {
         let back: Definition = ipc::decode(&ipc::encode(&definition)).unwrap();
         assert_eq!(back, definition);
         assert_eq!(user_of(3), 23003);
+    }
+
+    #[test]
+    fn settings_are_kept_and_a_version_1_definition_has_the_defaults() {
+        let mut definition = crate::sample::definition();
+        definition.settings = PartitionSettings {
+            description: "Production, Columbus".into(),
+            panel: false,
+            with_host: WithHost::Delayed,
+            delay_secs: 600,
+        };
+        let text = state::store::render(&definition).unwrap();
+        assert!(text.contains("[settings]"), "{text}");
+        assert!(text.contains("panel = false"), "{text}");
+        assert!(text.contains("with_host = \"delayed\""), "{text}");
+        assert_eq!(
+            state::store::parse::<Definition>(&text).unwrap(),
+            definition
+        );
+        let back: Definition = ipc::decode(&ipc::encode(&definition)).unwrap();
+        assert_eq!(back, definition);
+        // A definition of version 1 reads with the settings' defaults.
+        let old = "schema_version = 1\nid = 2\nname = \"OLD\"\nserial = \"ABCDE02\"\ncreated = 1\n";
+        let read = state::store::parse::<Definition>(old).unwrap();
+        assert_eq!(read.settings, PartitionSettings::default());
+        assert!(read.settings.panel);
+    }
+
+    #[test]
+    fn activations_are_a_state_file() {
+        let mut a = Activations::default();
+        a.last.insert("NORMAL".into(), 1_794_000_100);
+        let text = state::store::render(&a).unwrap();
+        assert_eq!(state::store::parse::<Activations>(&text).unwrap(), a);
+        a.last.insert("not one".into(), 1);
+        assert!(state::store::render(&a).is_err());
     }
 }

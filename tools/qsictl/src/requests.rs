@@ -87,10 +87,74 @@ pub enum Ask {
         /// The partition; every one when left out.
         id: Option<u32>,
     },
-    /// Make a partition.
+    /// Make a partition; with an ID or settings, partition version 3's
+    /// create.
     Create {
         /// Its name.
         name: String,
+        /// Its ID; the host gives the lowest free when left out.
+        #[arg(long)]
+        id: Option<u32>,
+        /// What it is for.
+        #[arg(long)]
+        description: Option<String>,
+        /// Keep its control panel from consoles.
+        #[arg(long)]
+        no_panel: bool,
+        /// Shut it down delayed with the host, with this delay.
+        #[arg(long)]
+        with_host_delay: Option<u32>,
+    },
+    /// A partition's settings.
+    SettingsOf {
+        /// The partition.
+        id: u32,
+    },
+    /// Change a partition's settings, running or not.
+    SetSettings {
+        /// The partition.
+        id: u32,
+        /// What it is for.
+        #[arg(long, default_value = "")]
+        description: String,
+        /// Keep its control panel from consoles.
+        #[arg(long)]
+        no_panel: bool,
+        /// Shut it down delayed with the host, with this delay; at once
+        /// when left out.
+        #[arg(long)]
+        with_host_delay: Option<u32>,
+    },
+    /// When each partition's activation began.
+    Activations,
+    /// When each of a partition's profiles was last activated.
+    ProfileUses {
+        /// The partition.
+        id: u32,
+    },
+    /// The host's power-on settings.
+    PowerOn,
+    /// Change the host's power-on settings.
+    SetPowerOn {
+        /// Start no partition with the host.
+        #[arg(long)]
+        no_start: bool,
+        /// End partitions at once at a power off.
+        #[arg(long)]
+        immediate: bool,
+        /// The wait for each system, seconds.
+        #[arg(long, default_value_t = 300)]
+        delay: u32,
+    },
+    /// The control panel functions the host has for a partition.
+    PanelFunctions {
+        /// The partition.
+        id: u32,
+    },
+    /// What a partition's dumps take; every partition's when left out.
+    DumpSpace {
+        /// The partition.
+        id: Option<u32>,
     },
     /// Delete a partition.
     Delete {
@@ -225,6 +289,273 @@ pub enum Ask {
         #[command(subcommand)]
         what: PartitionAsk,
     },
+    /// Make and change storage pools.
+    Pool {
+        /// What to do.
+        #[command(subcommand)]
+        what: PoolAsk,
+    },
+    /// Make and change virtual switches.
+    Switch {
+        /// What to do.
+        #[command(subcommand)]
+        what: SwitchAsk,
+    },
+}
+
+/// A storage pool's protection.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum Protection {
+    /// One disk.
+    None,
+    /// Two disks, each a copy.
+    Mirrored,
+    /// Three or more, one parity a stripe.
+    Raid5,
+    /// Four or more, two parities a stripe.
+    Raid6,
+}
+
+/// What is asked of the storage pools.
+#[derive(Subcommand, Debug)]
+pub enum PoolAsk {
+    /// The disks a pool may take.
+    Disks,
+    /// Make a pool of disks, by their names.
+    Create {
+        /// Its name.
+        name: String,
+        /// Its protection.
+        #[arg(long, value_enum)]
+        protection: Protection,
+        /// Its disks.
+        #[arg(long, value_delimiter = ',', required = true)]
+        disks: Vec<String>,
+        /// Its hot spares.
+        #[arg(long, value_delimiter = ',')]
+        spares: Vec<String>,
+        /// The foreign disks' names typed again: they are erased.
+        #[arg(long, value_delimiter = ',')]
+        confirm: Vec<String>,
+    },
+    /// Delete an empty pool.
+    Delete {
+        /// The pool.
+        name: String,
+    },
+    /// Rename a pool.
+    Rename {
+        /// The pool.
+        name: String,
+        /// Its new name.
+        to: String,
+    },
+    /// Put a disk in a failed or missing unit's place.
+    Replace {
+        /// The pool.
+        pool: String,
+        /// The unit's number.
+        unit: u32,
+        /// The disk.
+        disk: String,
+        /// The disk is foreign and may be erased.
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Give a pool a hot spare.
+    AddSpare {
+        /// The pool.
+        pool: String,
+        /// The disk.
+        disk: String,
+        /// The disk is foreign and may be erased.
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Take a hot spare from a pool.
+    RemoveSpare {
+        /// The pool.
+        pool: String,
+        /// The disk.
+        disk: String,
+    },
+    /// Make a pool the media repository; none when left out.
+    Designate {
+        /// The pool.
+        pool: Option<String>,
+    },
+    /// Grow a pool (a QS/VS host refuses it: its pools' sizes are fixed).
+    Extend {
+        /// The pool.
+        pool: String,
+        /// Its new disks.
+        #[arg(long, value_delimiter = ',', required = true)]
+        disks: Vec<String>,
+        /// The foreign disks' names typed again.
+        #[arg(long, value_delimiter = ',')]
+        confirm: Vec<String>,
+    },
+}
+
+/// How an uplink's interfaces are bonded.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum Bond {
+    /// One carries the traffic; another takes over.
+    ActiveBackup,
+    /// LACP.
+    Lacp,
+}
+
+/// What is asked of the virtual switches.
+#[derive(Subcommand, Debug)]
+pub enum SwitchAsk {
+    /// Make an internal switch.
+    Create {
+        /// Its name.
+        name: String,
+        /// Its VLANs.
+        #[arg(long, value_delimiter = ',')]
+        vlans: Vec<u16>,
+        /// Its MTU; the host's default when 0.
+        #[arg(long, default_value_t = 0)]
+        mtu: u32,
+    },
+    /// Change a switch's VLANs and MTU.
+    Change {
+        /// The switch.
+        name: String,
+        /// Its VLANs.
+        #[arg(long, value_delimiter = ',')]
+        vlans: Vec<u16>,
+        /// Its MTU; the host's default when 0.
+        #[arg(long, default_value_t = 0)]
+        mtu: u32,
+    },
+    /// Rename a switch.
+    Rename {
+        /// The switch.
+        name: String,
+        /// Its new name.
+        to: String,
+    },
+    /// Delete a switch.
+    Delete {
+        /// The switch.
+        name: String,
+        /// Even when a profile names it.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Give a switch an uplink of interfaces, by location code.
+    Uplink {
+        /// The switch.
+        switch: String,
+        /// The interfaces.
+        #[arg(long, value_delimiter = ',', required = true)]
+        interfaces: Vec<String>,
+        /// How several are bonded.
+        #[arg(long, value_enum)]
+        bond: Option<Bond>,
+        /// The VLAN carried untagged.
+        #[arg(long)]
+        native: Option<u16>,
+    },
+    /// Take a switch's uplink away.
+    ClearUplink {
+        /// The switch.
+        switch: String,
+    },
+}
+
+fn pool_request(a: PoolAsk) -> vres::Request {
+    use vres::Request as V;
+    match a {
+        PoolAsk::Disks => V::Disks(Empty),
+        PoolAsk::Create {
+            name,
+            protection,
+            disks,
+            spares,
+            confirm,
+        } => V::PoolCreate(vres::PoolCreate {
+            name,
+            protection: match protection {
+                Protection::None => vres::Protection::None,
+                Protection::Mirrored => vres::Protection::Mirrored,
+                Protection::Raid5 => vres::Protection::Raid5,
+                Protection::Raid6 => vres::Protection::Raid6,
+            },
+            disks,
+            spares,
+            confirm,
+        }),
+        PoolAsk::Delete { name } => V::PoolDelete(vres::PoolDelete { name }),
+        PoolAsk::Rename { name, to } => V::PoolRename(vres::PoolRename { name, to }),
+        PoolAsk::Replace {
+            pool,
+            unit,
+            disk,
+            confirm,
+        } => V::UnitReplace(vres::UnitReplace {
+            pool,
+            unit,
+            disk,
+            confirm,
+        }),
+        PoolAsk::AddSpare {
+            pool,
+            disk,
+            confirm,
+        } => V::SpareAdd(vres::SpareAdd {
+            pool,
+            disk,
+            confirm,
+        }),
+        PoolAsk::RemoveSpare { pool, disk } => V::SpareRemove(vres::SpareRemove { pool, disk }),
+        PoolAsk::Designate { pool } => V::Designate(vres::Designate {
+            pool: pool.unwrap_or_default(),
+        }),
+        PoolAsk::Extend {
+            pool,
+            disks,
+            confirm,
+        } => V::PoolExtend(vres::PoolExtend {
+            pool,
+            disks,
+            confirm,
+        }),
+    }
+}
+
+fn switch_request(a: SwitchAsk) -> vres::Request {
+    use vres::Request as V;
+    match a {
+        SwitchAsk::Create { name, vlans, mtu } => {
+            V::SwitchCreate(vres::SwitchSpec { name, vlans, mtu })
+        }
+        SwitchAsk::Change { name, vlans, mtu } => {
+            V::SwitchChange(vres::SwitchSpec { name, vlans, mtu })
+        }
+        SwitchAsk::Rename { name, to } => V::SwitchRename(vres::SwitchRename { name, to }),
+        SwitchAsk::Delete { name, force } => V::SwitchDelete(vres::SwitchDelete { name, force }),
+        SwitchAsk::Uplink {
+            switch,
+            interfaces,
+            bond,
+            native,
+        } => V::UplinkSet(vres::UplinkSet {
+            switch,
+            uplink: vres::Uplink {
+                interfaces,
+                bond: bond.map(|b| match b {
+                    Bond::ActiveBackup => vres::Bond::ActiveBackup,
+                    Bond::Lacp => vres::Bond::Lacp,
+                }),
+                native_vlan: native,
+            },
+        }),
+        SwitchAsk::ClearUplink { switch } => V::UplinkClear(vres::UplinkClear { switch }),
+    }
 }
 
 /// What is asked of a running partition.
@@ -269,6 +600,19 @@ fn units(text: &str) -> Result<u32, String> {
         .checked_mul(100)
         .and_then(|w| w.checked_add(part))
         .ok_or_else(|| format!("{text} is too many units"))
+}
+
+fn settings(description: String, no_panel: bool, delay: Option<u32>) -> partition::Settings {
+    partition::Settings {
+        description,
+        panel: !no_panel,
+        with_host: if delay.is_some() {
+            partition::WithHost::Delayed
+        } else {
+            partition::WithHost::Immediate
+        },
+        delay: delay.unwrap_or(0),
+    }
 }
 
 fn source(s: Source) -> IplSource {
@@ -338,9 +682,60 @@ pub fn request(a: Ask) -> AnyRequest {
                 id: id.unwrap_or(0),
             }))
         }
-        Ask::Create { name } => {
-            R::Partition(partition::Request::Create(partition::Create { name }))
+        Ask::Create {
+            name,
+            id: None,
+            description: None,
+            no_panel: false,
+            with_host_delay: None,
+        } => R::Partition(partition::Request::Create(partition::Create { name })),
+        Ask::Create {
+            name,
+            id,
+            description,
+            no_panel,
+            with_host_delay,
+        } => R::Partition(partition::Request::CreateWith(partition::CreateWith {
+            id,
+            name,
+            settings: settings(description.unwrap_or_default(), no_panel, with_host_delay),
+        })),
+        Ask::SettingsOf { id } => {
+            R::Partition(partition::Request::GetSettings(partition::GetSettings {
+                id,
+            }))
         }
+        Ask::SetSettings {
+            id,
+            description,
+            no_panel,
+            with_host_delay,
+        } => R::Partition(partition::Request::SetSettings(partition::SetSettings {
+            id,
+            settings: settings(description, no_panel, with_host_delay),
+        })),
+        Ask::Activations => R::Partitions(partitions::Request::Activations(Empty)),
+        Ask::ProfileUses { id } => {
+            R::Profiles(profiles::Request::Activated(profiles::Activated { id }))
+        }
+        Ask::PowerOn => R::Host(host::Request::PowerOn(Empty)),
+        Ask::SetPowerOn {
+            no_start,
+            immediate,
+            delay,
+        } => R::Host(host::Request::SetPowerOn(host::PowerOn {
+            start_partitions: !no_start,
+            power_off: if immediate {
+                host::PowerOff::Immediate
+            } else {
+                host::PowerOff::Delayed
+            },
+            delay,
+        })),
+        Ask::PanelFunctions { id } => R::Panel(panel::Request::Functions(panel::Functions { id })),
+        Ask::DumpSpace { id } => R::Dumps(dumps::Request::Space(dumps::GetSpace {
+            id: id.unwrap_or(0),
+        })),
         Ask::Delete { id, disks } => {
             R::Partition(partition::Request::Delete(partition::Delete { id, disks }))
         }
@@ -419,6 +814,8 @@ pub fn request(a: Ask) -> AnyRequest {
         Ask::Ports { switch } => R::Vres(vres::Request::Ports(vres::Ports {
             switch: switch.unwrap_or_default(),
         })),
+        Ask::Pool { what } => R::Vres(pool_request(what)),
+        Ask::Switch { what } => R::Vres(switch_request(what)),
     }
 }
 

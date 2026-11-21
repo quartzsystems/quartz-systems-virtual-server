@@ -7,9 +7,11 @@
 
 use model::definition::{MAX_ID, serial_for};
 use model::profile::DEFAULT_POOL;
-use model::{AutoStart, Definition, Environment, IplSource, Keylock, Limits, Profile};
+use model::{
+    AutoStart, Definition, Environment, IplSource, Keylock, Limits, PartitionSettings, Profile,
+};
 use qvsmsg::Issued;
-use resource::{Current, HostResources, Pool, Processors, Settings};
+use resource::{Current, HostResources, Pool, PowerOn, Processors, Settings};
 
 use model::validate::{Backing, backing};
 use poold::proto::Want;
@@ -17,8 +19,8 @@ use poold::proto::Want;
 use super::life::media_kind;
 use super::{Manager, Partition, System};
 use crate::proto::{
-    DumpInfo, Event, MediaSlot, PanelArgs, Partitions, Posted, ProfileEntry, Refused,
-    ScreenCapture, Shutdown, State, Status,
+    Activation, DumpInfo, DumpSpace, Event, MediaSlot, PanelArgs, PanelFunction, Partitions,
+    Posted, ProfileEntry, ProfileUse, Refused, ScreenCapture, Shutdown, State, Status,
 };
 use crate::store::{Kept, MAX_PROFILES};
 
@@ -408,8 +410,12 @@ impl<S: System> Manager<S> {
         auto.wait.then_some(auto.wait_secs)
     }
 
-    /// The partitions flagged to start with the host, in their order.
+    /// The partitions flagged to start with the host, in their order;
+    /// none when the host's settings start none.
     pub fn auto_start(&self) -> Vec<(u32, String, u32)> {
+        if !self.host.settings.power_on.start_partitions {
+            return Vec::new();
+        }
         let mut flagged: Vec<&Definition> = self
             .partitions
             .values()
@@ -424,30 +430,48 @@ impl<S: System> Manager<S> {
     }
 }
 
-impl<S: System> Partitions for Manager<S> {
-    fn list(&mut self) -> Vec<Status> {
-        self.statuses()
-    }
-
-    fn create(&mut self, name: String) -> Result<Definition, Refused> {
-        if !model::valid_name(&name) {
-            return Err(one(qvsmsg::NAME_INVALID.with(&[&name])));
+impl<S: System> Manager<S> {
+    /// Create a partition called `name` with `settings`, at `id` when
+    /// one is given.
+    fn create_at(
+        &mut self,
+        id: Option<u32>,
+        name: &str,
+        settings: PartitionSettings,
+    ) -> Result<Definition, Refused> {
+        let mut errors = Vec::new();
+        if !model::valid_name(name) {
+            errors.push(qvsmsg::NAME_INVALID.with(&[name]));
         }
         if let Some(other) = self.partitions.values().find(|p| p.definition.name == name) {
-            return Err(one(
-                qvsmsg::NAME_IN_USE.with(&[&name, &other.definition.id.to_string()])
-            ));
+            errors.push(qvsmsg::NAME_IN_USE.with(&[name, &other.definition.id.to_string()]));
         }
         let most = self.host.settings.max_partitions;
+        if let Some(id) = id {
+            if id == 0 || id > MAX_ID {
+                errors.push(qvsmsg::ID_INVALID.with(&[&id.to_string(), &MAX_ID.to_string()]));
+            } else if id > most {
+                errors.push(qvsmsg::ID_PAST_LIMIT.with(&[&id.to_string(), &most.to_string()]));
+            } else if let Some(other) = self.partitions.get(&id) {
+                errors.push(qvsmsg::ID_IN_USE.with(&[&id.to_string(), &other.definition.name]));
+            }
+        }
+        errors.extend(model::validate::settings(&settings));
+        if !errors.is_empty() {
+            return Err(errors);
+        }
         if self.partitions.len() >= most as usize {
             return Err(one(qvsmsg::TOO_MANY_PARTITIONS.with(&[&most.to_string()])));
         }
-        let id = (1..=MAX_ID)
-            .find(|id| !self.partitions.contains_key(id))
-            .ok_or_else(|| one(qvsmsg::TOO_MANY_PARTITIONS.with(&[&MAX_ID.to_string()])))?;
+        let id = match id {
+            Some(id) => id,
+            None => (1..=MAX_ID)
+                .find(|id| !self.partitions.contains_key(id))
+                .ok_or_else(|| one(qvsmsg::TOO_MANY_PARTITIONS.with(&[&MAX_ID.to_string()])))?,
+        };
         let definition = Definition {
             id,
-            name: name.clone(),
+            name: name.to_string(),
             environment: Environment::Qs400,
             serial: serial_for(&self.host_serial, id),
             keylock: Keylock::Normal,
@@ -455,6 +479,7 @@ impl<S: System> Partitions for Manager<S> {
             auto_start: AutoStart::default(),
             created: self.system.now(),
             revision: 1,
+            settings,
         };
         self.keep_definition(&definition)?;
         let kept = Kept {
@@ -462,8 +487,167 @@ impl<S: System> Partitions for Manager<S> {
             profiles: std::collections::BTreeMap::new(),
         };
         self.partitions.insert(id, Partition::of(kept));
-        self.defined(id, &name, true);
+        // What a partition of this ID before it left is not this one's.
+        let _ = self
+            .store
+            .save_activations(id, &model::Activations::default());
+        self.defined(id, name, true);
         Ok(definition)
+    }
+
+    /// Keep when each of `id`'s profiles was last activated; a write
+    /// that fails is logged and the activation goes on.
+    pub(crate) fn keep_activations(&mut self, id: u32) {
+        let Some(p) = self.partitions.get(&id) else {
+            return;
+        };
+        let kept = model::Activations {
+            last: p.last_used.clone(),
+        };
+        if let Err(e) = self.store.save_activations(id, &kept) {
+            self.system
+                .log(&format!("partition {id}: its activations not kept: {e}"));
+        }
+    }
+
+    /// A control panel function a management console asked for.
+    pub fn begin_console_panel(&mut self, id: u32, function: u8, args: PanelArgs) -> super::Answer {
+        match self.partition(id) {
+            Err(e) => super::Answer::Now(Err(e)),
+            Ok(p) if !p.definition.settings.panel => super::Answer::Now(Err(one(
+                qvsmsg::PANEL_NOT_ALLOWED.with(&[&p.definition.name]),
+            ))),
+            Ok(_) => self.begin_panel(id, function, args),
+        }
+    }
+
+    /// What partition `id`'s dumps take.
+    fn space_of(&mut self, id: u32) -> DumpSpace {
+        let service = self.host.settings.service;
+        let dumps = self.system.dumps(id);
+        DumpSpace {
+            id,
+            bytes: dumps.iter().map(|d| d.allocated).sum(),
+            limit: service.max_dump_mib.saturating_mul(1 << 20),
+            dumps: u32::try_from(dumps.len()).unwrap_or(u32::MAX),
+            max_dumps: service.max_dumps,
+        }
+    }
+}
+
+impl<S: System> Partitions for Manager<S> {
+    fn list(&mut self) -> Vec<Status> {
+        self.statuses()
+    }
+
+    fn create(&mut self, name: String) -> Result<Definition, Refused> {
+        self.create_at(None, &name, PartitionSettings::default())
+    }
+
+    fn create_as(
+        &mut self,
+        id: Option<u32>,
+        name: String,
+        settings: PartitionSettings,
+    ) -> Result<Definition, Refused> {
+        self.create_at(id, &name, settings)
+    }
+
+    fn partition_settings(&mut self, id: u32) -> Result<PartitionSettings, Refused> {
+        self.partition(id).map(|p| p.definition.settings.clone())
+    }
+
+    fn set_partition_settings(
+        &mut self,
+        id: u32,
+        settings: PartitionSettings,
+    ) -> Result<(), Refused> {
+        let errors = model::validate::settings(&settings);
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        let mut definition = self.partition(id)?.definition.clone();
+        definition.settings = settings;
+        definition.revision += 1;
+        self.keep_definition(&definition)?;
+        let name = definition.name.clone();
+        if let Some(p) = self.partitions.get_mut(&id) {
+            p.definition = definition;
+        }
+        self.defined(id, &name, true);
+        Ok(())
+    }
+
+    fn activations(&mut self) -> Vec<Activation> {
+        self.partitions
+            .values()
+            .map(|p| Activation {
+                id: p.definition.id,
+                since: p.run.as_ref().map(|r| r.since),
+                profile: p.last_profile.clone(),
+            })
+            .collect()
+    }
+
+    fn profile_uses(&mut self, id: u32) -> Result<Vec<ProfileUse>, Refused> {
+        let p = self.partition(id)?;
+        Ok(p.profiles
+            .keys()
+            .map(|name| ProfileUse {
+                name: name.clone(),
+                last: p.last_used.get(name).copied(),
+            })
+            .collect())
+    }
+
+    fn panel_functions(&mut self) -> Vec<PanelFunction> {
+        super::panel::TABLE
+            .iter()
+            .map(|f| PanelFunction {
+                function: f.number,
+                text: f.text.to_string(),
+                manual: f.manual,
+                confirm: f.confirm,
+            })
+            .collect()
+    }
+
+    fn console_panel(&mut self, id: u32, function: u8, args: PanelArgs) -> Result<String, Refused> {
+        match self.begin_console_panel(id, function, args) {
+            super::Answer::Now(result) => result,
+            super::Answer::Later(_) => Ok(String::new()),
+        }
+    }
+
+    fn dump_space(&mut self, id: u32) -> Result<Vec<DumpSpace>, Refused> {
+        if id != 0 {
+            self.partition(id)?;
+            return Ok(vec![self.space_of(id)]);
+        }
+        let ids: Vec<u32> = self.partitions.keys().copied().collect();
+        Ok(ids.into_iter().map(|id| self.space_of(id)).collect())
+    }
+
+    fn set_power_on(&mut self, power_on: PowerOn, delay: u32, by: String) -> Result<(), Refused> {
+        let mut settings = self.host.settings.clone();
+        settings.power_on = power_on;
+        settings.service.host_timeout_secs = delay;
+        let errors = settings.errors();
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        self.store
+            .save_settings(&settings)
+            .map_err(|e| one(qvsmsg::STATE_NOT_KEPT.with(&["The host's settings", &e])))?;
+        self.host.settings = settings;
+        let time = self.system.now();
+        self.publish(&Event::PowerOn {
+            power_on,
+            delay,
+            by,
+            time,
+        });
+        Ok(())
     }
 
     fn definition(&mut self, id: u32) -> Result<Definition, Refused> {
@@ -581,8 +765,13 @@ impl<S: System> Partitions for Manager<S> {
         self.store
             .delete_profile(id, &name)
             .map_err(|e| one(qvsmsg::STATE_NOT_KEPT.with(&["The profile's deletion", &e])))?;
+        let mut forgot = false;
         if let Some(partition) = self.partitions.get_mut(&id) {
             partition.profiles.remove(&name);
+            forgot = partition.last_used.remove(&name).is_some();
+        }
+        if forgot {
+            self.keep_activations(id);
         }
         self.defined(id, &partition_name, true);
         self.profile_changed(id, &name);

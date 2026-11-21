@@ -374,6 +374,9 @@ ipc::rpc! {
     /// Stop every pool in order: PID 1's request at the host's
     /// shutdown, after every partition ended.
     25 => fn stop_all / StopAll () -> u32;
+    /// The disks a pool may be made of, or take as a unit or a hot
+    /// spare: not configured, or foreign (taken only when confirmed).
+    26 => fn candidates / Candidates () -> Vec<Disk>;
 }
 
 /// A client: each call is its own connection.

@@ -131,7 +131,10 @@ a fixed order, then one line `# signature <128 hex digits>`, the ed25519
 signature of every byte before it by the release signing key. A reader
 verifies the bytes as received against the keys it trusts and parses
 only what verified; `sequence` only grows, and a reader that has seen
-one refuses a lower one.
+one refuses a lower one. Since QS/400's handoff 24 a release's entry
+may say its date, `released = "YYYY-MM-DD"`, and its release notes'
+file beside the index, `notes`; `build release` writes both (the date
+of `SOURCE_DATE_EPOCH`), and an entry without them reads as before.
 
 ```toml
 format = 1

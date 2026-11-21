@@ -99,7 +99,12 @@ and base's system dumps, its own dumps; `caps::PHYSICAL_IO`: the host
 family's `Devices` and its device events, vres's `TapeDrives` and its
 event, a profile's physical I/O and a tape device's physical drive; and
 `caps::PARTITION_V2`: the partition family's `Entitlement` and its
-event. A request is checked by QSI's own bounds
+event; and handoff 24's bits 19 to 26: `SWITCHES` and `POOLS`, vres's
+switches and storage pools made and changed; `PARTITION_V3`, a
+partition's settings and a create at a chosen ID; `ACTIVATIONS`;
+`POWER_ON`; `PANEL_FUNCTIONS`; `PROBLEM_NOTES`, service version 2;
+`DUMP_SPACE`. Bit 27 (`FIX_LEVEL`) is not said: the host keeps no
+cumulative fix level of its own. A request is checked by QSI's own bounds
 (`QSI0002`), then translated (`qsi/server/src/families`, following
 `docs/QSI.md` section 8):
 
@@ -109,7 +114,7 @@ event. A request is checked by QSI's own bounds
 | host | the partition manager (resources, settings, devices), the inventory with the pool service's disks and the switch service's interfaces for each item's owner |
 | partitions, partition, profiles, refcodes, panel, dumps, console | the partition manager; the partition family's `Entitlement` as the request's user |
 | vres | the pool service (pools, virtual disks, images, volumes), the partition manager (drives, a partition's physical drive as `PhysicalTape`, physical tape drives, processor pools, where a disk is named, read from its profiles), the switch service (switches, ports, forwarding, VLANs, limits) |
-| service | the problem service (`docs/PROBLEMS.md`): `List`, `Get`, and `Close` as the request's user; a service resource is QSI's `System` named `service <name>` |
+| service | the problem service (`docs/PROBLEMS.md`): `List`, `Get`, and `Close` as the request's user; a service resource is QSI's `System` named `service <name>`; version 2's `Note` as the request's user, `ListRated`, `GetRated` |
 | update | the update service (`docs/UPDATE.md`): `Status`, `Stage` as a stream, `Discard`, `Install`, `Activate` as the request's user, `Cancel` |
 
 A refusal carries every message the service gave, the first first, with
@@ -133,6 +138,23 @@ naming it; the session goes on and the other families answer.
 
 What the host keeps to itself is left out: a VMM's process, a switch's
 bridge, a port's tap, a pool's mount point.
+
+Handoff 24's operations, each to its owning service's request:
+
+| QSI (bit) | Local request | Refusals, QSI's first |
+|---|---|---|
+| vres `Disks` (20) | pool service 26, candidates | |
+| vres `PoolCreate`, `PoolDelete`, `PoolRename`, `UnitReplace`, `SpareAdd`, `SpareRemove`, `Designate` (20) | pool service 2 to 8; a protection's word (`none`, `mirrored`, `raid5`, `raid6`); the foreign disks' confirmation as the console sends it, which it sets only after its own confirmation page | `QSI1601` to `QSI1618` then `QVS3001` to `QVS3017`, `QVS3205` (`docs/QSI.md`'s table) |
+| vres `PoolExtend` (20) | none: a pool's size is fixed | `QSI1616` then `QVS3019`; `QSI1603` then `QVS3003` for no such pool |
+| vres `SwitchCreate`, `SwitchChange`, `SwitchRename`, `SwitchDelete`, `UplinkSet`, `UplinkClear` (19) | switch service 1 to 6; the management interface is refused as an uplink there | `QSI1501` to `QSI1515` then `QVS4001` to `QVS4015`, `QVS4101` to `QVS4107` |
+| partition `CreateWith`, `GetSettings`, `SetSettings` (21) | partition manager 44, 45, 46 | `QSI0362` then `QVS2016`; `QSI0363` then `QVS2017` |
+| partitions `Activations`, profiles `Activated` (22) | partition manager 47, 48 | |
+| host `PowerOn`, `SetPowerOn` (23) | partition manager 17 (its settings' `[power_on]` and `host_timeout_secs`) and 52, as the request's user; its event `PowerOnChanged` | `QVS2201` |
+| panel `Functions` (24) | partition manager 49 | `QVS2001` |
+| panel `Function` | partition manager 50, console panel | `QVS2318` when the partition keeps its panel from consoles |
+| service `Note`, `ListRated`, `GetRated` (25) | problem service 4, 5, 6 | `QSI1002`, `QSI1003` then `QVS5001`, `QVS5002`; `QVS5005` |
+| base `DumpSpace` (26) | the host's dumps' directory, its limits (`docs/DUMPS.md`) | |
+| dumps `Space` (26) | partition manager 51 | |
 
 What QSI v1 cannot carry: a partition created together with its first
 profile (`partd`'s `CreateWith`) and a definition change at a revision

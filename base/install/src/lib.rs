@@ -12,11 +12,15 @@
 //! - [`flow`]: the screens.
 //! - [`answers`]: the answers of an unattended installation, from the
 //!   `[install]` table of a seed file.
+//! - `write` (Linux): the eight steps that write a load source from
+//!   verified media, for the product's names and codes.
 
 #![forbid(unsafe_code)]
 
 pub mod answers;
 pub mod flow;
+#[cfg(target_os = "linux")]
+pub mod write;
 
 use panels::forms::{LinkChoice, TimeChoice};
 use state::Network;

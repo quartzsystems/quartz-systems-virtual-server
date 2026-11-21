@@ -28,7 +28,7 @@ static TAKING: AtomicBool = AtomicBool::new(false);
 /// Where the host's dumps are kept.
 #[must_use]
 pub fn store() -> Store {
-    Store::at(Path::new(release::DATA_DIR).join(hostdump::store::DIR))
+    hostdump::store::at(Path::new(release::DATA_DIR).join(hostdump::store::DIR))
 }
 
 /// The directory, root's and the QSI server's group's, which lists,

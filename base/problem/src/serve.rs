@@ -14,20 +14,27 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use refcode::RefCode;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use supervise::control::{About, about as kind};
 use supervise::signal::{Signals, TERM};
 
 use crate::book::Book;
 use crate::proto::{self, Problems, Request};
-use crate::record::{Filter, Noticed, Page, Problem};
+use crate::record::{Filter, Line, Noticed, Page, Problem, RatedPage, RatedProblem};
 
 /// What the service is given by the product it runs as.
 #[derive(Clone)]
 pub struct Host {
-    /// Post a reference code, with what it is about.
-    pub post: fn(&'static RefCode, &str, &[About]),
+    /// The product's table, severity and messages.
+    pub rules: crate::table::Rules,
+    /// Post the product's code that the data file system is nearly full
+    /// (`true`) or has room again, with the detail and what it is about.
+    pub post_data: fn(bool, &str, &[About]),
+    /// The code `post_data` posts when it is nearly full: a problem it
+    /// opened says so at the first look.
+    pub full_code: &'static str,
+    /// The product's id (`appliance.id`): the socket's name.
+    pub id: &'static str,
     /// The run directory: the socket.
     pub run_dir: &'static str,
     /// Its own directory: the log.
@@ -67,6 +74,17 @@ fn now() -> u64 {
 }
 
 impl Core {
+    /// No problem `number`, in the product's words.
+    fn no_problem(&self, number: u64) -> Vec<msg::Issued> {
+        vec![
+            self.host
+                .rules
+                .messages
+                .no_problem
+                .with(&[&number.to_string()]),
+        ]
+    }
+
     fn publish(&mut self, events: &[Noticed]) {
         self.subscribers
             .retain(|tx| events.iter().all(|e| tx.send(e.clone()).is_ok()));
@@ -95,7 +113,7 @@ impl Core {
         let t = now();
         let mut events = Vec::new();
         for p in &postings {
-            events.extend(self.book.take(p, t));
+            events.extend(self.book.take(&self.host.rules, p, t));
         }
         self.book.read_to(at);
         if self.keep() {
@@ -115,11 +133,9 @@ impl Problems for Session<'_> {
         lock(self.0).book.list(&filter, before, limit)
     }
 
-    fn get(&mut self, number: u64) -> Result<Problem, Vec<qvsmsg::Issued>> {
-        lock(self.0)
-            .book
-            .get(number)
-            .ok_or_else(|| vec![qvsmsg::NO_PROBLEM.with(&[&number.to_string()])])
+    fn get(&mut self, number: u64) -> Result<Problem, Vec<msg::Issued>> {
+        let core = lock(self.0);
+        core.book.get(number).ok_or_else(|| core.no_problem(number))
     }
 
     fn close(
@@ -127,22 +143,48 @@ impl Problems for Session<'_> {
         number: u64,
         anyway: bool,
         by: String,
-    ) -> Result<Problem, Vec<qvsmsg::Issued>> {
+    ) -> Result<Problem, Vec<msg::Issued>> {
         let mut core = lock(self.0);
+        let rules = core.host.rules;
         let before = core.book.clone();
-        let closed = core.book.close(number, anyway, &by, now())?;
+        let closed = core.book.close(&rules, number, anyway, &by, now())?;
         if !core.keep() {
             core.book = before;
-            return Err(vec![qvsmsg::PROBLEMS_NOT_KEPT.issue()]);
+            return Err(vec![rules.messages.not_kept.issue()]);
         }
         eprintln!("problem {number} closed by {}", closed.problem.closed_by);
         core.publish(std::slice::from_ref(&closed));
-        core.book
-            .get(number)
-            .ok_or_else(|| vec![qvsmsg::NO_PROBLEM.with(&[&number.to_string()])])
+        core.book.get(number).ok_or_else(|| core.no_problem(number))
     }
 
     fn subscribe(&mut self) {}
+
+    fn note(&mut self, number: u64, text: String, by: String) -> Result<Line, Vec<msg::Issued>> {
+        let mut core = lock(self.0);
+        let rules = core.host.rules;
+        let before = core.book.clone();
+        let noted = core.book.note(&rules, number, &text, &by, now())?;
+        if !core.keep() {
+            core.book = before;
+            return Err(vec![rules.messages.not_kept.issue()]);
+        }
+        eprintln!("problem {number}: a note by {by}");
+        core.publish(std::slice::from_ref(&noted));
+        Ok(noted.note.map(|n| n.line).unwrap_or_default())
+    }
+
+    fn list_rated(&mut self, filter: Filter, before: Option<u64>, limit: u32) -> RatedPage {
+        let core = lock(self.0);
+        core.book
+            .list_rated(&core.host.rules, &filter, before, limit)
+    }
+
+    fn get_rated(&mut self, number: u64) -> Result<RatedProblem, Vec<msg::Issued>> {
+        let core = lock(self.0);
+        core.book
+            .get_rated(&core.host.rules, number)
+            .ok_or_else(|| core.no_problem(number))
+    }
 }
 
 fn answer(stream: &UnixStream, bytes: &[u8]) -> std::io::Result<()> {
@@ -201,14 +243,13 @@ fn look_at_data(core: &Shared, said_full: &mut Option<bool>) {
         ..About::default()
     }];
     // What the log holds decides at the first look.
-    let full =
-        *said_full.get_or_insert_with(|| lock(core).book.holds(refcode::DATA_NEARLY_FULL.code));
+    let full = *said_full.get_or_insert_with(|| lock(core).book.holds(host.full_code));
     let detail = format!("{used}% used");
     if !full && used >= DATA_FULL {
-        (host.post)(&refcode::DATA_NEARLY_FULL, &detail, &about);
+        (host.post_data)(true, &detail, &about);
         *said_full = Some(true);
     } else if full && used < DATA_ROOM {
-        (host.post)(&refcode::DATA_HAS_ROOM, &detail, &about);
+        (host.post_data)(false, &detail, &about);
         *said_full = Some(false);
     }
 }
@@ -235,7 +276,7 @@ pub fn run(host: Host) -> String {
         return format!("{}: {e}", host.dir.display());
     }
     let book = Book::open(&host.dir);
-    let socket = proto::socket(host.run_dir);
+    let socket = proto::socket(host.id, host.run_dir);
     let _ = std::fs::remove_file(&socket);
     let listener = match UnixListener::bind(&socket) {
         Ok(l) => l,

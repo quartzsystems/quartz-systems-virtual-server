@@ -39,31 +39,32 @@ pub mod kind {
     pub const TAPE_DRIVE: &str = "tape-drive";
 }
 
-/// How a condition opens a problem.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Opening {
-    /// What describes it: its first-level text is the problem's
-    /// description, its second-level text what to do.
-    pub message: &'static Message,
-    /// The kinds of resource its message names, in order.
-    pub resources: &'static [&'static str],
-    /// The progress codes whose posting marks it cleared.
-    pub cleared_by: &'static [&'static str],
-    /// The problem's code is the system's own, which the posting names,
-    /// not the host's code that posted it.
-    pub system_code: bool,
+pub use problem::Severity;
+pub use problem::table::{Condition, Opening, Rules};
+
+/// The severity of a problem the code `code` opened: an attention code
+/// (`A2`) the host carries on past, a fatal one (`B2`) it parks for.
+#[must_use]
+pub fn severity(code: &str) -> Severity {
+    if code.starts_with("B2") {
+        Severity::Terminal
+    } else {
+        Severity::Attention
+    }
 }
 
-/// One attention or fatal code of the host.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Condition {
-    /// The code.
-    pub code: &'static str,
-    /// How it opens a problem; none when it does not.
-    pub opens: Option<Opening>,
-    /// Why it opens none: where a person sees it instead.
-    pub note: &'static str,
-}
+/// QS/VS's rules for the problem log (`base/problem`).
+pub const RULES: Rules = Rules {
+    conditions: CONDITIONS,
+    severity,
+    messages: problem::table::Messages {
+        no_problem: &NO_PROBLEM,
+        closed: &PROBLEM_CLOSED,
+        holds: &PROBLEM_HOLDS,
+        not_kept: &PROBLEMS_NOT_KEPT,
+        note_invalid: &NOTE_INVALID,
+    },
+};
 
 const fn opens(
     code: &'static str,
@@ -322,19 +323,20 @@ pub fn cleared(code: &str) -> impl Iterator<Item = &'static Condition> + use<'_>
 #[must_use]
 pub fn table() -> String {
     let mut rows = vec![
-        "| Code | Opens | Description | Message | Resources | Cleared by |".to_string(),
-        "|---|---|---|---|---|---|".to_string(),
+        "| Code | Opens | Severity | Description | Message | Resources | Cleared by |".to_string(),
+        "|---|---|---|---|---|---|---|".to_string(),
     ];
     for c in CONDITIONS {
         rows.push(match &c.opens {
             Some(o) => format!(
-                "| `{}` | yes{} | {} | `{}` | {} | {} |",
+                "| `{}` | yes{} | {} | {} | `{}` | {} | {} |",
                 c.code,
                 if o.system_code {
                     ", with the system's own code"
                 } else {
                     ""
                 },
+                severity(c.code).word(),
                 o.message.text,
                 o.message.id,
                 if o.resources.is_empty() {
@@ -352,7 +354,7 @@ pub fn table() -> String {
                         .join(", ")
                 },
             ),
-            None => format!("| `{}` | no | {} | | | |", c.code, c.note),
+            None => format!("| `{}` | no | | {} | | | |", c.code, c.note),
         });
     }
     rows.join("\n") + "\n"

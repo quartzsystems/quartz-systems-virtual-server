@@ -398,6 +398,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "confine"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "conformance"
 version = "0.1.0"
 dependencies = [
@@ -986,11 +993,10 @@ dependencies = [
 name = "hostdump"
 version = "0.1.0"
 dependencies = [
- "appliance",
  "identity",
- "ipc",
  "partd",
  "poold",
+ "servicedump",
  "users",
  "vswitchd",
 ]
@@ -1245,12 +1251,18 @@ dependencies = [
 name = "install"
 version = "0.1.0"
 dependencies = [
+ "abrec",
  "appliance",
  "console",
+ "diskimg",
+ "loadsource",
+ "netd",
  "panels",
+ "rustix",
  "seed",
  "state",
  "users",
+ "uuid",
 ]
 
 [[package]]
@@ -1433,8 +1445,11 @@ dependencies = [
  "abrec",
  "appliance",
  "diskimg",
+ "ed25519-dalek",
+ "hex",
  "protect",
  "rustix",
+ "sha2 0.11.0",
  "uuid",
  "vrm",
 ]
@@ -1503,6 +1518,13 @@ dependencies = [
  "serde",
  "state",
  "toml",
+]
+
+[[package]]
+name = "msg"
+version = "0.1.0"
+dependencies = [
+ "ipc",
 ]
 
 [[package]]
@@ -1590,6 +1612,7 @@ dependencies = [
  "rustix",
  "scrkit",
  "state",
+ "stgd",
  "users",
 ]
 
@@ -1733,8 +1756,7 @@ dependencies = [
  "appliance",
  "ipc",
  "logd",
- "qvsmsg",
- "refcode",
+ "msg",
  "rustix",
  "serde",
  "serde_json",
@@ -1875,6 +1897,7 @@ version = "0.1.0"
 dependencies = [
  "acpi",
  "arch",
+ "confine",
  "devices",
  "dump",
  "fdpass",
@@ -1934,6 +1957,7 @@ dependencies = [
  "libc",
  "loadsource",
  "logd",
+ "model",
  "partd",
  "pio",
  "poold",
@@ -2031,8 +2055,10 @@ version = "0.1.0"
 dependencies = [
  "logd",
  "problem",
+ "qvsmsg",
  "refcode",
  "release",
+ "supervise",
 ]
 
 [[package]]
@@ -2137,6 +2163,8 @@ name = "qvsmsg"
 version = "0.1.0"
 dependencies = [
  "ipc",
+ "msg",
+ "problem",
 ]
 
 [[package]]
@@ -2497,6 +2525,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7523beb55eece201a2356bee0bbca0d1ab466c14c07703b2e0ee6d42cb0c2c"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "servicedump"
+version = "0.1.0"
+dependencies = [
+ "appliance",
+ "identity",
+ "ipc",
+ "users",
 ]
 
 [[package]]

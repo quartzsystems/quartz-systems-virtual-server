@@ -69,6 +69,10 @@ catalogue! {
     DEFAULT_PROFILE_MISSING = "QVS1007",
         "Partition &1 has no profile &2 to be its default.",
         "The default profile of a partition is one of its own profiles. Create the profile first, or name one the partition has.";
+    /// A description too long, or with control characters.
+    DESCRIPTION_INVALID = "QVS1008",
+        "A partition's description of &1 bytes is not valid.",
+        "A description is one line of at most &2 bytes, without control characters.";
 
     /// A profile's name breaks the naming rule.
     PROFILE_NAME_INVALID = "QVS1101",
@@ -289,6 +293,14 @@ catalogue! {
     NOTHING_TO_SAVE = "QVS2015",
         "Partition &1 is not activated: it has no current configuration to save.",
         "Its current configuration is what its activation gave it. Activate it first, or put a profile.";
+    /// QSI0362: a partition created at an ID another has.
+    ID_IN_USE = "QVS2016",
+        "Partition ID &1 is in use.",
+        "Partition &2 has that ID. Choose another, or leave the ID out for the partition manager to assign the lowest one free.";
+    /// QSI0363: an ID past the host's limit of partitions.
+    ID_PAST_LIMIT = "QVS2017",
+        "Partition ID &1 is past this host's limit of &2 partitions.",
+        "A partition created at an ID of its own is given one from 1 to the host's most partitions. Choose a lower ID, or raise the limit in the host's settings.";
 
     /// Too few cores for a dedicated partition's minimum.
     PROCESSORS_NOT_AVAILABLE = "QVS2101",
@@ -470,6 +482,10 @@ catalogue! {
     CHANNEL_CLOSED = "QVS2317",
         "Partition &1's service channel was closed: &2.",
         "The system sent what is not the partition service protocol, or more than it allows. The channel is closed and the partition runs on; it is opened again when the system's service daemon says hello again.";
+    /// A console's panel function for a partition that does not allow them.
+    PANEL_NOT_ALLOWED = "QVS2318",
+        "Partition &1 does not allow control panel functions from a management console.",
+        "Its settings keep its control panel to the host: Service Tools and the host's own requests. Change the partition's settings to allow them.";
 
     /// QSI1301: a location no device of the host has.
     DEVICE_UNKNOWN = "QVS2401",
@@ -660,6 +676,10 @@ catalogue! {
     STORAGE_FAILED = "QVS3018",
         "The pool service could not &1: &2.",
         "The host's log has more. Try again; if it fails again, a disk may be failing.";
+    /// QSI1616: a pool's size is fixed.
+    SPOOL_FIXED_SIZE = "QVS3019",
+        "Storage pool &1 cannot be extended: a pool's size is fixed when it is made.",
+        "A pool's protected set and its file system are made once, of the disks chosen then. Make another pool of the new disks, or move virtual disks to a larger pool.";
     /// A virtual disk's name breaks the rule.
     VDISK_NAME_INVALID = "QVS3101",
         "Virtual disk name &1 is not valid.",
@@ -849,6 +869,10 @@ catalogue! {
     PROBLEMS_NOT_KEPT = "QVS5004",
         "The problem log could not be written.",
         "Nothing was changed. The data file system may be full or failing: look at the problems about it, then try again.";
+    /// A note that is empty, too long or more than a line.
+    NOTE_INVALID = "QVS5005",
+        "A note of &1 bytes is not valid.",
+        "A note is one line of 1 to &2 bytes, without control characters. It is added to the problem's analysis log with its author's name.";
     /// A2001030.
     PRB_RECORD = "QVS5101",
         "The A/B record of the load source was not valid: &1.",

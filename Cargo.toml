@@ -28,8 +28,7 @@ members = [
     "lic/qvsmsg",
     # Service Tools: QS/VS's menu and its host-specific panels.
     "svc/tools",
-    # Service: the problem log.
-    "svc/problem",
+    # Service: the host's dump and code update.
     "svc/hostdump",
     "svc/update",
     "qsi/local",
@@ -53,6 +52,10 @@ members = [
     "base/processor",
     "base/inventory",
     "base/qemu",
+    "base/msg",
+    "base/problem",
+    "base/servicedump",
+    "base/confine",
     # The VMM: one process for one partition.
     "vmm/arch",
     "vmm/acpi",

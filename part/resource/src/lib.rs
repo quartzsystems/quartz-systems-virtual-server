@@ -24,5 +24,5 @@ pub mod topology;
 
 pub use account::{Amount, Current, Held, Host, HostResources, PoolStatus, Processors, Vcpus};
 pub use entitle::Entitlement;
-pub use settings::{Pool, Service, Settings};
+pub use settings::{Pool, PowerOff, PowerOn, Service, Settings};
 pub use topology::{Thread, Topology};

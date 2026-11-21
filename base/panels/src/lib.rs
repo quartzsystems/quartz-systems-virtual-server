@@ -18,6 +18,9 @@
 //! - [`tools`]: the panels every service console has.
 //! - [`keep`]: the one panel shown before the data file system exists,
 //!   when the units of a mirrored load source ran apart.
+//! - [`units`]: the load source's units, protection started, a failed
+//!   unit replaced and its rebuild watched, behind [`units::LoadSource`];
+//!   the product's own options beside them.
 
 #![forbid(unsafe_code)]
 
@@ -30,6 +33,7 @@ pub mod panel;
 #[cfg(target_os = "linux")]
 pub mod screens;
 pub mod tools;
+pub mod units;
 
 pub use panel::{Help, Named, Panel, PanelFlow, Runner};
 pub use scrkit::panel::{End, Flow};

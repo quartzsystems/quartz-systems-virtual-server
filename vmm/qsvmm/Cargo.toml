@@ -27,6 +27,7 @@ vm-memory.workspace = true
 vmm-sys-util.workspace = true
 rustix.workspace = true
 libc.workspace = true
+confine = { path = "../../base/confine", version = "0.1.0" }
 
 [lints]
 workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "msg"
+description = "An appliance's messages: catalogue entries and issued messages, the product's own catalogue and words"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ipc.workspace = true
+
+[lints]
+workspace = true

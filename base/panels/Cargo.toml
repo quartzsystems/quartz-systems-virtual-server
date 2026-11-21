@@ -10,6 +10,7 @@ publish.workspace = true
 appliance = { path = "../appliance", version = "0.1.0" }
 state = { path = "../state", version = "0.1.0" }
 users = { path = "../users", version = "0.1.0" }
+stgd = { path = "../stgd", version = "0.1.0" }
 console.workspace = true
 scrkit.workspace = true
 

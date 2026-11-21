@@ -8,7 +8,10 @@
 
 use qvsmsg::Issued;
 
-use crate::definition::{Definition, MAX_DELAY_SECS, MAX_ID, valid_serial};
+use crate::definition::{
+    Definition, MAX_DELAY_SECS, MAX_DESCRIPTION, MAX_ID, MAX_SHUTDOWN_DELAY_SECS,
+    PartitionSettings, valid_serial,
+};
 use crate::profile::{
     Lun, MAX_WEIGHT, MediaDevice, ProcessorMode, Processors, Profile, ScsiAdapter,
 };
@@ -153,6 +156,25 @@ pub fn definition(definition: &Definition) -> Vec<Issued> {
         errors.push(qvsmsg::DELAY_INVALID.with(&[
             &definition.auto_start.wait_secs.to_string(),
             &MAX_DELAY_SECS.to_string(),
+        ]));
+    }
+    errors.extend(settings(&definition.settings));
+    errors
+}
+
+/// Every error of a partition's settings.
+pub fn settings(settings: &PartitionSettings) -> Vec<Issued> {
+    let mut errors = Vec::new();
+    let d = &settings.description;
+    if d.len() > MAX_DESCRIPTION || d.chars().any(char::is_control) {
+        errors.push(
+            qvsmsg::DESCRIPTION_INVALID.with(&[&d.len().to_string(), &MAX_DESCRIPTION.to_string()]),
+        );
+    }
+    if settings.delay_secs > MAX_SHUTDOWN_DELAY_SECS {
+        errors.push(qvsmsg::DELAY_OUT_OF_RANGE.with(&[
+            &settings.delay_secs.to_string(),
+            &MAX_SHUTDOWN_DELAY_SECS.to_string(),
         ]));
     }
     errors

@@ -11,15 +11,16 @@
 
 use std::path::Path;
 
-use qvsmsg::Issued;
-use qvsmsg::problems::{self, Condition};
+use msg::Issued;
 use serde::{Deserialize, Serialize};
 use supervise::control::{About, about as kind};
 
 use crate::feed::Cursor;
 use crate::record::{
-    Filter, Line, Notice, Noticed, Page, Posted, Problem, Source, Status, Summary, said,
+    Filter, Line, Note, Notice, Noticed, Page, Posted, Problem, Rated, RatedPage, RatedProblem,
+    Source, Status, Summary, said,
 };
+use crate::table::{Condition, Opening, Rules};
 
 /// The file, in the problem service's directory.
 pub const FILE: &str = "problems.json";
@@ -30,6 +31,8 @@ pub const MAX_PROBLEMS: usize = 500;
 pub const MAX_LINES: usize = 50;
 /// The longest a person's name for a close may be.
 pub const MAX_BY: usize = 64;
+/// The longest note a person may add, in bytes.
+pub const MAX_NOTE: usize = 256;
 
 /// A posting the history gave: a code, with what it is about.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -104,7 +107,7 @@ fn key_of(code: &str, source: &Source, resources: &[About]) -> String {
 
 /// The values a condition's message is issued with: the name of each
 /// kind it names, in order; the text as posted last.
-fn values_of(c: &problems::Opening, about: &[About], text: &str) -> Vec<String> {
+fn values_of(c: &Opening, about: &[About], text: &str) -> Vec<String> {
     let mut values: Vec<String> = c
         .resources
         .iter()
@@ -119,7 +122,7 @@ fn values_of(c: &problems::Opening, about: &[About], text: &str) -> Vec<String> 
     values
 }
 
-fn issue(m: &qvsmsg::Message, values: &[String]) -> Issued {
+fn issue(m: &msg::Message, values: &[String]) -> Issued {
     let refs: Vec<&str> = values.iter().map(String::as_str).collect();
     m.with(&refs)
 }
@@ -162,23 +165,23 @@ impl Book {
     }
 
     /// Take a posting: what it opened, counted and cleared.
-    pub fn take(&mut self, p: &Posting, now: u64) -> Vec<Noticed> {
+    pub fn take(&mut self, rules: &Rules, p: &Posting, now: u64) -> Vec<Noticed> {
         let mut out = Vec::new();
         if let Some(Condition {
             opens: Some(opening),
             ..
-        }) = problems::condition(&p.posted.code)
+        }) = rules.condition(&p.posted.code)
         {
             out.push(self.seen(&p.posted.code, opening, p, now));
         }
-        for c in problems::cleared(&p.posted.code) {
+        for c in rules.cleared(&p.posted.code) {
             out.extend(self.clear(c.code, p, now));
         }
         self.bound();
         out
     }
 
-    fn seen(&mut self, code: &str, c: &problems::Opening, p: &Posting, now: u64) -> Noticed {
+    fn seen(&mut self, code: &str, c: &Opening, p: &Posting, now: u64) -> Noticed {
         let source = source_of(&p.about);
         let resources = resources_of(&p.about);
         let key = key_of(code, &source, &resources);
@@ -207,6 +210,7 @@ impl Book {
                 notice: Notice::Seen,
                 problem: s.clone(),
                 time: now,
+                note: None,
             };
         }
         let issued = issue(c.message, &values_of(c, &p.about, &p.posted.text));
@@ -245,6 +249,7 @@ impl Book {
             notice: Notice::Opened,
             problem: summary,
             time: now,
+            note: None,
         }
     }
 
@@ -284,6 +289,7 @@ impl Book {
                 notice: Notice::Cleared,
                 problem: s.clone(),
                 time: now,
+                note: None,
             });
         }
         out
@@ -296,6 +302,7 @@ impl Book {
     /// No such problem, closed already, or its condition holds.
     pub fn close(
         &mut self,
+        rules: &Rules,
         number: u64,
         anyway: bool,
         by: &str,
@@ -307,14 +314,14 @@ impl Book {
             .iter_mut()
             .find(|k| k.problem.summary.number == number)
         else {
-            return Err(vec![qvsmsg::NO_PROBLEM.with(&[&n])]);
+            return Err(vec![rules.messages.no_problem.with(&[&n])]);
         };
         let s = &mut k.problem.summary;
         if s.status == Status::Closed {
-            return Err(vec![qvsmsg::PROBLEM_CLOSED.with(&[&n, &s.closed_by])]);
+            return Err(vec![rules.messages.closed.with(&[&n, &s.closed_by])]);
         }
         if s.holds && !anyway {
-            return Err(vec![qvsmsg::PROBLEM_HOLDS.with(&[&n])]);
+            return Err(vec![rules.messages.holds.with(&[&n])]);
         }
         let by: String = by.chars().take(MAX_BY).collect();
         let by = if by.trim().is_empty() {
@@ -335,6 +342,101 @@ impl Book {
             notice: Notice::Closed,
             problem: s.clone(),
             time: now,
+            note: None,
+        })
+    }
+
+    /// Add `by`'s note to problem `number`'s analysis log.
+    ///
+    /// # Errors
+    /// No such problem, closed, or a note that is not one.
+    pub fn note(
+        &mut self,
+        rules: &Rules,
+        number: u64,
+        text: &str,
+        by: &str,
+        now: u64,
+    ) -> Result<Noticed, Vec<Issued>> {
+        let n = number.to_string();
+        let text = text.trim();
+        if text.is_empty() || text.len() > MAX_NOTE || text.chars().any(char::is_control) {
+            return Err(vec![
+                rules
+                    .messages
+                    .note_invalid
+                    .with(&[&text.len().to_string(), &MAX_NOTE.to_string()]),
+            ]);
+        }
+        let Some(k) = self
+            .problems
+            .iter_mut()
+            .find(|k| k.problem.summary.number == number)
+        else {
+            return Err(vec![rules.messages.no_problem.with(&[&n])]);
+        };
+        let s = &k.problem.summary;
+        if s.status == Status::Closed {
+            return Err(vec![rules.messages.closed.with(&[&n, &s.closed_by])]);
+        }
+        let by: String = by.chars().take(MAX_BY).collect();
+        let by = if by.trim().is_empty() {
+            "unknown".to_string()
+        } else {
+            by
+        };
+        let line = Line {
+            time: now,
+            text: format!("Note by {by}: {text}"),
+        };
+        push_line(&mut k.problem.log, now, line.text.clone());
+        Ok(Noticed {
+            notice: Notice::Noted,
+            problem: k.problem.summary.clone(),
+            time: now,
+            note: Some(Note { line, by }),
+        })
+    }
+
+    /// The severity of problem `number`, from the condition that opened
+    /// it.
+    fn severity_of(&self, rules: &Rules, number: u64) -> crate::record::Severity {
+        self.problems
+            .iter()
+            .find(|k| k.problem.summary.number == number)
+            .map(|k| (rules.severity)(&k.opened_by))
+            .unwrap_or_default()
+    }
+
+    /// [`Book::list`] with each one's severity.
+    #[must_use]
+    pub fn list_rated(
+        &self,
+        rules: &Rules,
+        filter: &Filter,
+        before: Option<u64>,
+        limit: u32,
+    ) -> RatedPage {
+        let page = self.list(filter, before, limit);
+        RatedPage {
+            problems: page
+                .problems
+                .into_iter()
+                .map(|summary| Rated {
+                    severity: self.severity_of(rules, summary.number),
+                    summary,
+                })
+                .collect(),
+            more: page.more,
+        }
+    }
+
+    /// [`Book::get`] with its severity.
+    #[must_use]
+    pub fn get_rated(&self, rules: &Rules, number: u64) -> Option<RatedProblem> {
+        self.get(number).map(|problem| RatedProblem {
+            severity: self.severity_of(rules, number),
+            problem,
         })
     }
 

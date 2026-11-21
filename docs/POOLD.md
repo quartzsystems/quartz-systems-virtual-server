@@ -63,6 +63,7 @@ Two requests carry more than frames:
 | 23 | release | partition, wanted (empty: all) | | |
 | 24 | holders | | everything held | |
 | 25 | stop all | | how many pools were stopped | |
+| 26 | candidates | | the disks a pool may take, as a unit or a hot spare: those not configured, and those with what is not this host's on them (`foreign`, taken only when confirmed); as disks lists them | |
 
 A **wanted** item is its kind (a virtual disk, an image, a volume),
 its pool (for a disk), its name and the slot it is for. A partition

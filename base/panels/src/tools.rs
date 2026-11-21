@@ -826,9 +826,24 @@ impl<E: Named + ?Sized, O> Panel<E, O> for Stopping {
     }
 }
 
-/// The confirmation of a power off or a restart.
+/// What a power off or a restart's confirmation says of what ends with
+/// the machine: the product's words (a host's partitions end with it; a
+/// console's sessions do).
+#[derive(Clone, Copy, Debug)]
+pub struct PowerWords {
+    /// The lines after the first: what is stopped and what ends.
+    pub ends: &'static [&'static str],
+    /// The confirmation's help.
+    pub help: Help,
+}
+
+/// The confirmation of a power off or a restart, with the product's
+/// `words` of what ends with the machine.
 #[must_use]
-pub fn power<E: Host + ?Sized + 'static, O: 'static>(restart: bool) -> Confirm<E, O> {
+pub fn power<E: Host + ?Sized + 'static, O: 'static>(
+    restart: bool,
+    words: &PowerWords,
+) -> Confirm<E, O> {
     let (name, title, first) = if restart {
         (
             "tools-restart",
@@ -842,28 +857,13 @@ pub fn power<E: Host + ?Sized + 'static, O: 'static>(restart: bool) -> Confirm<E
             "The host will shut down in order and power off.",
         )
     };
+    let mut lines = kit::lines(&[first, ""]);
+    lines.extend(kit::lines(words.ends));
     Confirm::new(
         name,
         title,
-        kit::lines(&[
-            first,
-            "",
-            "Its services are stopped, its disks left clean. Every partition",
-            "that runs on this host ends with it.",
-        ]),
-        Help {
-            title: "Confirm power off or restart",
-            lines: &[
-                "F10 starts an orderly shutdown: the host's services end one",
-                "after another, its data is written and its file system",
-                "unmounted, and then the machine powers off or restarts.",
-                "",
-                "Partitions that run on the host end with it. Stop them from the",
-                "management console first.",
-                "",
-                "F12 goes back and nothing happens.",
-            ],
-        },
+        lines,
+        words.help,
         move |env: &mut E| match env.power(restart) {
             Ok(()) => Flow::Reset(Box::new(Stopping { restart })),
             Err(e) => Flow::Unwind(1, Some((e, true))),
@@ -874,6 +874,15 @@ pub fn power<E: Host + ?Sized + 'static, O: 'static>(restart: bool) -> Confirm<E
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// A product's words of what ends with the machine.
+    const TEST_WORDS: PowerWords = PowerWords {
+        ends: &["Every session ends with it."],
+        help: Help {
+            title: "Confirm",
+            lines: &["F10 restarts it."],
+        },
+    };
     use crate::panel::Runner;
     use scrkit::panel::End;
 
@@ -1134,8 +1143,12 @@ pub(crate) mod tests {
         assert!(rows.iter().all(|r| r.len() <= 78));
         assert_eq!(log_rows("head  ", ""), ["head"]);
 
-        let mut r: Runner<Fake, ()> = Runner::new(Box::new(power(true)));
-        assert!(r.screen(&mut env).dump().contains("Confirm Restart"));
+        let mut r: Runner<Fake, ()> = Runner::new(Box::new(power(true, &TEST_WORDS)));
+        let shown = r.screen(&mut env).dump();
+        assert!(shown.contains("Confirm Restart"));
+        // The product's words, and nothing of a host's.
+        assert!(shown.contains("Every session ends with it."));
+        assert!(!shown.contains("partition"));
         r.enter(&[], &mut env);
         assert_eq!(env.power, None);
         r.function(10, &[], &mut env);

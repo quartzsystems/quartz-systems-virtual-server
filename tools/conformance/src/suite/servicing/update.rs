@@ -889,16 +889,21 @@ pub fn migrate(run: &Run<'_>) -> Result<String, String> {
     if !back.starts_with(q::msgid::NO_STATE) {
         return Err(format!("going back: {back}, not {}", q::msgid::NO_STATE));
     }
-    if (first, rolled, unchanged, written) != (1, 1, 1, 2) {
+    // This release's definitions are of its version; the test release
+    // reads the one after it.
+    let v = <model::Definition as state::Document>::VERSION;
+    if (first, rolled, unchanged, written) != (v, v, v, v + 1) {
         return Err(format!(
             "the definition's schema: {first} before, {rolled} after the rollback, {unchanged} \
              once confirmed, {written} once changed"
         ));
     }
     Ok(format!(
-        "definition.toml: schema 1; a trial of the release that reads 2, never confirmed, rolled \
-         back with the file still 1; {confirmed} confirmed, the file 1 until the definition \
-         changed, then 2; the older release refused even with leave: `{back}`"
+        "definition.toml: schema {v}; a trial of the release that reads {next}, never \
+         confirmed, rolled back with the file still {v}; {confirmed} confirmed, the file {v} \
+         until the definition changed, then {next}; the older release refused even with \
+         leave: `{back}`",
+        next = v + 1
     ))
 }
 

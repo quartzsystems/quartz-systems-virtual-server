@@ -41,94 +41,94 @@ kind the row lists and in that order, then the text the code was
 posted with.
 
 <!-- problems -->
-| Code | Opens | Description | Message | Resources | Cleared by |
-|---|---|---|---|---|---|
-| `A2001002` | no | Not a fault: an image a development build made, which no release is. It is said at every IPL. | | | |
-| `A2001005` | yes | The host restarted after its kernel panicked: &1. | `QVS5156` | the host | a person only |
-| `A2001030` | yes | The A/B record of the load source was not valid: &1. | `QVS5101` | the host | a person only |
-| `A2001035` | yes | Code slot &1 did not confirm, and the host went back to the other slot: &2. | `QVS5102` | code-slot | a person only |
-| `A2001040` | yes | The data file system was not mounted: &1. | `QVS5103` | the host | `C2001040` |
-| `A2001045` | yes | The data file system is nearly full: &1. | `QVS5104` | the host | `C2001045` |
-| `A2001050` | yes | The clock could not be set from the hardware clock: &1. | `QVS5105` | the host | `C2001050` |
-| `A2001060` | no | A seed is the operator's: the console says why it was refused, and nothing was written. | | | |
-| `A2001070` | yes | A state file was not valid, and its defaults are in use: &1. | `QVS5106` | the host | a person only |
-| `A2001072` | yes | The memory for partitions was not reserved in full: &1. | `QVS5107` | the host | `C2001072` |
-| `A2001075` | yes | The host's identity could not be made: &1. | `QVS5108` | the host | `C2001075` |
-| `A2001080` | yes | Service &1 failed five times in ten minutes and is not started again. | `QVS5109` | service | a person only |
-| `A2001095` | yes | The firmware's boot order was not written for code slot &1: &2. | `QVS5110` | code-slot | `C2001095` |
-| `A2002005` | yes | No management interface was found: &1. | `QVS5111` | the host | `C2002010` |
-| `A2002010` | yes | Management interface &1 has no carrier. | `QVS5112` | network-interface | `C2002010` |
-| `A2002020` | yes | Management interface &1 has no address. | `QVS5113` | network-interface | `C2002020` |
-| `A2003010` | yes | The mirrored load source was not assembled: &1. | `QVS5114` | the host | `C2003010` |
-| `A2003020` | yes | Load-source unit &1 is missing or failed. | `QVS5115` | disk-unit | `C2003025`, `C2003035` |
-| `A2003030` | yes | The rebuild of load-source unit &1 did not finish: &2. | `QVS5116` | disk-unit | `C2003025`, `C2003035` |
-| `A2003040` | yes | The load-source units each ran without the other: &1. | `QVS5117` | the host | `C2003050` |
-| `A2004010` | no | The installer has no problem log: its screens and its log say what failed. | | | |
-| `A2004015` | no | The installer has no problem log: its screens and its log say what failed. | | | |
-| `A2004070` | no | The installer has no problem log: its screens and its log say what failed. | | | |
-| `A2004090` | no | The installer has no problem log: its screens and its log say what failed. | | | |
-| `A2005000` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005010` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005020` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005021` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005022` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005030` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005031` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005032` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005033` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005034` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005040` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005041` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005050` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005060` | yes | The machine of partition &1 could not be built: &2. | `QVS5118` | partition | a person only |
-| `A2005065` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2005100` | no | The code before it says why the partition did not IPL, and is the one to look at. | | | |
-| `A2005120` | yes | Partition &1 ended with a guest fault: &2. | `QVS5119` | partition | a person only |
-| `A2005130` | yes | The VMM of partition &1 failed while the partition ran: &2. | `QVS5120` | partition | a person only |
-| `A2005140` | no | The host ended the partition, as it was asked to. | | | |
-| `A2005150` | yes | The VMM of partition &1 was killed: &2. | `QVS5121` | partition | a person only |
-| `A2005160` | yes | Partition &1 is held: a storage pool its virtual disks are in is full. | `QVS5122` | partition | `C2005160` |
-| `A2005170` | yes | Partition &1 is held after a guest fault: &2. | `QVS5123` | partition | a person only |
-| `A2005180` | yes | A dump of partition &1 could not be written: &2. | `QVS5124` | partition | a person only |
-| `A2005190` | yes | The VMM of partition &1 was ended by its confinement: &2. | `QVS5155` | partition | a person only |
-| `A2006010` | no | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
-| `A2006020` | yes | Partition &1 was not started automatically: &2. | `QVS5125` | partition | a person only |
-| `A2006030` | yes | A partition's definition or profile was not valid: &1. | `QVS5126` | the host | a person only |
-| `A2006040` | yes | The resource controls of partition &1 could not be set: &2. | `QVS5127` | partition | a person only |
-| `A2006090` | yes | Partitions had not ended when the host shut down: &1. | `QVS5128` | the host | a person only |
-| `A2007010` | yes | Storage pool &1 was not assembled: &2. | `QVS5129` | storage-pool | `C2007010` |
-| `A2007020` | yes | Disk unit &1 of storage pool &2 failed or is missing. | `QVS5130` | disk-unit, storage-pool | `C2007025`, `C2007035` |
-| `A2007025` | yes | Storage pool &1 is degraded and has no hot spare to rebuild onto. | `QVS5131` | storage-pool | `C2007035`, `C2007040` |
-| `A2007030` | yes | The rebuild of storage pool &1 did not finish: &2. | `QVS5132` | storage-pool | `C2007025`, `C2007035` |
-| `A2007040` | yes | Storage pool &1 failed: &2. | `QVS5133` | storage-pool | `C2007010` |
-| `A2007050` | no | A warning ahead of A2007051, which opens the problem. | | | |
-| `A2007051` | yes | Storage pool &1 is 90% allocated: &2. | `QVS5134` | storage-pool | `C2007055` |
-| `A2007060` | no | An import that fails is answered to whoever asked for it, and nothing of it is left. | | | |
-| `A2008010` | yes | Virtual switch &1 was not built: &2. | `QVS5135` | virtual-switch | a person only |
-| `A2008020` | yes | Every interface of the uplink of virtual switch &1 lost carrier. | `QVS5136` | virtual-switch | `C2008020` |
-| `A2008025` | yes | Interface &1 of the uplink of virtual switch &2 lost carrier. | `QVS5137` | network-interface, virtual-switch | `C2008020` |
-| `A2008030` | yes | Interface &1, in the uplink of virtual switch &2, is not on the host. | `QVS5138` | network-interface, virtual-switch | a person only |
-| `A2009010` | yes | The service channel of partition &1 was closed: &2. | `QVS5139` | partition | `C2009000` |
-| `A2009020` | yes | Partition &1 is not responding on its service channel. | `QVS5140` | partition | `C2009020` |
-| `A2009030` | yes | The system in partition &1 names another identity than the host gave it: &2. | `QVS5141` | partition | a person only |
-| `A2009040` | no | The shut down asked for was done, immediately at the end of its time. | | | |
-| `A2009055` | yes, with the system's own code | Partition &1 is held after its system posted a terminal code: &2. | `QVS5142` | partition | a person only |
-| `A2009080` | no | The switch's own problem, A2008020, is the one to look at. | | | |
-| `A2010000` | no | Its cause opens the problem: no identity (A2001075), no management address (A2002005 to A2002020) or the processor (A2010010). | | | |
-| `A2010010` | yes | The processor lacks what the service interface needs: &1. | `QVS5143` | the host | a person only |
-| `A2010030` | no | One attempt: attempts that fail again and again open A2010035. | | | |
-| `A2010035` | yes | Attempts to pair a management console failed again and again: &1. | `QVS5144` | the host | a person only |
-| `A2011010` | yes | A host dump could not be written: &1. | `QVS5146` | the host | a person only |
-| `A2012010` | no | An image refused is answered to whoever staged it, with why, and is not kept. | | | |
-| `A2012030` | yes | An update could not be installed into code slot &1: &2. | `QVS5147` | code-slot | `C2012040` |
-| `A2012070` | no | A2001035, posted by the slot that came back, opens the problem. | | | |
-| `A2013010` | yes | The host's IOMMU or interrupt remapping is off: &1. | `QVS5150` | the host | `C2013000` |
-| `A2013030` | yes | Released device &1 was not found at the IPL. | `QVS5151` | device | `C2013020`, `C2013015` |
-| `A2013035` | yes | Released device &1 was not given to the pass-through driver: its isolation group changed. | `QVS5152` | device | `C2013020`, `C2013015` |
-| `A2013050` | yes | Device &1 did not reset and is fenced. | `QVS5153` | device | `C2013020` |
-| `A2013080` | yes | Physical tape drive &1 went away. | `QVS5154` | tape-drive | `C2013050` |
-| `B2001000` | yes | The host's first process failed: &1. | `QVS5148` | the host | a person only |
-| `B2003000` | yes | The storage service of the mirrored load source stopped: &1. | `QVS5149` | the host | a person only |
+| Code | Opens | Severity | Description | Message | Resources | Cleared by |
+|---|---|---|---|---|---|---|
+| `A2001002` | no | | Not a fault: an image a development build made, which no release is. It is said at every IPL. | | | |
+| `A2001005` | yes | attention | The host restarted after its kernel panicked: &1. | `QVS5156` | the host | a person only |
+| `A2001030` | yes | attention | The A/B record of the load source was not valid: &1. | `QVS5101` | the host | a person only |
+| `A2001035` | yes | attention | Code slot &1 did not confirm, and the host went back to the other slot: &2. | `QVS5102` | code-slot | a person only |
+| `A2001040` | yes | attention | The data file system was not mounted: &1. | `QVS5103` | the host | `C2001040` |
+| `A2001045` | yes | attention | The data file system is nearly full: &1. | `QVS5104` | the host | `C2001045` |
+| `A2001050` | yes | attention | The clock could not be set from the hardware clock: &1. | `QVS5105` | the host | `C2001050` |
+| `A2001060` | no | | A seed is the operator's: the console says why it was refused, and nothing was written. | | | |
+| `A2001070` | yes | attention | A state file was not valid, and its defaults are in use: &1. | `QVS5106` | the host | a person only |
+| `A2001072` | yes | attention | The memory for partitions was not reserved in full: &1. | `QVS5107` | the host | `C2001072` |
+| `A2001075` | yes | attention | The host's identity could not be made: &1. | `QVS5108` | the host | `C2001075` |
+| `A2001080` | yes | attention | Service &1 failed five times in ten minutes and is not started again. | `QVS5109` | service | a person only |
+| `A2001095` | yes | attention | The firmware's boot order was not written for code slot &1: &2. | `QVS5110` | code-slot | `C2001095` |
+| `A2002005` | yes | attention | No management interface was found: &1. | `QVS5111` | the host | `C2002010` |
+| `A2002010` | yes | attention | Management interface &1 has no carrier. | `QVS5112` | network-interface | `C2002010` |
+| `A2002020` | yes | attention | Management interface &1 has no address. | `QVS5113` | network-interface | `C2002020` |
+| `A2003010` | yes | attention | The mirrored load source was not assembled: &1. | `QVS5114` | the host | `C2003010` |
+| `A2003020` | yes | attention | Load-source unit &1 is missing or failed. | `QVS5115` | disk-unit | `C2003025`, `C2003035` |
+| `A2003030` | yes | attention | The rebuild of load-source unit &1 did not finish: &2. | `QVS5116` | disk-unit | `C2003025`, `C2003035` |
+| `A2003040` | yes | attention | The load-source units each ran without the other: &1. | `QVS5117` | the host | `C2003050` |
+| `A2004010` | no | | The installer has no problem log: its screens and its log say what failed. | | | |
+| `A2004015` | no | | The installer has no problem log: its screens and its log say what failed. | | | |
+| `A2004070` | no | | The installer has no problem log: its screens and its log say what failed. | | | |
+| `A2004090` | no | | The installer has no problem log: its screens and its log say what failed. | | | |
+| `A2005000` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005010` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005020` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005021` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005022` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005030` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005031` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005032` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005033` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005034` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005040` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005041` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005050` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005060` | yes | attention | The machine of partition &1 could not be built: &2. | `QVS5118` | partition | a person only |
+| `A2005065` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2005100` | no | | The code before it says why the partition did not IPL, and is the one to look at. | | | |
+| `A2005120` | yes | attention | Partition &1 ended with a guest fault: &2. | `QVS5119` | partition | a person only |
+| `A2005130` | yes | attention | The VMM of partition &1 failed while the partition ran: &2. | `QVS5120` | partition | a person only |
+| `A2005140` | no | | The host ended the partition, as it was asked to. | | | |
+| `A2005150` | yes | attention | The VMM of partition &1 was killed: &2. | `QVS5121` | partition | a person only |
+| `A2005160` | yes | attention | Partition &1 is held: a storage pool its virtual disks are in is full. | `QVS5122` | partition | `C2005160` |
+| `A2005170` | yes | attention | Partition &1 is held after a guest fault: &2. | `QVS5123` | partition | a person only |
+| `A2005180` | yes | attention | A dump of partition &1 could not be written: &2. | `QVS5124` | partition | a person only |
+| `A2005190` | yes | attention | The VMM of partition &1 was ended by its confinement: &2. | `QVS5155` | partition | a person only |
+| `A2006010` | no | | An activation that fails is answered to whoever asked for it, with its messages, and is in the partition's history. | | | |
+| `A2006020` | yes | attention | Partition &1 was not started automatically: &2. | `QVS5125` | partition | a person only |
+| `A2006030` | yes | attention | A partition's definition or profile was not valid: &1. | `QVS5126` | the host | a person only |
+| `A2006040` | yes | attention | The resource controls of partition &1 could not be set: &2. | `QVS5127` | partition | a person only |
+| `A2006090` | yes | attention | Partitions had not ended when the host shut down: &1. | `QVS5128` | the host | a person only |
+| `A2007010` | yes | attention | Storage pool &1 was not assembled: &2. | `QVS5129` | storage-pool | `C2007010` |
+| `A2007020` | yes | attention | Disk unit &1 of storage pool &2 failed or is missing. | `QVS5130` | disk-unit, storage-pool | `C2007025`, `C2007035` |
+| `A2007025` | yes | attention | Storage pool &1 is degraded and has no hot spare to rebuild onto. | `QVS5131` | storage-pool | `C2007035`, `C2007040` |
+| `A2007030` | yes | attention | The rebuild of storage pool &1 did not finish: &2. | `QVS5132` | storage-pool | `C2007025`, `C2007035` |
+| `A2007040` | yes | attention | Storage pool &1 failed: &2. | `QVS5133` | storage-pool | `C2007010` |
+| `A2007050` | no | | A warning ahead of A2007051, which opens the problem. | | | |
+| `A2007051` | yes | attention | Storage pool &1 is 90% allocated: &2. | `QVS5134` | storage-pool | `C2007055` |
+| `A2007060` | no | | An import that fails is answered to whoever asked for it, and nothing of it is left. | | | |
+| `A2008010` | yes | attention | Virtual switch &1 was not built: &2. | `QVS5135` | virtual-switch | a person only |
+| `A2008020` | yes | attention | Every interface of the uplink of virtual switch &1 lost carrier. | `QVS5136` | virtual-switch | `C2008020` |
+| `A2008025` | yes | attention | Interface &1 of the uplink of virtual switch &2 lost carrier. | `QVS5137` | network-interface, virtual-switch | `C2008020` |
+| `A2008030` | yes | attention | Interface &1, in the uplink of virtual switch &2, is not on the host. | `QVS5138` | network-interface, virtual-switch | a person only |
+| `A2009010` | yes | attention | The service channel of partition &1 was closed: &2. | `QVS5139` | partition | `C2009000` |
+| `A2009020` | yes | attention | Partition &1 is not responding on its service channel. | `QVS5140` | partition | `C2009020` |
+| `A2009030` | yes | attention | The system in partition &1 names another identity than the host gave it: &2. | `QVS5141` | partition | a person only |
+| `A2009040` | no | | The shut down asked for was done, immediately at the end of its time. | | | |
+| `A2009055` | yes, with the system's own code | attention | Partition &1 is held after its system posted a terminal code: &2. | `QVS5142` | partition | a person only |
+| `A2009080` | no | | The switch's own problem, A2008020, is the one to look at. | | | |
+| `A2010000` | no | | Its cause opens the problem: no identity (A2001075), no management address (A2002005 to A2002020) or the processor (A2010010). | | | |
+| `A2010010` | yes | attention | The processor lacks what the service interface needs: &1. | `QVS5143` | the host | a person only |
+| `A2010030` | no | | One attempt: attempts that fail again and again open A2010035. | | | |
+| `A2010035` | yes | attention | Attempts to pair a management console failed again and again: &1. | `QVS5144` | the host | a person only |
+| `A2011010` | yes | attention | A host dump could not be written: &1. | `QVS5146` | the host | a person only |
+| `A2012010` | no | | An image refused is answered to whoever staged it, with why, and is not kept. | | | |
+| `A2012030` | yes | attention | An update could not be installed into code slot &1: &2. | `QVS5147` | code-slot | `C2012040` |
+| `A2012070` | no | | A2001035, posted by the slot that came back, opens the problem. | | | |
+| `A2013010` | yes | attention | The host's IOMMU or interrupt remapping is off: &1. | `QVS5150` | the host | `C2013000` |
+| `A2013030` | yes | attention | Released device &1 was not found at the IPL. | `QVS5151` | device | `C2013020`, `C2013015` |
+| `A2013035` | yes | attention | Released device &1 was not given to the pass-through driver: its isolation group changed. | `QVS5152` | device | `C2013020`, `C2013015` |
+| `A2013050` | yes | attention | Device &1 did not reset and is fenced. | `QVS5153` | device | `C2013020` |
+| `A2013080` | yes | attention | Physical tape drive &1 went away. | `QVS5154` | tape-drive | `C2013050` |
+| `B2001000` | yes | terminal | The host's first process failed: &1. | `QVS5148` | the host | a person only |
+| `B2003000` | yes | terminal | The storage service of the mirrored load source stopped: &1. | `QVS5149` | the host | a person only |
 <!-- end of problems -->
 
 ## A problem
@@ -171,7 +171,13 @@ recorded whether or not the QSI server or any console is up.
   group's: list (a filter of status, partition and last seen, a page
   newest first), get, close (with who closed it and whether anyway),
   and a subscription whose events are each problem opened, seen again,
-  cleared and closed. A refusal is a `QVS50xx` message.
+  cleared, closed and noted. A refusal is a `QVS50xx` message.
+- **Notes.** A person's note (request 4: the problem, one line of 1 to
+  256 bytes, its author) is a line of the analysis log, `Note by
+  <author>: <text>`, kept with the rest; a closed problem takes none.
+- **Severity.** A problem is as grave as the condition that opened it:
+  `attention` for an `A2` code, `terminal` for a `B2` one (the table's
+  column). Requests 5 and 6 are list and get with each one's severity.
 
 | Message | When |
 |---|---|
@@ -179,13 +185,17 @@ recorded whether or not the QSI server or any console is up.
 | `QVS5002` | closed already, by whom |
 | `QVS5003` | a close while the condition holds, not anyway |
 | `QVS5004` | the log could not be written; nothing changed |
+| `QVS5005` | a note that is empty, longer than 256 bytes or more than a line |
 
 ## Over QSI
 
 The QSI host server maps the `service` family onto the socket and sets
 its capability bit (`docs/QSISERVER.md`): `List`, `Get` and `Close`
 are the socket's requests, the close's user is the request's, and the
-four events are QSI's `Opened`, `Seen`, `Cleared` and `Closed`. A
+four events are QSI's `Opened`, `Seen`, `Cleared` and `Closed`. Version
+2 (bit 25): `Note` is request 4 with the request's user as its author
+and its event `Noted`; `ListRated` and `GetRated` are 5 and 6, the
+severity QSI's `Attention` or `Terminal`. A
 refusal leads with QSI's identifier (`QSI1001` the condition holds,
 `QSI1002` no such problem, `QSI1003` closed already) and then the
 host's message.

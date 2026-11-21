@@ -173,7 +173,7 @@ pub fn answer(s: &mut Services, request: AnyRequest, user: &str) -> Answer {
         AnyRequest::Panel(r) => partitions::panel(s, &r).into(),
         AnyRequest::Dumps(r) => partitions::dumps(s, r),
         AnyRequest::Console(r) => partitions::console(s, &r),
-        AnyRequest::Host(r) => host::answer(s, &r).into(),
+        AnyRequest::Host(r) => host::answer(s, &r, user).into(),
         AnyRequest::Vres(qsi::host::vres::Request::ImageUpload(u)) => Answer::Open(Open::Upload {
             name: u.name,
             bytes: u.bytes,

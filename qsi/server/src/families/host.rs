@@ -6,11 +6,12 @@
 //! manager's), and the hardware: the inventory, each item's owner from
 //! the pool service's disks and the switch service's interfaces.
 
+use qsi::Empty;
 use qsi::any::AnyReply;
 use qsi::host::host::{self, Amount, Hardware, Item, ItemKind, Owner, ProcPool, Reply, Request};
 use qsisess::Note;
 
-use super::{Services, reached};
+use super::{Services, local, reached};
 
 const PARTD: &str = "partition manager";
 const POOLD: &str = "pool service";
@@ -152,8 +153,22 @@ pub fn hardware(
     }
 }
 
-/// Answer a host request.
-pub(super) fn answer(s: &mut Services, r: &Request) -> Answered {
+/// The host's power-on settings as QSI has them: the delay is the wait
+/// for each system at a delayed power off.
+pub fn power_on(s: &resource::Settings) -> host::PowerOn {
+    host::PowerOn {
+        start_partitions: s.power_on.start_partitions,
+        power_off: match s.power_on.power_off {
+            resource::PowerOff::Delayed => host::PowerOff::Delayed,
+            resource::PowerOff::Immediate => host::PowerOff::Immediate,
+        },
+        delay: s.service.host_timeout_secs,
+    }
+}
+
+/// Answer a host request; a change of the power-on settings is
+/// `user`'s.
+pub(super) fn answer(s: &mut Services, r: &Request, user: &str) -> Answered {
     Ok(AnyReply::Host(match r {
         Request::Host(_) => {
             let r = reached(PARTD, s.partd.resources())?;
@@ -179,8 +194,22 @@ pub(super) fn answer(s: &mut Services, r: &Request) -> Answered {
                 .map(super::convert::device)
                 .collect(),
         ),
-        Request::PowerOn(_) | Request::SetPowerOn(_) => {
-            return Err(vec![super::base::not_agreed()]);
+        Request::PowerOn(_) => Reply::PowerOn(power_on(&reached(PARTD, s.partd.settings())?)),
+        Request::SetPowerOn(p) => {
+            let power_off = match p.power_off {
+                host::PowerOff::Delayed => resource::PowerOff::Delayed,
+                host::PowerOff::Immediate => resource::PowerOff::Immediate,
+                host::PowerOff::Other(_) => {
+                    return Err(vec![super::convert::no_such("power off")]);
+                }
+            };
+            let set = resource::PowerOn {
+                start_partitions: p.start_partitions,
+                power_off,
+            };
+            let by = format!("a management console, user {user:?}");
+            local(PARTD, s.partd.set_power_on(set, p.delay, by))?;
+            Reply::SetPowerOn(Empty)
         }
     }))
 }

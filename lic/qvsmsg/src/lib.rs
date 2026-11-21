@@ -23,99 +23,11 @@ pub use catalogue::*;
 /// The prefix of every identifier.
 pub const PREFIX: &str = "QVS";
 
-/// A catalogue entry.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Message {
-    /// `QVS` and four digits.
-    pub id: &'static str,
-    /// First-level text.
-    pub text: &'static str,
-    /// Second-level text.
-    pub help: &'static str,
-}
-
-/// A message with its values filled in.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Issued {
-    /// The identifier.
-    pub id: String,
-    /// First-level text.
-    pub text: String,
-    /// Second-level text.
-    pub help: String,
-}
-ipc::wire_struct!(Issued { id, text, help });
-
-/// `text` with `&1` to `&9` replaced by `values`; a number with no
-/// value stays as written.
-fn fill(text: &str, values: &[&str]) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        let digit = chars.peek().and_then(|d| d.to_digit(10));
-        match (c, digit) {
-            ('&', Some(n)) if n >= 1 && values.len() >= n as usize => {
-                out.push_str(values[n as usize - 1]);
-                chars.next();
-            }
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-impl Message {
-    /// The message issued with `values` for `&1`, `&2` and so on.
-    pub fn with(&self, values: &[&str]) -> Issued {
-        Issued {
-            id: self.id.to_string(),
-            text: fill(self.text, values),
-            help: fill(self.help, values),
-        }
-    }
-
-    /// The message issued with no values.
-    pub fn issue(&self) -> Issued {
-        self.with(&[])
-    }
-
-    /// How many values the message takes: its highest `&n`.
-    pub fn values(&self) -> usize {
-        (1..=9usize)
-            .rev()
-            .find(|n| {
-                let mark = format!("&{n}");
-                self.text.contains(&mark) || self.help.contains(&mark)
-            })
-            .unwrap_or(0)
-    }
-}
-
-impl Issued {
-    /// Whether this is `message`, whatever its values.
-    pub fn is(&self, message: &Message) -> bool {
-        self.id == message.id
-    }
-}
-
-impl std::fmt::Display for Issued {
-    /// The identifier and the first-level text.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.id, self.text)
-    }
-}
+pub use msg::{Issued, Message};
 
 /// The catalogue as the table of `docs/MESSAGES.md`.
 pub fn table() -> String {
-    let mut rows = vec![
-        "| Message | First-level text | Second-level text |".to_string(),
-        "|---|---|---|".to_string(),
-    ];
-    rows.extend(
-        ALL.iter()
-            .map(|m| format!("| `{}` | {} | {} |", m.id, m.text, m.help)),
-    );
-    rows.join("\n") + "\n"
+    msg::table(ALL)
 }
 
 /// The catalogue entry with the identifier `id`.
@@ -129,8 +41,6 @@ mod tests {
 
     #[test]
     fn values_replace_their_numbers() {
-        assert_eq!(fill("&1 of &2, &1", &["a", "b"]), "a of b, a");
-        assert_eq!(fill("&3 & &0 &", &["a"]), "&3 & &0 &");
         let issued = NAME_INVALID.with(&["9LIVES"]);
         assert!(issued.text.contains("9LIVES"));
         assert!(issued.is(&NAME_INVALID));

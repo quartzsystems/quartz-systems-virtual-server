@@ -20,7 +20,6 @@ mod install;
 pub mod memory;
 #[cfg(target_os = "linux")]
 pub mod mounts;
-pub mod panics;
 #[cfg(target_os = "linux")]
 mod state;
 pub mod update;
@@ -199,8 +198,8 @@ mod on_host {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
         let dir = Path::new(release::DATA_DIR).join("log").join("panics");
-        if let Some((why, files)) = crate::ipl::panics::take(
-            Path::new(crate::ipl::panics::PSTORE),
+        if let Some((why, files)) = logd::panics::take(
+            Path::new(logd::panics::PSTORE),
             &dir,
             &format!("{secs:011}"),
         ) {

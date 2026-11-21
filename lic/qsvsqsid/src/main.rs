@@ -85,7 +85,7 @@ fn main() {
         partd: partd::proto::socket(release::RUN_DIR),
         poold: poold::proto::socket(release::RUN_DIR),
         vswitchd: vswitchd::proto::socket(release::RUN_DIR),
-        probd: problem::proto::socket(release::RUN_DIR),
+        probd: problem::proto::socket(release::ID, release::RUN_DIR),
         updd: update::proto::socket(release::RUN_DIR),
         port: release::QSI_PORT,
         release: release::RELEASE.to_string(),
