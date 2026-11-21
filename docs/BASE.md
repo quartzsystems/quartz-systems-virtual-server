@@ -65,7 +65,8 @@ QS/VS", with the commit that did it.
 | A9 | a note added to a problem, severity from the table (problem service 4 to 6, `QVS5005`) | `49b117c` |
 | A10 | dump space: the host's dumps, each partition's (`partd` 51) | `49b117c` |
 | A11 | a release's date and notes in the stream's index (`base/stream`, `build release`) | `49b117c` |
-| Part 1's proof | `qsi-additions`, every addition over QSI against the services, each refusal, a restart | see `docs/PHASE11.md` |
+| Bit 27 | not said: the host keeps no cumulative fix level of its own; a partition's comes with its channel (`docs/QSISERVER.md`) | |
+| Part 1's proof | `qsi-additions`, every addition over QSI against the services, each refusal, a restart | `08a6f1d` |
 | P1 | `base/update` with `update::state_copy`; QS/VS's format, schemas, messages and partitions in `lic/qsvsupdd` | `7ba9dca` |
 | P2 | `base/servicedump`; `svc/hostdump` QS/VS's entries and the pins left out | `49b117c` |
 | P3 | `base/problem` over `base/msg`; QS/VS's table `qvsmsg::problems::RULES` | `49b117c` |
