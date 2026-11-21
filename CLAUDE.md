@@ -80,7 +80,11 @@ written with.
   panels, service tools users. So does the load source and its
   storage service: QS/MC has the same mirrored load source. So do the
   processor check, the hardware inventory, the network service with
-  its list of interfaces and the QEMU driver of a harness. Only
+  its list of interfaces and the QEMU driver of a harness. So does
+  what a console services itself with as a host does: code update with
+  its state copy, the service dump, the problem log, confinement,
+  messages and the build's release helpers; the product gives each its
+  format, its tables and its words (`docs/BASE.md`). Only
   QS/VS's menu and its host-specific panels are under `svc/`, and
   only a hypervisor's fields of the inventory are in `lic/hostinv`. A
   `base/` crate takes an `Appliance` description from its caller, has
@@ -157,16 +161,19 @@ written with.
   release artifact; the userland and manifest steps check.
 - No IBM text, product names or marks anywhere. The names in use are
   QS/VS, QS/MC and QS/400.
-- The problem service (`svc/problem`, `lic/qsvsprobd`) is a service of
-  its own: it reads the reference code history and opens, counts and
-  clears problems by the catalogue's table (`lic/qvsmsg`), which holds
-  every attention and fatal code; a unit test holds it to
-  `docs/PROBLEMS.md`. A posting says what it is about (`supervise::About`).
-- A host dump (`svc/hostdump`) is service data in a standard ZIP with
-  its manifest, taken by PID 1; it never holds the host's key, the users'
-  hashes or the consoles' pins (`hostdump::take::LEFT_OUT`), and a test
-  fails the build if a secret file is not left out.
-- A code update (`svc/update`, `lic/qsvsupdd`) is verified against the
+- The problem service (`base/problem`, run as `lic/qsvsprobd`) is a
+  service of its own: it reads the reference code history and opens,
+  counts and clears problems by the catalogue's table
+  (`qvsmsg::problems::RULES`), which holds every attention and fatal
+  code; a unit test holds it to `docs/PROBLEMS.md`. A posting says what
+  it is about (`supervise::About`).
+- A host dump (`base/servicedump` with `svc/hostdump`'s entries) is
+  service data in a standard ZIP with its manifest, taken by PID 1; it
+  never holds the host's key, the users' hashes or the consoles' pins
+  (`hostdump::take::LEFT_OUT`), and a test fails the build if a secret
+  file is not left out.
+- A code update (`base/update`, run as `lic/qsvsupdd` with QS/VS's
+  format, schemas and messages) is verified against the
   running image's trusted keys before a byte is written, and nothing
   turns that off. It writes only the slot that does not run; PID 1 alone
   writes the A/B record and the firmware's variables. A pending slot's
@@ -192,7 +199,8 @@ written with.
 - `qsvmm` is confined before it reads a guest byte (`docs/SECURITY.md`):
   namespaces of its own and an empty read-only root, its partition's
   user with no capability, then a seccomp filter its every thread
-  narrows to its kind's (`vmm/qsvmm/src/confine`). A call outside it
+  narrows to its kind's (`vmm/qsvmm/src/confine`, over `base/confine`).
+  A call outside it
   ends the VMM (`A2005190`). A new system call in `qsvmm` is added to
   its kind's list with a reason, and `vmm-confined` shows it.
 - Every service keeps only the capabilities its row of the table names
@@ -322,7 +330,11 @@ See `docs/ARCHITECTURE.md`. Short form:
 - **Time zones.** Fixed UTC offsets only, in V1.
 - **Base crates.** `base/` is product-neutral and shared with QS/MC,
   the load source and its storage service included, and the processor
-  check, the inventory, the interfaces and the QEMU driver.
+  check, the inventory, the interfaces and the QEMU driver; since QS/400's
+  handoff 24 also what a console needs to service itself as a host does:
+  code update, the service dump, the problem log, confinement, messages
+  and the build's release helpers (`docs/BASE.md` says what each takes
+  from the product).
 - **Identity.** Release `V1R0M0` from `VERSION` (`1.0.0`). Fixes
   `QVnnnnn`. Message prefix `QVS`. Environment prefix `QSVS_`. Kernel
   command-line keys `qsvs.`.
@@ -365,20 +377,26 @@ base/           what every Quartz appliance needs; product-neutral
   appliance/      the Appliance description with its load-source names, events, civil time, the Ethernet links
   state/          typed TOML state files: schema versions, migration, atomic writes
   supervise/      the service table, restart policy, the runner, the control protocol, signals
-  logd/           the NDJSON system log, the reference code history, the kernel log per boot
+  logd/           the NDJSON system log, the reference code history, the kernel log per boot, a panic's records taken at the next IPL
   netd/           the network interfaces, each with the role the appliance names (DHCP or static, VLAN, the route, DNS and time it carries, carrier, reload, a change on trial), the first the management interface; and NTP
   seed/           seed.toml on a labelled FAT volume, with the [install] table
   users/          service tools user IDs: the password rules and the sign-on rule over QS/400's svcusers
-  panels/         panels with help, the console on display and serial, the common forms and Service Tools panels, the unit to keep
-  install/        the installer's screens and the answers of an unattended installation
+  panels/         panels with help, the console on display and serial, the common forms and Service Tools panels, the unit to keep, the load source's units, the power panel with the product's words
+  install/        the installer's screens and the answers of an unattended installation; the eight steps that write a load source
   identity/       the host's key pair and self-signed certificate
-  loadsource/     the load-source disks: which disks are the host's own, the GPT layout, the A/B record and the set's label on every disk, units that ran apart, the boot entries, the media's payload
+  loadsource/     the load-source disks: which disks are the host's own, the GPT layout, the A/B record and the set's label on every disk, units that ran apart, the boot entries, the media's payload and its check
   stgd/           the storage service: the mirrored load source assembled, served through ublk, resynchronized by its write-intent map, rebuilt; its socket
   fdpass/         open files handed between processes over a Unix socket
-  stream/         the release stream's index: entries, signed and verified, never older than one seen
+  stream/         the release stream's index: entries with their dates and notes, signed and verified, never older than one seen
   processor/      the processor features QSI's cryptography needs, and which a processor lacks
   inventory/      the hardware inventory: processors, memory, disks, interfaces, PCI devices, DMI, the location codes (docs/LOCATION.md)
   qemu/           a harness's QEMU driver: q35 and OVMF, the variable store, the serial port and its waits, the monitor, disks, NICs, removable volumes, power pulls
+  msg/            messages: a catalogue entry and one issued with its values; the product's catalogue and words
+  problem/        the problem log: records, opening, counting and clearing from posted codes by the product's table, notes, severity, close; the service and its socket
+  servicedump/    the service dump: the ZIP archive, the store with its bounds, what every appliance gathers, the secrets left out
+  confine/        a process confined: namespaces, an empty root, no capability, a seccomp filter of the product's rules
+  update/         code update: the image and its manifest, verification, installing into the other slot, activation and roll back, the state copy; the service and its socket
+  buildaid/       beside buildkit: the header, wording and help audits, the release with its keys, sums, stream and second build, the update image, the catalogue, the fuzzer's run
 lic/            PID 1, release, installer, base services
   qsvsinit/       PID 1
     src/ipl/        the IPL in order: mounts and the host's control group, the command line, the storage step and the unit to keep, the clock, the state step, the partitions' memory; the hand-off to the installer
@@ -395,8 +413,8 @@ lic/            PID 1, release, installer, base services
   qsvspoold/      stg/poold run as QS/VS, with QS/VS's pool disk names, inventory and identity
   qsvsvswitchd/   net/vswitchd run as QS/VS, with the inventory's interfaces, netd's management device and partd's adapters
   qsvsqsid/       qsi/server run as QS/VS: its identity read as root, its directory and local socket, then user 22990
-  qsvsprobd/      svc/problem run as QS/VS
-  qsvsupdd/       svc/update run as QS/VS, over PID 1's slots
+  qsvsprobd/      base/problem run as QS/VS, with the catalogue's table
+  qsvsupdd/       base/update run as QS/VS, over PID 1's slots: its image's format, the state files a release reads, its messages and codes, the partitions ended first
   qvsmsg/         the message catalogue: QVS messages, first-level and second-level text, the problem table
   qsvsinstall/    the installer: base/install over QS/VS's media, disks and state
   qsvshook/       the test hooks' binary: the harness's channel, a failing service, the state churn
@@ -437,10 +455,8 @@ qsi/            the QSI host server
   local/          qsilocal: the server's local socket, for Service Tools option 4
 svc/            Service Tools
   tools/          qsvstools: QS/VS's menu, system status, the partition list, disk units, disk configuration, storage pools, the network's switches and management console pairing over base/panels; option 8's service functions and the problem log; option 10, I/O for partitions; the two sessions; the one panel PID 1 runs it for
-  problem/        the problem service: problems, their log, the history read from where it got to; its socket
-  hostdump/       the host's dump: the ZIP writer, what is taken and left out, the dumps kept
-  update/         code update: the update image and its manifest, verification, installing into the other slot; its socket
-docs/           ARCHITECTURE, PHASE0 to PHASE11, SECURITY, RELEASING, RELEASE_NOTES_V1R0M0, OPERATIONS, QUALIFICATION, catalogue.schema.json, PHYSICALIO, PROBLEMS, UPDATE, QS400_GUEST, VMM, PARTD, SERVICE, PANEL, DUMPS, POOLD, VSWITCHD, NETWORK, STORAGE, RESOURCES, PROFILE, QSISERVER, QSICTL, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
+  hostdump/       the host's dump over base/servicedump: its partitions, pools, switches and control groups, the consoles' pins left out
+docs/           ARCHITECTURE, BASE, CONFORMANCE, PHASE0 to PHASE11, SECURITY, RELEASING, RELEASE_NOTES_V1R0M0, OPERATIONS, QUALIFICATION, catalogue.schema.json, PHYSICALIO, PROBLEMS, UPDATE, QS400_GUEST, VMM, PARTD, SERVICE, PANEL, DUMPS, POOLD, VSWITCHD, NETWORK, STORAGE, RESOURCES, PROFILE, QSISERVER, QSICTL, MESSAGES, INSTALL, SERVICETOOLS, REFCODES, SEED, LOCATION, OPEN_QUESTIONS
 ```
 
 Category folders are created as phases need them. The full set: `tools/`
@@ -482,6 +498,7 @@ cargo build -p qsictl                 the developer's console (on Windows too)
 cargo test --workspace
 QVS_MESSAGES=update cargo test -p qvsmsg   write the table of docs/MESSAGES.md from the catalogue
 QVS_PROBLEMS=update cargo test -p qvsmsg   write the table of docs/PROBLEMS.md from the catalogue
+QVS_CATALOGUE=update cargo test -p build   write docs/catalogue.json from the tables
 ```
 
 Single steps: `fetch`, `kernel`, `userland`, `initramfs`, `uki`, `disk`,
@@ -509,6 +526,10 @@ a test image and off for a release image, whatever the caller has.
 ## Documents
 
 - `docs/ARCHITECTURE.md`: the locked decisions, a sentence each.
+- `docs/BASE.md`: the base crates, what each takes from the product, and
+  what QS/400's handoff 24 made of each item.
+- `docs/CONFORMANCE.md`: a QS/VS host for an outside harness: the
+  images, starting one with a QS/400 partition, pairing, nesting.
 - `docs/PHASE0.md`: the toolchain: host prerequisites, the pinned QS/400
   commit, the environment, its acceptance table.
 - `docs/PHASE1.md`: the base system: what exists, how to run it, kernel

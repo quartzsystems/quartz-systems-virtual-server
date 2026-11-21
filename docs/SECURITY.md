@@ -21,7 +21,7 @@ reviewed every one (`docs/PHASE11.md`).
 
 ## The VMM confined
 
-Each partition's `qsvmm` (`vmm/qsvmm/src/confine`):
+Each partition's `qsvmm` (`vmm/qsvmm/src/confine`, its policy over `base/confine`'s filter and calls):
 
 1. As root, with every descriptor it needs already open: a mount,
    network, IPC and UTS namespace of its own; its root an empty,

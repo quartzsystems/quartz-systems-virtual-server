@@ -25,7 +25,7 @@ signature             ed25519, over the manifest's bytes
 each file             name length u16, name, size u64, its bytes
 ```
 
-The manifest (`svc/update/src/manifest.rs`):
+The manifest (`base/update/src/manifest.rs`, its first line QS/VS's `qsvsupdd::FORMAT`):
 
 ```text
 QSVS-UPDATE 1
@@ -90,7 +90,7 @@ The same release again (a rebuild) is not older and is installed.
 ## State across an update
 
 PID 1 does it before the seed or any service reads state
-(`lic/qsvsinit/src/ipl/update.rs`):
+(`base/update/src/state_copy.rs`, which PID 1 calls):
 
 - The pending slot's first IPL copies `/data/state` to
   `/data/update/state-copy` (written as `state-copy.part`, then renamed).
@@ -127,7 +127,7 @@ other slot either complete and pending, or not pending at all.
 
 ## The update service
 
-`svc/update`, run as `lic/qsvsupdd`, a supervised service after the
+`base/update`, run as `lic/qsvsupdd`, a supervised service after the
 partition manager. Its directory is `/data/update`: what is staged
 (`staged.img`, `staged.json`) and what each slot holds (`slots.json`:
 release, build, fixes, how its last activation ended and why). PID 1

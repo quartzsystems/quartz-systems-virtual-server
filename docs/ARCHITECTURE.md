@@ -383,7 +383,15 @@ cryptography (`base/processor`), the hardware inventory with its
 location codes (`base/inventory`; a hypervisor's fields stay in
 `lic/hostinv`), a list of network interfaces each with the role the
 appliance names (`base/netd`, `network.toml` version 2), and the QEMU
-driver of a conformance harness (`base/qemu`). These were to
+driver of a conformance harness (`base/qemu`). Since QS/400's handoff
+24, what a console needs to service itself as a host does: code update
+with the state kept across a trial (`base/update`), the service dump
+(`base/servicedump`), the problem log (`base/problem`, over
+`base/msg`'s messages), a service confined (`base/confine`), the media's
+check, the load source's panels and the installer's eight steps
+(`base/loadsource`, `base/panels`, `base/install`), and the build's
+release helpers (`base/buildaid`); `docs/BASE.md` says what each takes
+from the product. These were to
 live in the QS/MC repository; that repository is still empty, so they
 are written here and QS/MC will pin them from this repository, as this
 repository pins QS/400's. Everything under `base/` is therefore

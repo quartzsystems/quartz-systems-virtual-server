@@ -152,7 +152,7 @@ As QSI's `service` family carries it (QS/400's `docs/QSI.md`):
 
 ## The service
 
-The problem service (`svc/problem`, run as `lic/qsvsprobd`) is a
+The problem service (`base/problem`, run as `lic/qsvsprobd` with the catalogue's table) is a
 supervised service of its own, after the log service, so problems are
 recorded whether or not the QSI server or any console is up.
 
