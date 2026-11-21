@@ -531,3 +531,75 @@ The kernel pin is the same. Every `rev =` moved in one commit;
 and the new operations were not covered. Until the host says those
 bits each answers `QSI0003`'s not agreed, which the session already
 gives before a request reaches the server.
+
+### From empty targets
+
+In a clean clone at `75551df` (the pin) on ext4 in WSL, every target
+empty, the signing key of the reproducibility runs, QS/400's guest
+image and ISO built at `cf8f014` (`qs400-V1R1M0-be872029fd82.img`,
+`QS400-V1R1M0-9e151e96f38a.iso` with `pool-install.rsp`, 40 minutes),
+the update images of the next release built from the clone. Host:
+rustc 1.98.0, clang 21.1.8, QEMU 10.2.1, cargo-deny 0.20.2, kernel
+6.18.33.2-microsoft-standard-WSL2, 12 processors, shared with QS/MC's
+session's builds and suites (one QEMU at a time between them).
+
+`build doctor`, `build deny`, `cargo fmt --check`, both clippy runs,
+`cargo test --workspace`, `build notices --check` and `build fixture`
+passed. Of the 154 suites, each run alone, 148 passed and 6 failed;
+run again alone on the same build, all 6 passed:
+
+| Suite | First run | Again |
+|---|---|---|
+| `tools-sign-on` | the fifth wrong password was answered as the first four (`svcusers` is the same at both pins) | pass |
+| `service-states` | the states were Starting only | pass |
+| `service-manager-restart` | QS/400's storage service ended (`B1001060`) | pass |
+| `service-hostile` | a partition did not IPL (`A2005040`) | pass |
+| `pio-tape-span` | `QSECOFR` could not sign on | pass |
+| `memory-clean` | the partition to fill memory was not activated (`QVS2003`) | pass |
+
+Each failed while builds ran beside it. `service-states`,
+`service-hostile` and `memory-clean` failed once at an earlier pin, and
+QS/400's storage service ended the same way in `service-dumps`; each
+passed again then. So every suite has passed at the pin.
+
+### The release
+
+`build release 1.0.0` in a clean clone at `02f8e93` (handoff 24's
+work, below), with the test keys (the release signing key of a test
+set, trusting its second key; its Secure Boot db certificate of
+SHA-256
+`D9:64:31:39:01:C7:A3:28:E7:1F:07:16:F6:A0:7E:48:DD:A3:1F:99:9C:C4:3D:B9:F6:A0:49:E3:08:7B:03:F3`),
+built it twice from empty and found its 12 files the same byte for
+byte (1491 s for both). `SHA256SUMS` checks. The kernel's `.config`
+has neither `DEBUG_FS` nor `BLK_DEV_IO_TRACE`, and no other symbol the
+fragment turns off. The stream's index gives the release its date
+(`2026-01-01`, the build's fixed epoch) and its notes
+(`RELEASE_NOTES_V1R0M0.md`), handoff 24's A11.
+
+| File | SHA-256 |
+|---|---|
+| `MANIFEST.json` | `c994b5adb849db8106cdda37f02b3cef9e18483c98a73089a4de1fe8ecdc82fb` |
+| `MANIFEST.sig` | `39d6dcb06fafed5a6d12dfa6f50af935d159bef9ef030d2eb81155f3a204792d` |
+| `NOTICES.txt` | `37334a6b79aac22a12dd700c7a04e4d2f5ae1958bab12c814a3732394604efaf` |
+| `QSVS-V1R0M0-e592cce94778.iso` | `c3159e8313cc4928c8df1d6125c9285084bf068242281bc05c9c81dea0810999` |
+| `QSVS-V1R0M0-update-3762082bfffc.upd` | `3762082bfffc76c61a93ab93309a8514f45fcfc91e30b9a313d20d643ac979d9` |
+| `RELEASE_NOTES_V1R0M0.md` | `dc4f4195f4cf3152cb08016d4323a9444aab30b36629fc77554e4b932b305461` |
+| `catalogue.json` | `58988201a1fad8fb0307126d656f76ef6de85ad8f699404393ef983e6d3ad527` |
+| `catalogue.schema.json` | `21584e8d75a2fdb60d264b08742726cc70e635b8a9d5e3e3fef817350c33c138` |
+| `qsvs-db.cer` | `d964313901c7a328e71f0716f6a07e48dda31f999cc43db9f6a049e3087b03f3` |
+| `stream/index.toml` | `58f82fdb87663b3529cd9b0f5d625ac0eeda16f6cadc2efd10a436587af0e09d` |
+
+Against handoff 23's: the notices, the release notes, the schema and
+the certificate are the same. The rest differ by the commit and the
+work: the build ID is in the catalogue, the manifest and the images;
+the catalogue has handoff 24's new messages; the index has the date
+and notes.
+
+## 2026-11-21: handoff 24's work
+
+What QS/400's handoff 24 asked of QS/VS, item by item with its commit,
+is `docs/BASE.md`'s closing table: the host's side of QSI's bits 19 to
+26 (A1 to A11), the neutral servicing code moved into `base/` (P1 to
+P10) and proved from `QSDEMO`, QS/MC's items 13, 14 and 28, the
+outside harness's document and the catalogue as data. `qsi-additions`
+is the suite of Part 1.
