@@ -101,7 +101,7 @@ disk before F10 on the summary.
    screen shows what the clock says now; blank leaves it.
 6. **Service tools user.** The first user ID that can sign on to
    Service Tools, and its password, typed twice and never shown. The
-   rules are on the screen: a user ID is 1 to 10 letters and digits; a
+   rules are on the screen: a user ID is 1 to 32 letters and digits; a
    password is 8 to 128 characters with at least one letter and one
    digit, and does not contain the user ID.
 7. **Summary.** Everything chosen. F10 installs; F12 goes back.

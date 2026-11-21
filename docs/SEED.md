@@ -129,7 +129,7 @@ mode = "dhcp"
 |---|---|---|
 | `disks` | the load-source disks: one, or two for mirrored protection. Each is a disk's serial number or its location code (`docs/LOCATION.md`), whichever names exactly one disk of the machine | required |
 | `protection` | `none` or `mirrored` | `none` for one disk, `mirrored` for two |
-| `user_id` | the first service tools user ID: 1 to 10 letters and digits | required |
+| `user_id` | the first service tools user ID: 1 to 32 letters and digits | required |
 | `password_hash` | the hash of that user's password, an Argon2id PHC string. The password itself is never in the file | required |
 
 The installer holds the table against the machine before it writes

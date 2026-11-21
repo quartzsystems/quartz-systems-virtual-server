@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use console::ansi::{AnsiDisplay, KeyDecoder};
-use console::{Command, Console, Identity, Input, Key, Scale, Screen};
+use console::{Command, Console, Identity, Input, Key, PointerEvent, Scale, Screen};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::termios::{OptionalActions, tcgetattr, tcsetattr};
 use scrkit::panel::End;
@@ -177,6 +177,8 @@ impl Screens {
             console.add_display(Box::new(AnsiDisplay::new(serial).named("serial")));
             described.push_str(", serial terminal");
         }
+        // A click puts the cursor in a field or presses a key's label.
+        console.set_pointer(true);
         let (show, commands) = mpsc::channel();
         let (input_tx, inputs) = mpsc::channel();
         std::thread::spawn(move || console.run(&commands, input_tx));
@@ -262,7 +264,8 @@ const PAGE_UP: u16 = 104;
 const PAGE_DOWN: u16 = 109;
 
 /// A key as the panels get it: Page Up and Page Down, which `console`'s
-/// editor drops, become the roll keys; their release is nothing.
+/// editor drops, become the roll keys, and so does the display's wheel;
+/// their release is nothing.
 fn rolled(command: Command) -> Option<Command> {
     let roll = |forward| {
         Some(Command::Virtual(Key::Function(if forward {
@@ -279,6 +282,7 @@ fn rolled(command: Command) -> Option<Command> {
                 None
             }
         }
+        Command::Pointer(PointerEvent::Wheel { up }) => roll(!up),
         Command::Virtual(Key::PageUp) => roll(false),
         Command::Virtual(Key::PageDown) => roll(true),
         other => Some(other),
@@ -359,6 +363,12 @@ mod tests {
             function(rolled(Command::Virtual(Key::PageDown))),
             Some(forward)
         );
+        // The wheel away is Page Up; a click passes to the console.
+        let wheel = |up| Command::Pointer(PointerEvent::Wheel { up });
+        assert_eq!(function(rolled(wheel(true))), Some(back));
+        assert_eq!(function(rolled(wheel(false))), Some(forward));
+        let click = Command::Pointer(PointerEvent::Button { pressed: true });
+        assert!(matches!(rolled(click), Some(Command::Pointer(_))));
         // Any other key passes as it is.
         assert!(matches!(rolled(ev(28, true)), Some(Command::Key(_))));
     }

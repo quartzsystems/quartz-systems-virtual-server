@@ -8,8 +8,9 @@
 //! only once its controller has been probed, seconds after the console
 //! starts, and may be plugged in later still. So the input devices are
 //! looked at every second, and each one that reports keys is read from
-//! the moment it is there until it is gone. The events go to `console`
-//! as they are, which maps them.
+//! the moment it is there until it is gone. A mouse or a tablet reports
+//! keys too (its buttons), so it is read the same way. `console` decodes
+//! each event, keys and the pointer alike, with the device's axes.
 
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -21,13 +22,9 @@ use std::thread;
 use std::time::Duration;
 
 use console::Command;
-use console::keyboard::KeyEvent;
+use console::keyboard::{abs_ranges, decode};
+use console::pointer::EVENT_LEN;
 
-/// `struct input_event` on `x86_64`: timeval (16), type (2), code (2),
-/// value (4).
-const EVENT_LEN: usize = 24;
-/// The event type of a key.
-const EV_KEY: u16 = 1;
 /// How often the devices are looked at.
 const EVERY: Duration = Duration::from_secs(1);
 
@@ -81,51 +78,15 @@ fn reports_keys(sys: &Path) -> bool {
     u64::from_str_radix(ev.trim(), 16).is_ok_and(|bits| bits & 0b10 != 0)
 }
 
-/// Pass the device's key events on until it is gone.
+/// Pass the device's key and pointer events on until it is gone.
 fn pump(mut file: File, tx: &Sender<Command>) {
+    let ranges = abs_ranges(&file);
     let mut buf = [0u8; EVENT_LEN];
     while file.read_exact(&mut buf).is_ok() {
-        if let Some(ev) = key(&buf)
-            && tx.send(Command::Key(ev)).is_err()
+        if let Some(command) = decode(&buf, &ranges)
+            && tx.send(command).is_err()
         {
             return;
         }
-    }
-}
-
-/// The key of one `input_event`, if it is one.
-fn key(buf: &[u8; EVENT_LEN]) -> Option<KeyEvent> {
-    if u16::from_ne_bytes([buf[16], buf[17]]) != EV_KEY {
-        return None;
-    }
-    Some(KeyEvent {
-        code: u16::from_ne_bytes([buf[18], buf[19]]),
-        pressed: i32::from_ne_bytes([buf[20], buf[21], buf[22], buf[23]]) != 0,
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn event(kind: u16, code: u16, value: i32) -> [u8; EVENT_LEN] {
-        let mut b = [0u8; EVENT_LEN];
-        b[16..18].copy_from_slice(&kind.to_ne_bytes());
-        b[18..20].copy_from_slice(&code.to_ne_bytes());
-        b[20..24].copy_from_slice(&value.to_ne_bytes());
-        b
-    }
-
-    #[test]
-    fn a_key_is_passed_on_and_anything_else_is_not() {
-        let down = key(&event(EV_KEY, 28, 1)).unwrap();
-        assert_eq!((down.code, down.pressed), (28, true));
-        let up = key(&event(EV_KEY, 28, 0)).unwrap();
-        assert!(!up.pressed);
-        // A repeat is a press.
-        assert!(key(&event(EV_KEY, 28, 2)).unwrap().pressed);
-        // A sync or a relative move is none.
-        assert!(key(&event(0, 0, 0)).is_none());
-        assert!(key(&event(2, 0, 5)).is_none());
     }
 }

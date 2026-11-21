@@ -9,13 +9,17 @@ Every QS/400 crate is a git dependency on
 `https://github.com/quartzsystems/quartz-systems-400` at one commit:
 
 ```
-cf8f01453846fdf78129ca79589e18798aa03fae
+960861dc3a948f6c9004f30b0f155732029d025c
 ```
 
-It is QS/400's `main` of 2026-11-20, with its handoff 24: QSI's bits
+It is QS/400's `main` of 2026-11-21, with its handoff 25: a pointer in
+`console` (a click into a field or on a key's label, the wheel) and the
+longest user ID given by `svcusers`' caller (`docs/PHASE11.md`, the pin
+at handoff 25). Before it the pin was `cf8f0145`, QS/400's `main` of
+2026-11-20, with its handoff 24: QSI's bits
 19 to 27, `protect`'s map for a member absent at a clean open, and
 `httpc` and `updcat` made neutral (`docs/PHASE11.md`, the pin at
-handoff 24). Before it the pin was `cb58b010`, QS/400's `main` of
+handoff 24). Before that it was `cb58b010`, QS/400's `main` of
 2026-11-20 with its handoff 23: `termlook` and `srcdata` made
 neutral, neither taken here. Before that it was `155aba21`,
 QS/400's `main` of 2026-11-19, with its handoff 22: its web layer

@@ -28,14 +28,15 @@ pub const LOCK_SECS: u64 = 300;
 pub const PASSWORD_MIN: usize = 8;
 /// The longest password.
 pub const PASSWORD_MAX: usize = svcusers::PASSWORD_LEN;
-/// The longest user ID.
-pub const ID_MAX: usize = svcusers::NAME_LEN;
+/// The longest user ID: past QS/400's own 10, which its `svcusers`
+/// lets a caller raise.
+pub const ID_MAX: usize = 32;
 /// The users' file in a state directory.
 pub const FILE: &str = "users.db";
 
 /// The rules, as a screen states them.
 pub const RULES: [&str; 4] = [
-    "A user ID is 1 to 10 letters and digits. It is kept in upper case.",
+    "A user ID is 1 to 32 letters and digits. It is kept in upper case.",
     "A password is 8 to 128 characters and is case sensitive.",
     "It has at least one letter and at least one digit.",
     "It does not contain the user ID.",
@@ -67,7 +68,7 @@ impl std::fmt::Display for Refused {
 pub fn check_id(id: &str) -> Result<String, String> {
     let id = svcusers::normalize_name(id);
     if id.is_empty() || id.len() > ID_MAX || !id.bytes().all(|b| b.is_ascii_alphanumeric()) {
-        return Err("User ID must be 1 to 10 letters and digits.".into());
+        return Err("User ID must be 1 to 32 letters and digits.".into());
     }
     Ok(id)
 }
@@ -145,7 +146,7 @@ pub fn first(id: &str, hash: &str, now: u64) -> Result<Vec<u8>, String> {
     if !valid_hash(hash) {
         return Err("The password hash is not an Argon2id hash.".into());
     }
-    let mut db = UserDb::default();
+    let mut db = UserDb::default().with_name_len(ID_MAX);
     db.push(user(id, hash.to_string(), now));
     Ok(db.encode())
 }
@@ -173,7 +174,8 @@ where
     pub fn load(mut store: S) -> Result<Self, String> {
         let db = UserDb::read_from(&mut store)
             .map_err(|e| format!("the users were not read: {e}"))?
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .with_name_len(ID_MAX);
         Ok(Self {
             db,
             store,
@@ -294,7 +296,9 @@ mod tests {
     fn the_rules_are_kept() {
         assert_eq!(check_id(" admin "), Ok("ADMIN".into()));
         assert!(check_id("").is_err());
-        assert!(check_id("elevenchars").is_err());
+        assert_eq!(check_id("elevenchars"), Ok("ELEVENCHARS".into()));
+        assert!(check_id(&"a".repeat(ID_MAX)).is_ok());
+        assert!(check_id(&"a".repeat(ID_MAX + 1)).is_err());
         assert!(check_id("a b").is_err());
         assert_eq!(check_password("ADMIN", PASSWORD), Ok(()));
         for bad in [

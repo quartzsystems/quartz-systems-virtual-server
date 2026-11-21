@@ -40,12 +40,22 @@ port again.
 | next field, previous field | Tab, Shift+Tab | Tab, Shift+Tab |
 | clear the field from the cursor and go on | keypad + | Ctrl+K |
 | F1 to F12 | F1 to F12 | the terminal's own, or Esc and `1` to `9`, `0`, `-`, `=` |
-| page back, page on | Page Up, Page Down | Page Up, Page Down |
+| page back, page on | Page Up, Page Down, the wheel | Page Up, Page Down, the wheel |
+| put the cursor in a field | click it | click it, where the terminal reports the mouse |
+| press a key shown on the keys line | click its label (`F3=Exit`) | click its label |
 
 F1 is help on every panel. F12 goes back one panel, F3 to the main
 menu. On the main menu either signs off. Page Up and Page Down are F7
 and F8 on a list that pages; on Work with storage pools, where F7
 imports, they do nothing.
+
+The pointer is QS/400's console's (its `docs/CONSOLE.md`, The
+pointer): a USB mouse's cell is shown in reverse video; a management
+controller's virtual mouse (a tablet) shows the controller's own
+pointer. A click anywhere else does nothing. On a serial terminal the
+console asks for the terminal's mouse reports in their SGR form, which
+PuTTY, Windows Terminal and xterm send; a terminal that does not send
+them works as before.
 
 ## Sign-on
 
@@ -113,7 +123,7 @@ everything in Service Tools; there is one kind of user in this release.
 
 | Rule | |
 |---|---|
-| User ID | 1 to 10 letters and digits, kept in upper case |
+| User ID | 1 to 32 letters and digits, kept in upper case |
 | Password | 8 to 128 characters, at least one letter and one digit, not containing the user ID, no control characters |
 
 ## The main menu

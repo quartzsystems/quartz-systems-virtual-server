@@ -61,7 +61,7 @@ fn screens() -> Vec<(&'static str, &'static str, String)> {
         ("install-time", "The clock now shows", key::ENTER.into()),
         (
             "install-user",
-            "A user ID is 1 to 10 letters",
+            "A user ID is 1 to 32 letters",
             format!(
                 "{}{}{PASSWORD}{}{PASSWORD}{}",
                 USER.to_lowercase(),

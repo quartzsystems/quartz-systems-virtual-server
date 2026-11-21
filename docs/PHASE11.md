@@ -771,16 +771,44 @@ as now, and a hot spot arrives as `Input::Function`. Then
 `docs/SERVICETOOLS.md`'s table of keys, and a serial suite that sends
 an SGR click and reads where the cursor went.
 
-### Questions for Cody
+### Answered
 
-1. A user ID of 32: letters and digits only, as now, or also `.`, `_`
-   and `-`?
-2. Hot spots on the keys line, and the wheel as Page Up and Page Down:
-   yes or no?
+Cody, 2026-11-21: letters and digits only; hot spots and the wheel,
+yes. QS/400's handoff 25 did both items with both options; the pin at
+it follows.
+
+## 2026-11-21: the pin at QS/400's handoff 25
+
+### The pin
+
+`960861dc`, QS/400's `main` of 2026-11-21 (`docs/PHASE0.md`), after
+`cf8f0145`. Between them QS/400 changed `console` and `svcusers` for
+this, and its own services otherwise (directory, NFS, HTTP, its 5250
+web layer), none of which QS/VS takes. `kernel/`, the toolchain and
+`deny.toml` are unchanged. Nothing broke: no code here changed for the
+pin itself.
+
+What QS/VS does with it:
+
+| What | Where |
+|---|---|
+| User IDs of 1 to 32 letters and digits | `base/users`: `ID_MAX` 32, the rule and the message say so, and the users' database is given the same limit (`UserDb::with_name_len`). The sign-on panel and the user forms take their width from `ID_MAX`; an installer seed's `user_id` is checked by the same rule. QS/MC gets the same through `base/users` |
+| The pointer on | `base/panels/src/screens.rs`: `Console::set_pointer(true)` once the displays are added, the serial terminal's among them |
+| The display's pointer | `base/panels/src/keyboards.rs` reads every key-capable device (a mouse's and a tablet's buttons make it one) and forwards each event through `console::keyboard::decode` with the device's `abs_ranges`; its own decoder of key events is gone |
+| The wheel pages | The console makes the wheel Page Up and Page Down, which its editor drops; QS/VS's relay makes the display's wheel the roll keys as it does Page Up and Page Down (F7 and F8 on a list that pages). A serial terminal's wheel arrives as Page Up and Page Down and goes the same way |
+| Documents | `docs/SERVICETOOLS.md` (the keys, the user ID), `docs/INSTALL.md`, `docs/SEED.md`; the goldens `install-user` and `tools-user-add`, and the attended installation's rule line |
+
+`cargo test --workspace`, clippy on the host and on the musl target,
+`build deny`, `build notices --check` and `build doctor` pass.
 
 ### Not done
 
-- `BLOCKED(phase11)`: service tools user IDs longer than 10 wait for
-  `svcusers` to take the limit from its caller (item 1 above).
-- `BLOCKED(phase11)`: clicking a field waits for `console` to read a
-  pointer on the display and a serial terminal (item 2 above).
+- `BLOCKED(phase11)`: no QEMU suite has run at this pin. The goldens
+  changed by hand (`install-time`, `tools-time`, `install-user`,
+  `tools-user-add`) are still to be compared by `install-serial`,
+  `install-display` and `tools-sign-on` on a rebuilt test image.
+- `BLOCKED(phase11)`: no suite clicks. A serial suite that sends an SGR
+  click into a field and on a key's label, and reads where the cursor
+  went, is still to be written.
+- `NEEDS-CODY`: the pointer on a real machine's USB mouse and on a
+  management controller's virtual mouse.
