@@ -433,8 +433,19 @@ pub fn two_consoles(run: &Run<'_>) -> Result<String, String> {
     let id = make_partition(&mut a, "TWO")?;
     let seen_a = gather(&mut a, Duration::from_secs(3))?;
     let seen_b = gather(&mut b, Duration::from_secs(3))?;
-    let nums = |v: &[(u64, AnyEvent)]| v.iter().map(|(s, _)| *s).collect::<Vec<_>>();
-    if nums(&seen_a) != nums(&seen_b) || seen_a.is_empty() {
+    // From the first event both were subscribed for: one posted between
+    // the two subscriptions is A's alone.
+    let from = seen_a
+        .first()
+        .zip(seen_b.first())
+        .map_or(0, |((a, _), (b, _))| (*a).max(*b));
+    let nums = |v: &[(u64, AnyEvent)]| {
+        v.iter()
+            .map(|(s, _)| *s)
+            .filter(|s| *s >= from)
+            .collect::<Vec<_>>()
+    };
+    if nums(&seen_a) != nums(&seen_b) || nums(&seen_a).is_empty() {
         return Err(format!(
             "A saw {:?}, B saw {:?}",
             nums(&seen_a),

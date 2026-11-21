@@ -49,14 +49,21 @@ fn ended_within(address: &str, send: &[u8], within: Duration) -> Result<Option<D
 
 /// A link once the server has let go of the flood's connections: until
 /// it sees them closed they hold its four handshakes, and a fifth is
-/// ended, as it should be. Tried every 3 s for 90 s.
+/// ended, as it should be. Tried every 3 s for 90 s; `held`, the link
+/// already up, is asked meanwhile, so that its session is not ended for
+/// silence.
 fn link_when_free(
     q: &super::Qsi<'_>,
     id: &qsitrust::Identity,
     host: qsitrust::Fingerprint,
+    held: Option<&mut qsictl::link::Link>,
 ) -> Result<qsictl::link::Link, String> {
     let until = Instant::now() + Duration::from_secs(90);
+    let mut held = held;
     loop {
+        if let Some(l) = held.as_deref_mut() {
+            ask(l, AnyRequest::Base(base::Request::Identify(Empty)))?;
+        }
         match link(q, id, host) {
             Ok(l) => return Ok(l),
             Err(_) if Instant::now() < until => std::thread::sleep(Duration::from_secs(3)),
@@ -97,7 +104,7 @@ pub fn hostile(run: &Run<'_>) -> Result<String, String> {
     )?
     .ok_or("nonsense before the handshake did not end the connection")?;
     // After it: a frame longer than any message, on its own link.
-    let mut bad = link_when_free(&q, &id, host_print)?;
+    let mut bad = link_when_free(&q, &id, host_print, Some(&mut l))?;
     let mut frame = vec![0x51, 0x53, 0x49, 0x00, 0x10, 0x10];
     frame.extend(u32::MAX.to_be_bytes());
     frame.extend(vec![0xa5; 4096]);
@@ -131,7 +138,7 @@ pub fn hostile(run: &Run<'_>) -> Result<String, String> {
     )?;
     let took = t.elapsed();
     l.close();
-    let mut again = link_when_free(&q, &id, host_print)?;
+    let mut again = link_when_free(&q, &id, host_print, None)?;
     let AnyReply::Base(base::Reply::State(s)) =
         ask(&mut again, AnyRequest::Base(base::Request::State(Empty)))?
     else {
