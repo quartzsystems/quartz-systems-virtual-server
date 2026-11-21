@@ -7,7 +7,7 @@
 [package]
 name = "qsdemo-fixture"
 description = "An appliance of no product's that uses the base crates from a git dependency"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 license = "MIT"
 publish = false
@@ -21,3 +21,15 @@ inventory = { git = "@REPO@", rev = "@REV@" }
 netd = { git = "@REPO@", rev = "@REV@" }
 state = { git = "@REPO@", rev = "@REV@" }
 appliance = { git = "@REPO@", rev = "@REV@" }
+msg = { git = "@REPO@", rev = "@REV@" }
+problem = { git = "@REPO@", rev = "@REV@" }
+servicedump = { git = "@REPO@", rev = "@REV@" }
+confine = { git = "@REPO@", rev = "@REV@" }
+update = { git = "@REPO@", rev = "@REV@" }
+buildaid = { git = "@REPO@", rev = "@REV@" }
+stream = { git = "@REPO@", rev = "@REV@" }
+logd = { git = "@REPO@", rev = "@REV@" }
+loadsource = { git = "@REPO@", rev = "@REV@" }
+ed25519-dalek = "3.0.0"
+sha2 = "0.11.0"
+hex = "0.4.3"

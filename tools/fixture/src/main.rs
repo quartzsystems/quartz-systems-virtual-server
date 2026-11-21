@@ -3,7 +3,12 @@
 // root directory of this project.
 
 //! The fixture appliance, `QSDEMO`: what another appliance takes of
-//! the base crates, used from a git dependency. Each part prints one
+//! the base crates, used from a git dependency: the processor check, the
+//! QEMU driver, the inventory and the network roles; and what a console
+//! takes to service itself as a host does: an update of itself, its
+//! service dump, its problem log, a confined service, a release
+//! directory with its signed index, the panic capture and the media's
+//! check. Each part prints one
 //! `QSDEMO <part>: ...` line when it holds, and the run ends with an
 //! error when one does not.
 
@@ -154,15 +159,399 @@ fn network() -> Result<String, String> {
     ))
 }
 
+/// A scratch directory of its own.
+fn scratch(name: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("qsdemo-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    let _ = std::fs::create_dir_all(&d);
+    d
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(bytes))
+}
+
+/// QSDEMO's update images: its own magic, first line and fixes.
+static FORMAT: update::Format = update::Format {
+    magic: *b"QSDEMOUP",
+    head: "QSDEMO-UPDATE 1",
+    fix_prefix: "QD",
+};
+
+/// An update of itself: an image made and verified against its key and
+/// refused under another; the state copied at a trial's first IPL, put
+/// back when the trial does not confirm, and dropped when one does.
+fn updates() -> Result<String, String> {
+    use ed25519_dalek::{Signer, SigningKey};
+    let key = SigningKey::from_bytes(&[3; 32]);
+    let (a, b) = (vec![0xA5u8; 4096], vec![0x5Au8; 4096]);
+    let file = |name: &str, bytes: &[u8]| update::manifest::File {
+        name: name.into(),
+        bytes: bytes.len() as u64,
+        sha256: sha256_hex(bytes),
+    };
+    let manifest = update::Manifest {
+        product: "QSDEMO".into(),
+        release: "V1R0M1".into(),
+        build: "fixture".into(),
+        fixes: vec!["QD00001".into()],
+        schemas: vec![("host.toml".into(), 1)],
+        files: vec![
+            file(update::verify::SLOT_A, &a),
+            file(update::verify::SLOT_B, &b),
+        ],
+    };
+    let image = update::make(&FORMAT, &manifest, &a, &b, |t| key.sign(t).to_bytes());
+    let running = |keys: Vec<u8>| update::Running {
+        format: &FORMAT,
+        product: "QSDEMO".into(),
+        release: "V1R0M0".parse().expect("a release"),
+        keys,
+        state: vec![("host.toml".into(), 1)],
+    };
+    let ours = key.verifying_key().to_bytes().to_vec();
+    let verified = update::verify::verify(&image, &running(ours), false)
+        .map_err(|e| format!("its own image: {e}"))?;
+    let other = SigningKey::from_bytes(&[4; 32]).verifying_key().to_bytes().to_vec();
+    if update::verify::verify(&image, &running(other), false).is_ok() {
+        return Err("an image signed by a key it does not trust was taken".into());
+    }
+
+    use update::state_copy::{Done, Ipl, before_state, confirmed};
+    let data = scratch("update");
+    let state = data.join("state");
+    std::fs::create_dir_all(&state).map_err(|e| e.to_string())?;
+    std::fs::write(state.join("host.toml"), "before").map_err(|e| e.to_string())?;
+    let step = |ipl| before_state(&data, ipl).map_err(|e| e.to_string());
+    let trial = step(Ipl::Trial)?;
+    std::fs::write(state.join("host.toml"), "during").map_err(|e| e.to_string())?;
+    let back = step(Ipl::FellBack)?;
+    let after = std::fs::read_to_string(state.join("host.toml")).unwrap_or_default();
+    if (trial, back, after.as_str()) != (Done::Copied, Done::Restored, "before") {
+        return Err(format!("a trial rolled back: {trial:?}, {back:?}, state `{after}`"));
+    }
+    step(Ipl::Trial)?;
+    std::fs::write(state.join("host.toml"), "kept").map_err(|e| e.to_string())?;
+    confirmed(&data).map_err(|e| e.to_string())?;
+    let kept = std::fs::read_to_string(state.join("host.toml")).unwrap_or_default();
+    if kept != "kept" || step(Ipl::Normal)? != Done::Nothing {
+        return Err(format!("a confirmed trial: state `{kept}`"));
+    }
+    let _ = std::fs::remove_dir_all(&data);
+    Ok(format!(
+        "an image of {} {} for slots {} staged and verified against its key, refused under \
+         another; a trial rolled back restored the state, a confirmed one kept its own",
+        verified.manifest.product,
+        verified.manifest.release,
+        verified.manifest.files.len()
+    ))
+}
+
+/// QSDEMO's dumps.
+static DUMPS: servicedump::Kind = servicedump::Kind {
+    prefix: "DEMODUMP-",
+    title: "Service dump",
+    max_dumps: 4,
+    max_total: 1 << 30,
+    left_out: &[("pins.toml", "the consoles' pins")],
+};
+
+struct Own;
+
+impl servicedump::Sources for Own {
+    fn entries(&mut self) -> Vec<(String, Vec<u8>)> {
+        vec![("own/sessions.txt".into(), b"2 sessions".to_vec())]
+    }
+}
+
+/// A service dump with its own entries, and its secret left out.
+fn dumps() -> Result<String, String> {
+    let d = scratch("dump");
+    let state = d.join("state");
+    std::fs::create_dir_all(&state).map_err(|e| e.to_string())?;
+    std::fs::write(state.join("host.toml"), "name = \"DEMO\"\n").map_err(|e| e.to_string())?;
+    std::fs::write(state.join("pins.toml"), "[[console]]\n").map_err(|e| e.to_string())?;
+    std::fs::write(state.join("tls.key"), "-----BEGIN PRIVATE KEY-----\n")
+        .map_err(|e| e.to_string())?;
+    let paths = servicedump::Paths {
+        log: d.join("log"),
+        state,
+        problems: d.join("problems"),
+        proc: d.join("proc"),
+    };
+    let store = servicedump::Store::at(d.join("dumps"), &DUMPS);
+    let asked = servicedump::Asked {
+        by: "the fixture".into(),
+        release: "QSDEMO V1R0M0".into(),
+        host: "DEMO".into(),
+        status: "all ready".into(),
+    };
+    let (info, _) = servicedump::take(&store, &paths, &mut Own, &asked, 1_794_834_942)?;
+    let bytes = std::fs::read(store.dir().join(&info.name)).map_err(|e| e.to_string())?;
+    let entries = servicedump::zip::entries(&bytes).map_err(|e| format!("{e:?}"))?;
+    let names: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+    for gone in ["state/pins.toml", "state/tls.key"] {
+        if names.contains(&gone) {
+            return Err(format!("{gone} is in the dump"));
+        }
+    }
+    if !names.contains(&"own/sessions.txt") || !names.contains(&"state/host.toml") {
+        return Err(format!("the dump holds {names:?}"));
+    }
+    let _ = std::fs::remove_dir_all(&d);
+    Ok(format!(
+        "{} of {} entries, its own beside every appliance's; its pins and a key left out",
+        info.name,
+        names.len()
+    ))
+}
+
+static NOTE: msg::Message = msg::Message {
+    id: "QDM5001",
+    text: "Problem &1 is not one of QSDEMO's.",
+    help: "Look at the problem log.",
+};
+static FAILED: msg::Message = msg::Message {
+    id: "QDM5101",
+    text: "Session &1 failed.",
+    help: "Sign on again.",
+};
+
+/// QSDEMO's problem table: one condition, cleared by one code.
+static RULES: problem::table::Rules = problem::table::Rules {
+    conditions: &[problem::table::Condition {
+        code: "A5001010",
+        opens: Some(problem::table::Opening {
+            message: &FAILED,
+            resources: &["service"],
+            cleared_by: &["C5001010"],
+            system_code: false,
+        }),
+        note: "",
+    }],
+    severity: |_| problem::Severity::Attention,
+    messages: problem::table::Messages {
+        no_problem: &NOTE,
+        closed: &NOTE,
+        holds: &NOTE,
+        not_kept: &NOTE,
+        note_invalid: &NOTE,
+    },
+};
+
+/// A problem opened from a posted code, noted, cleared and closed.
+fn problems() -> Result<String, String> {
+    let posting = |seq: u64, code: &str| problem::book::Posting {
+        posted: problem::Posted {
+            seq,
+            code: code.into(),
+            words: Vec::new(),
+            text: "session".into(),
+            time_ms: seq * 1000,
+        },
+        about: vec![problem::record::About {
+            kind: "service".into(),
+            name: "webd".into(),
+            ..problem::record::About::default()
+        }],
+    };
+    let mut book = problem::Book::default();
+    let opened = book.take(&RULES, &posting(1, "A5001010"), 10);
+    let number = opened
+        .first()
+        .map(|n| n.problem.number)
+        .ok_or("the code opened no problem")?;
+    let noted = book
+        .note(&RULES, number, "Restarted the web server", "OPER", 11)
+        .map_err(|e| format!("{e:?}"))?;
+    if book.close(&RULES, number, false, "OPER", 12).is_ok() {
+        return Err("a problem was closed while its condition held".into());
+    }
+    book.take(&RULES, &posting(2, "C5001010"), 13);
+    let closed = book
+        .close(&RULES, number, false, "OPER", 14)
+        .map_err(|e| format!("{e:?}"))?;
+    Ok(format!(
+        "problem {number} opened from A5001010 ({}), `{}`, cleared by C5001010 and closed by {}",
+        closed.problem.description,
+        noted.note.map(|n| n.line.text).unwrap_or_default(),
+        closed.problem.closed_by
+    ))
+}
+
+/// The calls of the confined child: what writing a line and ending need.
+const CONFINED: &[u32] = &[1, 11, 15, 60, 131, 202, 231];
+
+/// The child: confined to [`CONFINED`], it says so, then makes a call
+/// it was not given, which ends it.
+fn confined_child() -> ! {
+    let rules: Vec<confine::bpf::Rule> =
+        CONFINED.iter().map(|nr| confine::bpf::Rule::Any(*nr)).collect();
+    if let Err(e) = confine::filter("child", &rules, confine::bpf::KILL_PROCESS) {
+        eprintln!("not confined: {e}");
+        std::process::exit(2);
+    }
+    println!("QSDEMO confined");
+    // `statx` is not one of its calls: the filter ends the process.
+    let _ = std::fs::metadata("/");
+    println!("QSDEMO not stopped");
+    std::process::exit(0);
+}
+
+/// A service confined: the fixture again, as a child that installs a
+/// filter of its own calls and is ended by the kernel at another.
+fn confinement() -> Result<String, String> {
+    use std::os::unix::process::ExitStatusExt;
+    let me = std::env::current_exe().map_err(|e| e.to_string())?;
+    let out = std::process::Command::new(me)
+        .arg("confined")
+        .output()
+        .map_err(|e| e.to_string())?;
+    let said = String::from_utf8_lossy(&out.stdout);
+    let signal = out.status.signal();
+    if !said.contains("QSDEMO confined") || said.contains("not stopped") || signal != Some(31) {
+        return Err(format!(
+            "the child said `{}` and ended {:?}: {}",
+            said.trim(),
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(format!(
+        "a child confined to {} calls ran, and a call outside them ended it (SIGSYS)",
+        CONFINED.len()
+    ))
+}
+
+/// A release directory: its stream's index signed, its sums signed, the
+/// index verified by the release key.
+fn release() -> Result<String, String> {
+    use ed25519_dalek::SigningKey;
+    let out = scratch("release");
+    std::fs::write(out.join("QSDEMO-V1R0M0.iso"), b"an iso").map_err(|e| e.to_string())?;
+    std::fs::write(out.join("QSDEMO-V1R0M0-update.upd"), b"an update")
+        .map_err(|e| e.to_string())?;
+    let key = SigningKey::from_bytes(&[5; 32]);
+    let names = buildaid::release::Names {
+        prefix: "qsdemo",
+        sb_subject: "CN=QSDEMO",
+        stream: "qsdemo",
+    };
+    let mut files = vec!["QSDEMO-V1R0M0.iso".to_string(), "QSDEMO-V1R0M0-update.upd".into()];
+    buildaid::release::index_and_sums(
+        &out,
+        &names,
+        "V1R0M0",
+        "fixture",
+        vec!["QD00001".into()],
+        "QSDEMO-V1R0M0-update.upd",
+        "QSDEMO-V1R0M0.iso",
+        &mut files,
+        &key,
+    )
+    .map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(out.join("stream/index.toml")).map_err(|e| e.to_string())?;
+    let index = stream::verify(&bytes, &[key.verifying_key().to_bytes()], 0)
+        .map_err(|e| e.to_string())?;
+    let sums = std::fs::read_to_string(out.join("SHA256SUMS")).map_err(|e| e.to_string())?;
+    let listed = buildaid::release::listed(&out).map_err(|e| e.to_string())?;
+    let e = index.releases.first().ok_or("an index of no release")?;
+    let _ = std::fs::remove_dir_all(&out);
+    Ok(format!(
+        "{} files, stream {} with {} released {} (notes {}), {} sums signed",
+        listed.len(),
+        index.stream,
+        e.release,
+        e.released,
+        e.notes,
+        sums.lines().count()
+    ))
+}
+
+/// The kernel's last messages of a panic, taken at the next start.
+fn panics() -> Result<String, String> {
+    let pstore = scratch("pstore");
+    let kept = scratch("panics");
+    std::fs::write(
+        pstore.join("dmesg-efi_pstore-1"),
+        "<0>[ 9.1] Kernel panic - not syncing: Attempted to kill init!\n",
+    )
+    .map_err(|e| e.to_string())?;
+    let (why, files) =
+        logd::panics::take(&pstore, &kept, "20261120T230000").ok_or("nothing was taken")?;
+    let _ = std::fs::remove_dir_all(&pstore);
+    let _ = std::fs::remove_dir_all(&kept);
+    Ok(format!("`{why}`, {files} record taken"))
+}
+
+/// Its installation media checked: signed by its key, each slot's file
+/// its manifest's.
+fn media() -> Result<String, String> {
+    use ed25519_dalek::{Signer, SigningKey};
+    let names = &appliance::LoadSourceNames::DEMO;
+    let root = scratch("media");
+    let dir = root.join(loadsource::payload::dir(names));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let (a, b) = (b"slot a".to_vec(), b"slot b".to_vec());
+    let file = |name: &str, bytes: &[u8]| loadsource::payload::File {
+        name: name.into(),
+        bytes: bytes.len() as u64,
+        sha256: sha256_hex(bytes),
+    };
+    let manifest = loadsource::payload::Manifest {
+        product: "QSDEMO".into(),
+        release: "V1R0M0".into(),
+        build: "fixture".into(),
+        files: vec![
+            file(loadsource::payload::SLOT_A, &a),
+            file(loadsource::payload::SLOT_B, &b),
+        ],
+    };
+    let key = SigningKey::from_bytes(&[6; 32]);
+    let text = manifest.render(names);
+    let put = |n: &str, bytes: &[u8]| std::fs::write(dir.join(n), bytes);
+    put(loadsource::payload::MANIFEST, text.as_bytes()).map_err(|e| e.to_string())?;
+    put(
+        loadsource::payload::SIGNATURE,
+        hex::encode(key.sign(text.as_bytes()).to_bytes()).as_bytes(),
+    )
+    .map_err(|e| e.to_string())?;
+    put(loadsource::payload::SLOT_A, &a).map_err(|e| e.to_string())?;
+    put(loadsource::payload::SLOT_B, &b).map_err(|e| e.to_string())?;
+    let keys = key.verifying_key().to_bytes();
+    let payload = loadsource::payload::verify(&root, names, "V1R0M0", &keys)?;
+    put(loadsource::payload::SLOT_B, b"slot B").map_err(|e| e.to_string())?;
+    let refused = loadsource::payload::verify(&root, names, "V1R0M0", &keys).is_err();
+    let _ = std::fs::remove_dir_all(&root);
+    if !refused {
+        return Err("a changed slot was taken".into());
+    }
+    Ok(format!(
+        "{} files verified against its key; a changed slot refused",
+        payload.manifest.files.len()
+    ))
+}
+
 /// One part: what it says when it held, or why it did not.
 type Part = fn() -> Result<String, String>;
 
 fn main() -> Result<(), String> {
-    let parts: [(&str, Part); 4] = [
+    if std::env::args().nth(1).as_deref() == Some("confined") {
+        confined_child();
+    }
+    let parts: [(&str, Part); 11] = [
         ("processor", processor),
         ("qemu", qemu),
         ("inventory", inventory),
         ("netd", network),
+        ("update", updates),
+        ("servicedump", dumps),
+        ("problem", problems),
+        ("confine", confinement),
+        ("buildaid", release),
+        ("panics", panics),
+        ("payload", media),
     ];
     for (name, part) in parts {
         let line = part().map_err(|e| format!("QSDEMO {name} FAILED: {e}"))?;

@@ -4,9 +4,9 @@
 
 //! `build fixture`: the proof that another appliance can pin the base
 //! crates. The fixture `QSDEMO` (`tools/fixture/`) is copied to a clean
-//! directory, given a `Cargo.toml` that takes `processor`, `qemu`,
-//! `inventory`, `netd` and `state` as git dependencies at this
-//! repository's HEAD, built and run. It passes when each of its parts
+//! directory, given a `Cargo.toml` that takes the base crates
+//! ([`TAKES`]) as git dependencies at this repository's HEAD, built and
+//! run. It passes when each of its parts
 //! says it held, and its dependency graph has no crate of this
 //! repository outside `base/`.
 //!
@@ -24,9 +24,36 @@ use tracing::{info, warn};
 /// The fixture in the tree.
 const FIXTURE: &str = "tools/fixture";
 /// What the fixture says, one line a part, when each held.
-const PARTS: &[&str] = &["processor", "qemu", "inventory", "netd"];
+const PARTS: &[&str] = &[
+    "processor",
+    "qemu",
+    "inventory",
+    "netd",
+    "update",
+    "servicedump",
+    "problem",
+    "confine",
+    "buildaid",
+    "panics",
+    "payload",
+];
 /// The base crates it takes.
-const TAKES: &[&str] = &["processor", "qemu", "inventory", "netd", "state"];
+const TAKES: &[&str] = &[
+    "processor",
+    "qemu",
+    "inventory",
+    "netd",
+    "state",
+    "msg",
+    "problem",
+    "servicedump",
+    "confine",
+    "update",
+    "buildaid",
+    "stream",
+    "logd",
+    "loadsource",
+];
 
 fn git(repo: &Path, args: &[&str]) -> Result<String> {
     Ok(Cmd::new("git", "git")
