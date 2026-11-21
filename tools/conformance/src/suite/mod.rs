@@ -505,7 +505,7 @@ mod tests {
                 + limits::SUITES.len()
         );
         assert!(soak::SUITES.iter().all(|s| !names().contains(&s.0)));
-        assert_eq!(qsi::SUITES.len(), 13);
+        assert_eq!(qsi::SUITES.len(), 14);
         assert_eq!(service::SUITES.len(), 17);
         assert_eq!(storage::SUITES.len(), 17);
         assert_eq!(network::SUITES.len(), 15);
