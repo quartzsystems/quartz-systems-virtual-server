@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn the_command_lines_are_the_baked_ones() {
         let p = qsvs(Image::Release).unwrap();
-        let base = "console=ttyS0,115200 console=tty0 panic=-1 quiet";
+        let base = "console=ttyS0,115200 console=tty0 panic=-1 quiet loglevel=3";
         let line = |kind| (p.uki_cmdline)(&p, kind, true);
         assert_eq!(line(UkiKind::SlotA), format!("{base} qsvs.slot=A"));
         assert_eq!(line(UkiKind::SlotB), format!("{base} qsvs.slot=B"));

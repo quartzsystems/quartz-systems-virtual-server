@@ -44,7 +44,8 @@ EFI stub image, is the UKI the firmware loads. The ESP holds two of
 them, slot A at `EFI/BOOT/BOOTX64.EFI` and slot B at `EFI/QSVS/B.EFI`, so
 an update writes the other slot and a bad one is one firmware boot entry
 away from the good one. The command line is baked and the firmware's is
-ignored: `console=ttyS0,115200 console=tty0 panic=-1 quiet`, then
+ignored: `console=ttyS0,115200 console=tty0 panic=-1 quiet loglevel=3`
+(a kernel error reaches the system log, not the consoles), then
 `qsvs.slot=A` or `qsvs.slot=B`; the media UKI carries `qsvs.install=1`
 instead of a slot.
 

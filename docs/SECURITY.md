@@ -127,7 +127,7 @@ everything it starts hold its set and no more
 
 `kernel/config/qsvs.config`'s hardening section, checked by the build
 (`REQUIRED_Y`, `REQUIRED_N`). The command line is the locked one
-(`console=ttyS0,115200 console=tty0 panic=-1 quiet`): everything is
+(`console=ttyS0,115200 console=tty0 panic=-1 quiet loglevel=3`): everything is
 the configuration's.
 
 | Setting | Why |

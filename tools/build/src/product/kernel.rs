@@ -12,12 +12,14 @@ pub const FRAGMENT: &str = "qsvs.config";
 /// The test image's fragment, after [`FRAGMENT`]: its tape double.
 pub const TEST_FRAGMENT: &str = "qsvs-test.config";
 
-/// The baked command line, before each UKI's own word.
-pub const CMDLINE: &str = "console=ttyS0,115200 console=tty0 panic=-1 quiet";
+/// The baked command line, before each UKI's own word. `loglevel=3`
+/// keeps the kernel's errors (KVM's unhandled MSRs among them) off the
+/// consoles Service Tools draws on; logd has them all from `/dev/kmsg`.
+pub const CMDLINE: &str = "console=ttyS0,115200 console=tty0 panic=-1 quiet loglevel=3";
 /// The test image's: its tape double makes no device until the test
 /// hooks ask for one.
 pub const TEST_CMDLINE: &str =
-    "console=ttyS0,115200 console=tty0 panic=-1 quiet scsi_debug.add_host=0";
+    "console=ttyS0,115200 console=tty0 panic=-1 quiet loglevel=3 scsi_debug.add_host=0";
 
 /// Symbols QS/VS needs `=y`, past the pipeline's baseline.
 pub const REQUIRED_Y: &[&str] = &[
@@ -389,7 +391,10 @@ mod tests {
             assert!(REQUIRED_N.contains(&sym), "{sym}");
         }
         // The command line is the locked one (CLAUDE.md).
-        assert_eq!(CMDLINE, "console=ttyS0,115200 console=tty0 panic=-1 quiet");
+        assert_eq!(
+            CMDLINE,
+            "console=ttyS0,115200 console=tty0 panic=-1 quiet loglevel=3"
+        );
     }
 
     #[test]

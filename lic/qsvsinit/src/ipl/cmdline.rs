@@ -68,7 +68,7 @@ impl Source {
 mod tests {
     use super::*;
 
-    const BASE: &str = "console=ttyS0,115200 console=tty0 panic=-1 quiet";
+    const BASE: &str = "console=ttyS0,115200 console=tty0 panic=-1 quiet loglevel=3";
 
     #[test]
     fn the_slot_is_read() {

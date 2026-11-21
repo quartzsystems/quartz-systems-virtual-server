@@ -341,7 +341,8 @@ See `docs/ARCHITECTURE.md`. Short form:
 - **Kernel pin.** `kernel/VERSION` and `kernel/SHA256`, the same as
   QS/400's at the pinned commit. A bump is its own commit.
 - **Command line.** Baked: `console=ttyS0,115200 console=tty0 panic=-1
-  quiet`, then `qsvs.slot=A` or `qsvs.slot=B`; the media UKI carries
+  quiet loglevel=3` (kernel errors to the system log, not the
+  consoles), then `qsvs.slot=A` or `qsvs.slot=B`; the media UKI carries
   `qsvs.install=1` instead of a slot.
 - **Reproducible.** Fixed `SOURCE_DATE_EPOCH` and `KBUILD_BUILD_*`,
   deterministic cpio, GPT, FAT and xfs, signed content-hash manifest.
