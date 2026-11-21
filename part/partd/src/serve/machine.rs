@@ -271,7 +271,10 @@ fn exchange(
 /// The dumps directory of `id` in the pool that holds the media
 /// repository, by the pool service's word.
 fn dump_dir_of(pools: &Path, id: u32) -> Option<PathBuf> {
-    let list = poold::proto::Client::new(pools).pools().ok()?;
+    let list = poold::proto::Client::new(pools)
+        .waiting(poold::proto::LOOK_WAIT)
+        .pools()
+        .ok()?;
     let pool = list
         .into_iter()
         .find(|p| p.repository && p.usable() && !p.mount.is_empty())?;
@@ -635,7 +638,9 @@ impl System for Machine {
             proc: PathBuf::from("/proc"),
         };
         let mut uses = pio::HostUses::default();
-        if let Ok(disks) = self.pools().disks() {
+        // A look: a pool service that is busy does not hold the list.
+        let mut look = self.pools().waiting(poold::proto::LOOK_WAIT);
+        if let Ok(disks) = look.disks() {
             for d in disks {
                 if d.what.starts_with("Load source") {
                     uses.load_source.push(d.location.clone());

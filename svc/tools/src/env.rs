@@ -54,6 +54,7 @@ pub struct Env {
     net: NetClient,
     storage: StorageClient,
     pools: poold::proto::Client,
+    pool_changes: poold::proto::Client,
     switches: vswitchd::Client,
     qsi: qsilocal::Client,
     problems: problem::proto::Client,
@@ -74,7 +75,9 @@ impl Env {
             control: Client::new(appliance.control_socket()),
             net: NetClient::new(appliance.net_socket()),
             storage: StorageClient::of(&appliance),
-            pools: poold::proto::Client::new(poold::proto::socket(release::RUN_DIR)),
+            pools: poold::proto::Client::new(poold::proto::socket(release::RUN_DIR))
+                .waiting(poold::proto::LOOK_WAIT),
+            pool_changes: poold::proto::Client::new(poold::proto::socket(release::RUN_DIR)),
             switches: vswitchd::Client::new(vswitchd::socket(release::RUN_DIR)),
             qsi: qsilocal::Client::new(
                 std::path::Path::new(release::RUN_DIR).join(qsilocal::SOCKET_FILE),
@@ -111,9 +114,15 @@ impl Env {
     }
 
     /// The pool service: the storage pools, the virtual disks, the media
-    /// library.
+    /// library, to be looked at: a panel waits for a list a short while.
     pub fn pools(&mut self) -> &mut poold::proto::Client {
         &mut self.pools
+    }
+
+    /// The pool service, for a change: making a pool formats its file
+    /// system, and the change is waited for.
+    pub fn pool_changes(&mut self) -> &mut poold::proto::Client {
+        &mut self.pool_changes
     }
 
     /// The switch service: the virtual switches, the network hardware,

@@ -384,23 +384,38 @@ ipc::rpc! {
 #[derive(Clone, Debug)]
 pub struct Client {
     path: std::path::PathBuf,
+    wait: std::time::Duration,
 }
 
 /// How long a client waits for an answer: making a pool formats its
 /// file system.
 pub const ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 
+/// How long a client that only looks waits: a list is answered at once,
+/// unless a change holds the service.
+pub const LOOK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[cfg(unix)]
 impl Client {
     /// A client of the socket at `path`.
     pub fn new(path: impl Into<std::path::PathBuf>) -> Self {
-        Self { path: path.into() }
+        Self {
+            path: path.into(),
+            wait: ANSWER_WAIT,
+        }
+    }
+
+    /// The same client, waiting `wait` for an answer.
+    #[must_use]
+    pub fn waiting(mut self, wait: std::time::Duration) -> Self {
+        self.wait = wait;
+        self
     }
 
     fn connect(&self) -> Result<std::os::unix::net::UnixStream, ipc::WireError> {
         let stream = std::os::unix::net::UnixStream::connect(&self.path)?;
-        stream.set_read_timeout(Some(ANSWER_WAIT))?;
-        stream.set_write_timeout(Some(ANSWER_WAIT))?;
+        stream.set_read_timeout(Some(self.wait))?;
+        stream.set_write_timeout(Some(self.wait))?;
         Ok(stream)
     }
 

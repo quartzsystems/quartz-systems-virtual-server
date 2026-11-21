@@ -196,7 +196,7 @@ impl Panel<Env, Outcome> for Pools {
                     "afterwards. A pool that holds a virtual disk or media is not deleted.".into(),
                 ],
                 name.clone(),
-                move |env: &mut Env| asked(env.pools().delete_pool(name.clone())),
+                move |env: &mut Env| asked(env.pool_changes().delete_pool(name.clone())),
             ))),
             5 => Flow::Push(Box::new(Status { pool: name })),
             6 => Flow::Push(Box::new(Choose {
@@ -220,7 +220,7 @@ impl Panel<Env, Outcome> for Pools {
                     "its files, which are no longer the library's.".into(),
                 ],
                 name.clone(),
-                move |env: &mut Env| asked(env.pools().designate(name.clone())),
+                move |env: &mut Env| asked(env.pool_changes().designate(name.clone())),
             ))),
             _ => Flow::Error("Option not valid.".into()),
         }
@@ -234,6 +234,11 @@ impl Panel<Env, Outcome> for Pools {
             12 => Flow::Pop,
             _ => Flow::Stay,
         }
+    }
+
+    /// F7 imports here: the list does not page.
+    fn roll(&mut self, _forward: bool, _fields: &[String], _env: &mut Env) -> Step {
+        Flow::Stay
     }
 
     fn help(&self) -> Help {
@@ -500,7 +505,7 @@ impl Panel<Env, Outcome> for Pick {
             lines,
             self.name.clone(),
             move |env: &mut Env| {
-                asked(env.pools().create_pool(
+                asked(env.pool_changes().create_pool(
                     name.clone(),
                     protection.clone(),
                     m.clone(),
@@ -733,7 +738,9 @@ impl Panel<Env, Outcome> for Choose {
                     shown,
                 ],
                 name.clone(),
-                move |env: &mut Env| asked(env.pools().remove_spare(pool.clone(), name.clone())),
+                move |env: &mut Env| {
+                    asked(env.pool_changes().remove_spare(pool.clone(), name.clone()))
+                },
             ))),
             purpose => {
                 let unit = pool_failed_unit(env, &pool);
@@ -758,14 +765,18 @@ impl Panel<Env, Outcome> for Choose {
                             let Some(unit) = unit else {
                                 return Err("No unit of the pool is failed or missing.".into());
                             };
-                            asked(env.pools().replace_unit(
+                            asked(env.pool_changes().replace_unit(
                                 pool.clone(),
                                 unit,
                                 name.clone(),
                                 foreign,
                             ))
                         }
-                        _ => asked(env.pools().add_spare(pool.clone(), name.clone(), foreign)),
+                        _ => asked(env.pool_changes().add_spare(
+                            pool.clone(),
+                            name.clone(),
+                            foreign,
+                        )),
                     },
                 )))
             }
@@ -823,7 +834,7 @@ impl Panel<Env, Outcome> for Rename {
 
     fn enter(&mut self, fields: &[String], env: &mut Env) -> Step {
         let to = fields.first().map_or("", |f| f.trim()).to_uppercase();
-        match asked(env.pools().rename_pool(self.pool.clone(), to)) {
+        match asked(env.pool_changes().rename_pool(self.pool.clone(), to)) {
             Ok(()) => Flow::Reset(Box::new(Pools)),
             Err(e) => Flow::Error(e),
         }
@@ -886,7 +897,7 @@ impl Panel<Env, Outcome> for Import {
     fn enter(&mut self, fields: &[String], env: &mut Env) -> Step {
         let field = |i: usize| fields.get(i).map_or("", |f| f.trim()).to_string();
         let (device, path, name) = (field(0), field(1), field(2));
-        match asked(env.pools().import_image(device, path, name)) {
+        match asked(env.pool_changes().import_image(device, path, name)) {
             Ok(()) => Flow::Unwind(
                 1,
                 Some((

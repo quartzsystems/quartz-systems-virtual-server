@@ -24,6 +24,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -106,7 +107,26 @@ pub struct Core {
 /// The service, shared by the loop and the socket's connections.
 pub type Shared = Arc<Mutex<Core>>;
 
+/// Requests waiting for the core. A pool's work stands back while any
+/// does: a lock the loop retakes at once would keep them out.
+static ASKING: AtomicUsize = AtomicUsize::new(0);
+/// The longest the loop stands back for requests at a time.
+const STAND_BACK: Duration = Duration::from_secs(1);
+
+/// The core, for a request.
 fn lock(core: &Shared) -> MutexGuard<'_, Core> {
+    ASKING.fetch_add(1, Ordering::SeqCst);
+    let guard = core.lock().unwrap_or_else(PoisonError::into_inner);
+    ASKING.fetch_sub(1, Ordering::SeqCst);
+    guard
+}
+
+/// The core, for the loop: after the requests waiting for it.
+fn loop_lock(core: &Shared) -> MutexGuard<'_, Core> {
+    let until = Instant::now() + STAND_BACK;
+    while ASKING.load(Ordering::SeqCst) > 0 && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(1));
+    }
     core.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -805,13 +825,13 @@ pub fn run(host: Host) -> String {
         return format!("the readiness pipe: {e}");
     }
     loop {
-        let busy = lock(&core).pools.iter().any(Pool::busy);
+        let busy = loop_lock(&core).pools.iter().any(Pool::busy);
         let wait = if busy { Duration::ZERO } else { TURN };
         if term(&mut signals, wait) {
             lock(&core).stop_all();
             std::process::exit(0);
         }
-        let mut c = lock(&core);
+        let mut c = loop_lock(&core);
         for i in 0..c.pools.len() {
             c.turn(i);
             if let Some(Set::Mirror(m)) = &c.pools[i].set {
