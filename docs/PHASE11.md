@@ -654,3 +654,133 @@ turns off.
 
 Against `02f8e93`'s: the notices, the release notes, the schema and
 the certificate are the same; the rest carry the build ID or the UKIs.
+
+## 2026-11-21: asked of QS/400, the pointer and longer user IDs
+
+At the display, Cody asked for two things QS/VS cannot do over its
+pin without restating QS/400's code: clicking a field to put the cursor
+there, as a 5250 emulator does, and service tools user IDs of up to
+32 characters. This is what QS/400's next handoff is asked for, and
+what QS/VS does once it is pinned.
+
+### 1. `svcusers`: the longest user ID is the caller's
+
+At `cf8f014`, `NAME_LEN` is 10 and is checked in one place,
+`UserDb::create` ("user ID must be 1 to 10 letters or digits").
+`encode` and `decode` give each name a 16-bit length, and `sign_on`,
+`get` and the rest take a name of any length: no format changes.
+
+Asked:
+
+- The limit is given by the caller, for example
+  `UserDb::with_name_len(n)` or a `name_len` passed to `create`.
+  `NAME_LEN` stays 10 as QS/400's own, and `svctools` and SST keep it.
+- The refusal names the limit it was given.
+- `normalize_name` and the rule of letters and digits stay as they
+  are, unless Cody wants more characters (see the questions below).
+- Tests: a 32-character ID made and signed on to with a limit of 32;
+  11 characters refused with a limit of 10; a store of long IDs encoded
+  and decoded.
+
+Not done instead: building a `ServiceUser` in `base/users` and adding
+it with `UserDb::push`, which checks nothing. That would restate
+`create`'s checks and its hashing outside QS/400.
+
+QS/VS afterwards: `base/users` passes 32 (`ID_MAX`, the rule text in
+`RULES`, the message of `check_id`). The sign-on panel and the user
+forms already take their width from `ID_MAX`. Then the goldens
+`tools-sign-on`, `tools-user-add`, `tools-user-password`,
+`install-user` and `tools-users` are written again, along with
+`docs/SERVICETOOLS.md`, `docs/INSTALL.md` and the `[install]` table's
+user in `docs/SEED.md`. QS/MC gets the same through `base/users`.
+
+### 2. `console`: a pointer
+
+At `cf8f014`, `console` reads keys only: `EV_KEY` events from
+`keyboard::evdev` (or `Command::Key` from a caller's own reader, which
+QS/VS's `base/panels/src/keyboards.rs` is, because USB keyboards come
+late), and bytes from a serial terminal through `ansi::KeyDecoder`. A
+mouse already reports `EV_KEY` (`BTN_LEFT`), so its device is opened,
+but its moves (`EV_REL`, `EV_ABS`) are dropped, and `translate` has no
+key for its buttons. The editor keeps the cursor in input fields
+(`editor::locate`). `scale::Layout` knows where the grid sits in
+pixels (`x0`, `y0`, `scale`, `GLYPH_W`, `GLYPH_H`), so the cell under a
+pixel can be worked out only inside `console`.
+
+Asked:
+
+- **A click.** `Key::Pointer { row, col }`, the grid cell, 0-based.
+  `editor::apply` handles it as follows:
+  - inside an input field, the cursor goes to that cell (`Edited`);
+  - outside every field, nothing happens (`Ignored`);
+  - while the keyboard is locked, the click is ignored, as other keys
+    are.
+
+  A deep field (capacity past its cells) keeps its rule for the last
+  cell. With the `session` feature, a terminal's cursor goes to the cell
+  wherever it is, as 5250 allows.
+- **The display's pointer.** Pointer events from the event devices:
+  relative moves, absolute positions with the axis ranges from
+  `EVIOCGABS`, and the left button. A management controller's virtual
+  mouse and QEMU's `usb-tablet` are absolute; a USB mouse is relative.
+  The console keeps a pointer position, clamped to the mode. It draws
+  the cell under a relative pointer so it can be seen (reverse video,
+  as the cursor is drawn), and makes a left press into `Key::Pointer`
+  through the framebuffer's `Layout`. A press outside the grid does
+  nothing.
+  - `spawn_readers` forwards pointer events as well as keys.
+  - One public decoder of an `input_event` (key or pointer) is offered
+    as a `Command`, and so is the axis ranges' query, so a caller's own
+    reader forwards exactly what `console`'s does without restating it.
+- **The serial terminal's pointer.**
+  - `AnsiDisplay` turns xterm mouse reporting on in its SGR form
+    (`ESC[?1000h ESC[?1006h`) with its first draw, and off when it is
+    dropped.
+  - `KeyDecoder` reads a press (`ESC[<0;x;yM`) as
+    `Key::Pointer { row: y-1, col: x-1 }`. A release, a move, another
+    button and malformed numbers are nothing.
+  - A terminal that does not report sends nothing, and an unknown
+    sequence is dropped as now. PuTTY, Windows Terminal and xterm
+    report in this form.
+- **Bounds.** No coordinate, from a device or a terminal, panics or
+  indexes past the grid: a large or negative value is clamped or
+  dropped.
+- **Tests.**
+  - The editor: in a field, outside one, locked, the last cell of a
+    deep field.
+  - `KeyDecoder`: a press, a release, the wheel, numbers too large,
+    a sequence cut short.
+  - `Layout`: the cell under a pixel at the grid's edges and outside
+    it, at scales 1 and 2.
+  - `AnsiDisplay`: the sequences that turn reporting on and off.
+
+Asked if Cody wants them (the questions below):
+
+- **Hot spots.** A click on a function key's label on the keys line
+  (`F3=Exit`, `Enter=Continue`) sends that key, as emulators do: the
+  editor finds `F<n>=` and `Enter=` in the keys line's text.
+- **The wheel.** On a serial terminal (buttons 64 and 65) and on the
+  display (`REL_WHEEL`), the wheel is `PageUp` and `PageDown`, which
+  QS/VS's panels already take as F7 and F8.
+
+QS/VS afterwards: `base/panels/src/keyboards.rs` forwards pointer
+events through `console`'s decoder; the serial reader in
+`base/panels/src/screens.rs` passes `Key::Pointer` on as it is. No
+panel changes: the console moves the cursor, Enter reads the fields
+as now, and a hot spot arrives as `Input::Function`. Then
+`docs/SERVICETOOLS.md`'s table of keys, and a serial suite that sends
+an SGR click and reads where the cursor went.
+
+### Questions for Cody
+
+1. A user ID of 32: letters and digits only, as now, or also `.`, `_`
+   and `-`?
+2. Hot spots on the keys line, and the wheel as Page Up and Page Down:
+   yes or no?
+
+### Not done
+
+- `BLOCKED(phase11)`: service tools user IDs longer than 10 wait for
+  `svcusers` to take the limit from its caller (item 1 above).
+- `BLOCKED(phase11)`: clicking a field waits for `console` to read a
+  pointer on the display and a serial terminal (item 2 above).
