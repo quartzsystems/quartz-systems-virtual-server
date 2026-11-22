@@ -819,3 +819,24 @@ golden), `install-serial` (27 s), `tools-sign-on` (50 s) and
   monitor can move a pointer, and no step does yet.
 - `NEEDS-CODY`: the pointer on a real machine's USB mouse and on a
   management controller's virtual mouse.
+
+## 2026-11-21: what Cody found on a real host
+
+Seen on a host installed from the release ISO of `cdd74de`, with six
+1 TB disks and a mirrored load source of two 240 GB disks.
+
+| What | Fixed |
+|---|---|
+| Work with Disk Units: the state of a unit at work was cut (`Resuming, resynchro`), and the ninth option overwrote `Selection` | `bdc1196`: a unit at work shows the work alone (`Resynchronizing 42%`, 99% at most) in the 19 columns left to it; the lines over the menu give up their blanks, the one over the other disks first, so the menu ends above the selection for the product's options |
+| The disk lists cut a location code to 20 characters (`P0000-B02-D00-F0-T0.`) | `bdc1196`: location 23, serial 18, size 8 and 22 for what a disk is, which is a list's 75 columns; the pool service's words fit them (`Foreign: GPT disk`, `POOL1 unit 2`, with the state only when it is not Active) |
+| Typing the pool's name to confirm its making held the console for minutes, and over 120 s the console said the service did not answer while the pool was still being made: the likely end of the first attempt | `221a816`: the pool service checks the request and holds the name and the disks under its lock, and makes the pool without it (one at a time), so every other request is answered meanwhile. Service Tools sends the request from a thread of its own, waiting up to an hour (`MAKE_WAIT`), and shows `Create Storage Pool` with the time so far until it ends; then the list again with the outcome. A confirmed change goes back to the list it came from instead of starting the stack over, so F3 and F12 there do what they say |
+
+### Not done
+
+- `BLOCKED(phase11)`: the QSI host server's pool client waits 120 s,
+  so QS/MC making a pool of large disks still sees a timeout while the
+  pool is made. Whether a QSI request may wait minutes, or the making
+  should be a request that answers at once and an event when it ends,
+  is QS/MC's to say with the QSI family.
+- `BLOCKED(phase11)`: `pool-tools` and the storage suites are still to
+  run on the change above.
