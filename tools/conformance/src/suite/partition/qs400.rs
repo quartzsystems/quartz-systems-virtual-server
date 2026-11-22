@@ -249,17 +249,20 @@ pub fn attributes(run: &Run<'_>) -> Result<String, String> {
     if guest.said(&guest_line(IPL_COMPLETE)) {
         return Err("an attended IPL completed without its menu being answered".into());
     }
-    // A slow host's guest may not read its console yet: wait, and press
-    // Enter again if the menu stays.
+    // A slow host's guest may not read its console yet, and an Enter on
+    // an empty selection only redraws the menu: while it stays, the
+    // selection is typed again over the field's start, then Enter.
     std::thread::sleep(Duration::from_secs(5));
-    send(&mut guest, "type 1")?;
-    enter(&mut guest)?;
-    if guest
-        .expect("IPL Options", Instant::now() + Duration::from_secs(30))
-        .is_err()
-    {
+    loop {
+        send(&mut guest, "key home")?;
+        send(&mut guest, "type 1")?;
         enter(&mut guest)?;
-        guest.expect("IPL Options", deadline)?;
+        let wait = (Instant::now() + Duration::from_secs(30)).min(deadline);
+        match guest.expect("IPL Options", wait) {
+            Ok(()) => break,
+            Err(e) if Instant::now() >= deadline => return Err(e),
+            Err(_) => {}
+        }
     }
     std::thread::sleep(Duration::from_secs(1));
     enter(&mut guest)?;
