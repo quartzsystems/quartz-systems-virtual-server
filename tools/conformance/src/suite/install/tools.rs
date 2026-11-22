@@ -193,7 +193,7 @@ pub fn network(run: &Run<'_>) -> Result<String, String> {
 fn refused(guest: &mut Guest<'_>, user: &str, password: &str) -> Result<String, String> {
     guest.type_keys(&format!(
         "{}{}",
-        fill(&[Some(user), Some(password)], &[10, 32]),
+        fill(&[Some(user), Some(password)], &[users::ID_MAX, 32]),
         key::ENTER
     ))?;
     let deadline = Instant::now() + Duration::from_secs(15);
@@ -220,7 +220,7 @@ fn manage_users(guest: &mut Guest<'_>, deadline: Instant) -> Result<(), String> 
         "{}{}",
         fill(
             &[Some("oper"), Some(SECOND_PASSWORD), Some(SECOND_PASSWORD)],
-            &[10, 32, 32]
+            &[users::ID_MAX, 32, 32]
         ),
         key::ENTER
     ))?;
@@ -248,6 +248,55 @@ fn manage_users(guest: &mut Guest<'_>, deadline: Instant) -> Result<(), String> 
     guest.screen("the last user kept", deadline, |grid| {
         grid.message() == "The last user ID cannot be removed."
     })?;
+    Ok(())
+}
+
+/// A left click at the 1-based cell `(row, col)`, as a terminal reports
+/// it in SGR form: the press and the release.
+fn click(row: usize, col: usize) -> String {
+    format!("\x1b[<0;{col};{row}M\x1b[<0;{col};{row}m")
+}
+
+/// The pointer at the serial port, from the main menu and back to it: a
+/// click into Date and Time's Time field puts what is typed there, and a
+/// click on the `F12=Cancel` label presses F12.
+fn clicks(guest: &mut Guest<'_>, deadline: Instant) -> Result<(), String> {
+    let form = option(guest, 6, "Date and Time", deadline)?;
+    let rows: Vec<&str> = form.lines().collect();
+    // The rows are 1-based on the screen; the field starts two past the colon.
+    let at = |label: &str| {
+        rows.iter().enumerate().find_map(|(i, r)| {
+            r.trim_start()
+                .starts_with(label)
+                .then(|| r.find(':').map(|c| (i + 1, c + 3)))
+                .flatten()
+        })
+    };
+    let (Some((time_row, col)), Some((date_row, _))) = (at("Time  ."), at("Date  .")) else {
+        return Err(format!(
+            "Date and Time has no Date and Time fields:\n{form}"
+        ));
+    };
+    guest.type_keys(&format!("{}12:34", click(time_row, col)))?;
+    let typed = guest.screen("12:34 typed where the click was", deadline, |grid| {
+        grid.row(time_row)
+            .get(col - 1..)
+            .is_some_and(|t| t.starts_with("12:34"))
+    })?;
+    let date: Vec<&str> = typed.lines().collect();
+    if date
+        .get(date_row - 1)
+        .and_then(|r| r.get(col - 1..))
+        .is_some_and(|t| !t.trim().is_empty())
+    {
+        return Err(format!("the click's text went into Date too:\n{typed}"));
+    }
+    let keys = typed.lines().nth(22).unwrap_or_default();
+    let Some(label) = keys.find("F12=Cancel") else {
+        return Err(format!("the keys line has no F12=Cancel: `{keys}`"));
+    };
+    guest.type_keys(&click(23, label + 2))?;
+    titled(guest, MAIN_MENU, deadline)?;
     Ok(())
 }
 
@@ -319,10 +368,11 @@ pub fn sign_on_rules(run: &Run<'_>) -> Result<String, String> {
     // Users: added, removed, and the last one kept.
     guest.type_keys(&format!(
         "{}{}",
-        fill(&[Some(USER), Some(PASSWORD)], &[10, 32]),
+        fill(&[Some(USER), Some(PASSWORD)], &[users::ID_MAX, 32]),
         key::ENTER
     ))?;
     titled(&mut guest, MAIN_MENU, deadline)?;
+    clicks(&mut guest, deadline)?;
     manage_users(&mut guest, deadline)?;
 
     // No key for the idle time: signed off, the port PID 1's again.
@@ -361,7 +411,8 @@ pub fn sign_on_rules(run: &Run<'_>) -> Result<String, String> {
     nothing_in_clear(&mut guest)?;
     power_off(&mut guest)?;
     Ok(format!(
-        "a wrong password and an unknown user ID are refused alike; {SECOND} added, {USER} \
+        "a wrong password and an unknown user ID are refused alike; a click put the cursor in \
+         a field and another pressed F12 by its label; {SECOND} added, {USER} \
          removed, the last user ID kept; signed off after {:.0} s without a key; five wrong \
          passwords disable {SECOND} and the right one is then refused too; every refusal is in \
          the log, and no password is in a log, the users' file or the serial output",

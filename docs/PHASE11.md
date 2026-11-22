@@ -801,14 +801,21 @@ What QS/VS does with it:
 `cargo test --workspace`, clippy on the host and on the musl target,
 `build deny`, `build notices --check` and `build doctor` pass.
 
+`tools-sign-on` now clicks at the serial port (SGR reports): into Date
+and Time's Time field, where what is typed then lands, and on the
+`F12=Cancel` label, which goes back to the main menu. On a test image
+signed with a release key (`QSVS_SIGNING_KEY`; with the development
+key the status screen says so and `tools-status` differs from its
+golden), `install-serial` (27 s), `tools-sign-on` (50 s) and
+`install-display` (29 s) pass: the goldens changed by hand
+(`install-time`, `tools-time`, `install-user`, `tools-user-add`) match.
+
 ### Not done
 
-- `BLOCKED(phase11)`: no QEMU suite has run at this pin. The goldens
-  changed by hand (`install-time`, `tools-time`, `install-user`,
-  `tools-user-add`) are still to be compared by `install-serial`,
-  `install-display` and `tools-sign-on` on a rebuilt test image.
-- `BLOCKED(phase11)`: no suite clicks. A serial suite that sends an SGR
-  click into a field and on a key's label, and reads where the cursor
-  went, is still to be written.
+- `BLOCKED(phase11)`: of the suites, only `install-serial`,
+  `install-display` and `tools-sign-on` have run at this pin (below);
+  the rest wait for the next whole run.
+- `BLOCKED(phase11)`: no suite clicks on the framebuffer display: QEMU's
+  monitor can move a pointer, and no step does yet.
 - `NEEDS-CODY`: the pointer on a real machine's USB mouse and on a
   management controller's virtual mouse.
