@@ -6,7 +6,6 @@
  Unit  Location                Serial                  Size  State
     1  P0000-B00-D10-F0        QSVSHD0             671.0 MB  Active
     2  P0000-B00-D11-F0        QSVSHD1                       Missing
-
  Other disks: 0 (option 6 shows each and what it is)
 
  Select one of the following:
@@ -17,7 +16,8 @@
       6. Display disk configuration
       7. Work with storage pools
       8. Display virtual disks
- Selectionisplay media library
+      9. Display media library
+ Selection
 
 
  F1=Help   F3=Exit   F12=Cancel

@@ -1,10 +1,10 @@
                            Display Disk Configuration
                                                                System:  vs-test
 
- Location             Serial                Size  What it is
- P0000-B00-D10-F0     QSVSHD0           671.0 MB  Load source
- P0000-B00-D14-F0     QSVSUNIT0           2.1 GB  Not configured
- P0000-B00-D15-F0     QSVSUNIT1           2.1 GB  Not configured
+ Location                Serial                 Size  What it is
+ P0000-B00-D10-F0        QSVSHD0            671.0 MB  Load source
+ P0000-B00-D14-F0        QSVSUNIT0            2.1 GB  Not configured
+ P0000-B00-D15-F0        QSVSUNIT1            2.1 GB  Not configured
 
 
 

@@ -61,14 +61,18 @@ fn no_service(title: &str, env: &mut Env) -> Screen {
     )
 }
 
-/// A disk as a row: location, serial, size, what it is.
+/// The headings over [`disk_row`].
+const DISK_HEADINGS: &str = "Location                Serial                 Size  What it is";
+
+/// A disk as a row: location, serial, size, what it is. A location code
+/// and a serial number are whole; the row fits a list's 75 columns.
 fn disk_row(d: &Disk) -> String {
     format!(
-        "{} {} {:>9}  {}",
-        kit::fit(&d.location, 20),
-        kit::fit(&d.serial, 16),
+        "{} {} {:>8}  {}",
+        kit::fit(&d.location, 23),
+        kit::fit(&d.serial, 18),
         kit::size(d.bytes),
-        kit::fit(&d.what, 24)
+        kit::fit(&d.what, 22)
     )
 }
 
@@ -82,8 +86,7 @@ impl Panel<Env, Outcome> for DiskConfig {
 
     fn render(&self, env: &mut Env) -> Screen {
         let rows: Vec<String> = disks(env).iter().map(disk_row).collect();
-        let mut text =
-            vec!["Location             Serial                Size  What it is".to_string()];
+        let mut text = vec![DISK_HEADINGS.to_string()];
         if rows.is_empty() {
             text.push("(The pool service does not answer, or the host has no disk.)".into());
         }
@@ -438,7 +441,7 @@ impl Panel<Env, Outcome> for Pick {
                 self.name,
                 self.protection.word()
             ),
-            "Opt Location             Serial                Size  What it is",
+            &format!("Opt {DISK_HEADINGS}"),
             &rows,
             "F1=Help   F3=Exit   F12=Cancel",
         );
@@ -700,7 +703,7 @@ impl Panel<Env, Outcome> for Choose {
             POOLS,
             &env.system(),
             &prompt,
-            "Opt Location             Serial                Size  What it is",
+            &format!("Opt {DISK_HEADINGS}"),
             &rows,
             "F1=Help   F3=Exit   F12=Cancel",
         );

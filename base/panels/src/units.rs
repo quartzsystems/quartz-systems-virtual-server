@@ -59,11 +59,24 @@ enum Purpose {
     Replace(u32),
 }
 
+/// Room for a unit's state at the end of its row.
+const STATE_WIDTH: usize = 19;
+
 fn unit_row(unit: &Unit, status: &Status) -> String {
-    let mut state = unit.state.clone();
-    if status.work_unit == unit.number && !status.work.is_empty() {
-        state = format!("{state}, {} {}%", status.work, status.percent);
-    }
+    // A unit at work shows the work, which says more than its state.
+    let state = if status.work_unit == unit.number && !status.work.is_empty() {
+        let mut work = status.work.clone();
+        if let Some(first) = work.get_mut(..1) {
+            first.make_ascii_uppercase();
+        }
+        // At its end the work is gone and the state shows: 99% at most,
+        // so the longest word and its number fit.
+        format!("{work} {}%", status.percent.min(99))
+    } else {
+        unit.state.clone()
+    };
+    let state = kit::fit(&state, STATE_WIDTH);
+    let state = state.trim_end();
     let size = if unit.bytes == 0 {
         String::new()
     } else {
@@ -86,8 +99,9 @@ fn other_disks(all: Vec<Disk>, status: &Status) -> Vec<Disk> {
         .collect()
 }
 
-/// The lines of the display: protection, the units, the other disks.
-fn lines(status: &Status, others: &[Disk], after: &str) -> Vec<String> {
+/// The lines of the display: protection, the units, the other disks;
+/// at most `room`, so the menu under them ends above the selection.
+fn lines(status: &Status, others: &[Disk], after: &str, room: usize) -> Vec<String> {
     let protection = if status.protection == MIRRORED {
         if status.whole() {
             "Mirrored; both units are in step"
@@ -111,6 +125,13 @@ fn lines(status: &Status, others: &[Disk], after: &str) -> Vec<String> {
     out.push(String::new());
     // The selection lists them all; here, how many.
     out.push(format!("Other disks: {}{after}", others.len()));
+    // Short of room, the blank over the other disks goes first, then the
+    // one under the protection.
+    for blank in [out.len() - 2, 1] {
+        if out.len() > room {
+            out.remove(blank);
+        }
+    }
     out
 }
 
@@ -156,10 +177,12 @@ impl<E: LoadSource + ?Sized + 'static, O: 'static> Panel<E, O> for DiskUnits<E, 
             (5, "Display the units again"),
         ];
         options.extend_from_slice(self.product.options);
+        // The menu takes its heading, a blank each side and its options.
+        let room = (ui::SELECTION_ROW - ui::BODY_ROW).saturating_sub(options.len() + 3);
         ui::menu_after(
             TITLE,
             &env.system(),
-            &lines(&status, &others, self.product.others),
+            &lines(&status, &others, self.product.others, room),
             &options,
             "F1=Help   F3=Exit   F12=Cancel",
         )
@@ -448,13 +471,49 @@ mod tests {
             percent: 40,
             ..Status::default()
         };
-        let shown = lines(&status, &[], " (elsewhere)");
+        let shown = lines(&status, &[], " (elsewhere)", ROOM);
         assert!(shown[0].contains("NOT protected now"));
         assert!(shown[3].starts_with("   1  P0000-B00-D10-F0"));
         assert!(shown[3].ends_with("671.0 MB  Active"));
-        assert!(shown[4].ends_with("Resuming, rebuilding 40%"));
+        assert!(shown[4].ends_with("671.0 MB  Rebuilding 40%"));
         assert_eq!(shown.last().unwrap(), "Other disks: 0 (elsewhere)");
         assert_eq!(failed_unit(&status), None);
+    }
+
+    /// What QS/VS's seven options leave.
+    const ROOM: usize = 6;
+
+    #[test]
+    fn every_line_fits_and_the_menu_ends_above_the_selection() {
+        let status = Status {
+            protection: MIRRORED.into(),
+            units: vec![
+                Unit {
+                    location: "P0000-B02-D00-F0-T0.0.0".into(),
+                    serial: "PHYG9294048W240AGN".into(),
+                    bytes: 240_000_000_000,
+                    ..unit(1, "Active", "sda")
+                },
+                unit(2, "Resuming", "sdb"),
+            ],
+            work: "resynchronizing".into(),
+            work_unit: 2,
+            percent: 100,
+            failure: "unit 2: a long reason that goes past the width".into(),
+            ..Status::default()
+        };
+        let shown = lines(&status, &[], " (option 6 shows each and what it is)", ROOM);
+        assert_eq!(shown.len(), ROOM, "{shown:#?}");
+        // The blank under the protection went first.
+        assert!(shown[1].starts_with("Unit  Location"));
+        assert!(shown[3].ends_with("  Resynchronizing 99%"), "{}", shown[3]);
+        // From the body column, no line passes the 80th.
+        for line in &shown {
+            assert!(ui::BODY_COL - 1 + line.len() <= 80, "{line}");
+        }
+        assert!(unit_row(&status.units[0], &status).ends_with("240.0 GB  Active"));
+        // With room, the blank stays.
+        assert_eq!(lines(&status, &[], "", ROOM + 1)[1], "");
     }
 
     #[test]
@@ -466,7 +525,8 @@ mod tests {
             ..Status::default()
         };
         assert_eq!(failed_unit(&status), Some(1));
-        let shown = lines(&status, &[], "");
+        // Room for the blank too.
+        let shown = lines(&status, &[], "", ROOM + 1);
         // A unit that is gone still has its location and serial.
         assert!(shown[3].contains("P0000-B00-D10-F0") && shown[3].ends_with("Missing"));
         assert!(shown[5].starts_with("Last request: unit 1: no"));
@@ -474,6 +534,6 @@ mod tests {
             units: vec![unit(1, "Unprotected", "vda")],
             ..Status::default()
         };
-        assert!(lines(&plain, &[], "")[0].contains("None: the load source is one disk"));
+        assert!(lines(&plain, &[], "", ROOM)[0].contains("None: the load source is one disk"));
     }
 }

@@ -44,7 +44,7 @@ pub struct Disk {
     pub bytes: u64,
     /// Its logical block size.
     pub logical_block: u32,
-    /// What it is, in words: `Load source`, `POOL1 unit 2, Active`,
+    /// What it is, in words: `Load source`, `POOL1 unit 2`, `POOL1 unit 3, Rebuilding`,
     /// `Hot spare, POOL1`, `Not configured`, `Foreign: ...`.
     pub what: String,
     /// The pool it is in, or a spare of; empty for none.

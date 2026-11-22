@@ -57,6 +57,9 @@ impl Kind {
                 Some((_, u)) if u.state == label::UnitState::Spare => {
                     format!("Hot spare, {}", label.name)
                 }
+                Some((n, u)) if u.state == label::UnitState::Active => {
+                    format!("{} unit {n}", label.name)
+                }
                 Some((n, u)) => format!("{} unit {n}, {}", label.name, u.state.word()),
                 None => format!("{}, not a unit", label.name),
             },
@@ -77,21 +80,21 @@ impl Kind {
 pub fn signature(head: &[u8]) -> Option<&'static str> {
     let at = |i: usize, bytes: &[u8]| head.get(i..i + bytes.len()) == Some(bytes);
     if at(512, b"EFI PART") || at(4096, b"EFI PART") {
-        Some("a GPT partition table")
+        Some("GPT disk")
     } else if at(0, b"XFSB") {
-        Some("an xfs file system")
+        Some("xfs")
     } else if at(1080, &[0x53, 0xEF]) {
-        Some("an ext file system")
+        Some("ext")
     } else if at(512, b"LABELONE") {
-        Some("an LVM volume")
+        Some("LVM volume")
     } else if at(4096, &[0xFC, 0x4E, 0x2B, 0xA9]) {
-        Some("a software RAID member")
+        Some("RAID member")
     } else if at(32769, b"CD001") {
-        Some("an ISO 9660 image")
+        Some("ISO 9660")
     } else if at(3, b"NTFS    ") {
-        Some("an NTFS file system")
+        Some("NTFS")
     } else if at(510, &[0x55, 0xAA]) {
-        Some("an MBR partition table")
+        Some("MBR disk")
     } else {
         None
     }
@@ -120,7 +123,7 @@ pub fn classify(names: &PoolDiskNames, node: &Path, host: [u8; 16]) -> Kind {
                 partition: member.guid,
             },
             Some(l) => Kind::ForeignPool { name: l.name },
-            None => Kind::Foreign("a pool disk whose label cannot be read"),
+            None => Kind::Foreign("pool label unread"),
         };
     }
     signature(&head).map_or(Kind::NotConfigured, Kind::Foreign)
@@ -171,15 +174,15 @@ mod tests {
         assert_eq!(signature(&head), None);
         head[510] = 0x55;
         head[511] = 0xAA;
-        assert_eq!(signature(&head), Some("an MBR partition table"));
+        assert_eq!(signature(&head), Some("MBR disk"));
         head[512..520].copy_from_slice(b"EFI PART");
-        assert_eq!(signature(&head), Some("a GPT partition table"));
+        assert_eq!(signature(&head), Some("GPT disk"));
         let mut xfs = vec![0u8; HEAD_BYTES];
         xfs[..4].copy_from_slice(b"XFSB");
-        assert_eq!(signature(&xfs), Some("an xfs file system"));
+        assert_eq!(signature(&xfs), Some("xfs"));
         let mut iso = vec![0u8; HEAD_BYTES];
         iso[32769..32774].copy_from_slice(b"CD001");
-        assert_eq!(signature(&iso), Some("an ISO 9660 image"));
+        assert_eq!(signature(&iso), Some("ISO 9660"));
         // Short heads are read as far as they go.
         assert_eq!(signature(&[0u8; 10]), None);
     }
@@ -189,9 +192,6 @@ mod tests {
         assert!(Kind::NotConfigured.free());
         assert!(!Kind::Foreign("x").free());
         assert!(!Kind::ForeignPool { name: "P".into() }.free());
-        assert_eq!(
-            Kind::Foreign("an ext file system").word(),
-            "Foreign: an ext file system"
-        );
+        assert_eq!(Kind::Foreign("ext").word(), "Foreign: ext");
     }
 }
