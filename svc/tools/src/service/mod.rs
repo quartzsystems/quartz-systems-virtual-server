@@ -65,7 +65,7 @@ impl Panel<Env, Outcome> for ServiceMenu {
                 (5, "Display code levels"),
                 (6, "Shut down all partitions"),
             ],
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Select   F1=Help   F3=Exit   F12=Cancel",
         )
     }
 
@@ -121,7 +121,7 @@ impl Panel<Env, Outcome> for TakeDump {
                 "",
                 "Press Enter to take one, or F12 to go back.",
             ]),
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         )
     }
 
@@ -180,7 +180,7 @@ impl Panel<Env, Outcome> for EndAll {
                 value: String::new(),
                 hidden: false,
             }],
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         );
         kit::put(
             &mut s,

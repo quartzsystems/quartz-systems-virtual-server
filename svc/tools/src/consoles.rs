@@ -65,7 +65,7 @@ impl Panel<Env, Outcome> for Pairing {
                 (2, "Start pairing"),
                 (3, "Display management interface"),
             ],
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Select   F1=Help   F3=Exit   F12=Cancel",
         )
     }
 
@@ -144,7 +144,7 @@ impl Panel<Env, Outcome> for Consoles {
             "4=Remove  5=Display",
             "Opt Name              Fingerprint       Last contact",
             &rows,
-            "F1=Help  F3=Exit  F5=Refresh  F12=Cancel",
+            "Enter=Select  F1=Help  F3=Exit  F5=Refresh  F12=Cancel",
         );
         if rows.is_empty() {
             kit::put(
@@ -285,7 +285,7 @@ impl Panel<Env, Outcome> for Remove {
                 value: String::new(),
                 hidden: false,
             }],
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         );
         kit::put(
             &mut s,

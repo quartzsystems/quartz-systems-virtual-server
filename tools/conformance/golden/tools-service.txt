@@ -20,4 +20,4 @@
  Selection
 
 
- F1=Help   F3=Exit   F12=Cancel
+ Enter=Select   F1=Help   F3=Exit   F12=Cancel

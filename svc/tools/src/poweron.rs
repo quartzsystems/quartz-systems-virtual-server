@@ -86,7 +86,7 @@ impl Panel<Env, Outcome> for PowerOnPanel {
             "Power-On Settings",
             &env.system(),
             &lines,
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Apply   F1=Help   F3=Exit   F12=Cancel",
         );
         if now.is_none() {
             kit::put(

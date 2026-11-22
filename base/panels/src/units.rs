@@ -184,7 +184,7 @@ impl<E: LoadSource + ?Sized + 'static, O: 'static> Panel<E, O> for DiskUnits<E, 
             &env.system(),
             &lines(&status, &others, self.product.others, room),
             &options,
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Select   F1=Help   F3=Exit   F12=Cancel",
         )
     }
 
@@ -265,7 +265,7 @@ impl<E: LoadSource + ?Sized + 'static, O: 'static> Panel<E, O> for Select<E, O> 
             &prompt,
             "Opt Location                Model               Serial                  Size",
             &rows,
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Select   F1=Help   F3=Exit   F12=Cancel",
         );
         if rows.is_empty() {
             kit::put(&mut s, ui::BODY_ROW + 3, "(No disk is free)");

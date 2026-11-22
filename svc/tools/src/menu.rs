@@ -51,7 +51,7 @@ impl Panel<Env, Outcome> for MainMenu {
                 (9, "Power off or restart"),
                 (10, "Work with I/O for partitions"),
             ],
-            "F1=Help   F3=Sign off   F12=Sign off",
+            "Enter=Select   F1=Help   F3=Sign off   F12=Sign off",
         )
     }
 
@@ -178,7 +178,7 @@ impl Panel<Env, Outcome> for Choice {
             self.title,
             &env.system(),
             self.options,
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Select   F1=Help   F3=Exit   F12=Cancel",
         )
     }
 

@@ -170,7 +170,7 @@ impl Panel<Env, Outcome> for FromVolume {
                 value: "sdb1".into(),
                 hidden: false,
             }],
-            "F1=Help   F12=Cancel",
+            "Enter=Continue   F1=Help   F12=Cancel",
         );
         kit::put(
             &mut s,
@@ -226,7 +226,7 @@ impl Panel<Env, Outcome> for Choose {
             "1=Select  2=Select, allowing an older release",
             "Opt File",
             &rows,
-            "F1=Help  F12=Cancel",
+            "Enter=Select  F1=Help  F12=Cancel",
         )
     }
 
@@ -387,6 +387,7 @@ impl Panel<Env, Outcome> for Installing {
 
     fn render(&self, env: &mut Env) -> Screen {
         let mut lines = Vec::new();
+        let mut keys = "F1=Help   F5=Refresh   F12=Exit";
         match status(env) {
             Err(e) => lines.push(e),
             Ok(st) => {
@@ -408,6 +409,8 @@ impl Panel<Env, Outcome> for Installing {
                     lines.push(String::new());
                     lines.push("    1. Restart now into the update".into());
                     lines.push("    2. Restart later".into());
+                    // A choice to make: Enter makes it.
+                    keys = "Enter=Select   F1=Help   F5=Refresh   F12=Exit";
                 } else {
                     let why = st
                         .slots
@@ -429,7 +432,7 @@ impl Panel<Env, Outcome> for Installing {
                 value: String::new(),
                 hidden: false,
             }],
-            "F1=Help   F5=Refresh   F12=Exit",
+            keys,
         );
         for (i, l) in lines.iter().enumerate() {
             kit::put(&mut s, ui::BODY_ROW + 2 + i, l);
@@ -522,7 +525,7 @@ impl Panel<Env, Outcome> for RestartNow {
                     hidden: false,
                 },
             ],
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         );
         kit::put(
             &mut s,

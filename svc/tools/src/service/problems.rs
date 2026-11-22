@@ -90,9 +90,9 @@ impl Panel<Env, Outcome> for Problems {
             "Opt Number  Status   Last seen         Code      Description",
             &shown,
             if self.every {
-                "F1=Help  F3=Exit  F5=Refresh  F11=Open only  F12=Cancel"
+                "Enter=Select  F1=Help  F3=Exit  F5=Refresh  F11=Open only  F12=Cancel"
             } else {
-                "F1=Help  F3=Exit  F5=Refresh  F11=Show all  F12=Cancel"
+                "Enter=Select  F1=Help  F3=Exit  F5=Refresh  F11=Show all  F12=Cancel"
             },
         );
         kit::put(&mut s, ui::BODY_ROW + 4 + ROWS, &foot);
@@ -346,7 +346,7 @@ impl Panel<Env, Outcome> for Close {
                     String::new(),
                     "Press Enter to close it, or F12 to go back.".into(),
                 ],
-                "F1=Help   F12=Cancel",
+                "Enter=Confirm   F1=Help   F12=Cancel",
             );
             s.cursor = (ui::BODY_ROW, 1);
             return s;
@@ -360,7 +360,7 @@ impl Panel<Env, Outcome> for Close {
                 value: String::new(),
                 hidden: false,
             }],
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         );
         kit::put(
             &mut s,

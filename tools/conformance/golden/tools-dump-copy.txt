@@ -20,4 +20,4 @@
 
 
 
- F1=Help   F12=Cancel
+ Enter=Apply   F1=Help   F12=Cancel

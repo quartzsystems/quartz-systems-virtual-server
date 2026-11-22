@@ -20,5 +20,5 @@
 
 
 
- F1=Help   F12=Cancel
+ Enter=Confirm   F1=Help   F12=Cancel
 

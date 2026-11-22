@@ -20,5 +20,5 @@
  Selection
 
 
- F1=Help   F3=Sign off   F12=Sign off
+ Enter=Select   F1=Help   F3=Sign off   F12=Sign off
 

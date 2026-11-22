@@ -46,12 +46,17 @@ fn status(env: &mut Env, name: &str) -> Option<SwitchStatus> {
         .find(|s| s.switch.as_ref().is_some_and(|w| w.name == name))
 }
 
-fn no_service(title: &str, env: &mut Env) -> Screen {
+/// The keys of a display without its service: Enter goes back from a
+/// display, and does nothing on a list or a choice.
+const BACK: &str = "Enter=Continue   F3=Exit   F12=Cancel";
+const STAY: &str = "F3=Exit   F12=Cancel";
+
+fn no_service(title: &str, env: &mut Env, keys: &str) -> Screen {
     kit::page(
         title,
         &env.system(),
         &kit::lines(&["The switch service does not answer."]),
-        "F3=Exit   F12=Cancel",
+        keys,
     )
 }
 
@@ -91,7 +96,7 @@ impl Panel<Env, Outcome> for Network {
                 (3, "Work with virtual switches"),
                 (4, "Display partition adapters"),
             ],
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Select   F1=Help   F3=Exit   F12=Cancel",
         )
     }
 
@@ -150,7 +155,7 @@ impl Panel<Env, Outcome> for Hardware {
 
     fn render(&self, env: &mut Env) -> Screen {
         let Ok(list) = env.switches().interfaces() else {
-            return no_service("Display Network Hardware", env);
+            return no_service("Display Network Hardware", env, BACK);
         };
         let mut text =
             vec!["Location             MAC address       Driver      Speed Link What".to_string()];
@@ -162,7 +167,7 @@ impl Panel<Env, Outcome> for Hardware {
             "Display Network Hardware",
             &env.system(),
             &text,
-            "F1=Help   F3=Exit   F5=Refresh   F12=Cancel",
+            "Enter=Continue   F1=Help   F3=Exit   F5=Refresh   F12=Cancel",
         )
     }
 
@@ -215,7 +220,7 @@ impl Panel<Env, Outcome> for Switches {
 
     fn render(&self, env: &mut Env) -> Screen {
         let Some(list) = statuses(env) else {
-            return no_service(SWITCHES, env);
+            return no_service(SWITCHES, env, STAY);
         };
         let rows: Vec<String> = list.iter().map(switch_row).collect();
         let mut s = ui::list(
@@ -224,7 +229,7 @@ impl Panel<Env, Outcome> for Switches {
             "2=Change  4=Delete  5=Display  7=Set uplink  8=Clear uplink  9=Table",
             "Opt Name       VLANs                          MTU Uplink    Ports",
             &rows,
-            "F1=Help  F3=Exit  F5=Refresh  F6=Create  F12=Cancel",
+            "Enter=Select  F1=Help  F3=Exit  F5=Refresh  F6=Create  F12=Cancel",
         );
         if rows.is_empty() {
             kit::put(
@@ -349,7 +354,12 @@ impl Panel<Env, Outcome> for Edit {
             value: mtu,
             hidden: false,
         });
-        let mut s = kit::form(title, &env.system(), &lines, "F1=Help   F12=Cancel");
+        let mut s = kit::form(
+            title,
+            &env.system(),
+            &lines,
+            "Enter=Apply   F1=Help   F12=Cancel",
+        );
         let below = ui::BODY_ROW + lines.len() + 1;
         kit::put(
             &mut s,
@@ -424,7 +434,7 @@ impl Panel<Env, Outcome> for Delete {
                 value: String::new(),
                 hidden: false,
             }],
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         );
         kit::put(
             &mut s,
@@ -485,10 +495,10 @@ impl Panel<Env, Outcome> for Display {
 
     fn render(&self, env: &mut Env) -> Screen {
         let Some(st) = status(env, &self.name) else {
-            return no_service("Display Virtual Switch", env);
+            return no_service("Display Virtual Switch", env, BACK);
         };
         let Some(w) = st.switch.clone() else {
-            return no_service("Display Virtual Switch", env);
+            return no_service("Display Virtual Switch", env, BACK);
         };
         let row = |label: &str, value: String| format!("{} {value}", kit::dotted(label, 15));
         let mut text = vec![
@@ -530,7 +540,7 @@ impl Panel<Env, Outcome> for Display {
             "Display Virtual Switch",
             &env.system(),
             &text,
-            "F1=Help   F3=Exit   F5=Refresh   F12=Cancel",
+            "Enter=Continue   F1=Help   F3=Exit   F5=Refresh   F12=Cancel",
         )
     }
 
@@ -571,7 +581,7 @@ impl Panel<Env, Outcome> for PickUplink {
 
     fn render(&self, env: &mut Env) -> Screen {
         let Ok(list) = env.switches().interfaces() else {
-            return no_service("Set Uplink", env);
+            return no_service("Set Uplink", env, STAY);
         };
         let rows: Vec<String> = list.iter().map(hardware_row).collect();
         let mut s = ui::list(
@@ -580,7 +590,7 @@ impl Panel<Env, Outcome> for PickUplink {
             &format!("1=Select for switch {}", self.switch),
             "Opt Location             MAC address       Driver      Speed Link What",
             &rows,
-            "F1=Help   F12=Cancel",
+            "Enter=Select   F1=Help   F12=Cancel",
         );
         if rows.is_empty() {
             kit::put(
@@ -657,7 +667,7 @@ impl Panel<Env, Outcome> for UplinkForm {
                     hidden: false,
                 },
             ],
-            "F1=Help   F12=Cancel",
+            "Enter=Apply   F1=Help   F12=Cancel",
         );
         let mut row = ui::BODY_ROW + 3;
         kit::put(&mut s, row, &format!("Switch {}, uplink:", self.switch));
@@ -740,7 +750,7 @@ impl Panel<Env, Outcome> for Table {
                     "Display Forwarding Table",
                     &env.system(),
                     &[e],
-                    "F3=Exit   F12=Cancel",
+                    "Enter=Continue   F3=Exit   F12=Cancel",
                 );
             }
         };
@@ -768,7 +778,7 @@ impl Panel<Env, Outcome> for Table {
             "Display Forwarding Table",
             &env.system(),
             &text,
-            "F1=Help   F3=Exit   F5=Refresh   F12=Cancel",
+            "Enter=Continue   F1=Help   F3=Exit   F5=Refresh   F12=Cancel",
         )
     }
 
@@ -821,7 +831,7 @@ impl Panel<Env, Outcome> for Adapters {
 
     fn render(&self, env: &mut Env) -> Screen {
         let Ok(ports) = env.switches().ports(String::new()) else {
-            return no_service("Display Partition Adapters", env);
+            return no_service("Display Partition Adapters", env, BACK);
         };
         let mut text = vec![
             MANAGED.to_string(),
@@ -836,7 +846,7 @@ impl Panel<Env, Outcome> for Adapters {
             "Display Partition Adapters",
             &env.system(),
             &text,
-            "F1=Help   F3=Exit   F5=Refresh   F12=Cancel",
+            "Enter=Continue   F1=Help   F3=Exit   F5=Refresh   F12=Cancel",
         )
     }
 

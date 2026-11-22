@@ -20,5 +20,5 @@
 
 
 
- F1=Help   F12=Cancel
+ Enter=Apply   F1=Help   F12=Cancel
 QVS4105 Interface P0000-B00-D1A-F0-E0 cannot carry switch PRODNET's MTU of 9000:

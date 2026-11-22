@@ -55,12 +55,17 @@ fn percent(part: u64, whole: u64) -> String {
         .map_or_else(String::new, |p| format!("{p}%"))
 }
 
-fn no_service(title: &str, env: &mut Env) -> Screen {
+/// The keys of a display without its service: Enter goes back from a
+/// display, and does nothing on a list.
+const BACK: &str = "Enter=Continue   F3=Exit   F12=Cancel";
+const STAY: &str = "F3=Exit   F12=Cancel";
+
+fn no_service(title: &str, env: &mut Env, keys: &str) -> Screen {
     kit::page(
         title,
         &env.system(),
         &kit::lines(&["The pool service does not answer."]),
-        "F3=Exit   F12=Cancel",
+        keys,
     )
 }
 
@@ -98,7 +103,7 @@ impl Panel<Env, Outcome> for DiskConfig {
             "Display Disk Configuration",
             &env.system(),
             &text,
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Continue   F1=Help   F3=Exit   F12=Cancel",
         )
     }
 
@@ -153,7 +158,7 @@ impl Panel<Env, Outcome> for Pools {
 
     fn render(&self, env: &mut Env) -> Screen {
         let Some(list) = pools(env) else {
-            return no_service(POOLS, env);
+            return no_service(POOLS, env, STAY);
         };
         let rows: Vec<String> = list.iter().map(Self::row).collect();
         let mut s = ui::list(
@@ -162,7 +167,7 @@ impl Panel<Env, Outcome> for Pools {
             "2=Rename 4=Delete 5=Display 6=Replace unit 7=Add spare 8=Remove spare 9=Media",
             "Opt Name        Protection State                Size  Used",
             &rows,
-            "F1=Help F3=Exit F5=Refresh F6=Create F7=Import image F12=Cancel",
+            "Enter=Select F1=Help F3=Exit F5=Refresh F6=Create F7=Import image F12=Cancel",
         );
         if rows.is_empty() {
             kit::put(&mut s, ui::BODY_ROW + 3, "(No storage pool. F6 makes one.)");
@@ -336,7 +341,7 @@ impl Panel<Env, Outcome> for Typed {
                 value: String::new(),
                 hidden: false,
             }],
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         );
         let mut row = ui::BODY_ROW + 2;
         for line in &self.lines {
@@ -398,7 +403,7 @@ impl Panel<Env, Outcome> for Create {
                     hidden: false,
                 },
             ],
-            "F1=Help   F12=Cancel",
+            "Enter=Continue   F1=Help   F12=Cancel",
         );
         kit::put(
             &mut s,
@@ -471,7 +476,7 @@ impl Panel<Env, Outcome> for Pick {
             ),
             &format!("Opt {DISK_HEADINGS}"),
             &rows,
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Select   F1=Help   F3=Exit   F12=Cancel",
         );
         if rows.is_empty() {
             kit::put(&mut s, ui::BODY_ROW + 3, "(No disk is free)");
@@ -705,7 +710,7 @@ impl Panel<Env, Outcome> for Status {
 
     fn render(&self, env: &mut Env) -> Screen {
         let Some(p) = pool(env, &self.pool) else {
-            return no_service("Display Storage Pool", env);
+            return no_service("Display Storage Pool", env, BACK);
         };
         let mut text = vec![
             format!(
@@ -842,7 +847,7 @@ impl Panel<Env, Outcome> for Choose {
             &prompt,
             &format!("Opt {DISK_HEADINGS}"),
             &rows,
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Select   F1=Help   F3=Exit   F12=Cancel",
         );
         if rows.is_empty() {
             kit::put(&mut s, ui::BODY_ROW + 3, "(No disk to choose)");
@@ -970,7 +975,7 @@ impl Panel<Env, Outcome> for Rename {
                 value: self.pool.clone(),
                 hidden: false,
             }],
-            "F1=Help   F12=Cancel",
+            "Enter=Apply   F1=Help   F12=Cancel",
         )
     }
 
@@ -1026,7 +1031,7 @@ impl Panel<Env, Outcome> for Import {
                     hidden: false,
                 },
             ],
-            "F1=Help   F12=Cancel",
+            "Enter=Apply   F1=Help   F12=Cancel",
         );
         kit::put(
             &mut s,
@@ -1107,7 +1112,7 @@ impl Panel<Env, Outcome> for Vdisks {
             "Display Virtual Disks",
             &env.system(),
             &text,
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Continue   F1=Help   F3=Exit   F12=Cancel",
         )
     }
 
@@ -1186,7 +1191,7 @@ impl Panel<Env, Outcome> for Media {
             "Display Media Library",
             &env.system(),
             &text,
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Continue   F1=Help   F3=Exit   F12=Cancel",
         )
     }
 

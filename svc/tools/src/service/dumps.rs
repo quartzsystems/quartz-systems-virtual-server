@@ -107,7 +107,7 @@ impl Panel<Env, Outcome> for Dumps {
             "4=Delete  6=Copy to removable volume",
             "Opt Whose       Name                                 Size  Taken",
             &shown,
-            "F1=Help  F3=Exit  F5=Refresh  F12=Cancel",
+            "Enter=Select  F1=Help  F3=Exit  F5=Refresh  F12=Cancel",
         );
         kit::put(&mut s, ui::BODY_ROW + 4 + ROWS, &foot);
         if rows.is_empty() {
@@ -222,7 +222,7 @@ impl Panel<Env, Outcome> for Copy {
                 value: "sdb1".into(),
                 hidden: false,
             }],
-            "F1=Help   F12=Cancel",
+            "Enter=Apply   F1=Help   F12=Cancel",
         );
         kit::put(
             &mut s,
@@ -289,7 +289,7 @@ impl Panel<Env, Outcome> for Delete {
                 String::new(),
                 "Press Enter to delete it, or F12 to go back.".into(),
             ],
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         )
     }
 

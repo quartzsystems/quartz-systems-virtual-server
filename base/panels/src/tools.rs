@@ -80,7 +80,7 @@ pub trait Host: Named {
     fn power(&mut self, restart: bool) -> Result<(), String>;
 }
 
-const KEYS: &str = "F1=Help   F3=Exit   F12=Cancel";
+const KEYS: &str = "Enter=Apply   F1=Help   F3=Exit   F12=Cancel";
 
 /// Sign-on. It ends with the user ID that signed on.
 pub struct SignOn;
@@ -394,7 +394,7 @@ impl<E: Host + ?Sized + 'static, O: 'static> Panel<E, O> for UsersPanel {
             "Type an option by a user ID, press Enter.  2=Change password  4=Remove",
             "Opt User ID",
             &ids,
-            "F1=Help   F3=Exit   F6=Add   F12=Cancel",
+            "Enter=Select   F1=Help   F3=Exit   F6=Add   F12=Cancel",
         )
     }
 

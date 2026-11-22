@@ -20,5 +20,5 @@
 
                                                                        Bottom
 
- F1=Help   F3=Exit   F5=Refresh   F7=Backward   F8=Forward   F12=Cancel
+ Enter=Select F1=Help F3=Exit F5=Refresh F7=Backward F8=Forward F12=Cancel
 

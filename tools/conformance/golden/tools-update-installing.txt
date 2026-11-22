@@ -20,4 +20,4 @@
 
 
 
- F1=Help   F5=Refresh   F12=Exit
+ Enter=Select   F1=Help   F5=Refresh   F12=Exit

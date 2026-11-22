@@ -165,7 +165,7 @@ impl Panel<Env, Outcome> for Io {
             "2=Release   4=Take back   5=Display",
             "Opt Location                  Description              Use",
             &lines,
-            "F1=Help   F3=Exit   F5=Refresh   F7=Backward   F8=Forward   F12=Cancel",
+            "Enter=Select F1=Help F3=Exit F5=Refresh F7=Backward F8=Forward F12=Cancel",
         );
         if lines.is_empty() {
             kit::put(&mut s, ui::BODY_ROW + 3, "(The host has no PCI device.)");
@@ -332,7 +332,7 @@ impl Panel<Env, Outcome> for Display {
             "Display I/O for Partitions",
             &env.system(),
             &whole(&self.row),
-            "F1=Help   F3=Exit   F12=Cancel",
+            "Enter=Continue   F1=Help   F3=Exit   F12=Cancel",
         )
     }
 
@@ -376,7 +376,7 @@ impl Panel<Env, Outcome> for Release {
                 value: String::new(),
                 hidden: false,
             }],
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         );
         let mut lines = vec![
             format!(
@@ -442,7 +442,7 @@ impl Panel<Env, Outcome> for TakeBack {
                 String::new(),
                 "Press Enter to take it back, or F12 to cancel.".into(),
             ],
-            "F1=Help   F12=Cancel",
+            "Enter=Confirm   F1=Help   F12=Cancel",
         )
     }
 

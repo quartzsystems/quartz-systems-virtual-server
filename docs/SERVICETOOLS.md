@@ -47,7 +47,8 @@ port again.
 F1 is help on every panel. F12 goes back one panel, F3 to the main
 menu. On the main menu either signs off. Page Up and Page Down are F7
 and F8 on a list that pages; on Work with storage pools, where F7
-imports, they do nothing.
+imports, they do nothing. Enter is named first on the keys line
+wherever it does something, with the word for what it does.
 
 The pointer is QS/400's console's (its `docs/CONSOLE.md`, The
 pointer): a USB mouse's cell is shown in reverse video; a management
