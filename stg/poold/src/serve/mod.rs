@@ -100,6 +100,8 @@ pub struct Core {
     holders: Vec<proto::Held>,
     /// An import from a device of the host, and how far it is.
     import: Option<(String, u64, u64, String)>,
+    /// The pool being made, and its disks: held from other requests.
+    making: Option<(String, Vec<String>)>,
     stopped: bool,
     filled: Instant,
 }
@@ -807,6 +809,7 @@ pub fn run(host: Host) -> String {
         pools: Vec::new(),
         holders: library::read_holders(host.run_dir),
         import: None,
+        making: None,
         stopped: false,
         filled: Instant::now(),
     };

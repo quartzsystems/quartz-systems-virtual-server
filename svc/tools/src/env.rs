@@ -125,6 +125,12 @@ impl Env {
         &mut self.pool_changes
     }
 
+    /// The pool service, for a pool to be made, on a thread of its own:
+    /// formatting a large pool takes minutes.
+    pub fn pool_maker(&self) -> poold::proto::Client {
+        self.pool_changes.clone().waiting(poold::proto::MAKE_WAIT)
+    }
+
     /// The switch service: the virtual switches, the network hardware,
     /// the partitions' ports.
     pub fn switches(&mut self) -> &mut vswitchd::Client {

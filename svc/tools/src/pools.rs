@@ -9,6 +9,9 @@
 //! disks and the media library, which are managed from QS/MC. The pool
 //! service does the work; these panels ask it and show what it says.
 
+use std::sync::mpsc;
+use std::time::Instant;
+
 use console::Screen;
 use panels::ui::{self, FormLine};
 use panels::{Flow, Help, Named, Panel, PanelFlow, kit};
@@ -199,6 +202,7 @@ impl Panel<Env, Outcome> for Pools {
                     "afterwards. A pool that holds a virtual disk or media is not deleted.".into(),
                 ],
                 name.clone(),
+                1,
                 move |env: &mut Env| asked(env.pool_changes().delete_pool(name.clone())),
             ))),
             5 => Flow::Push(Box::new(Status { pool: name })),
@@ -223,6 +227,7 @@ impl Panel<Env, Outcome> for Pools {
                     "its files, which are no longer the library's.".into(),
                 ],
                 name.clone(),
+                1,
                 move |env: &mut Env| asked(env.pool_changes().designate(name.clone())),
             ))),
             _ => Flow::Error("Option not valid.".into()),
@@ -264,8 +269,11 @@ impl Panel<Env, Outcome> for Pools {
     }
 }
 
-/// What a confirmed request does.
-type Action = Box<dyn FnMut(&mut Env) -> Result<(), String>>;
+/// A panel of these.
+type Boxed = Box<dyn Panel<Env, Outcome>>;
+
+/// What a confirmed request does: done, or a panel that follows it.
+type Action = Box<dyn FnMut(&mut Env) -> Result<Option<Boxed>, String>>;
 
 /// A destructive request, confirmed by typing a word.
 struct Typed {
@@ -273,6 +281,9 @@ struct Typed {
     title: &'static str,
     lines: Vec<String>,
     word: String,
+    /// Panels over the pools' list, this one included: done, the list
+    /// shows again.
+    back: usize,
     action: Action,
 }
 
@@ -282,13 +293,29 @@ impl Typed {
         title: &'static str,
         lines: Vec<String>,
         word: String,
-        action: impl FnMut(&mut Env) -> Result<(), String> + 'static,
+        back: usize,
+        mut action: impl FnMut(&mut Env) -> Result<(), String> + 'static,
+    ) -> Self {
+        Self::then(name, title, lines, word, back, move |env| {
+            action(env).map(|()| None)
+        })
+    }
+
+    /// A request that a panel follows: it shows in this one's place.
+    fn then(
+        name: &'static str,
+        title: &'static str,
+        lines: Vec<String>,
+        word: String,
+        back: usize,
+        action: impl FnMut(&mut Env) -> Result<Option<Boxed>, String> + 'static,
     ) -> Self {
         Self {
             name,
             title,
             lines,
             word,
+            back,
             action: Box::new(action),
         }
     }
@@ -326,7 +353,8 @@ impl Panel<Env, Outcome> for Typed {
             return Flow::Error(format!("Type {} to confirm, or F12 to go back.", self.word));
         }
         match (self.action)(env) {
-            Ok(()) => Flow::Reset(Box::new(Pools)),
+            Ok(None) => Flow::Unwind(self.back, None),
+            Ok(Some(next)) => Flow::Replace(next),
             Err(e) => Flow::Error(e),
         }
     }
@@ -502,20 +530,37 @@ impl Panel<Env, Outcome> for Pick {
         }
         let (name, protection) = (self.name.clone(), self.protection.word().to_string());
         let confirm = names(&foreign);
-        Flow::Push(Box::new(Typed::new(
+        Flow::Push(Box::new(Typed::then(
             "tools-pool-confirm",
             "Confirm Create of Pool",
             lines,
             self.name.clone(),
+            // The list, Create, the disks and this.
+            3,
             move |env: &mut Env| {
-                asked(env.pool_changes().create_pool(
+                // Making a large pool takes minutes: the request runs on a
+                // thread of its own and Making follows it.
+                let mut client = env.pool_maker();
+                let (tx, done) = mpsc::channel();
+                let (pool, protection, m, s, confirm) = (
                     name.clone(),
                     protection.clone(),
                     m.clone(),
                     s.clone(),
                     confirm.clone(),
-                ))
-                .map(|_| ())
+                );
+                std::thread::Builder::new()
+                    .name("pool-create".into())
+                    .spawn(move || {
+                        let made = asked(client.create_pool(pool, protection, m, s, confirm));
+                        let _ = tx.send(made.map(|_| ()));
+                    })
+                    .map_err(|e| format!("The request was not sent: {e}."))?;
+                Ok(Some(Box::new(Making {
+                    pool: name.clone(),
+                    started: Instant::now(),
+                    done,
+                }) as Boxed))
             },
         )))
     }
@@ -532,6 +577,98 @@ impl Panel<Env, Outcome> for Pick {
                 "The next screen shows the pool's capacity and asks for its name",
                 "to be typed; nothing is written before that.",
             ],
+        }
+    }
+}
+
+/// A pool being made: its request runs on a thread of its own, and this
+/// display follows it until the pool service answers.
+struct Making {
+    pool: String,
+    started: Instant,
+    done: mpsc::Receiver<Result<(), String>>,
+}
+
+impl Making {
+    /// Back to the pools' list: the list, Create and the disks under this.
+    fn back(message: String, error: bool) -> Step {
+        Flow::Unwind(3, Some((message, error)))
+    }
+}
+
+impl Panel<Env, Outcome> for Making {
+    fn name(&self) -> &'static str {
+        "tools-pool-making"
+    }
+
+    fn render(&self, env: &mut Env) -> Screen {
+        let secs = self.started.elapsed().as_secs();
+        let text = vec![
+            format!("Storage pool {} is being made.", self.pool),
+            String::new(),
+            "Its disks are prepared, its set is made and its file system is".into(),
+            "written. Large disks take some minutes; the host runs on.".into(),
+            String::new(),
+            format!(
+                "{} {} min {:02} s",
+                kit::dotted("Time so far", 15),
+                secs / 60,
+                secs % 60
+            ),
+        ];
+        kit::enterable(ui::text(
+            "Create Storage Pool",
+            &env.system(),
+            &text,
+            None,
+            "F1=Help   F12=Back to the list",
+        ))
+    }
+
+    fn enter(&mut self, _fields: &[String], _env: &mut Env) -> Step {
+        Flow::Stay
+    }
+
+    fn function(&mut self, key: u8, _fields: &[String], _env: &mut Env) -> Step {
+        match key {
+            3 | 12 => Self::back(
+                format!(
+                    "Storage pool {} is still being made; F5 shows it once it is.",
+                    self.pool
+                ),
+                false,
+            ),
+            _ => Flow::Stay,
+        }
+    }
+
+    fn help(&self) -> Help {
+        Help {
+            title: "Create Storage Pool",
+            lines: &[
+                "The pool service is making the pool: preparing each disk,",
+                "making the protected set over them and writing the pool's file",
+                "system, which takes longer the larger the disks are.",
+                "",
+                "When it is made, the list of pools shows again with it. F12",
+                "goes back to the list at once; the pool is made all the same,",
+                "and the reference code history says when.",
+            ],
+        }
+    }
+
+    fn live(&self) -> bool {
+        true
+    }
+
+    fn tick(&mut self, _env: &mut Env) -> Step {
+        match self.done.try_recv() {
+            Ok(Ok(())) => Self::back(format!("Storage pool {} made.", self.pool), false),
+            Ok(Err(e)) => Self::back(e, true),
+            Err(mpsc::TryRecvError::Empty) => Flow::Stay,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                Self::back("The pool service did not answer.".into(), true)
+            }
         }
     }
 }
@@ -741,6 +878,7 @@ impl Panel<Env, Outcome> for Choose {
                     shown,
                 ],
                 name.clone(),
+                2,
                 move |env: &mut Env| {
                     asked(env.pool_changes().remove_spare(pool.clone(), name.clone()))
                 },
@@ -763,6 +901,7 @@ impl Panel<Env, Outcome> for Choose {
                     "Confirm Erase of Disk",
                     lines,
                     name.clone(),
+                    2,
                     move |env: &mut Env| match purpose {
                         Purpose::Replace => {
                             let Some(unit) = unit else {
@@ -838,7 +977,7 @@ impl Panel<Env, Outcome> for Rename {
     fn enter(&mut self, fields: &[String], env: &mut Env) -> Step {
         let to = fields.first().map_or("", |f| f.trim()).to_uppercase();
         match asked(env.pool_changes().rename_pool(self.pool.clone(), to)) {
-            Ok(()) => Flow::Reset(Box::new(Pools)),
+            Ok(()) => Flow::Unwind(1, None),
             Err(e) => Flow::Error(e),
         }
     }

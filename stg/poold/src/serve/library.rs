@@ -36,6 +36,43 @@ fn one(m: Issued) -> Refused {
     vec![m]
 }
 
+/// A pool being made: what its making needs, taken from the core so the
+/// core is free meanwhile. Its name and disks are held in
+/// [`Core::making`] until it ends.
+pub struct Making {
+    names: &'static pool::names::PoolDiskNames,
+    owner: [u8; 16],
+    name: String,
+    inventory: Vec<super::DiskIdentity>,
+    at: PathBuf,
+    id_file: PathBuf,
+    planned: plan::Plan,
+}
+
+impl Making {
+    /// The slow part: the disks prepared, the set made and served, its
+    /// file system made and mounted.
+    fn make(&self) -> Result<Pool, String> {
+        let identity = |d: &str| {
+            let (_, serial, location) = super::disk_facts(&self.inventory, d);
+            (serial, location)
+        };
+        create::create(
+            self.names,
+            self.owner,
+            &self.name,
+            &self.planned,
+            &identity,
+            &self.id_file,
+            &self.at,
+            clock(),
+        )
+    }
+}
+
+/// One pool is made at a time.
+static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// A pool's media library.
 pub struct Library {
     mount: Option<PathBuf>,
@@ -153,6 +190,9 @@ impl Core {
                         None
                     }
                     _ if create::mounted(d) => Some("it is in use".to_string()),
+                    _ if self.making.as_ref().is_some_and(|(_, m)| m.contains(d)) => {
+                        Some("a pool is being made of it".to_string())
+                    }
                     _ => None,
                 };
                 Some(Candidate {
@@ -200,19 +240,21 @@ impl Core {
         }
     }
 
-    fn create_pool(
+    /// A pool to be made, checked, its name and disks held for it: the
+    /// slow part is done without the core (`Making::make`).
+    fn prepare_pool(
         &mut self,
         name: &str,
         protection: &str,
         members: &[String],
         spares: &[String],
         confirm: &[String],
-    ) -> Result<PoolStatus, Refused> {
+    ) -> Result<Making, Refused> {
         let mut refused = Vec::new();
         if !pool::label::valid_name(name) {
             refused.push(qvsmsg::SPOOL_NAME_INVALID.with(&[name]));
         }
-        if self.pool_index(name).is_some() {
+        if self.pool_index(name).is_some() || self.making.as_ref().is_some_and(|(n, _)| n == name) {
             refused.push(qvsmsg::SPOOL_EXISTS.with(&[name]));
         }
         let Some(protection) = Protection::from_word(protection) else {
@@ -233,26 +275,36 @@ impl Core {
         let Ok(planned) = planned else {
             return Err(refused);
         };
-        let inventory = self.inventory();
-        let identity = |d: &str| {
-            let (_, serial, location) = super::disk_facts(&inventory, d);
-            (serial, location)
-        };
-        let at = create::mount_point(self.pools_dir(), name);
-        let id_file = self.id_file_for(name);
-        let made = create::create(
-            self.names(),
-            self.owner,
-            name,
-            &planned,
-            &identity,
-            &id_file,
-            &at,
-            clock(),
-        )
-        .map_err(|e| one(qvsmsg::SPOOL_NOT_MADE.with(&[name, &e])))?;
+        let disks = planned
+            .members
+            .iter()
+            .chain(&planned.spares)
+            .cloned()
+            .collect();
+        self.making = Some((name.to_string(), disks));
+        Ok(Making {
+            names: self.names(),
+            owner: self.owner,
+            name: name.to_string(),
+            inventory: self.inventory(),
+            at: create::mount_point(self.pools_dir(), name),
+            id_file: self.id_file_for(name),
+            planned,
+        })
+    }
+
+    /// The end of [`Core::prepare_pool`]: the pool made, or why not.
+    fn finish_pool(
+        &mut self,
+        making: &Making,
+        made: Result<Pool, String>,
+    ) -> Result<PoolStatus, Refused> {
+        self.making = None;
+        let (name, planned) = (making.name.as_str(), &making.planned);
+        let protection = planned.protection;
+        let made = made.map_err(|e| one(qvsmsg::SPOOL_NOT_MADE.with(&[name, &e])))?;
         // The device's number goes under the pool's identity.
-        let _ = fs::rename(&id_file, self.id_file(&made.label));
+        let _ = fs::rename(&making.id_file, self.id_file(&made.label));
         self.post(
             &refcode::POOL_CREATED,
             &format!(
@@ -792,10 +844,12 @@ impl proto::Pools for Session<'_> {
         lock(self.core).disk_list()
     }
     fn candidates(&mut self) -> Vec<Disk> {
-        lock(self.core)
-            .disk_list()
+        let c = lock(self.core);
+        let making = c.making.as_ref().map(|(_, disks)| disks.clone());
+        c.disk_list()
             .into_iter()
             .filter(|d| d.free || d.foreign)
+            .filter(|d| !making.as_ref().is_some_and(|m| m.contains(&d.name)))
             .collect()
     }
     fn pools(&mut self) -> Vec<PoolStatus> {
@@ -809,7 +863,15 @@ impl proto::Pools for Session<'_> {
         spares: Vec<String>,
         confirm: Vec<String>,
     ) -> Result<PoolStatus, Refused> {
-        lock(self.core).create_pool(&name, &protection, &members, &spares, &confirm)
+        let _one = ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let making =
+            lock(self.core).prepare_pool(&name, &protection, &members, &spares, &confirm)?;
+        // Formatting a large pool takes minutes: every other request is
+        // answered meanwhile.
+        let made = making.make();
+        lock(self.core).finish_pool(&making, made)
     }
     fn delete_pool(&mut self, name: String) -> Result<(), Refused> {
         lock(self.core).delete_pool(&name)

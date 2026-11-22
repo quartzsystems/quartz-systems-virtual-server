@@ -391,6 +391,10 @@ pub struct Client {
 /// file system.
 pub const ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 
+/// How long a client waits for a pool to be made: the file system of a
+/// pool of many large disks is written meanwhile.
+pub const MAKE_WAIT: std::time::Duration = std::time::Duration::from_hours(1);
+
 /// How long a client that only looks waits: a list is answered at once,
 /// unless a change holds the service.
 pub const LOOK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
