@@ -838,5 +838,14 @@ Seen on a host installed from the release ISO of `cdd74de`, with six
   pool is made. Whether a QSI request may wait minutes, or the making
   should be a request that answers at once and an event when it ends,
   is QS/MC's to say with the QSI family.
-- `BLOCKED(phase11)`: `pool-tools` and the storage suites are still to
-  run on the change above.
+- `BLOCKED(phase11)`: the suites not named below are still to run at
+  `7fddf26`.
+
+At `7fddf26` (Enter named first on every keys line where it acts:
+38 keys lines, 43 goldens), on a test image signed with a release key,
+these pass: `install-serial`, `install-display`, `tools-sign-on`,
+`tools-network`, `mirror-degraded`, `mirror-replace`, `mirror-start`,
+`pool-create`, `pool-foreign`, `pool-tools`, `net-switch-create`,
+`net-management`, `net-live`, `pio-tools`, `qsi-pairing` and
+`svc-tools` (with `QSVS_UPDATE_IMAGE` a V1R0M1 image signed by the
+same key).
