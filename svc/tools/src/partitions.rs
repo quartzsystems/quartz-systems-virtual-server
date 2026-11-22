@@ -88,6 +88,8 @@ pub fn summary(partitions: Option<&[Status]>) -> String {
 #[derive(Default)]
 pub struct Partitions {
     top: usize,
+    /// Rows at the last draw: a page key needs not make the list again.
+    seen: std::cell::Cell<usize>,
 }
 
 type Step = PanelFlow<Env, Outcome>;
@@ -105,6 +107,7 @@ impl Panel<Env, Outcome> for Partitions {
             .iter()
             .map(row)
             .collect();
+        self.seen.set(rows.len());
         let (shown, foot) = kit::window(&rows, self.top, ROWS);
         let mut lines = vec![HEADING.to_string()];
         lines.extend(shown);
@@ -131,7 +134,7 @@ impl Panel<Env, Outcome> for Partitions {
     fn function(&mut self, key: u8, _fields: &[String], _env: &mut Env) -> Step {
         match key {
             7 | 8 => {
-                let len = list().map_or(0, |all| all.len());
+                let len = self.seen.get();
                 self.top = kit::scroll(self.top, key, len, ROWS);
                 Flow::Stay
             }

@@ -652,6 +652,10 @@ pub struct LogPanel {
     /// The least severity shown: 0, 1 or 2.
     least: u8,
     top: usize,
+    /// Rows at the last draw: a page key needs not make the list again.
+    seen: std::cell::Cell<usize>,
+    /// The log's rows as last read: Enter reads it again.
+    rows: std::cell::RefCell<Option<Vec<String>>>,
 }
 
 impl LogPanel {
@@ -662,7 +666,18 @@ impl LogPanel {
             log,
             least: 0,
             top: 0,
+            seen: std::cell::Cell::default(),
+            rows: std::cell::RefCell::default(),
         }
+    }
+
+    /// The rows, read once: paging moves over them without reading the
+    /// log's files again.
+    fn read<E: Host + ?Sized>(&self, env: &mut E) -> Vec<String> {
+        self.rows
+            .borrow_mut()
+            .get_or_insert_with(|| self.rows(env))
+            .clone()
     }
 
     fn rows<E: Host + ?Sized>(&self, env: &mut E) -> Vec<String> {
@@ -733,7 +748,8 @@ impl<E: Host + ?Sized, O> Panel<E, O> for LogPanel {
             Log::History => "Display Reference Code History",
             Log::System => "Display System Log",
         };
-        let rows = self.rows(env);
+        let rows = self.read(env);
+        self.seen.set(rows.len());
         let (shown, foot) = kit::window(&rows, self.top, LOG_ROWS);
         let mut s = kit::form(
             title,
@@ -762,16 +778,18 @@ impl<E: Host + ?Sized, O> Panel<E, O> for LogPanel {
             Some(n @ 1..=3) => {
                 self.least = u8::try_from(n - 1).unwrap_or(0);
                 self.top = 0;
+                // Enter reads the log again.
+                self.rows.replace(None);
                 Flow::Stay
             }
             _ => Flow::Error("Show must be 1, 2 or 3.".into()),
         }
     }
 
-    fn function(&mut self, key: u8, _fields: &[String], env: &mut E) -> PanelFlow<E, O> {
+    fn function(&mut self, key: u8, _fields: &[String], _env: &mut E) -> PanelFlow<E, O> {
         match key {
             7 | 8 => {
-                let len = self.rows(env).len();
+                let len = self.seen.get();
                 self.top = kit::scroll(self.top, key, len, LOG_ROWS);
                 Flow::Stay
             }
@@ -786,7 +804,8 @@ impl<E: Host + ?Sized, O> Panel<E, O> for LogPanel {
             title: "Display logs",
             lines: &[
                 "The newest line is at the top. F8 shows older lines, F7 newer",
-                "ones. Times are in the display zone.",
+                "ones. Times are in the display zone. The log is read when the",
+                "display opens and at each Enter.",
                 "",
                 "The reference code history is every code the host has posted,",
                 "kept across IPLs and never cut. The system log is what PID 1",

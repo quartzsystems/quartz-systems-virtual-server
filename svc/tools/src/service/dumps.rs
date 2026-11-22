@@ -79,6 +79,8 @@ fn whose(d: &Dump) -> String {
 #[derive(Default)]
 pub struct Dumps {
     top: usize,
+    /// Rows at the last draw: a page key needs not make the list again.
+    seen: std::cell::Cell<usize>,
 }
 
 impl Panel<Env, Outcome> for Dumps {
@@ -100,6 +102,7 @@ impl Panel<Env, Outcome> for Dumps {
                 )
             })
             .collect();
+        self.seen.set(rows.len());
         let (shown, foot) = kit::window(&rows, self.top, ROWS);
         let mut s = ui::list(
             TITLE,
@@ -144,7 +147,7 @@ impl Panel<Env, Outcome> for Dumps {
             3 => Flow::PopAll,
             12 => Flow::Pop,
             7 | 8 => {
-                self.top = kit::scroll(self.top, key, all().len(), ROWS);
+                self.top = kit::scroll(self.top, key, self.seen.get(), ROWS);
                 Flow::Stay
             }
             _ => Flow::Stay,

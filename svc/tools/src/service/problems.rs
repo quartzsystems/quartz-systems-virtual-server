@@ -66,6 +66,8 @@ fn row(env: &Env, s: &Summary) -> String {
 #[derive(Default)]
 pub struct Problems {
     top: usize,
+    /// Rows at the last draw: a page key needs not make the list again.
+    seen: std::cell::Cell<usize>,
     every: bool,
 }
 
@@ -82,6 +84,7 @@ impl Panel<Env, Outcome> for Problems {
             }
         };
         let rows: Vec<String> = list.iter().map(|s| row(env, s)).collect();
+        self.seen.set(rows.len());
         let (shown, foot) = kit::window(&rows, self.top, ROWS);
         let mut s = ui::list(
             TITLE,
@@ -139,12 +142,13 @@ impl Panel<Env, Outcome> for Problems {
             5 => Flow::Push(Box::new(Display {
                 number: s.number,
                 top: 0,
+                seen: std::cell::Cell::default(),
             })),
             _ => Flow::Error("Option not valid.".into()),
         }
     }
 
-    fn function(&mut self, key: u8, _fields: &[String], env: &mut Env) -> Step {
+    fn function(&mut self, key: u8, _fields: &[String], _env: &mut Env) -> Step {
         match key {
             3 => Flow::PopAll,
             12 => Flow::Pop,
@@ -154,7 +158,7 @@ impl Panel<Env, Outcome> for Problems {
                 Flow::Stay
             }
             7 | 8 => {
-                let len = all(env, !self.every).map_or(0, |l| l.len());
+                let len = self.seen.get();
                 self.top = kit::scroll(self.top, key, len, ROWS);
                 Flow::Stay
             }
@@ -183,6 +187,8 @@ impl Panel<Env, Outcome> for Problems {
 struct Display {
     number: u64,
     top: usize,
+    /// Rows at the last draw: a page key needs not make the list again.
+    seen: std::cell::Cell<usize>,
 }
 
 /// The lines of one problem.
@@ -265,6 +271,7 @@ impl Panel<Env, Outcome> for Display {
             Ok(Err(issued)) => vec![said(&issued)],
             Err(e) => vec![down("problem service", &e)],
         };
+        self.seen.set(lines.len());
         let (shown, foot) = kit::window(&lines, self.top, kit::BODY_ROWS - 1);
         let mut text = shown;
         text.push(foot);
@@ -285,10 +292,7 @@ impl Panel<Env, Outcome> for Display {
             3 => Flow::PopAll,
             12 => Flow::Pop,
             7 | 8 => {
-                let len = match env.problems().get(self.number) {
-                    Ok(Ok(p)) => detail(env, &p).len(),
-                    _ => 0,
-                };
+                let len = self.seen.get();
                 self.top = kit::scroll(self.top, key, len, kit::BODY_ROWS - 1);
                 Flow::Stay
             }
@@ -408,6 +412,8 @@ impl Panel<Env, Outcome> for Close {
 #[derive(Default)]
 pub struct Log {
     top: usize,
+    /// Rows at the last draw: a page key needs not make the list again.
+    seen: std::cell::Cell<usize>,
 }
 
 impl Panel<Env, Outcome> for Log {
@@ -437,6 +443,7 @@ impl Panel<Env, Outcome> for Log {
             }
             Err(e) => vec![e],
         };
+        self.seen.set(lines.len());
         let (shown, foot) = kit::window(&lines, self.top, kit::BODY_ROWS - 1);
         let mut text = shown;
         text.push(foot);
@@ -452,12 +459,12 @@ impl Panel<Env, Outcome> for Log {
         Flow::Stay
     }
 
-    fn function(&mut self, key: u8, _fields: &[String], env: &mut Env) -> Step {
+    fn function(&mut self, key: u8, _fields: &[String], _env: &mut Env) -> Step {
         match key {
             3 => Flow::PopAll,
             12 => Flow::Pop,
             7 | 8 => {
-                let len = all(env, false).map_or(0, |l| 1 + 2 * l.len());
+                let len = self.seen.get();
                 self.top = kit::scroll(self.top, key, len, kit::BODY_ROWS - 1);
                 Flow::Stay
             }

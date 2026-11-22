@@ -131,6 +131,8 @@ fn rows() -> Option<Vec<Row>> {
 #[derive(Default)]
 pub struct Io {
     top: usize,
+    /// Rows at the last draw: a page key needs not make the list again.
+    seen: std::cell::Cell<usize>,
 }
 
 impl Panel<Env, Outcome> for Io {
@@ -158,6 +160,7 @@ impl Panel<Env, Outcome> for Io {
                 )
             })
             .collect();
+        self.seen.set(all.len());
         let (lines, foot) = kit::window(&all, self.top, ROWS);
         let mut s = ui::list(
             TITLE,
@@ -209,7 +212,7 @@ impl Panel<Env, Outcome> for Io {
     fn function(&mut self, key: u8, _fields: &[String], _env: &mut Env) -> Step {
         match key {
             7 | 8 => {
-                let len = rows().map_or(0, |all| all.len());
+                let len = self.seen.get();
                 self.top = kit::scroll(self.top, key, len, ROWS);
                 Flow::Stay
             }

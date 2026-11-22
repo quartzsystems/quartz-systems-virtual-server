@@ -231,6 +231,17 @@ impl Screens {
         let _ = self.show.send(Command::ShowScreen(screen));
     }
 
+    /// Show a screen, and how long the console took to draw it: a dump
+    /// asked after it is answered once it is drawn. `None` when the
+    /// console did not answer within [`DRAW_WAIT`].
+    pub fn show_drawn(&self, screen: Screen) -> Option<Duration> {
+        let asked = Instant::now();
+        self.show(screen);
+        let (tx, drawn) = mpsc::channel();
+        let _ = self.show.send(Command::Dump(tx));
+        drawn.recv_timeout(DRAW_WAIT).ok().map(|_| asked.elapsed())
+    }
+
     /// How long ago the last key was typed.
     pub fn idle(&self) -> Duration {
         self.last_key
@@ -289,6 +300,31 @@ fn rolled(command: Command) -> Option<Command> {
     }
 }
 
+/// The longest a screen is waited for to be drawn.
+const DRAW_WAIT: Duration = Duration::from_secs(10);
+/// A screen made and drawn in longer than this is logged.
+const SLOW: Duration = Duration::from_millis(250);
+
+/// Log a screen that was slow to make (the panel's work: its files and
+/// the services it asks) or to draw (the console and its displays).
+fn slow(panel: &str, made: Duration, drawn: Option<Duration>) {
+    let Some(drawn) = drawn else {
+        println!(
+            "screen {panel}: made in {} ms, not drawn within {} s",
+            made.as_millis(),
+            DRAW_WAIT.as_secs()
+        );
+        return;
+    };
+    if made + drawn >= SLOW {
+        println!(
+            "screen {panel} slow: made in {} ms, drawn in {} ms",
+            made.as_millis(),
+            drawn.as_millis()
+        );
+    }
+}
+
 /// How a run of panels ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ended<O> {
@@ -310,7 +346,11 @@ pub fn run<E: Named + ?Sized, O>(
 ) -> Ended<O> {
     screens.touch();
     loop {
-        screens.show(runner.screen(env));
+        let asked = Instant::now();
+        let screen = runner.screen(env);
+        let made = asked.elapsed();
+        let drawn = screens.show_drawn(screen);
+        slow(runner.top(), made, drawn);
         // Wait until a key or a tick changes what is shown.
         let end = loop {
             match screens.input(TICK) {
