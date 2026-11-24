@@ -290,7 +290,7 @@ pub fn tools(run: &Run<'_>) -> Result<String, String> {
     guest.type_keys(term::F3)?;
     Ok(format!(
         "option 1's list followed PROD as QS/400 IPLed: {} codes shown in turn ({}), then \
-         Running with C6001090 and release V1R1M0; golden file tools-partitions-service",
+         Running with C6001090 and release V1R2M0; golden file tools-partitions-service",
         codes.len(),
         codes.join(" ")
     ))

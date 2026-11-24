@@ -2,7 +2,7 @@
                                                                System:  vs-test
 
   ID  Name        State          Reference  Release  Processors     Memory
-   1  PROD        Running        C6001090   V1R1M0   1 dedicated    2048 MB
+   1  PROD        Running        C6001090   V1R2M0   1 dedicated    2048 MB
                                                                        Bottom
 
 
