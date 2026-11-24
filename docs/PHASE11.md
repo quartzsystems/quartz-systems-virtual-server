@@ -849,3 +849,23 @@ these pass: `install-serial`, `install-display`, `tools-sign-on`,
 `net-management`, `net-live`, `pio-tools`, `qsi-pairing` and
 `svc-tools` (with `QSVS_UPDATE_IMAGE` a V1R0M1 image signed by the
 same key).
+
+## 2026-11-23: the pin at QS/400's V1R2M0
+
+### The pin
+
+`de8e467f`, QS/400's `main` of 2026-11-23 (`docs/PHASE0.md`), after
+`960861dc`. Between them QS/400 released V1R2M0 and changed its own
+products (Navigator, Access for Web, HTTP administration, PTFs, the
+IFS), none of which QS/VS takes; of the crates QS/VS takes only `qsi`
+and `qsisess` changed: base's `Resources` (operation `0x0009`, bit 28,
+`caps::RESOURCES`), a standalone system's processors, main storage,
+system ASP and jobs for QS/MC's Servers pages. `kernel/`, the toolchain
+and `deny.toml` are unchanged.
+
+What QS/VS does with it: nothing new. A host gives its processors and
+memory by the host family; its hello does not say bit 28, and a
+`Resources` that reaches it anyway is refused as not agreed, as the fix
+level is (`qsi/server/src/families/base.rs`). `cargo clippy --workspace
+--all-targets -D warnings`, `cargo test --workspace` and
+`build doctor` pass at the pin.

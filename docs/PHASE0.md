@@ -9,10 +9,14 @@ Every QS/400 crate is a git dependency on
 `https://github.com/quartzsystems/quartz-systems-400` at one commit:
 
 ```
-960861dc3a948f6c9004f30b0f155732029d025c
+de8e467f066f30acd38b00a753dac97374e767f7
 ```
 
-It is QS/400's `main` of 2026-11-21, with its handoff 25: a pointer in
+It is QS/400's `main` of 2026-11-23, with base's `Resources`
+(QSI bit 28, a standalone system's processors, memory and jobs for
+QS/MC), which QS/VS refuses as it does the fix level
+(`docs/PHASE11.md`, the pin at QS/400's V1R2M0). Before it the pin was
+`960861dc`, QS/400's `main` of 2026-11-21, with its handoff 25: a pointer in
 `console` (a click into a field or on a key's label, the wheel) and the
 longest user ID given by `svcusers`' caller (`docs/PHASE11.md`, the pin
 at handoff 25). Before it the pin was `cf8f0145`, QS/400's `main` of

@@ -177,8 +177,9 @@ pub(super) fn answer(s: &mut Services, r: &Request, user: &str) -> Result<AnyRep
             })
         }
         // The connection's: it opens a stream; or a bit this host does
-        // not say (it keeps no fix level of its own).
-        Request::DownloadDump(_) | Request::FixLevel(_) => {
+        // not say (it keeps no fix level of its own, and gives its
+        // processors and memory by the host family, not base's resources).
+        Request::DownloadDump(_) | Request::FixLevel(_) | Request::Resources(_) => {
             return Err(vec![not_agreed()]);
         }
         // The connection's: they need the event log.
