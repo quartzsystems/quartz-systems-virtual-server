@@ -5,6 +5,8 @@
 //! Suite 5: inventory. QEMU is started with a known topology and
 //! `inventory.toml` must match it.
 
+use std::time::{Duration, Instant};
+
 use state::Inventory;
 
 use release::fact;
@@ -148,8 +150,15 @@ pub fn inventory(run: &Run<'_>) -> Result<String, String> {
         s.fact(fact::MANAGEMENT)
             .is_some_and(|m| m.starts_with(DHCP_ADDRESS))
     })?;
-    let text = channel.text(&format!("{STATE_DIR}/inventory.toml"))?;
-    let inv: Inventory = state::store::parse(&text).map_err(|e| e.to_string())?;
+    // The carrier can come after the address: read until it is there.
+    let inv = loop {
+        let text = channel.text(&format!("{STATE_DIR}/inventory.toml"))?;
+        let inv: Inventory = state::store::parse(&text).map_err(|e| e.to_string())?;
+        if inv.interfaces.iter().all(|i| i.carrier) || Instant::now() >= deadline {
+            break inv;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    };
     machine(&inv, launch.kvm)?;
     let image = std::fs::metadata(run.disk).map_err(|e| e.to_string())?;
     devices(&inv, image.len())?;
